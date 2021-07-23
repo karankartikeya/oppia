@@ -18,7 +18,7 @@
 
 // TODO(#7222): Remove the following block of unnnecessary imports once
 // the code corresponding to the spec is upgraded to Angular 8.
-import { importAllAngularServices } from 'tests/unit-test-utils';
+import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
 
 require('pages/email-dashboard-pages/email-dashboard-page.component.ts');
 
@@ -86,16 +86,12 @@ describe('Email Dashboard Page', function() {
   it('should clear form when form is reset', function() {
     // Initialize ctrl.data.
     ctrl.resetForm();
-    // Mock some values.
-    ctrl.data = {};
-    EMAIL_DASHBOARD_PREDICATE_DEFINITION.forEach(predicate => {
-      ctrl.data[predicate.backend_attr] = 1;
-    });
+    ctrl.data.edited_fewer_than_n_exps = 1;
 
     ctrl.resetForm();
 
-    Object.values(ctrl.data).forEach(value => {
-      expect(value).toBe(null);
+    EMAIL_DASHBOARD_PREDICATE_DEFINITION.forEach(predicate => {
+      expect(ctrl.data[predicate.backend_attr]).toBe(predicate.default_value);
     });
   });
 
@@ -103,21 +99,18 @@ describe('Email Dashboard Page', function() {
     ctrl.resetForm();
     expect(ctrl.areAllInputsEmpty()).toBe(true);
 
-    ctrl.data = {};
-    EMAIL_DASHBOARD_PREDICATE_DEFINITION.forEach(predicate => {
-      ctrl.data[predicate.backend_attr] = 1;
-    });
+    ctrl.data.edited_fewer_than_n_exps = 1;
+    expect(ctrl.areAllInputsEmpty()).toBe(false);
+
+    ctrl.resetForm();
+    ctrl.data.created_collection = true;
     expect(ctrl.areAllInputsEmpty()).toBe(false);
   });
 
   it('should submit query when submitting form', function() {
     // Initialize ctrl.data.
     ctrl.resetForm();
-    // Mock some values.
-    ctrl.data = {};
-    EMAIL_DASHBOARD_PREDICATE_DEFINITION.forEach(predicate => {
-      ctrl.data[predicate.backend_attr] = 1;
-    });
+    ctrl.data.edited_fewer_than_n_exps = 1;
 
     spyOn(EmailDashboardDataService, 'submitQueryAsync').and.callFake(
       function() {

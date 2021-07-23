@@ -273,6 +273,8 @@ class CompletedActivitiesModelTests(test_utils.GenericTestBase):
     USER_2_ID = 'id_2'
     EXPLORATION_IDS_1 = ['exp_1', 'exp_2', 'exp_3']
     COLLECTION_IDS_1 = ['col_1', 'col_2', 'col_3']
+    STORY_IDS_1 = ['story_1', 'story_2', 'story_3']
+    TOPIC_IDS_1 = ['topic_1', 'topic_2', 'topic_3']
 
     def setUp(self):
         """Set up user models in datastore for use in testing."""
@@ -281,12 +283,16 @@ class CompletedActivitiesModelTests(test_utils.GenericTestBase):
         user_models.CompletedActivitiesModel(
             id=self.USER_1_ID,
             exploration_ids=self.EXPLORATION_IDS_1,
-            collection_ids=self.COLLECTION_IDS_1
+            collection_ids=self.COLLECTION_IDS_1,
+            story_ids=self.STORY_IDS_1,
+            learnt_topic_ids=self.TOPIC_IDS_1
         ).put()
         user_models.CompletedActivitiesModel(
             id=self.USER_2_ID,
             exploration_ids=self.EXPLORATION_IDS_1,
             collection_ids=self.COLLECTION_IDS_1,
+            story_ids=self.STORY_IDS_1,
+            learnt_topic_ids=self.TOPIC_IDS_1,
             deleted=True
         ).put()
 
@@ -331,7 +337,10 @@ class CompletedActivitiesModelTests(test_utils.GenericTestBase):
             user_models.CompletedActivitiesModel.export_data(self.USER_1_ID))
         expected_data = {
             'exploration_ids': self.EXPLORATION_IDS_1,
-            'collection_ids': self.COLLECTION_IDS_1
+            'collection_ids': self.COLLECTION_IDS_1,
+            'story_ids': self.STORY_IDS_1,
+            'learnt_topic_ids': self.TOPIC_IDS_1,
+            'mastered_topic_ids': []
         }
         self.assertEqual(expected_data, user_data)
 
@@ -344,6 +353,8 @@ class IncompleteActivitiesModelTests(test_utils.GenericTestBase):
     USER_2_ID = 'id_2'
     EXPLORATION_IDS_1 = ['exp_1', 'exp_2', 'exp_3']
     COLLECTION_IDS_1 = ['col_1', 'col_2', 'col_3']
+    STORY_IDS_1 = ['story_1', 'story_2', 'story_3']
+    TOPIC_IDS_1 = ['topic_1', 'topic_2', 'topic_3']
 
     def setUp(self):
         """Set up user models in datastore for use in testing."""
@@ -352,12 +363,16 @@ class IncompleteActivitiesModelTests(test_utils.GenericTestBase):
         user_models.IncompleteActivitiesModel(
             id=self.USER_1_ID,
             exploration_ids=self.EXPLORATION_IDS_1,
-            collection_ids=self.COLLECTION_IDS_1
+            collection_ids=self.COLLECTION_IDS_1,
+            story_ids=self.STORY_IDS_1,
+            partially_learnt_topic_ids=self.TOPIC_IDS_1
         ).put()
         user_models.IncompleteActivitiesModel(
             id=self.USER_2_ID,
             exploration_ids=self.EXPLORATION_IDS_1,
             collection_ids=self.COLLECTION_IDS_1,
+            story_ids=self.STORY_IDS_1,
+            partially_learnt_topic_ids=self.TOPIC_IDS_1,
             deleted=True
         ).put()
 
@@ -402,7 +417,80 @@ class IncompleteActivitiesModelTests(test_utils.GenericTestBase):
             user_models.IncompleteActivitiesModel.export_data(self.USER_1_ID))
         expected_data = {
             'exploration_ids': self.EXPLORATION_IDS_1,
-            'collection_ids': self.COLLECTION_IDS_1
+            'collection_ids': self.COLLECTION_IDS_1,
+            'story_ids': self.STORY_IDS_1,
+            'partially_learnt_topic_ids': self.TOPIC_IDS_1,
+            'partially_mastered_topic_ids': []
+        }
+        self.assertEqual(expected_data, user_data)
+
+
+class LearnerGoalsModelTests(test_utils.GenericTestBase):
+    """Tests for the LearnerGoalsModel."""
+
+    NONEXISTENT_USER_ID = 'id_x'
+    USER_1_ID = 'id_1'
+    USER_2_ID = 'id_2'
+    TOPIC_IDS = ['topic_1', 'topic_2', 'topic_3']
+
+    def setUp(self):
+        """Set up user models in datastore for use in testing."""
+        super(LearnerGoalsModelTests, self).setUp()
+
+        user_models.LearnerGoalsModel(
+            id=self.USER_1_ID,
+            topic_ids_to_learn=self.TOPIC_IDS,
+            topic_ids_to_master=[]
+        ).put()
+        user_models.LearnerGoalsModel(
+            id=self.USER_2_ID,
+            topic_ids_to_learn=self.TOPIC_IDS,
+            topic_ids_to_master=[],
+            deleted=True
+        ).put()
+
+    def test_get_deletion_policy(self):
+        self.assertEqual(
+            user_models.LearnerGoalsModel.get_deletion_policy(),
+            base_models.DELETION_POLICY.DELETE)
+
+    def test_apply_deletion_policy(self):
+        user_models.LearnerGoalsModel.apply_deletion_policy(
+            self.USER_1_ID)
+        self.assertIsNone(
+            user_models.LearnerGoalsModel.get_by_id(self.USER_1_ID))
+        # Test that calling apply_deletion_policy with no existing model
+        # doesn't fail.
+        user_models.LearnerGoalsModel.apply_deletion_policy(
+            self.NONEXISTENT_USER_ID)
+
+    def test_has_reference_to_user_id(self):
+        self.assertTrue(
+            user_models.LearnerGoalsModel
+            .has_reference_to_user_id(self.USER_1_ID)
+        )
+        self.assertTrue(
+            user_models.LearnerGoalsModel
+            .has_reference_to_user_id(self.USER_2_ID)
+        )
+        self.assertFalse(
+            user_models.LearnerGoalsModel
+            .has_reference_to_user_id(self.NONEXISTENT_USER_ID)
+        )
+
+    def test_export_data_on_nonexistent_user(self):
+        """Test if export_data returns None when user is not in datastore."""
+        user_data = user_models.LearnerGoalsModel.export_data(
+            self.NONEXISTENT_USER_ID)
+        self.assertEqual({}, user_data)
+
+    def test_export_data_on_existent_user(self):
+        """Test if export_data works as intended on a user in datastore."""
+        user_data = (
+            user_models.LearnerGoalsModel.export_data(self.USER_1_ID))
+        expected_data = {
+            'topic_ids_to_learn': self.TOPIC_IDS,
+            'topic_ids_to_master': []
         }
         self.assertEqual(expected_data, user_data)
 
@@ -1668,6 +1756,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
         edited_at_least_n_exps = 2
         edited_fewer_than_n_exps = 5
         has_not_logged_in_for_n_days = 10
+        created_collection = True
+        used_logic_proof_interaction = True
         user_models.UserQueryModel(
             id=self.QUERY_1_ID,
             inactive_in_last_n_days=inactive_in_last_n_days,
@@ -1676,6 +1766,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
             edited_at_least_n_exps=edited_at_least_n_exps,
             edited_fewer_than_n_exps=edited_fewer_than_n_exps,
             has_not_logged_in_for_n_days=has_not_logged_in_for_n_days,
+            created_collection=created_collection,
+            used_logic_proof_interaction=used_logic_proof_interaction,
             submitter_id=self.USER_ID_1).put()
 
         query_model = user_models.UserQueryModel.get(self.QUERY_1_ID)
@@ -1693,6 +1785,10 @@ class UserQueryModelTests(test_utils.GenericTestBase):
             query_model.edited_at_least_n_exps, edited_at_least_n_exps)
         self.assertEqual(
             query_model.edited_fewer_than_n_exps, edited_fewer_than_n_exps)
+        self.assertEqual(query_model.created_collection, created_collection)
+        self.assertEqual(
+            query_model.used_logic_proof_interaction,
+            used_logic_proof_interaction)
 
     def test_fetch_page(self):
         inactive_in_last_n_days = 5
@@ -1701,6 +1797,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
         edited_at_least_n_exps = 2
         edited_fewer_than_n_exps = 5
         has_not_logged_in_for_n_days = 10
+        created_collection = True
+        used_logic_proof_interaction = True
         user_models.UserQueryModel(
             id=self.QUERY_1_ID,
             inactive_in_last_n_days=inactive_in_last_n_days,
@@ -1709,6 +1807,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
             edited_at_least_n_exps=edited_at_least_n_exps,
             edited_fewer_than_n_exps=edited_fewer_than_n_exps,
             has_not_logged_in_for_n_days=has_not_logged_in_for_n_days,
+            created_collection=created_collection,
+            used_logic_proof_interaction=used_logic_proof_interaction,
             submitter_id=self.USER_ID_1).put()
 
         submitter_id = 'submitter_2'
@@ -1719,6 +1819,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
         edited_at_least_n_exps = 3
         edited_fewer_than_n_exps = 6
         has_not_logged_in_for_n_days = 11
+        created_collection = False
+        used_logic_proof_interaction = False
         user_models.UserQueryModel(
             id=query_id,
             inactive_in_last_n_days=inactive_in_last_n_days,
@@ -1727,6 +1829,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
             edited_at_least_n_exps=edited_at_least_n_exps,
             edited_fewer_than_n_exps=edited_fewer_than_n_exps,
             has_not_logged_in_for_n_days=has_not_logged_in_for_n_days,
+            created_collection=created_collection,
+            used_logic_proof_interaction=used_logic_proof_interaction,
             submitter_id=submitter_id).put()
 
         # Fetch only one entity.
@@ -1742,6 +1846,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
         self.assertEqual(query_models[0].edited_at_least_n_exps, 3)
         self.assertEqual(query_models[0].edited_fewer_than_n_exps, 6)
         self.assertEqual(query_models[0].has_not_logged_in_for_n_days, 11)
+        self.assertFalse(query_models[0].created_collection)
+        self.assertFalse(query_models[0].used_logic_proof_interaction)
 
         # Fetch both entities.
         query_models, _, _ = user_models.UserQueryModel.fetch_page(
@@ -1756,6 +1862,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
         self.assertEqual(query_models[0].edited_at_least_n_exps, 3)
         self.assertEqual(query_models[0].edited_fewer_than_n_exps, 6)
         self.assertEqual(query_models[0].has_not_logged_in_for_n_days, 11)
+        self.assertFalse(query_models[0].created_collection)
+        self.assertFalse(query_models[0].used_logic_proof_interaction)
 
         self.assertEqual(query_models[1].submitter_id, self.USER_ID_1)
         self.assertEqual(query_models[1].id, self.QUERY_1_ID)
@@ -1765,6 +1873,8 @@ class UserQueryModelTests(test_utils.GenericTestBase):
         self.assertEqual(query_models[1].edited_at_least_n_exps, 2)
         self.assertEqual(query_models[1].edited_fewer_than_n_exps, 5)
         self.assertEqual(query_models[1].has_not_logged_in_for_n_days, 10)
+        self.assertTrue(query_models[1].created_collection)
+        self.assertTrue(query_models[1].used_logic_proof_interaction)
 
 
 class UserBulkEmailsModelTests(test_utils.GenericTestBase):

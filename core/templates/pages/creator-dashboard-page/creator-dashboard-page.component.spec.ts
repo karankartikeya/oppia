@@ -22,9 +22,9 @@ import { CollectionSummary, CollectionSummaryBackendDict } from 'domain/collecti
 import { CreatorDashboardStats } from 'domain/creator_dashboard/creator-dashboard-stats.model';
 import { CreatorExplorationSummary } from 'domain/summary/creator-exploration-summary.model';
 import { ProfileSummary } from 'domain/user/profile-summary.model';
-import { UpgradedServices } from 'services/UpgradedServices';
 import { Suggestion } from 'domain/suggestion/suggestion.model';
 import { ThreadMessage } from 'domain/feedback_message/ThreadMessage.model';
+import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
 
 require('pages/creator-dashboard-page/creator-dashboard-page.component.ts');
 
@@ -65,16 +65,12 @@ describe('Creator dashboard controller', () => {
   var suggestionsService = null;
   var SuggestionThreadObjectFactory = null;
   var UserService = null;
+  var explorationCreationService = null;
   var userInfo = {
     canCreateCollections: () => true
   };
 
-  beforeEach(angular.mock.module('oppia', $provide => {
-    var ugs = new UpgradedServices();
-    for (let [key, value] of Object.entries(ugs.getUpgradedServices())) {
-      $provide.value(key, value);
-    }
-  }));
+  importAllAngularServices();
 
   beforeEach(angular.mock.inject(($injector, $componentController) => {
     $httpBackend = $injector.get('$httpBackend');
@@ -92,6 +88,7 @@ describe('Creator dashboard controller', () => {
       'SuggestionModalForCreatorDashboardService');
     suggestionsService = $injector.get(
       'SuggestionsService');
+    explorationCreationService = $injector.get('ExplorationCreationService');
     SuggestionThreadObjectFactory = $injector.get(
       'SuggestionThreadObjectFactory');
     UserService = $injector.get('UserService');
@@ -138,6 +135,15 @@ describe('Creator dashboard controller', () => {
     ' relative path', function() {
     expect(ctrl.getCompleteThumbnailIconUrl('/path/to/icon.png')).toBe(
       '/assets/images/path/to/icon.png');
+  });
+
+  it('should create new exploration when clicked on CREATE' +
+   ' EXPLORATION button', function() {
+    spyOn(
+      explorationCreationService, 'createNewExploration');
+    ctrl.createNewExploration();
+    expect(
+      explorationCreationService.createNewExploration).toHaveBeenCalled();
   });
 
   describe('when fetching dashboard successfully and on explorations tab',

@@ -16,7 +16,7 @@
  * @fileoverview Component for oppia email dashboard page.
  */
 
-require('base-components/base-content.directive.ts');
+require('base-components/base-content.component.ts');
 
 require('services/user.service.ts');
 
@@ -40,7 +40,8 @@ angular.module('oppia').component('emailDashboardPage', {
       };
 
       ctrl.areAllInputsEmpty = function() {
-        return Object.values(ctrl.data).every(value => value === null);
+        return Object.values(ctrl.data).every(
+          value => value === null || value === false);
       };
 
       ctrl.submitQueryAsync = async function() {
