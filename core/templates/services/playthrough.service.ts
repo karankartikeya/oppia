@@ -16,36 +16,34 @@
  * @fileoverview Service for recording and scrutinizing playthroughs.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { AppConstants } from 'app.constants';
-import { ExplorationFeaturesService } from
-  'services/exploration-features.service';
+import {AppConstants} from 'app.constants';
+import {ExplorationFeaturesService} from 'services/exploration-features.service';
 import {
   CyclicStateTransitionsCustomizationArgs,
   EarlyQuitCustomizationArgs,
-  MultipleIncorrectSubmissionsCustomizationArgs
-} from 'domain/statistics/PlaythroughIssueObjectFactory';
-import { LearnerAction, LearnerActionObjectFactory } from
-  'domain/statistics/LearnerActionObjectFactory';
-import { Playthrough, PlaythroughObjectFactory } from
-  'domain/statistics/PlaythroughObjectFactory';
-import { PlaythroughBackendApiService } from
-  'domain/statistics/playthrough-backend-api.service';
-import { ServicesConstants } from 'services/services.constants';
-import { Stopwatch } from 'domain/utilities/stopwatch.model';
+  MultipleIncorrectSubmissionsCustomizationArgs,
+} from 'domain/statistics/playthrough-issue.model';
+import {LearnerAction} from 'domain/statistics/learner-action.model';
+import {Playthrough} from 'domain/statistics/playthrough.model';
+import {PlaythroughBackendApiService} from 'domain/statistics/playthrough-backend-api.service';
+import {ServicesConstants} from 'services/services.constants';
+import {Stopwatch} from 'domain/utilities/stopwatch.model';
+import isEqual from 'lodash/isEqual';
 
 class CyclicStateTransitionsTracker {
   /** A path of visited states without any repeats. */
   private pathOfVisitedStates: string[];
+  // This property is initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   /** The most recently discovered cycle of visited states. */
-  private cycleOfVisitedStates: string[];
+  private cycleOfVisitedStates!: string[];
   private numLoops: number;
 
   constructor(initStateName: string) {
     this.pathOfVisitedStates = [initStateName];
-    this.cycleOfVisitedStates = null;
     this.numLoops = 0;
   }
 
@@ -83,9 +81,10 @@ class CyclicStateTransitionsTracker {
       return;
     }
     if (this.pathOfVisitedStates.includes(destStateName)) {
-      const cycleOfVisitedStates = (
-        this.makeCycle(this.pathOfVisitedStates.indexOf(destStateName)));
-      if (angular.equals(this.cycleOfVisitedStates, cycleOfVisitedStates)) {
+      const cycleOfVisitedStates = this.makeCycle(
+        this.pathOfVisitedStates.indexOf(destStateName)
+      );
+      if (isEqual(this.cycleOfVisitedStates, cycleOfVisitedStates)) {
         this.numLoops += 1;
       } else {
         this.cycleOfVisitedStates = cycleOfVisitedStates;
@@ -98,7 +97,7 @@ class CyclicStateTransitionsTracker {
 
   generateIssueCustomizationArgs(): CyclicStateTransitionsCustomizationArgs {
     return {
-      state_names: {value: this.cycleOfVisitedStates}
+      state_names: {value: this.cycleOfVisitedStates},
     };
   }
 
@@ -114,13 +113,16 @@ class CyclicStateTransitionsTracker {
 }
 
 class EarlyQuitTracker {
-  private stateName: string = null;
-  private expDurationInSecs: number = null;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  private stateName!: string;
+  private expDurationInSecs!: number;
 
   foundAnIssue(): boolean {
     return (
-      this.expDurationInSecs !== null &&
-      this.expDurationInSecs < ServicesConstants.EARLY_QUIT_THRESHOLD_IN_SECS);
+      this.expDurationInSecs < ServicesConstants.EARLY_QUIT_THRESHOLD_IN_SECS
+    );
   }
 
   recordExplorationQuit(stateName: string, expDurationInSecs: number): void {
@@ -158,8 +160,7 @@ class MultipleIncorrectAnswersTracker {
     }
   }
 
-  generateIssueCustomizationArgs(
-  ): MultipleIncorrectSubmissionsCustomizationArgs {
+  generateIssueCustomizationArgs(): MultipleIncorrectSubmissionsCustomizationArgs {
     return {
       state_name: {value: this.currStateName},
       num_times_answered_incorrectly: {value: this.numTries},
@@ -168,33 +169,36 @@ class MultipleIncorrectAnswersTracker {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class PlaythroughService {
-  private explorationId: string = null;
-  private explorationVersion: number = null;
-  private learnerIsInSamplePopulation: boolean = null;
-
-  private eqTracker: EarlyQuitTracker = null;
-  private cstTracker: CyclicStateTransitionsTracker = null;
-  private misTracker: MultipleIncorrectAnswersTracker = null;
-  private recordedLearnerActions: LearnerAction[] = null;
-  private playthroughStopwatch: Stopwatch = null;
-  private playthroughDurationInSecs: number = null;
+  // These properties are initialized using initSession method
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  private explorationId!: string;
+  private explorationVersion!: number;
+  private eqTracker!: EarlyQuitTracker;
+  private cstTracker!: CyclicStateTransitionsTracker;
+  private misTracker!: MultipleIncorrectAnswersTracker;
+  private recordedLearnerActions!: LearnerAction[];
+  private playthroughStopwatch!: Stopwatch;
+  private playthroughDurationInSecs!: number;
+  private learnerIsInSamplePopulation: boolean = false;
 
   constructor(
-      private explorationFeaturesService: ExplorationFeaturesService,
-      private learnerActionObjectFactory: LearnerActionObjectFactory,
-      private playthroughBackendApiService: PlaythroughBackendApiService,
-      private playthroughObjectFactory: PlaythroughObjectFactory) {}
+    private explorationFeaturesService: ExplorationFeaturesService,
+    private playthroughBackendApiService: PlaythroughBackendApiService
+  ) {}
 
   initSession(
-      explorationId: string, explorationVersion: number,
-      sampleSizePopulationProportion: number): void {
+    explorationId: string,
+    explorationVersion: number,
+    sampleSizePopulationProportion: number
+  ): void {
     this.explorationId = explorationId;
     this.explorationVersion = explorationVersion;
-    this.learnerIsInSamplePopulation = (
-      Math.random() < sampleSizePopulationProportion);
+    this.learnerIsInSamplePopulation =
+      Math.random() < sampleSizePopulationProportion;
   }
 
   recordExplorationStartAction(initStateName: string): void {
@@ -203,9 +207,9 @@ export class PlaythroughService {
     }
 
     this.recordedLearnerActions = [
-      this.learnerActionObjectFactory.createNewExplorationStartAction({
+      LearnerAction.createNewExplorationStartAction({
         state_name: {value: initStateName},
-      })
+      }),
     ];
 
     this.eqTracker = new EarlyQuitTracker();
@@ -218,41 +222,52 @@ export class PlaythroughService {
   }
 
   recordAnswerSubmitAction(
-      stateName: string, destStateName: string, interactionId: string,
-      answer: string, feedback: string, timeSpentInStateSecs: number): void {
+    stateName: string,
+    destStateName: string,
+    interactionId: string,
+    answer: string,
+    feedback: string,
+    timeSpentInStateSecs: number
+  ): void {
     if (!this.hasRecordingBegun() || this.hasRecordingFinished()) {
       return;
     }
 
     this.recordedLearnerActions.push(
-      this.learnerActionObjectFactory.createNewAnswerSubmitAction({
+      LearnerAction.createNewAnswerSubmitAction({
         state_name: {value: stateName},
         dest_state_name: {value: destStateName},
         interaction_id: {value: interactionId},
         submitted_answer: {value: answer},
         feedback: {value: feedback},
-        time_spent_state_in_msecs: {value: 1000 * timeSpentInStateSecs}
-      }));
+        time_spent_state_in_msecs: {value: 1000 * timeSpentInStateSecs},
+      })
+    );
 
     this.misTracker.recordStateTransition(destStateName);
     this.cstTracker.recordStateTransition(destStateName);
   }
 
   recordExplorationQuitAction(
-      stateName: string, timeSpentInStateSecs: number): void {
+    stateName: string,
+    timeSpentInStateSecs: number
+  ): void {
     if (!this.hasRecordingBegun() || this.hasRecordingFinished()) {
       return;
     }
 
     this.recordedLearnerActions.push(
-      this.learnerActionObjectFactory.createNewExplorationQuitAction({
+      LearnerAction.createNewExplorationQuitAction({
         state_name: {value: stateName},
-        time_spent_in_state_in_msecs: {value: 1000 * timeSpentInStateSecs}
-      }));
+        time_spent_in_state_in_msecs: {value: 1000 * timeSpentInStateSecs},
+      })
+    );
 
     this.playthroughDurationInSecs = this.playthroughStopwatch.getTimeInSecs();
     this.eqTracker.recordExplorationQuit(
-      stateName, this.playthroughDurationInSecs);
+      stateName,
+      this.playthroughDurationInSecs
+    );
   }
 
   storePlaythrough(): void {
@@ -275,23 +290,26 @@ export class PlaythroughService {
    */
   private createNewPlaythrough(): Playthrough | null {
     if (this.misTracker && this.misTracker.foundAnIssue()) {
-      return this.playthroughObjectFactory
-        .createNewMultipleIncorrectSubmissionsPlaythrough(
-          this.explorationId, this.explorationVersion,
-          this.misTracker.generateIssueCustomizationArgs(),
-          this.recordedLearnerActions);
+      return Playthrough.createNewMultipleIncorrectSubmissionsPlaythrough(
+        this.explorationId,
+        this.explorationVersion,
+        this.misTracker.generateIssueCustomizationArgs(),
+        this.recordedLearnerActions
+      );
     } else if (this.cstTracker && this.cstTracker.foundAnIssue()) {
-      return this.playthroughObjectFactory
-        .createNewCyclicStateTransitionsPlaythrough(
-          this.explorationId, this.explorationVersion,
-          this.cstTracker.generateIssueCustomizationArgs(),
-          this.recordedLearnerActions);
+      return Playthrough.createNewCyclicStateTransitionsPlaythrough(
+        this.explorationId,
+        this.explorationVersion,
+        this.cstTracker.generateIssueCustomizationArgs(),
+        this.recordedLearnerActions
+      );
     } else if (this.eqTracker && this.eqTracker.foundAnIssue()) {
-      return this.playthroughObjectFactory
-        .createNewEarlyQuitPlaythrough(
-          this.explorationId, this.explorationVersion,
-          this.eqTracker.generateIssueCustomizationArgs(),
-          this.recordedLearnerActions);
+      return Playthrough.createNewEarlyQuitPlaythrough(
+        this.explorationId,
+        this.explorationVersion,
+        this.eqTracker.generateIssueCustomizationArgs(),
+        this.recordedLearnerActions
+      );
     }
     return null;
   }
@@ -299,13 +317,16 @@ export class PlaythroughService {
   private isPlaythroughRecordingEnabled(): boolean {
     return (
       this.explorationFeaturesService.isPlaythroughRecordingEnabled() &&
-      this.learnerIsInSamplePopulation === true);
+      this.learnerIsInSamplePopulation === true
+    );
   }
 
   private hasRecordingBegun(): boolean {
     return (
-      this.isPlaythroughRecordingEnabled() &&
-      this.recordedLearnerActions !== null);
+      // Check this.recordedLearnerActions because
+      // it could be null before recording begun.
+      this.recordedLearnerActions && this.isPlaythroughRecordingEnabled()
+    );
   }
 
   private hasRecordingFinished(): boolean {
@@ -313,7 +334,8 @@ export class PlaythroughService {
       this.hasRecordingBegun() &&
       this.recordedLearnerActions.length > 1 &&
       this.recordedLearnerActions[this.recordedLearnerActions.length - 1]
-        .actionType === AppConstants.ACTION_TYPE_EXPLORATION_QUIT);
+        .actionType === AppConstants.ACTION_TYPE_EXPLORATION_QUIT
+    );
   }
 
   private isRecordedPlaythroughHelpful(): boolean {
@@ -322,13 +344,11 @@ export class PlaythroughService {
       this.hasRecordingFinished() &&
       // Playthroughs are only helpful if learners have attempted an answer.
       this.recordedLearnerActions.some(
-        a => a.actionType === AppConstants.ACTION_TYPE_ANSWER_SUBMIT) &&
+        a => a.actionType === AppConstants.ACTION_TYPE_ANSWER_SUBMIT
+      ) &&
       // Playthroughs are only helpful if learners have invested enough time.
       this.playthroughDurationInSecs >=
-          ServicesConstants.MIN_PLAYTHROUGH_DURATION_IN_SECS);
+        ServicesConstants.MIN_PLAYTHROUGH_DURATION_IN_SECS
+    );
   }
 }
-
-angular.module('oppia').factory(
-  'PlaythroughService',
-  downgradeInjectable(PlaythroughService));

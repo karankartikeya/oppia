@@ -16,11 +16,14 @@
  * @fileoverview Unit tests for the preferred site language component.
  */
 
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { MaterialModule } from 'modules/material.module';
-import { PreferredSiteLanguageSelectorComponent } from './preferred-language-selector.component';
+// @ts-nocheck
+
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {FormsModule, NG_VALUE_ACCESSOR} from '@angular/forms';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {MaterialModule} from 'modules/material.module';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {PreferredSiteLanguageSelectorComponent} from './preferred-language-selector.component';
 
 describe('Preferred Site Language Selector Component', () => {
   let componentInstance: PreferredSiteLanguageSelectorComponent;
@@ -28,14 +31,8 @@ describe('Preferred Site Language Selector Component', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        BrowserAnimationsModule,
-        MaterialModule,
-        FormsModule,
-      ],
-      declarations: [
-        PreferredSiteLanguageSelectorComponent
-      ]
+      imports: [BrowserAnimationsModule, MaterialModule, FormsModule],
+      declarations: [MockTranslatePipe, PreferredSiteLanguageSelectorComponent],
     }).compileComponents();
   }));
 
@@ -49,29 +46,57 @@ describe('Preferred Site Language Selector Component', () => {
   });
 
   it('should initialize', () => {
-    componentInstance.choices = [{
-      id: 'en',
-      text: 'english',
-      dir: 'ltr'
-    }];
+    componentInstance.choices = [
+      {
+        id: 'en',
+        text: 'english',
+      },
+    ];
     componentInstance.ngOnInit();
     expect(componentInstance.filteredChoices).toEqual(
-      componentInstance.choices);
+      componentInstance.choices
+    );
   });
 
   it('should filter choices', () => {
-    componentInstance.choices = [{
-      id: 'en',
-      text: 'english',
-      dir: 'ltr'
-    }];
+    componentInstance.choices = [
+      {
+        id: 'en',
+        text: 'english',
+      },
+    ];
     componentInstance.filterChoices('eng');
     expect(componentInstance.filteredChoices).toEqual(
-      componentInstance.choices);
+      componentInstance.choices
+    );
   });
 
   it('should update preferred language', () => {
     componentInstance.updateLanguage('en');
     expect(componentInstance.preferredLanguageCode).toEqual('en');
+  });
+
+  it('should write value', () => {
+    const code = 'en';
+    componentInstance.writeValue(code);
+    expect(componentInstance.preferredLanguageCode).toEqual(code);
+  });
+
+  it('should register onChange function', () => {
+    const fn = (value: string) => {};
+    componentInstance.registerOnChange(fn);
+    expect(componentInstance.onChange).toBe(fn);
+  });
+
+  it('should register onTouched function', () => {
+    const fn = () => {};
+    componentInstance.registerOnTouched(fn);
+    expect(componentInstance.onTouched).toBe(fn);
+  });
+
+  it('should expose itself as a control value accessor', () => {
+    expect(fixture.debugElement.injector.get(NG_VALUE_ACCESSOR)).toEqual([
+      componentInstance,
+    ]);
   });
 });

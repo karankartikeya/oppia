@@ -17,78 +17,72 @@
  * attrs for interactions.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { InteractionCustomizationArgs, InteractionCustomizationArgsBackendDict } from
-  'extensions/interactions/customization-args-defs';
-import { InteractionObjectFactory } from
-  'domain/exploration/InteractionObjectFactory';
-import { InteractionSpecsConstants, InteractionSpecsKey } from 'pages/interaction-specs.constants';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {
+  InteractionCustomizationArgs,
+  InteractionCustomizationArgsBackendDict,
+} from 'extensions/interactions/customization-args-defs';
+import {Interaction} from 'domain/exploration/interaction.model';
+import {
+  InteractionSpecsConstants,
+  InteractionSpecsKey,
+} from 'pages/interaction-specs.constants';
+import {CustomizationArgSpecsInterface} from 'pages/exploration-editor-page/editor-tab/templates/modal-templates/customize-interaction-modal.component';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class InteractionAttributesExtractorService {
   private readonly migratedInteractions: string[] = [
+    'CodeRepl',
     'Continue',
+    'EndExploration',
+    'DragAndDropSortInput',
     'FractionInput',
     'GraphInput',
     'ImageClickInput',
-    'CodeRepl',
+    'InteractiveMap',
+    'ItemSelectionInput',
+    'MathEquationInput',
+    'MultipleChoiceInput',
+    'MusicNotesInput',
+    'NumberWithUnits',
     'NumericExpressionInput',
     'NumericInput',
-    'InteractiveMap',
-    'MultipleChoiceInput',
+    'PencilCodeEditor',
+    'RatioExpressionInput',
     'SetInput',
     'TextInput',
-    'MathEquationInput'
   ];
 
-  constructor(
-    private htmlEscaperService: HtmlEscaperService,
-    private interactionFactory: InteractionObjectFactory,
-  ) {}
+  constructor(private htmlEscaperService: HtmlEscaperService) {}
 
   getValuesFromAttributes(
-      interactionId: InteractionSpecsKey, attributes: Object
+    interactionId: InteractionSpecsKey,
+    attributes: Record<string, string>
   ): InteractionCustomizationArgs {
     const caBackendDict: InteractionCustomizationArgsBackendDict = {};
-    const caSpecs = (
-      InteractionSpecsConstants.INTERACTION_SPECS[
-        interactionId].customization_arg_specs);
+    const caSpecs = InteractionSpecsConstants.INTERACTION_SPECS[interactionId]
+      .customization_arg_specs as CustomizationArgSpecsInterface[];
     caSpecs.forEach(caSpec => {
       const caName = caSpec.name;
-      const attributesKey = `${caName}WithValue` as keyof typeof attributes;
+      const attributesKey: string = `${caName}WithValue`;
       Object.defineProperty(caBackendDict, caName, {
         value: {
           value: this.htmlEscaperService.escapedJsonToObj(
             attributes[attributesKey].toString()
           ),
         },
-        enumerable: true
+        enumerable: true,
       });
     });
 
-    const ca = this.interactionFactory.convertFromCustomizationArgsBackendDict(
-      interactionId, caBackendDict);
-    if (this.migratedInteractions.indexOf(interactionId) >= 0) {
-      return ca;
-    }
-    const caValues: InteractionCustomizationArgs = {};
-    const caKeys = <(keyof InteractionCustomizationArgs)[]> Object.keys(ca);
-    caKeys.forEach(caName => {
-      const attr = <{ value: Object }> ca[caName];
-      Object.defineProperty(caValues, caName, {
-        value: attr.value,
-        enumerable: true
-      });
-    });
-
-    return caValues;
+    const ca = Interaction.convertFromCustomizationArgsBackendDict(
+      interactionId,
+      caBackendDict
+    );
+    return ca;
   }
 }
-angular.module('oppia').factory(
-  'InteractionAttributesExtractorService',
-  downgradeInjectable(InteractionAttributesExtractorService));

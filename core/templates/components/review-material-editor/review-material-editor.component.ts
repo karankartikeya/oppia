@@ -1,4 +1,4 @@
-// Copyright 2018 The Oppia Authors. All Rights Reserved.
+// Copyright 2021 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,66 +12,107 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
-
 /**
  * @fileoverview Component for the skill review material editor.
  */
 
-require(
-  'components/forms/schema-based-editors/schema-based-editor.directive.ts');
-require('domain/utilities/url-interpolation.service.ts');
-require('components/ck-editor-helpers/ck-editor-4-rte.component.ts');
-require('components/ck-editor-helpers/ck-editor-4-widgets.initializer.ts');
-require('components/forms/custom-forms-directives/image-uploader.component.ts');
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {AppConstants} from 'app.constants';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
-require('directives/mathjax-bind.directive.ts');
-require('filters/string-utility-filters/normalize-whitespace.filter.ts');
+interface HtmlSchema {
+  type: 'html';
+  ui_config: object;
+}
 
-require('objects/objectComponentsRequires.ts');
+interface BindableDict {
+  displayedConceptCardExplanation: string;
+}
 
-require('directives/angular-html-bind.directive.ts');
+@Component({
+  selector: 'oppia-review-material-editor',
+  templateUrl: './review-material-editor.component.html',
+  styleUrls: ['./review-material-editor.component.css'],
+})
+export class ReviewMaterialEditorComponent implements OnInit {
+  @Output() onSaveExplanation: EventEmitter<SubtitledHtml> = new EventEmitter();
 
-angular.module('oppia').component('reviewMaterialEditor', {
-  bindings: {
-    getBindableDict: '&bindableDict',
-    onSaveExplanation: '='
-  },
-  template: require('./review-material-editor.component.html'),
-  controllerAs: '$ctrl',
-  controller: [
-    'COMPONENT_NAME_EXPLANATION',
-    function(
-        COMPONENT_NAME_EXPLANATION) {
-      var ctrl = this;
-      var explanationMemento = null;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() bindableDict!: BindableDict;
+  explanationMemento!: string;
+  editableExplanation!: string;
+  workedExampleLimitExceeded!: boolean;
+  COMPONENT_NAME_EXPLANATION!: string;
+  conceptCardExplanationEditorIsShown: boolean = false;
+  HTML_SCHEMA: HtmlSchema = {
+    type: 'html',
+    ui_config: {
+      rte_component_config_id: 'SKILL_AND_STUDY_GUIDE_EDITOR_COMPONENTS',
+    },
+  };
+  skillEditorWorkedExampleLimit: number =
+    AppConstants.SKILL_EDITOR_WORKED_EXAMPLE_LIMIT;
 
-      ctrl.openConceptCardExplanationEditor = function() {
-        ctrl.editableExplanation =
-          ctrl.getBindableDict().displayedConceptCardExplanation;
-        explanationMemento = ctrl.editableExplanation;
-        ctrl.conceptCardExplanationEditorIsShown = true;
-      };
+  constructor(private changeDetectorRef: ChangeDetectorRef) {}
 
-      ctrl.closeConceptCardExplanationEditor = function() {
-        ctrl.editableExplanation = explanationMemento;
-        ctrl.conceptCardExplanationEditorIsShown = false;
-      };
+  ngOnInit(): void {
+    this.COMPONENT_NAME_EXPLANATION = AppConstants.COMPONENT_NAME_EXPLANATION;
+    this.editableExplanation =
+      this.bindableDict.displayedConceptCardExplanation;
+    this.conceptCardExplanationEditorIsShown = false;
+  }
 
-      ctrl.saveConceptCardExplanation = function() {
-        ctrl.conceptCardExplanationEditorIsShown = false;
-        var explanationObject = SubtitledHtml.createDefault(
-          ctrl.editableExplanation, COMPONENT_NAME_EXPLANATION);
-        ctrl.onSaveExplanation(explanationObject);
-      };
-      ctrl.$onInit = function() {
-        ctrl.HTML_SCHEMA = {
-          type: 'html'
-        };
-        ctrl.editableExplanation =
-          ctrl.getBindableDict().displayedConceptCardExplanation;
-        ctrl.conceptCardExplanationEditorIsShown = false;
-      };
+  // Remove this function when the schema-based editor
+  // is migrated to Angular 2+.
+  getSchema(): HtmlSchema {
+    return this.HTML_SCHEMA;
+  }
+
+  updateLocalExp($event: SchemaDefaultValue | string): void {
+    const eventString = String($event);
+    if (this.editableExplanation !== eventString) {
+      this.editableExplanation = eventString;
+      this.changeDetectorRef.detectChanges();
     }
-  ]
-});
+  }
+
+  checkExtraWorkedexample(): boolean {
+    const workedexampleRegex =
+      /<oppia-noninteractive-workedexample.*?>.*?<\/oppia-noninteractive-workedexample>/g;
+    const matches = this.editableExplanation.match(workedexampleRegex);
+
+    this.workedExampleLimitExceeded = !!(
+      matches && matches.length > this.skillEditorWorkedExampleLimit
+    );
+    return this.workedExampleLimitExceeded;
+  }
+
+  openConceptCardExplanationEditor(): void {
+    this.explanationMemento = this.editableExplanation;
+    this.conceptCardExplanationEditorIsShown = true;
+  }
+
+  closeConceptCardExplanationEditor(): void {
+    this.editableExplanation = this.explanationMemento;
+    this.conceptCardExplanationEditorIsShown = false;
+  }
+
+  saveConceptCardExplanation(): void {
+    this.conceptCardExplanationEditorIsShown = false;
+    let explanationObject = SubtitledHtml.createDefault(
+      this.editableExplanation,
+      this.COMPONENT_NAME_EXPLANATION
+    );
+    this.onSaveExplanation.emit(explanationObject);
+  }
+}

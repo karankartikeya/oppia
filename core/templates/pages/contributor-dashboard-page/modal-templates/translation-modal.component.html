@@ -1,11 +1,23 @@
-<div class="oppia-translate-text-header-container">
+<div class="oppia-translate-text-header-container e2e-test-translate-text-header-container">
   <div class="oppia-translate-text-header">
     <div class="oppia-opportunities-details">
-      <div class="oppia-opportunities-subheading">{{ subheading }}</div>
-      <div class="oppia-opportunities-heading">{{ heading }}</div>
+      <div class="oppia-opportunities-subheading">
+        {{ subheading }}
+      </div>
+      <div class="oppia-mobile-opportunities-subheading">
+        {{ wrapTextWithEllipsis(subheading, 35) }}
+      </div>
+      <div class="oppia-opportunities-heading">
+        {{ heading }}
+      </div>
+      <div class="oppia-mobile-opportunities-heading">
+        {{ wrapTextWithEllipsis(heading, 25) }}
+      </div>
     </div>
-    <button type="button" class="close oppia-close-button-position" (click)="activeModal.close()" attr.aria-label="Close">
-      <span aria-hidden="true">&times;</span>
+    <button type="button"
+            class="btn-close oppia-close-button-position e2e-test-close-modal-button"
+            (click)="close()"
+            aria-label="Close">
     </button>
   </div>
 </div>
@@ -19,21 +31,29 @@
     </div>
   </div>
   <div *ngIf="!textToTranslate && !loadingData">
-    <strong>Sorry! All available translations are in review currently.</strong>
+    <strong *ngIf="hasDataFormatListContent && !isActiveLanguageReviewer">
+      There are no more cards available for translation. The remaining cards require reviewer privileges to translate,
+      as they involve answer matching rules that could affect a learner's progress if translated incorrectly. Please
+      contact an admin if you'd like to obtain reviewer privileges.
+    </strong>
+    <strong *ngIf="!hasDataFormatListContent || isActiveLanguageReviewer">
+      Sorry! All available translations are in review currently.
+    </strong>
   </div>
   <div *ngIf="textToTranslate">
     <div class="oppia-translatable-text-section">
       <strong>Please translate the given {{ activeContentType }} in {{ languageDescription }}:</strong>
-      <a class="oppia-skip-button" *ngIf="moreAvailable" (click)="skipActiveTranslation()">skip</a>
+      <a class="oppia-skip-button e2e-test-skip-translation-button" *ngIf="moreAvailable"
+         (click)="skipActiveTranslation()">Skip
+      </a>
     </div>
-    <div *ngIf="!loadingData && !uploadingTranslation" class="oppia-text-to-translate-container">
+    <div *ngIf="!loadingData && !uploadingTranslation" class="oppia-text-to-translate-container"
+         [class.oppia-container-expanded]="isContentExpanded" [class.oppia-container-contracted]="!isContentExpanded" #contentContainer>
       <!-- textToTranslate contains the html content of an exploration state -->
-      <angular-html-bind-wrapper *ngIf="activeDataFormat === 'html' || activeDataFormat === 'unicode'"
-                                 [ngClass]="{'oppia-rte-editor-focused': isCopyModeActive()}"
-                                 (click)="onContentClick($event)"
-                                 [htmlData]="textToTranslate"
-                                 class="oppia-rte-editor">
-      </angular-html-bind-wrapper>
+      <oppia-rte-output-display *ngIf="activeDataFormat === 'html' || activeDataFormat === 'unicode'"
+                                [class.oppia-rte-editor-focused]="isCopyModeActive()" (click)="onContentClick($event)"
+                                [rteString]="textToTranslateAsString" class="oppia-rte-editor" #contentPanel>
+      </oppia-rte-output-display>
       <div *ngIf="isSetOfStringDataFormat()">
         <strong>{{ activeRuleDescription }}</strong>
         <ul class="oppia-option-list oppia-translate-rule-list" role="tablist">
@@ -43,35 +63,82 @@
         </ul>
       </div>
     </div>
+    <div class="oppia-collapse-content"
+         *ngIf="isContentOverflowing"
+         (click)="toggleExpansionState(expansionTabType.CONTENT)">
+      {{ isContentExpanded ? textWhenExpanded : textWhenContracted }}
+    </div>
     <div *ngIf="!isSubmitted()" class="oppia-translation-editor-section">
-      <div class="protractor-test-state-translation-editor">
+      <div class="e2e-test-state-translation-editor">
         <ck-editor-copy-toolbar *ngIf="activeDataFormat === 'html'"></ck-editor-copy-toolbar>
-        <schema-based-editor *ngIf="editorIsShown && activeDataFormat === 'html'"
-                             [schema]="getHtmlSchema.bind(this)"
-                             [localValue]="activeWrittenTranslation"
-                             (localValueChange)="updateHtml($event)">
-        </schema-based-editor>
-        <schema-based-editor *ngIf="editorIsShown && activeDataFormat === 'unicode'"
-                             [schema]="getUnicodeSchema.bind(this)"
-                             [localValue]="activeWrittenTranslation"
-                             (localValueChange)="updateHtml($event)">
-        </schema-based-editor>
-        <div *ngIf="editorIsShown && isSetOfStringDataFormat() && isActiveLanguageReviewer" class="oppia-rules-to-translate-container">
-          <strong>Please add a translation per answer choice.</strong>
-          <p class="oppia-rules-translation-tip">
-            Because these answer choices will be matched against a learner's input, we want to be extra careful with the translations so as to not block a learner's progress in a lesson.
-          </p>
-          <schema-based-editor [schema]="getSetOfStringsSchema.bind(this)"
-                               [localValue]="activeWrittenTranslation"
-                               (localValueChange)="updateHtml($event)">
+        <div class="oppia-editor-container"
+             [class.oppia-container-expanded]="isTranslationExpanded" [class.oppia-container-contracted]="!isTranslationExpanded"
+             #translationContainer>
+          <p class="oppia-keybaord-accessibility-text" tabindex="0">Alt+0 for keyboard accessibility</p>
+          <div *ngIf="isAutomaticTranslationSuggestionsEnabled() && activeDataFormat === 'html'" class="oppia-auto-translate-button-container">
+            <button class="btn btn-default oppia-auto-translate-button e2e-test-auto-translate-button"
+                    (click)="generateTranslation()"
+                    [disabled]="isGeneratingTranslation">
+              <i class="material-icons oppia-translate-icon" *ngIf="!isGeneratingTranslation">translate</i>
+              <i class="fa fa-spinner fa-spin oppia-auto-translate-spinner" *ngIf="isGeneratingTranslation"></i>
+              <span class="oppia-auto-translate-text">Auto-translate</span>
+            </button>
+          </div>
+          <schema-based-editor *ngIf="editorIsShown && activeDataFormat === 'html'" [schema]="HTML_SCHEMA"
+            [localValue]="activeWrittenTranslation" (localValueChange)="updateHtml($event)" #oppiaRTE>
           </schema-based-editor>
+
+          <div *ngIf="isTranslationAutoGenerated && activeDataFormat === 'html'" class="oppia-auto-translate-warnings">
+            <p *ngIf="hasImageInAutoTranslation && !hasAltTextModalBeenOpened" class="oppia-auto-translate-red-text">
+              Edit alt text for the image(s) for visually impaired users
+            </p>
+            <p [ngClass]="{'oppia-auto-translate-teal-text': isTranslationEdited(), 'oppia-auto-translate-grey-text': !isTranslationEdited()}" class="oppia-auto-translate-status-text">
+              {{ isTranslationEdited() ? 'Edited auto-translation' : 'Autogenerated by matching previous translations' }}
+            </p>
+            <div class="oppia-auto-translate-warning-box">
+              <i class="material-icons oppia-auto-translate-warning-icon">info_outline</i>
+              <span>This auto-generated translation is for guidance only, and might not be fully accurate. Please double check and edit as needed.</span>
+            </div>
+          </div>
+
+          <schema-based-editor *ngIf="editorIsShown && activeDataFormat === 'unicode'" [schema]="UNICODE_SCHEMA"
+            [localValue]="activeWrittenTranslation" (localValueChange)="updateHtml($event)" #oppiaRTE>
+          </schema-based-editor>
+          <div *ngIf="editorIsShown && isSetOfStringDataFormat()" class="oppia-rules-to-translate-container">
+            <strong>Please add a translation per answer choice.</strong>
+            <p class="oppia-rules-translation-tip">
+              Because these answer choices will be matched against a learner's input, we want to be extra careful with
+              the translations so as to not block a learner's progress in a lesson.
+            </p>
+            <schema-based-editor [schema]="SET_OF_STRINGS_SCHEMA" [localValue]="activeWrittenTranslation"
+              (localValueChange)="updateHtml($event)">
+            </schema-based-editor>
+          </div>
         </div>
-        <strong *ngIf="editorIsShown && isSetOfStringDataFormat() && !isActiveLanguageReviewer">
-          Sorry! Currently, only translation reviewers are allowed to submit translations for rules.
-        </strong>
+        <div class="oppia-collapse-content" (click)="toggleExpansionState(expansionTabType.TRANSLATION)"
+          *ngIf="isTranslationOverflowing">
+          {{ isTranslationExpanded ? textWhenExpanded : textWhenContracted }}
+        </div>
       </div>
     </div>
     <div class="oppia-translation-error-section">
+
+      <div *ngIf="isFormulaAsText(activeWrittenTranslation)" class="alert alert-warning e2e-test-formula-as-text-warning d-flex justify-content-between"
+           [ngClass]="mathWarningIsMinimized ? 'align-items-center' : 'align-items-start'">
+        <div *ngIf="!mathWarningIsMinimized">
+          <i class="fas fa-exclamation-triangle mr-1"></i>
+          <span [innerHTML]="'I18N_WARNING_TRANSLATOR_PLAIN_TEXT_MATH_EXPRESSION' | translate"></span>
+        </div>
+        <div *ngIf="mathWarningIsMinimized">
+          <i class="fas fa-exclamation-triangle mr-2" title="Plain-text math expressions detected."></i>
+          <span [innerHTML]="'I18N_WARNING_MATH_EXPRESSION_MINIMIZED' | translate"></span>
+        </div>
+        <i class="fas"
+           [ngClass]="mathWarningIsMinimized ? 'fa-angle-down' : 'fa-angle-up'"
+           (click)="toggleMathWarning()"
+           [title]="mathWarningIsMinimized ? 'Expand warning' : 'Minimize warning'">
+        </i>
+      </div>
       <p *ngIf="hasImgCopyError">
         All images should be copied.
       </p>
@@ -82,14 +149,17 @@
         Paragraphs are not allowed to be copied. Please make sure to translate the text.
       </p>
       <p *ngIf="hasIncompleteTranslationError">
-        Translation is incomplete. Please make sure all elements in the original content are included in the translated content.
+        Translation is incomplete. Please use the Copy Tool to include any images or concept cards in the translated
+        content.
+      </p>
+      <p *ngIf="hasLengthValidationError">
+        {{ lengthValidationErrorMessage }}
       </p>
     </div>
     <strong *ngIf="isSubmitted()">Submitted translation:</strong>
     <div *ngIf="isSubmitted()" class="oppia-text-to-translate-container">
-      <angular-html-bind-wrapper [htmlData]="activeWrittenTranslation"
-                                 class="oppia-rte-editor">
-      </angular-html-bind-wrapper>
+      <oppia-rte-output-display [rteString]="activeWrittenTranslationAsString" class="oppia-rte-editor">
+      </oppia-rte-output-display>
     </div>
     <div *ngIf="TRANSLATION_TIPS[activeLanguageCode]" class="oppia-translation-tips-container">
       <ul>
@@ -97,132 +167,44 @@
         </li>
       </ul>
     </div>
+    <div class="oppia-translation-image-verify" *ngIf="hasImageInAutoTranslation && hasAltTextModalBeenOpened">
+      <p class="oppia-translation-image-verify-text text-danger">
+        Please verify that no alt text is required or that the translated alt text is accurate.
+      </p>
+    </div>
   </div>
 </div>
-<div class="modal-footer">
-  <button class="btn btn-default" (click)="close()">Cancel</button>
+<div *ngIf="opportunity && !modifyTranslationOpportunity" class="oppia-translate-modal-footer modal-footer">
+  <button class="btn btn-secondary" (click)="close()">
+    Cancel
+  </button>
   <button class="btn btn-success oppia-go-back-button"
           [disabled]="!hasPreviousTranslations()"
-          (click)="returnToPreviousTranslation()">Go Back
+          (click)="returnToPreviousTranslation()">
+    Go back
   </button>
-  <button class="btn btn-success oppia-upload-translated-text-button"
-          [disabled]="loadingData || uploadingTranslation || activeWrittenTranslation === '' || isSubmitted() || (isSetOfStringDataFormat() && !isActiveLanguageReviewer)"
+  <button class="btn btn-success oppia-upload-translated-text-button e2e-test-save-button"
+          [disabled]="loadingData || uploadingTranslation || activeWrittenTranslation === '' || isSubmitted() || hasSubmitValidationErrors()"
           (click)="suggestTranslatedText()">
     <i [hidden]="!uploadingTranslation" class="fa fa-spinner"></i>
-    <span [hidden]="uploadingTranslation || moreAvailable">Save and close</span>
-    <span [hidden]="uploadingTranslation || !moreAvailable">Save and translate another</span>
+    <span [hidden]="uploadingTranslation || moreAvailable">
+      Save and close
+    </span>
+    <span [hidden]="uploadingTranslation || !moreAvailable">
+      Save and translate another
+    </span>
   </button>
 </div>
-<style>
-  .oppia-translate-text-header-container .oppia-opportunities-subheading {
-    color: #009688;
-    font-size: 14px;
-    height: 40%;
-    width: 100%;
-  }
-  .oppia-translate-text-header-container .oppia-opportunities-details {
-    display: flex;
-    flex-direction: column;
-    margin: 1.8% 0;
-    width: 95%;
-  }
-  .oppia-translate-text-header-container {
-    border-bottom: 1px solid #e5e5e5;
-    padding-left: 15px;
-  }
-  .oppia-translate-text-header,
-  .oppia-translatable-text-section {
-    display: flex;
-    justify-content: space-between;
-  }
-  .oppia-translate-rule-list {
-    margin-bottom: 0;
-    margin-top: 10px;
-    padding-left: 20px;
-  }
-  .oppia-rules-translation-tip {
-    color: #757575;
-  }
-  .oppia-loading-text {
-    height: 40px;
-    width: 100%;
-  }
-  .oppia-loading-text1 {
-    height: 50%;
-    width: 60%;
-  }
-  .oppia-loading-text2 {
-    height: 50%;
-    width: 40%;
-  }
-  .oppia-translation-editor-section {
-    padding: 20px 0;
-    word-wrap: break-word;
-  }
-  .oppia-text-to-translate-container {
-    border: 1px solid #ccc;
-    margin: 15px 0;
-    padding: 20px;
-  }
-  .oppia-rules-to-translate-container {
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    margin: 0 15px 0 0;
-    padding: 20px;
-  }
-  .oppia-translation-tips-container {
-    background-color: #EEE;
-    border: 1px solid #EEE;
-    margin: 15px 0;
-    padding: 20px;
-  }
-  .oppia-skip-button {
-    color: #ababab;
-    margin-left: 5%;
-  }
-  .oppia-close-button-position {
-    position: absolute;
-    right: 20px;
-    top: 12px;
-  }
-  .oppia-go-back-button {
-    min-width: 150px;
-  }
-
-  .oppia-upload-translated-text-button {
-    min-width: 200px;
-  }
-  .oppia-rte-editor-focused:focus > p {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > ol {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > ul {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > pre {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > blockquote {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > oppia-noninteractive-tabs > div {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > oppia-noninteractive-collapsible > uib-accordion > div {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > oppia-noninteractive-image > figure {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused:focus > oppia-noninteractive-video > center {
-    outline: solid 2px #009688;
-  }
-  .oppia-rte-editor-focused *:hover {
-    background-color: rgba(233, 241, 242);
-  }
-  .oppia-translation-error-section {
-    color: red;
-  }
-</style>
+<div *ngIf="modifyTranslationOpportunity && !opportunity" class="oppia-translate-modal-footer modal-footer">
+  <button class="btn btn-secondary" (click)="close()">
+    Cancel
+  </button>
+  <button class="btn btn-success oppia-upload-translated-text-button e2e-test-save-button"
+          [disabled]="loadingData || uploadingTranslation || activeWrittenTranslation === '' || isSubmitted() || hasSubmitValidationErrors()"
+          (click)="updateTranslatedText()">
+    <i [hidden]="!uploadingTranslation" class="fa fa-spinner"></i>
+    <span [hidden]="uploadingTranslation">
+      Save
+    </span>
+  </button>
+</div>

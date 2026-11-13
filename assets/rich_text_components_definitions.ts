@@ -35,6 +35,7 @@ export default {
       "schema": {
         "type": "unicode"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": "Sample Header"
     }, {
       "name": "content",
@@ -42,9 +43,11 @@ export default {
       "schema": {
         "type": "html",
         "ui_config": {
+          "rte_component_config_id": "ALL_COMPONENTS",
           "hide_complex_extensions": true
         }
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": "You have opened the collapsible block."
     }]
   },
@@ -66,6 +69,7 @@ export default {
         "type": "custom",
         "obj_type": "Filepath"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }, {
       "name": "caption",
@@ -74,9 +78,10 @@ export default {
         "type": "unicode",
         "validators": [{
           "id": "has_length_at_most",
-          "max_value": 160
+          "max_value": 500
         }]
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }, {
       "name": "alt",
@@ -92,6 +97,7 @@ export default {
           "rows": 3
         }
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }]
   },
@@ -113,6 +119,7 @@ export default {
         "type": "custom",
         "obj_type": "SanitizedUrl"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }, {
       "name": "text",
@@ -120,6 +127,7 @@ export default {
       "schema": {
         "type": "unicode"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }]
   },
@@ -141,6 +149,7 @@ export default {
         "type": "custom",
         "obj_type": "MathExpressionContent"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": {
         "raw_latex": "",
         "svg_filename": ""
@@ -167,6 +176,7 @@ export default {
           "id": "is_nonempty"
         }]
       },
+      "default_value_obtainable_from_highlight": true,
       "default_value": "concept card"
     }, {
       "name": "skill_id",
@@ -175,6 +185,7 @@ export default {
         "type": "custom",
         "obj_type": "SkillSelector"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }]
   },
@@ -193,9 +204,14 @@ export default {
       "name": "tab_contents",
       "description": "The tab titles and contents.",
       "schema": {
+        "ui_config": {
+          "rte_component_config_id": "ALL_COMPONENTS",
+          "hide_complex_extensions": true
+        },
         "type": "custom",
         "obj_type": "ListOfTabs"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": [{
         "title": "Hint introduction",
         "content": "This set of tabs shows some hints. Click on the other tabs to display the relevant hints."
@@ -222,6 +238,7 @@ export default {
       "schema": {
         "type": "unicode"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": ""
     }, {
       "name": "start",
@@ -233,6 +250,7 @@ export default {
           "min_value": 0
         }]
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": 0
     }, {
       "name": "end",
@@ -244,6 +262,7 @@ export default {
             "min_value": 0
           }]
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": 0
     }, {
       "name": "autoplay",
@@ -251,7 +270,45 @@ export default {
       "schema": {
         "type": "bool"
       },
+      "default_value_obtainable_from_highlight": false,
       "default_value": false
     }]
+  },
+  "Workedexample": {
+    "backend_id": "Workedexample",
+    "category": "Basic Input",
+    "description": "A worked example having a question and answer.",
+    "frontend_id": "workedexample",
+    "tooltip": "Insert worked example",
+    "icon_data_url": "/rich_text_components/Workedexample/Workedexample.png",
+    "is_complex": true,
+    "requires_internet": false,
+    "requires_fs": false,
+    "is_block_element": true,
+    "customization_arg_specs": [{
+      "name": "question",
+      "description": "The question for the worked example",
+      "schema": {
+        "type": "html",
+        "ui_config": {
+          "rte_component_config_id": "CURATED_LESSON_COMPONENTS",
+          "hide_complex_extensions": true
+        }
+      },
+      "default_value_obtainable_from_highlight": false,
+      "default_value": "Sample Question"
+    }, {
+      "name": "answer",
+      "description": "The answer for the worked example",
+      "schema": {
+        "type": "html",
+        "ui_config": {
+          "rte_component_config_id": "CURATED_LESSON_COMPONENTS",
+          "hide_complex_extensions": true
+        }
+      },
+      "default_value_obtainable_from_highlight": false,
+      "default_value": ""
+    }]
   }
-};
+} as const;

@@ -20,15 +20,14 @@
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
 
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import {Component, EventEmitter, Input, OnInit, Output} from '@angular/core';
+import {Subject} from 'rxjs';
+import {debounceTime, distinctUntilChanged} from 'rxjs/operators';
 
 @Component({
   selector: 'code-string-editor',
   templateUrl: './code-string-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class CodeStringEditorComponent implements OnInit {
   @Input() alwaysEditable: boolean = false;
@@ -38,6 +37,10 @@ export class CodeStringEditorComponent implements OnInit {
   warningText: string = '';
 
   ngOnInit(): void {
+    if (this.value === undefined) {
+      this.value = '';
+    }
+
     this._checkForWarnings();
     this.debounceInputSubject
       .pipe(debounceTime(50))
@@ -50,19 +53,17 @@ export class CodeStringEditorComponent implements OnInit {
   }
 
   private _checkForWarnings(): void {
-    if (this.value.indexOf('\t') !== -1) {
-      this.warningText = 'Code may not contain tab characters.';
-      return;
+    if (this.value) {
+      if (this.value.indexOf('\t') !== -1) {
+        this.warningText = 'Code may not contain tab characters.';
+        return;
+      }
     }
+
     this.warningText = '';
   }
 
-  onEdit(e: {target: {value: string}}): void {
-    this.debounceInputSubject.next(e.target.value);
+  onEdit(e: Event): void {
+    this.debounceInputSubject.next((e.target as HTMLTextAreaElement).value);
   }
 }
-
-angular.module('oppia').directive(
-  'codeStringEditor', downgradeComponent({
-    component: CodeStringEditorComponent
-  }) as angular.IDirectiveFactory);

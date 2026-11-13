@@ -16,36 +16,45 @@
  * @fileoverview Unit tests for the pending account deletion root component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, fakeAsync, TestBed, tick, waitForAsync } from '@angular/core/testing';
-import { AccessValidationBackendApiService } from 'pages/oppia-root/routing/access-validation-backend-api.service';
-import { LoaderService } from 'services/loader.service';
-import { PageHeadService } from 'services/page-head.service';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA, EventEmitter} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {TranslateService} from '@ngx-translate/core';
 
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { PendingAccountDeletionPageRootComponent } from './pending-account-deletion-page-root.component';
+import {AppConstants} from 'app.constants';
+import {PageHeadService} from 'services/page-head.service';
+
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {PendingAccountDeletionPageRootComponent} from './pending-account-deletion-page-root.component';
+
+class MockTranslateService {
+  onLangChange: EventEmitter<string> = new EventEmitter();
+  instant(key: string): string {
+    return key;
+  }
+}
 
 describe('Pending Account Deletion Page Root', () => {
   let fixture: ComponentFixture<PendingAccountDeletionPageRootComponent>;
   let component: PendingAccountDeletionPageRootComponent;
   let pageHeadService: PageHeadService;
-  let accessValidationBackendApiService: AccessValidationBackendApiService;
-  let loaderService: LoaderService;
+  let translateService: TranslateService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule
-      ],
+      imports: [HttpClientTestingModule],
       declarations: [
         PendingAccountDeletionPageRootComponent,
-        MockTranslatePipe
+        MockTranslatePipe,
       ],
       providers: [
-        PageHeadService
+        PageHeadService,
+        {
+          provide: TranslateService,
+          useClass: MockTranslateService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -53,49 +62,52 @@ describe('Pending Account Deletion Page Root', () => {
     fixture = TestBed.createComponent(PendingAccountDeletionPageRootComponent);
     component = fixture.componentInstance;
     pageHeadService = TestBed.inject(PageHeadService);
-    loaderService = TestBed.inject(LoaderService);
-    accessValidationBackendApiService = TestBed.inject(
-      AccessValidationBackendApiService);
+    translateService = TestBed.inject(TranslateService);
   });
 
-  it('should successfully instantiate the component',
-    () => {
-      expect(component).toBeDefined();
-    });
+  it('should successfully instantiate the component', () => {
+    expect(component).toBeDefined();
+  });
 
-  it('should initialize and show page when access is valid', fakeAsync(() => {
-    spyOn(pageHeadService, 'updateTitleAndMetaTags');
-    spyOn(accessValidationBackendApiService, 'accountDeletionIsEnabled')
-      .and.returnValue(Promise.resolve());
-    spyOn(loaderService, 'showLoadingScreen');
-    spyOn(loaderService, 'hideLoadingScreen');
+  it('should initialize and subscribe to onLangChange', () => {
+    spyOn(translateService.onLangChange, 'subscribe');
+
     component.ngOnInit();
-    tick();
-    expect(pageHeadService.updateTitleAndMetaTags).toHaveBeenCalled();
-    expect(loaderService.showLoadingScreen).toHaveBeenCalled();
-    expect(
-      accessValidationBackendApiService.accountDeletionIsEnabled)
-      .toHaveBeenCalled();
-    expect(component.pageIsShown).toBeTrue();
-    expect(component.errorPageIsShown).toBeFalse();
-    expect(loaderService.hideLoadingScreen).toHaveBeenCalled();
-  }));
 
-  it('should initialize and show error page when server respond with error',
-    fakeAsync(() => {
-      spyOn(pageHeadService, 'updateTitleAndMetaTags');
-      spyOn(accessValidationBackendApiService, 'accountDeletionIsEnabled')
-        .and.returnValue(Promise.reject());
-      spyOn(loaderService, 'showLoadingScreen');
-      spyOn(loaderService, 'hideLoadingScreen');
-      component.ngOnInit();
-      tick();
-      expect(pageHeadService.updateTitleAndMetaTags).toHaveBeenCalled();
-      expect(loaderService.showLoadingScreen).toHaveBeenCalled();
-      expect(accessValidationBackendApiService.accountDeletionIsEnabled)
-        .toHaveBeenCalled();
-      expect(component.pageIsShown).toBeFalse();
-      expect(component.errorPageIsShown).toBeTrue();
-      expect(loaderService.hideLoadingScreen).toHaveBeenCalled();
-    }));
+    expect(translateService.onLangChange.subscribe).toHaveBeenCalled();
+    expect(component.pageIsShown).toBeTrue();
+  });
+
+  it('should update page title whenever the language changes', () => {
+    component.ngOnInit();
+    spyOn(component, 'setPageTitleAndMetaTags');
+
+    translateService.onLangChange.emit();
+
+    expect(component.setPageTitleAndMetaTags).toHaveBeenCalled();
+  });
+
+  it('should obtain translated title and set the title and meta tags', () => {
+    spyOn(translateService, 'instant').and.callThrough();
+    spyOn(pageHeadService, 'updateTitleAndMetaTags');
+
+    component.setPageTitleAndMetaTags();
+
+    expect(translateService.instant).toHaveBeenCalledWith(
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.PENDING_ACCOUNT_DELETION.TITLE
+    );
+    expect(pageHeadService.updateTitleAndMetaTags).toHaveBeenCalledWith(
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.PENDING_ACCOUNT_DELETION
+        .TITLE,
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.PENDING_ACCOUNT_DELETION.META
+    );
+  });
+
+  it('should unsubscribe on component destruction', () => {
+    spyOn(component.directiveSubscriptions, 'unsubscribe');
+
+    component.ngOnDestroy();
+
+    expect(component.directiveSubscriptions.unsubscribe).toHaveBeenCalled();
+  });
 });

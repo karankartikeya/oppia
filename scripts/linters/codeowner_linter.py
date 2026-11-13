@@ -16,34 +16,32 @@
 
 """Lint checks for codeowner file."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import glob
 import os
 import subprocess
 
-from .. import concurrent_task_utils
+from typing import Final, Iterator, List, Tuple
 
-CODEOWNER_FILEPATH = '.github/CODEOWNERS'
+from .. import concurrent_task_utils
+from . import linter_utils
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from scripts.linters import run_lint_checks
+
+CODEOWNER_FILEPATH: Final = '.github/CODEOWNERS'
 
 # This list needs to be in sync with the important patterns in the CODEOWNERS
 # file.
-CODEOWNER_IMPORTANT_PATHS = [
-    '/core/templates/services/svg-sanitizer.service.ts',
-    '/scripts/linters/warranted_angular_security_bypasses.py',
-    '/core/controllers/access_validators*.py',
-    '/core/controllers/acl_decorators*.py',
-    '/core/controllers/base*.py',
-    '/core/domain/html*.py',
-    '/core/domain/rights_manager*.py',
-    '/core/domain/role_services*.py',
-    '/core/domain/user*.py',
+CODEOWNER_IMPORTANT_PATHS: Final = [
     '/core/storage/',
-    '/dependencies.json',
     '/package.json',
     '/requirements.txt',
     '/requirements.in',
+    '/requirements_dev.txt',
+    '/requirements_dev.in',
     '/yarn.lock',
     '/scripts/install_third_party_libs.py',
     '/.github/',
@@ -51,13 +49,34 @@ CODEOWNER_IMPORTANT_PATHS = [
     '/.github/stale.yml',
     '/.github/workflows/',
     '/core/android_validation_constants*.py',
-    '/extensions/interactions/rule_templates.json']
+    '/extensions/interactions/rule_templates.json',
+    '/core/templates/services/svg-sanitizer.service.ts',
+    '/scripts/linters/warranted_angular_security_bypasses.py',
+    '/core/controllers/access_validators*.py',
+    '/core/controllers/acl_decorators*.py',
+    '/core/controllers/android*.py',
+    '/core/controllers/base*.py',
+    '/core/controllers/firebase*.py',
+    '/core/domain/android*.py',
+    '/core/domain/html*.py',
+    '/core/domain/html_translation_services*.py',
+    '/core/domain/rights_manager*.py',
+    '/core/domain/role_services*.py',
+    '/core/domain/user*.py',
+    '/LICENSE',
+    '/NOTICE',
+    '/core/templates/pages/terms-page/terms-page.component.html',
+    '/core/templates/pages/privacy-page/privacy-page.component.html',
+    '/core/templates/pages/license-page/license-page.component.html',
+    '/core/domain/takeout_*.py',
+    '/core/domain/wipeout_*.py',
+]
 
 
-class CodeownerLintChecksManager:
+class CodeownerLintChecksManager(linter_utils.BaseLinter):
     """Manages codeowner checks."""
 
-    def __init__(self, file_cache):
+    def __init__(self, file_cache: run_lint_checks.FileCache) -> None:
         """Constructs a CodeownerLintChecksManager object.
 
         Args:
@@ -65,10 +84,12 @@ class CodeownerLintChecksManager:
                 file content.
         """
         self.file_cache = file_cache
-        self.error_messages = []
+        self.error_messages: List[str] = []
         self.failed = False
 
-    def _walk_with_gitignore(self, root, exclude_dirs):
+    def _walk_with_gitignore(
+        self, root: str, exclude_dirs: List[str]
+    ) -> Iterator[List[str]]:
         """A walk function similar to os.walk but this would ignore the files
         and directories which is not tracked by git. Also, this will ignore the
         directories mentioned in exclude_dirs.
@@ -88,18 +109,20 @@ class CodeownerLintChecksManager:
                 file_paths.append(os.path.join(root, name))
 
         yield [
-            file_path for file_path in file_paths if not self._is_path_ignored(
-                file_path)]
+            file_path
+            for file_path in file_paths
+            if not self._is_path_ignored(file_path)
+        ]
 
         for dir_path in dirs:
             # Adding "/" in the end of the dir path according to the git dir
             # path structure.
             if (not self._is_path_ignored(dir_path + '/')) and (
-                    dir_path not in exclude_dirs):
-                for x in self._walk_with_gitignore(dir_path, exclude_dirs):
-                    yield x
+                dir_path not in exclude_dirs
+            ):
+                yield from self._walk_with_gitignore(dir_path, exclude_dirs)
 
-    def _is_path_ignored(self, path_to_check):
+    def _is_path_ignored(self, path_to_check: str) -> bool:
         """Checks whether the given path is ignored by git.
 
         Args:
@@ -116,7 +139,7 @@ class CodeownerLintChecksManager:
 
         return subprocess.call(command) == 0
 
-    def _is_path_contains_frontend_specs(self, path_to_check):
+    def _is_path_contains_frontend_specs(self, path_to_check: str) -> bool:
         """Checks whether if a path contains all spec files.
 
         Args:
@@ -125,20 +148,17 @@ class CodeownerLintChecksManager:
         Returns:
             bool. Whether the given path contains all spec files.
         """
-        return '*.spec.ts' in path_to_check or '*Spec.ts' in path_to_check
+        return '*.spec.ts' in path_to_check
 
     def _check_for_important_patterns_at_bottom_of_codeowners(
-            self, important_patterns):
+        self, important_patterns: List[str]
+    ) -> None:
         """Checks that the most important patterns are at the bottom
         of the CODEOWNERS file.
 
-        Arguments:
+        Args:
             important_patterns: list(str). List of the important
                 patterns for CODEOWNERS file.
-
-        Returns:
-            tuple(bool, str). A 2-tuple of whether the CODEOWNERS "important
-            pattern" check fails and failed messages list.
         """
         # Check that there are no duplicate elements in the lists.
         important_patterns_set = set(important_patterns)
@@ -146,28 +166,33 @@ class CodeownerLintChecksManager:
         if len(important_patterns_set) != len(important_patterns):
             error_message = (
                 '%s --> Duplicate pattern(s) found in critical rules'
-                ' section.' % CODEOWNER_FILEPATH)
+                ' section.' % CODEOWNER_FILEPATH
+            )
             self.error_messages.append(error_message)
             self.failed = True
         if len(codeowner_important_paths_set) != len(CODEOWNER_IMPORTANT_PATHS):
             error_message = (
                 'scripts/linters/codeowner_linter.py --> Duplicate pattern(s) '
-                'found in CODEOWNER_IMPORTANT_PATHS list.')
+                'found in CODEOWNER_IMPORTANT_PATHS list.'
+            )
             self.error_messages.append(error_message)
             self.failed = True
 
         # Check missing rules by set difference operation.
         critical_rule_section_minus_list_set = (
-            important_patterns_set.difference(codeowner_important_paths_set))
+            important_patterns_set.difference(codeowner_important_paths_set)
+        )
         list_minus_critical_rule_section_set = (
-            codeowner_important_paths_set.difference(important_patterns_set))
+            codeowner_important_paths_set.difference(important_patterns_set)
+        )
         for rule in critical_rule_section_minus_list_set:
             error_message = (
                 '%s --> Rule %s is not present in the '
                 'CODEOWNER_IMPORTANT_PATHS list in '
                 'scripts/linters/codeowner_linter.py. Please add this rule in '
                 'the mentioned list or remove this rule from the \'Critical '
-                'files\' section.' % (CODEOWNER_FILEPATH, rule))
+                'files\' section.' % (CODEOWNER_FILEPATH, rule)
+            )
             self.error_messages.append(error_message)
             self.failed = True
         for rule in list_minus_critical_rule_section_set:
@@ -177,16 +202,17 @@ class CodeownerLintChecksManager:
                 'section since it is an important rule. Alternatively please '
                 'remove it from the \'CODEOWNER_IMPORTANT_PATHS\' list in '
                 'scripts/linters/codeowner_linter.py if it is no longer an '
-                'important rule.' % (CODEOWNER_FILEPATH, rule))
+                'important rule.' % (CODEOWNER_FILEPATH, rule)
+            )
             self.error_messages.append(error_message)
             self.failed = True
 
-    def check_codeowner_file(self):
+    def check_codeowner_file(self) -> concurrent_task_utils.TaskResult:
         """Checks the CODEOWNERS file for any uncovered dirs/files and also
         checks that every pattern in the CODEOWNERS file matches at least one
         file/dir. Note that this checks the CODEOWNERS file according to the
-        glob patterns supported by Python2.7 environment. For more information
-        please refer https://docs.python.org/2/library/glob.html.
+        glob patterns supported by Python 3 environment. For more information
+        please refer https://docs.python.org/3/library/glob.html.
         This function also ensures that the most important rules are at the
         bottom of the CODEOWNERS file.
 
@@ -202,8 +228,9 @@ class CodeownerLintChecksManager:
         important_rules_in_critical_section = []
         file_patterns = []
         ignored_dir_patterns = []
-        for line_num, line in enumerate(self.file_cache.readlines(
-                CODEOWNER_FILEPATH)):
+        for line_num, line in enumerate(
+            self.file_cache.readlines(CODEOWNER_FILEPATH)
+        ):
             stripped_line = line.strip()
             if '# Critical files' in line:
                 critical_file_section_found = True
@@ -216,15 +243,17 @@ class CodeownerLintChecksManager:
             if stripped_line and stripped_line[0] != '#':
                 if '#' in line:
                     error_message = (
-                        '%s --> Please remove inline comment from line %s' % (
-                            CODEOWNER_FILEPATH, line_num + 1))
+                        '%s --> Please remove inline comment from line %s'
+                        % (CODEOWNER_FILEPATH, line_num + 1)
+                    )
                     self.error_messages.append(error_message)
                     self.failed = True
 
                 if '@' not in line:
                     error_message = (
                         '%s --> Pattern on line %s doesn\'t have '
-                        'codeowner' % (CODEOWNER_FILEPATH, line_num + 1))
+                        'codeowner' % (CODEOWNER_FILEPATH, line_num + 1)
+                    )
                     self.error_messages.append(error_message)
                     self.failed = True
                 else:
@@ -234,29 +263,33 @@ class CodeownerLintChecksManager:
                     # check.
                     if critical_file_section_found:
                         important_rules_in_critical_section.append(
-                            line_in_concern)
+                            line_in_concern
+                        )
                     # Checks if the path is the full path relative to the
                     # root oppia directory.
                     if not line_in_concern.startswith('/'):
                         error_message = (
                             '%s --> Pattern on line %s is invalid. Use '
                             'full path relative to the root directory'
-                            % (CODEOWNER_FILEPATH, line_num + 1))
+                            % (CODEOWNER_FILEPATH, line_num + 1)
+                        )
                         self.error_messages.append(error_message)
                         self.failed = True
 
                     # The double asterisks should be allowed only when path
                     # includes all the frontend spec files.
                     if not self._is_path_contains_frontend_specs(
-                            line_in_concern):
+                        line_in_concern
+                    ):
                         # The double asterisks pattern is supported by the
                         # CODEOWNERS syntax but not the glob in Python 2.
                         # The following condition checks this.
                         if '**' in line_in_concern:
                             error_message = (
                                 '%s --> Pattern on line %s is invalid. '
-                                '\'**\' wildcard not allowed' % (
-                                    CODEOWNER_FILEPATH, line_num + 1))
+                                '\'**\' wildcard not allowed'
+                                % (CODEOWNER_FILEPATH, line_num + 1)
+                            )
                             self.error_messages.append(error_message)
                             self.failed = True
                     # Adjustments to the dir paths in CODEOWNERS syntax
@@ -275,12 +308,14 @@ class CodeownerLintChecksManager:
                     # The checking for path existence won't happen if the path
                     # is getting all the frontend spec files.
                     if not self._is_path_contains_frontend_specs(
-                            line_in_concern):
+                        line_in_concern
+                    ):
                         if not glob.glob(line_in_concern):
                             error_message = (
                                 '%s --> Pattern on line %s doesn\'t match '
-                                'any file or directory' % (
-                                    CODEOWNER_FILEPATH, line_num + 1))
+                                'any file or directory'
+                                % (CODEOWNER_FILEPATH, line_num + 1)
+                            )
                             self.error_messages.append(error_message)
                             self.failed = True
                     # The following list is being populated with the
@@ -310,18 +345,21 @@ class CodeownerLintChecksManager:
                         break
                 if not match:
                     error_message = (
-                        '%s is not listed in the .github/CODEOWNERS file.' % (
-                            file_path))
+                        '%s is not listed in the .github/CODEOWNERS file.'
+                        % (file_path)
+                    )
                     self.error_messages.append(error_message)
                     self.failed = True
 
         self._check_for_important_patterns_at_bottom_of_codeowners(
-            important_rules_in_critical_section)
+            important_rules_in_critical_section
+        )
 
         return concurrent_task_utils.TaskResult(
-            name, self.failed, self.error_messages, self.error_messages)
+            name, self.failed, self.error_messages, self.error_messages
+        )
 
-    def perform_all_lint_checks(self):
+    def perform_all_lint_checks(self) -> List[concurrent_task_utils.TaskResult]:
         """Perform all the lint checks and returns the messages returned by all
         the checks.
 
@@ -333,7 +371,9 @@ class CodeownerLintChecksManager:
         return [self.check_codeowner_file()]
 
 
-def get_linters(file_cache):
+def get_linters(
+    file_cache: run_lint_checks.FileCache,
+) -> Tuple[CodeownerLintChecksManager, None]:
     """Creates CodeownerLintChecksManager object and returns it.
 
     Args:

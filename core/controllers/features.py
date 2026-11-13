@@ -14,17 +14,23 @@
 
 """Controllers for fetching the features Oppia provides to its users."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core import feconf
 from core.constants import constants
-from core.controllers import acl_decorators
-from core.controllers import base
-from core.domain import config_domain
+from core.controllers import acl_decorators, base
+from core.domain import (
+    opportunity_services,
+    platform_parameter_list,
+    platform_parameter_services,
+)
+
+from typing import Dict
 
 
-class ExplorationFeaturesHandler(base.BaseHandler):
+class ExplorationFeaturesHandler(
+    base.BaseHandler[Dict[str, str], Dict[str, str]]
+):
     """Returns features the given exploration is configured to support."""
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
@@ -32,29 +38,31 @@ class ExplorationFeaturesHandler(base.BaseHandler):
         'exploration_id': {
             'schema': {
                 'type': 'basestring',
-                'validators': [{
-                    'id': 'is_regex_matched',
-                    'regex_pattern': constants.ENTITY_ID_REGEX
-                }]
+                'validators': [
+                    {
+                        'id': 'is_regex_matched',
+                        'regex_pattern': constants.ENTITY_ID_REGEX,
+                    }
+                ],
             }
         }
     }
-    HANDLER_ARGS_SCHEMAS = {
-        'GET': {}
-    }
+    HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'GET': {}}
 
     @acl_decorators.can_play_exploration
-    def get(self, exploration_id):
+    def get(self, exploration_id: str) -> None:
         """Handles GET requests for an exploration's features.
 
         Args:
             exploration_id: str. The ID of the exploration.
         """
-        whitelisted_exploration_ids_for_playthroughs = (
-            config_domain.WHITELISTED_EXPLORATION_IDS_FOR_PLAYTHROUGHS.value)
-        self.render_json({
-            'is_exploration_whitelisted':
-                exploration_id in whitelisted_exploration_ids_for_playthroughs,
-            'always_ask_learners_for_answer_details':
-                config_domain.ALWAYS_ASK_LEARNERS_FOR_ANSWER_DETAILS.value
-        })
+        self.render_json(
+            {
+                'exploration_is_curated': opportunity_services.is_exploration_available_for_contribution(
+                    exploration_id
+                ),
+                'always_ask_learners_for_answer_details': platform_parameter_services.get_platform_parameter_value(
+                    platform_parameter_list.ParamName.ALWAYS_ASK_LEARNERS_FOR_ANSWER_DETAILS.value
+                ),
+            }
+        )

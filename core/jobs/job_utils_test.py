@@ -16,26 +16,25 @@
 
 """Unit tests for jobs.job_utils."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import datetime
 
-from core import feconf
-from core.jobs import job_utils
+from core import utils
+from core.jobs import job_options, job_utils
 from core.platform import models
 from core.tests import test_utils
 
+import apache_beam as beam
 from apache_beam.io.gcp.datastore.v1new import types as beam_datastore_types
 
 MYPY = False
 if MYPY:  # pragma: no cover
-    from mypy_imports import base_models
-    from mypy_imports import datastore_services
+    from mypy_imports import base_models, datastore_services
 
-(base_models,) = models.Registry.import_models([models.NAMES.base_model])
-
+app_identity_services = models.Registry.import_app_identity_services()
 datastore_services = models.Registry.import_datastore_services()
+(base_models,) = models.Registry.import_models([models.Names.BASE_MODEL])
 
 
 class FooModel(datastore_services.Model):
@@ -54,6 +53,20 @@ class CoreModel(base_models.BaseModel):
     """Simple BaseModel subclass with a 'prop' float property."""
 
     prop = datastore_services.FloatProperty()
+
+
+class ResolveProjectIdTests(test_utils.TestBase):
+
+    def test_pipeline_with_valid_options_returns_project_id(self) -> None:
+        with self.swap_to_always_return(
+            app_identity_services, 'get_application_id', 'LOL'
+        ):
+            pipeline = beam.Pipeline(options=job_options.JobOptions())
+            self.assertEqual(job_utils.resolve_project_id(pipeline), 'LOL')
+
+    def test_none_pipeline_raises_value_error(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'must not be None'):
+            job_utils.resolve_project_id(None)
 
 
 class CloneTests(test_utils.TestBase):
@@ -112,10 +125,11 @@ class GetModelClassTests(test_utils.TestBase):
 
     def test_get_from_existing_model(self) -> None:
         self.assertIs(
-            job_utils.get_model_class('BaseModel'), base_models.BaseModel)
+            job_utils.get_model_class('BaseModel'), base_models.BaseModel
+        )
 
     def test_get_from_non_existing_model(self) -> None:
-        with self.assertRaisesRegexp(Exception, 'No model class found'): # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(Exception, 'No model class found'):
             job_utils.get_model_class('InvalidModel')
 
 
@@ -128,12 +142,15 @@ class GetModelKindTests(test_utils.TestBase):
 
     def test_get_from_datastore_model_class(self) -> None:
         self.assertEqual(
-            job_utils.get_model_kind(base_models.BaseModel), 'BaseModel')
+            job_utils.get_model_kind(base_models.BaseModel), 'BaseModel'
+        )
 
+    # TODO(#13059): Here we use MyPy ignore because after we fully type the
+    # codebase we plan to get rid of the tests that intentionally test wrong
+    # inputs that we can normally catch by typing.
     def test_get_from_bad_value(self) -> None:
-        self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            TypeError, 'not a model type or instance',
-            lambda: job_utils.get_model_kind(123)) # type: ignore[arg-type]
+        with self.assertRaisesRegex(TypeError, 'not a model type or instance'):
+            job_utils.get_model_kind(123)  # type: ignore[arg-type]
 
 
 class GetModelPropertyTests(test_utils.TestBase):
@@ -153,9 +170,12 @@ class GetModelPropertyTests(test_utils.TestBase):
 
         self.assertEqual(job_utils.get_model_property(model, 'prop'), None)
 
+    # TODO(#13059): Here we use MyPy ignore because after we fully type the
+    # codebase we plan to get rid of the tests that intentionally test wrong
+    # inputs that we can normally catch by typing.
     def test_get_property_from_bad_value(self) -> None:
-        with self.assertRaisesRegexp(TypeError, 'not a model instance'): # type: ignore[no-untyped-call]
-            job_utils.get_model_property(123, 'prop') # type: ignore[arg-type]
+        with self.assertRaisesRegex(TypeError, 'not a model instance'):
+            job_utils.get_model_property(123, 'prop')  # type: ignore[arg-type]
 
 
 class GetModelIdTests(test_utils.TestBase):
@@ -165,76 +185,122 @@ class GetModelIdTests(test_utils.TestBase):
 
         self.assertEqual(job_utils.get_model_id(model), '123')
 
+    # TODO(#13059): Here we use MyPy ignore because after we fully type the
+    # codebase we plan to get rid of the tests that intentionally test wrong
+    # inputs that we can normally catch by typing.
     def test_get_id_from_bad_value(self) -> None:
-        with self.assertRaisesRegexp(TypeError, 'not a model instance'): # type: ignore[no-untyped-call]
-            job_utils.get_model_id(123) # type: ignore[arg-type]
+        with self.assertRaisesRegex(TypeError, 'not a model instance'):
+            job_utils.get_model_id(123)  # type: ignore[arg-type]
 
 
 class BeamEntityToAndFromModelTests(test_utils.TestBase):
 
+    def setUp(self) -> None:
+        super().setUp()
+        self.oppia_project_id = 'dev-project-id'
+
     def test_get_beam_entity_from_model(self) -> None:
-        model = FooModel(id='abc', project=feconf.OPPIA_PROJECT_ID, prop='123')
+
+        model = FooModel(id='abc', project=self.oppia_project_id, prop='123')
 
         beam_entity = job_utils.get_beam_entity_from_ndb_model(model)
 
         self.assertEqual(beam_entity.key.path_elements, ('FooModel', 'abc'))
-        self.assertEqual(beam_entity.key.project, feconf.OPPIA_PROJECT_ID)
+        self.assertEqual(beam_entity.key.project, self.oppia_project_id)
         self.assertEqual(beam_entity.properties, {'prop': '123'})
 
     def test_get_model_from_beam_entity(self) -> None:
         beam_entity = beam_datastore_types.Entity(
             beam_datastore_types.Key(
-                ('FooModel', 'abc'), project=feconf.OPPIA_PROJECT_ID,
-                namespace=self.namespace))
+                ('FooModel', 'abc'),
+                project=self.oppia_project_id,
+                namespace=self.namespace,
+            )
+        )
         beam_entity.set_properties({'prop': '123'})
 
         self.assertEqual(
-            FooModel(id='abc', project=feconf.OPPIA_PROJECT_ID, prop='123'),
-            job_utils.get_ndb_model_from_beam_entity(beam_entity))
+            FooModel(id='abc', project=self.oppia_project_id, prop='123'),
+            job_utils.get_ndb_model_from_beam_entity(beam_entity),
+        )
+
+    def test_get_beam_key_from_ndb_key(self) -> None:
+        beam_key = beam_datastore_types.Key(
+            ('FooModel', 'abc'),
+            project=self.oppia_project_id,
+            namespace=self.namespace,
+        )
+
+        # We use private _from_ds_key here because it provides functionality
+        # for obtaining an NDB key from a Beam key, and writing it ourselves
+        # would be too complicated.
+        ndb_key = datastore_services.Key._from_ds_key(  # pylint: disable=protected-access
+            beam_key.to_client_key()
+        )
+        self.assertEqual(job_utils.get_beam_key_from_ndb_key(ndb_key), beam_key)
 
     def test_get_model_from_beam_entity_with_time(self) -> None:
-        utcnow = datetime.datetime.utcnow()
+        current_time = utils.get_current_utc_datetime()
 
         beam_entity = beam_datastore_types.Entity(
             beam_datastore_types.Key(
-                ('CoreModel', 'abc'), project=feconf.OPPIA_PROJECT_ID,
-                namespace=self.namespace))
-        beam_entity.set_properties({
-            'prop': 3.14,
-            'created_on': utcnow.replace(tzinfo=datetime.timezone.utc),
-            'last_updated': None,
-            'deleted': False,
-        })
+                ('CoreModel', 'abc'),
+                project=self.oppia_project_id,
+                namespace=self.namespace,
+            )
+        )
+        beam_entity.set_properties(
+            {
+                'prop': 3.14,
+                'created_on': current_time.replace(
+                    tzinfo=datetime.timezone.utc
+                ),
+                'last_updated': None,
+                'deleted': False,
+            }
+        )
 
         self.assertEqual(
             CoreModel(
-                id='abc', project=feconf.OPPIA_PROJECT_ID, prop=3.14,
-                created_on=utcnow),
-            job_utils.get_ndb_model_from_beam_entity(beam_entity))
+                id='abc',
+                project=self.oppia_project_id,
+                prop=3.14,
+                created_on=current_time,
+            ),
+            job_utils.get_ndb_model_from_beam_entity(beam_entity),
+        )
 
     def test_from_and_then_to_model(self) -> None:
-        model = FooModel(id='abc', project=feconf.OPPIA_PROJECT_ID, prop='123')
+        model = FooModel(id='abc', project=self.oppia_project_id, prop='123')
 
         self.assertEqual(
             model,
             job_utils.get_ndb_model_from_beam_entity(
-                job_utils.get_beam_entity_from_ndb_model(model)))
+                job_utils.get_beam_entity_from_ndb_model(model)
+            ),
+        )
 
     def test_from_and_then_to_beam_entity(self) -> None:
         beam_entity = beam_datastore_types.Entity(
             beam_datastore_types.Key(
-                ('CoreModel', 'abc'), project=feconf.OPPIA_PROJECT_ID))
-        beam_entity.set_properties({
-            'prop': 123,
-            'created_on': datetime.datetime.utcnow(),
-            'last_updated': datetime.datetime.utcnow(),
-            'deleted': False,
-        })
+                ('CoreModel', 'abc'), project=self.oppia_project_id
+            )
+        )
+        beam_entity.set_properties(
+            {
+                'prop': 123,
+                'created_on': utils.get_current_utc_datetime(),
+                'last_updated': utils.get_current_utc_datetime(),
+                'deleted': False,
+            }
+        )
 
         self.assertEqual(
             beam_entity,
             job_utils.get_beam_entity_from_ndb_model(
-                job_utils.get_ndb_model_from_beam_entity(beam_entity)))
+                job_utils.get_ndb_model_from_beam_entity(beam_entity)
+            ),
+        )
 
 
 class GetBeamQueryFromNdbQueryTests(test_utils.TestBase):
@@ -269,31 +335,40 @@ class GetBeamQueryFromNdbQueryTests(test_utils.TestBase):
         self.assertEqual(beam_query.filters, (('prop', '>=', 3),))
 
     def test_query_with_range_like_filter(self) -> None:
-        query = datastore_services.Query(filters=datastore_services.all_of(
-            BarModel.prop >= 3, BarModel.prop < 6))
+        query = datastore_services.Query(
+            filters=datastore_services.all_of(
+                BarModel.prop >= 3, BarModel.prop < 6
+            )
+        )
 
         beam_query = job_utils.get_beam_query_from_ndb_query(query)
 
         self.assertEqual(
-            beam_query.filters, (('prop', '>=', 3), ('prop', '<', 6)))
+            beam_query.filters, (('prop', '>=', 3), ('prop', '<', 6))
+        )
 
     def test_query_with_or_filter_raises_type_error(self) -> None:
-        query = datastore_services.Query(filters=datastore_services.any_of(
-            BarModel.prop == 1, BarModel.prop == 2))
+        query = datastore_services.Query(
+            filters=datastore_services.any_of(
+                BarModel.prop == 1, BarModel.prop == 2
+            )
+        )
 
-        with self.assertRaisesRegexp(TypeError, 'forbidden filter'): # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(TypeError, 'forbidden filter'):
             job_utils.get_beam_query_from_ndb_query(query)
 
     def test_query_with_in_filter_raises_type_error(self) -> None:
         query = datastore_services.Query(filters=BarModel.prop.IN([1, 2, 3]))
 
-        with self.assertRaisesRegexp(TypeError, 'forbidden filter'): # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(TypeError, 'forbidden filter'):
             job_utils.get_beam_query_from_ndb_query(query)
 
     def test_query_with_not_equal_filter_raises_type_error(self) -> None:
-        query = datastore_services.Query(filters=BarModel.prop != 1)
+        query = datastore_services.Query(
+            filters=datastore_services.not_equal(BarModel.prop, 1)
+        )
 
-        with self.assertRaisesRegexp(TypeError, 'forbidden filter'): # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(TypeError, 'forbidden filter'):
             job_utils.get_beam_query_from_ndb_query(query)
 
     def test_query_with_order(self) -> None:

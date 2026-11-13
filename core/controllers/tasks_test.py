@@ -14,100 +14,141 @@
 
 """Tests for Tasks Email Handler."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
+
+import uuid
+from unittest import mock
 
 from core import feconf
-from core import python_utils
-from core.domain import exp_domain
-from core.domain import exp_fetchers
-from core.domain import exp_services
-from core.domain import feedback_services
-from core.domain import rights_domain
-from core.domain import stats_domain
-from core.domain import stats_services
-from core.domain import suggestion_services
-from core.domain import taskqueue_services
-from core.domain import user_services
+from core.domain import (
+    cloud_task_domain,
+    email_manager,
+    email_services,
+    exp_fetchers,
+    exp_services,
+    feedback_services,
+    platform_parameter_list,
+    rights_manager,
+    stats_domain,
+    stats_services,
+    taskqueue_services,
+    user_services,
+    voiceover_cloud_task_services,
+    voiceover_regeneration_services,
+)
 from core.platform import models
 from core.tests import test_utils
 
-(job_models, email_models) = models.Registry.import_models(
-    [models.NAMES.job, models.NAMES.email])
-(feedback_models, suggestion_models) = models.Registry.import_models(
-    [models.NAMES.feedback, models.NAMES.suggestion])
-transaction_services = models.Registry.import_transaction_services()
+from typing import Dict, Final, List, Tuple
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import feedback_models
+
+(feedback_models,) = models.Registry.import_models([models.Names.FEEDBACK])
 
 
 class TasksTests(test_utils.EmailTestBase):
 
-    USER_A_EMAIL = 'a@example.com'
-    USER_B_EMAIL = 'b@example.com'
-    MODERATOR_EMAIL = 'm@example.com'
+    USER_A_EMAIL: Final = 'a@example.com'
+    USER_B_EMAIL: Final = 'b@example.com'
+    EMAIL_FOOTER: Final = (
+        'You can change your email preferences via the Preferences page.'
+    )
 
-    def setUp(self):
-        super(TasksTests, self).setUp()
+    def setUp(self) -> None:
+        super().setUp()
         self.signup(self.MODERATOR_EMAIL, 'moderator')
-        self.moderator_id = self.get_user_id_from_email(
-            self.MODERATOR_EMAIL)
+        self.moderator_id = self.get_user_id_from_email(self.MODERATOR_EMAIL)
         self.signup(self.USER_A_EMAIL, 'userA')
         self.user_id_a = self.get_user_id_from_email(self.USER_A_EMAIL)
         self.signup(self.USER_B_EMAIL, 'userB')
         self.user_id_b = self.get_user_id_from_email(self.USER_B_EMAIL)
         self.signup(self.EDITOR_EMAIL, self.EDITOR_USERNAME)
         self.editor_id = self.get_user_id_from_email(self.EDITOR_EMAIL)
+        self.signup(self.OWNER_EMAIL, self.OWNER_USERNAME)
+        self.owner_id = self.get_user_id_from_email(self.OWNER_EMAIL)
+        self.owner = user_services.get_user_actions_info(self.owner_id)
 
         self.exploration = self.save_new_default_exploration(
-            'A', self.editor_id, title='Title')
-        self.can_send_emails_ctx = self.swap(
-            feconf, 'CAN_SEND_EMAILS', True)
+            'A', self.editor_id, title='Title'
+        )
         self.can_send_feedback_email_ctx = self.swap(
-            feconf, 'CAN_SEND_FEEDBACK_MESSAGE_EMAILS', True)
+            feconf, 'CAN_SEND_TRANSACTIONAL_EMAILS', True
+        )
         self.THREAD_ID = 'exploration.exp1.thread_1'
 
-    def test_email_sent_when_feedback_in_thread(self):
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_email_sent_when_feedback_in_thread(self) -> None:
         # Create feedback thread.
-        with self.can_send_feedback_email_ctx, self.can_send_emails_ctx:
+        with self.can_send_feedback_email_ctx:
             feedback_services.create_thread(
-                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id,
-                self.user_id_a, 'a subject', 'some text')
+                feconf.ENTITY_TYPE_EXPLORATION,
+                self.exploration.id,
+                self.user_id_a,
+                'a subject',
+                'some text',
+            )
             threadlist = feedback_services.get_all_threads(
-                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False)
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False
+            )
             thread_id = threadlist[0].id
 
             # Create another message.
             feedback_services.create_message(
-                thread_id, self.user_id_b, None, None, 'user b message')
+                thread_id, self.user_id_b, None, None, 'user b message'
+            )
 
             # Check that there are two messages in thread.
             messages = feedback_services.get_messages(thread_id)
             self.assertEqual(len(messages), 2)
 
             # Check that there are no feedback emails sent to Editor.
-            messages = self._get_sent_email_messages(
-                self.EDITOR_EMAIL)
-            self.assertEqual(len(messages), 0)
+            mock_email_messages = self._get_sent_email_messages(
+                self.EDITOR_EMAIL
+            )
+            self.assertEqual(len(mock_email_messages), 0)
 
             # Send task and subsequent email to Editor.
             self.process_and_flush_pending_tasks()
-            messages = self._get_sent_email_messages(
-                self.EDITOR_EMAIL)
+            mock_email_messages = self._get_sent_email_messages(
+                self.EDITOR_EMAIL
+            )
             expected_message = (
                 'Hi editor,\n\nYou\'ve received 2 new messages on your'
                 ' Oppia explorations:\n- Title:\n- some text\n- user b message'
                 '\nYou can view and reply to your messages from your dashboard.'
                 '\n\nThanks, and happy teaching!\n\nBest wishes,\nThe Oppia'
                 ' Team\n\nYou can change your email preferences via the '
-                'Preferences page.')
+                'Preferences page.'
+            )
 
             # Assert that the message is correct.
-            self.assertEqual(len(messages), 1)
-            self.assertEqual(messages[0].body, expected_message)
+            self.assertEqual(len(mock_email_messages), 1)
+            self.assertEqual(mock_email_messages[0].body, expected_message)
 
             # Create another message that is len = 201.
             user_b_message = 'B' * 201
             feedback_services.create_message(
-                thread_id, self.user_id_b, None, None, user_b_message)
+                thread_id, self.user_id_b, None, None, user_b_message
+            )
 
             # Check that there are three messages in thread.
             messages = feedback_services.get_messages(thread_id)
@@ -115,122 +156,358 @@ class TasksTests(test_utils.EmailTestBase):
 
             # Send task and subsequent email to Editor.
             self.process_and_flush_pending_tasks()
-            messages = self._get_sent_email_messages(self.EDITOR_EMAIL)
+            mock_email_messages = self._get_sent_email_messages(
+                self.EDITOR_EMAIL
+            )
 
             # What is expected in the email body.
             expected_message = (
                 'Hi editor,\n\nYou\'ve received a new message on your Oppia'
-                ' explorations:\n- Title:\n- ' + 'B' * 200 + '...' + '\nYou can'
+                ' explorations:\n- Title:\n- %s...\nYou can'
                 ' view and reply to your messages from your dashboard.\n\nThank'
                 's, and happy teaching!\n\nBest wishes,\nThe Oppia Team\n\nYou'
-                ' can change your email preferences via the Preferences page.')
+                ' can change your email preferences via the Preferences page.'
+            ) % ('B' * 200)
 
             # Check that greater than 200 word message is sent
             # and has correct message.
 
-            self.assertEqual(len(messages), 2)
-            self.assertEqual(messages[1].body, expected_message)
+            self.assertEqual(len(mock_email_messages), 2)
+            self.assertEqual(mock_email_messages[1].body, expected_message)
 
-    def test_email_is_sent_when_suggestion_created(self):
-        """Tests SuggestionEmailHandler functionality."""
+            # Create another message.
+            feedback_services.create_message(
+                thread_id, self.user_id_b, None, None, 'user b another message'
+            )
 
-        user_id_b = self.user_id_b
-        class MockActivityRights:
-            def __init__(
-                    self, exploration_id, owner_ids, editor_ids,
-                    voice_artist_ids, viewer_ids, community_owned=False,
-                    cloned_from=None, status=True, viewable_if_private=False,
-                    first_published_msec=None):
-                # User B ID hardcoded into owner_ids to get email_manager
-                # to send email to user B to test functionality.
-                self.id = exploration_id
-                self.getLintToShutUp = owner_ids
-                self.editor_ids = editor_ids
-                self.voice_artist_ids = voice_artist_ids
-                self.viewer_ids = viewer_ids
-                self.community_owned = community_owned
-                self.cloned_from = cloned_from
-                self.status = status
-                self.viewable_if_private = viewable_if_private
-                self.first_published_msec = first_published_msec
-                self.owner_ids = [user_id_b]
+            # Pops feedback message references.
+            feedback_services.pop_feedback_message_references_transactional(
+                self.editor_id, 0
+            )
 
-        email_user_b = self.swap(
-            rights_domain, 'ActivityRights', MockActivityRights)
-        with email_user_b, self.can_send_feedback_email_ctx:
-            with self.can_send_emails_ctx:
-                change = {
-                    'cmd': exp_domain.CMD_EDIT_STATE_PROPERTY,
-                    'property_name': exp_domain.STATE_PROPERTY_CONTENT,
-                    'state_name': 'state_1',
-                    'new_value': 'new suggestion content'}
+            # Send task and subsequent email to Editor.
+            self.process_and_flush_pending_tasks()
+            mock_email_messages = self._get_sent_email_messages(
+                self.EDITOR_EMAIL
+            )
 
-                # Create suggestion from user A to user B.
-                suggestion_services.create_suggestion(
-                    feconf.SUGGESTION_TYPE_EDIT_STATE_CONTENT,
-                    feconf.ENTITY_TYPE_EXPLORATION,
-                    self.exploration.id, 1,
-                    self.user_id_a, change, 'test description')
-                threadlist = feedback_services.get_all_threads(
-                    feconf.ENTITY_TYPE_EXPLORATION,
-                    self.exploration.id, True)
-                thread_id = threadlist[0].id
+            # Check that there are three messages.
+            self.assertEqual(len(mock_email_messages), 3)
 
-                # Enqueue and send suggestion email task.
-                payload = {
-                    'exploration_id': self.exploration.id,
-                    'thread_id': thread_id}
-                messages = self._get_all_sent_email_messages()
-                self.assertEqual(len(messages), 0)
-                taskqueue_services.enqueue_task(
-                    feconf.TASK_URL_SUGGESTION_EMAILS, payload, 0)
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.OPPIA_SITE_URL_FOR_EMAILS,
+                'http://localhost:8181',
+            ),
+        ]
+    )
+    def test_email_is_sent_when_contributor_achieves_a_new_rank(self) -> None:
+        """Tests ContributorDashboardAchievementEmailHandler functionality."""
+
+        user_id = self.user_id_a
+        user_services.update_email_preferences(
+            user_id,
+            True,
+            False,
+            False,
+            False,
+            feconf.DEFAULT_CONTRIBUTOR_DASHBOARD_EMAIL_PREFERENCE,
+        )
+
+        payload = {
+            'contributor_user_id': user_id,
+            'contribution_type': feconf.CONTRIBUTION_TYPE_TRANSLATION,
+            'contribution_sub_type': (feconf.CONTRIBUTION_SUBTYPE_ACCEPTANCE),
+            'language_code': 'hi',
+            'rank_name': 'Initial Contributor',
+        }
+        taskqueue_services.enqueue_task(
+            feconf.TASK_URL_CONTRIBUTOR_DASHBOARD_ACHIEVEMENT_NOTIFICATION_EMAILS,
+            payload,
+            0,
+        )
+        self.process_and_flush_pending_tasks()
+
+        # Check that user A received message.
+        messages = self._get_sent_email_messages(self.USER_A_EMAIL)
+        self.assertEqual(len(messages), 1)
+
+        # Check that user A received correct message.
+        expected_email_subject = 'Oppia Translator Rank Achievement!'
+        expected_email_html_body = (
+            'Hi userA,<br><br>'
+            'This is to let you know that you have successfully achieved '
+            'the Initial Contributor rank for submitting translations in '
+            'हिन्दी (Hindi). Your efforts help Oppia grow better every '
+            'day and support students around the world.<br><br>'
+            'You can check all the achievements you earned in the '
+            '<a href="http://localhost:8181/contributor-dashboard">'
+            'Contributor Dashboard</a>.<br><br>'
+            'Best wishes and we hope you can continue to contribute!'
+            '<br><br>'
+            'The Oppia Contributor Dashboard Team'
+        )
+        self.assertEqual(messages[0].html, expected_email_html_body)
+        self.assertEqual(messages[0].subject, expected_email_subject)
+
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_unsent_feedback_email_drops_task_on_permanent_error(self) -> None:
+        """Test that permanent 4xx errors return 200 OK to drop the task."""
+        with self.can_send_feedback_email_ctx:
+            feedback_services.create_thread(
+                feconf.ENTITY_TYPE_EXPLORATION,
+                self.exploration.id,
+                self.user_id_a,
+                'a subject',
+                'some text',
+            )
+            threadlist = feedback_services.get_all_threads(
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False
+            )
+            thread_id = threadlist[0].id
+            feedback_services.create_message(
+                thread_id, self.user_id_b, None, None, 'user b message'
+            )
+
+            mock_send_email = mock.Mock(
+                side_effect=email_services.PermanentEmailSendingError(
+                    'Fake 400 error'
+                )
+            )
+            mock_pop = mock.Mock()
+            with self.swap(
+                email_manager, 'send_feedback_message_email', mock_send_email
+            ), self.swap(
+                feedback_services,
+                'pop_feedback_message_references_transactional',
+                mock_pop,
+            ):
+                self.process_and_flush_pending_tasks()
+            mock_pop.assert_called_once()
+
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_contributor_achievement_email_drops_task_on_permanent_error(
+        self,
+    ) -> None:
+        """Test that permanent 4xx errors drop contributor achievement email."""
+        mock_send_email = mock.Mock(
+            side_effect=email_services.PermanentEmailSendingError(
+                'Fake 400 error'
+            )
+        )
+        with self.swap(
+            email_manager,
+            'send_mail_to_notify_contributor_ranking_achievement',
+            mock_send_email,
+        ):
+            payload = {
+                'contributor_user_id': self.user_id_a,
+                'contribution_type': feconf.CONTRIBUTION_TYPE_TRANSLATION,
+                'contribution_sub_type': feconf.CONTRIBUTION_SUBTYPE_ACCEPTANCE,
+                'language_code': 'hi',
+                'rank_name': 'Initial Contributor',
+            }
+            taskqueue_services.enqueue_task(
+                feconf.TASK_URL_CONTRIBUTOR_DASHBOARD_ACHIEVEMENT_NOTIFICATION_EMAILS,
+                payload,
+                0,
+            )
+            self.process_and_flush_pending_tasks()
+
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_instant_feedback_email_drops_task_on_permanent_error(
+        self,
+    ) -> None:
+        """Test that permanent 4xx errors drop instant feedback email."""
+        with self.can_send_feedback_email_ctx:
+            feedback_services.create_thread(
+                feconf.ENTITY_TYPE_EXPLORATION,
+                self.exploration.id,
+                self.user_id_a,
+                'a subject',
+                'some text',
+            )
+            threadlist = feedback_services.get_all_threads(
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False
+            )
+            thread_id = threadlist[0].id
+            feedback_services.create_message(
+                thread_id, self.user_id_b, None, None, 'user b message'
+            )
+            mock_send_email = mock.Mock(
+                side_effect=email_services.PermanentEmailSendingError(
+                    'Fake 400 error'
+                )
+            )
+            with self.swap(
+                email_manager,
+                'send_instant_feedback_message_email',
+                mock_send_email,
+            ):
                 self.process_and_flush_pending_tasks()
 
-                # Check that user B received message.
-                messages = self._get_sent_email_messages(
-                    self.USER_B_EMAIL)
-                self.assertEqual(len(messages), 1)
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_flag_exploration_email_drops_task_on_permanent_error(
+        self,
+    ) -> None:
+        """Test that permanent 4xx errors drop flag exploration email."""
+        mock_send_email = mock.Mock(
+            side_effect=email_services.PermanentEmailSendingError(
+                'Fake 400 error'
+            )
+        )
+        with self.swap(
+            email_manager, 'send_flag_exploration_email', mock_send_email
+        ):
+            payload = {
+                'exploration_id': self.exploration.id,
+                'report_text': 'bad content',
+                'reporter_id': self.user_id_b,
+            }
+            taskqueue_services.enqueue_task(
+                feconf.TASK_URL_FLAG_EXPLORATION_EMAILS, payload, 0
+            )
+            self.process_and_flush_pending_tasks()
 
-                # Check that user B received correct message.
-                expected_message = (
-                    'Hi userB,\nuserA has submitted a new suggestion'
-                    ' for your Oppia exploration, "Title".\nYou can'
-                    ' accept or reject this suggestion by visiting'
-                    ' the feedback page for your exploration.\n\nTha'
-                    'nks!\n- The Oppia Team\n\nYou can change your'
-                    ' email preferences via the Preferences page.')
-                self.assertEqual(messages[0].body, expected_message)
-
-    def test_instant_feedback_reply_email(self):
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_instant_feedback_reply_email(self) -> None:
         """Tests Instant feedback message handler."""
-        with self.can_send_feedback_email_ctx, self.can_send_emails_ctx:
+        with self.can_send_feedback_email_ctx:
             feedback_services.create_thread(
-                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id,
-                self.user_id_a, 'a subject', 'some text')
+                feconf.ENTITY_TYPE_EXPLORATION,
+                self.exploration.id,
+                self.user_id_a,
+                'a subject',
+                'some text',
+            )
             threadlist = feedback_services.get_all_threads(
-                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False)
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False
+            )
             thread_id = threadlist[0].id
             # Create reply message.
             feedback_services.create_message(
-                thread_id, self.user_id_b, None, None, 'user b message')
+                thread_id, self.user_id_b, None, None, 'user b message'
+            )
             # Get all messages in the thread.
             messages = feedback_services.get_messages(thread_id)
             # Make sure there are only 2 messages in thread.
             self.assertEqual(len(messages), 2)
 
             # Ensure that user A has no emails sent yet.
-            messages = self._get_sent_email_messages(
-                self.USER_A_EMAIL)
-            self.assertEqual(len(messages), 0)
+            mock_email_messages = self._get_sent_email_messages(
+                self.USER_A_EMAIL
+            )
+            self.assertEqual(len(mock_email_messages), 0)
 
             # Invoke InstantFeedbackMessageEmail which sends
             # instantFeedbackMessage.
             self.process_and_flush_pending_tasks()
 
             # Ensure that user A has an email sent now.
-            messages = self._get_sent_email_messages(
-                self.USER_A_EMAIL)
-            self.assertEqual(len(messages), 1)
+            mock_email_messages = self._get_sent_email_messages(
+                self.USER_A_EMAIL
+            )
+            self.assertEqual(len(mock_email_messages), 1)
 
             # Ensure that user A has right email sent to them.
             expected_message = (
@@ -239,29 +516,55 @@ class TasksTests(test_utils.EmailTestBase):
                 ' this message because you are a participant in'
                 ' this thread.)\n\nBest wishes,\nThe Oppia'
                 ' team\n\nYou can change your email preferences'
-                ' via the Preferences page.')
-            self.assertEqual(messages[0].body, expected_message)
+                ' via the Preferences page.'
+            )
+            self.assertEqual(mock_email_messages[0].body, expected_message)
 
-    def test_email_sent_when_status_changed(self):
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_email_sent_when_status_changed(self) -> None:
         """Tests Feedback Thread Status Change Email Handler."""
-        with self.can_send_feedback_email_ctx, self.can_send_emails_ctx:
+        with self.can_send_feedback_email_ctx:
             # Create thread.
             feedback_services.create_thread(
-                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id,
-                self.user_id_a, 'a subject', 'some text')
+                feconf.ENTITY_TYPE_EXPLORATION,
+                self.exploration.id,
+                self.user_id_a,
+                'a subject',
+                'some text',
+            )
             threadlist = feedback_services.get_all_threads(
-                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False)
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False
+            )
             thread_id = threadlist[0].id
 
             # User B creates message with status change.
             feedback_services.create_message(
-                thread_id, self.user_id_b,
+                thread_id,
+                self.user_id_b,
                 feedback_models.STATUS_CHOICES_FIXED,
-                None, 'user b message')
+                None,
+                'user b message',
+            )
 
             # Ensure user A has no messages sent to him yet.
-            messages = self._get_sent_email_messages(
-                self.USER_A_EMAIL)
+            messages = self._get_sent_email_messages(self.USER_A_EMAIL)
             self.assertEqual(len(messages), 0)
 
             # Invoke feedback status change email handler.
@@ -269,8 +572,7 @@ class TasksTests(test_utils.EmailTestBase):
 
             # Check that user A has 2 emails sent to him.
             # 1 instant feedback message email and 1 status change.
-            messages = self._get_sent_email_messages(
-                self.USER_A_EMAIL)
+            messages = self._get_sent_email_messages(self.USER_A_EMAIL)
             self.assertEqual(len(messages), 2)
 
             # Check that user A has right email sent to him.
@@ -279,47 +581,70 @@ class TasksTests(test_utils.EmailTestBase):
                 ' userB: changed status from open to fixed\n(You received'
                 ' this message because you are a participant in this thread'
                 '.)\n\nBest wishes,\nThe Oppia team\n\nYou can change your'
-                ' email preferences via the Preferences page.')
+                ' email preferences via the Preferences page.'
+            )
             status_change_email = messages[0]
             self.assertEqual(status_change_email.body, expected_message)
 
-    def test_email_sent_to_moderator_after_flag(self):
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_email_sent_to_moderator_after_flag(self) -> None:
         """Tests Flagged Exploration Email Handler."""
 
-        def fake_get_user_ids_by_role(_):
+        def fake_get_user_ids_by_role(_: str) -> List[str]:
             """Replaces get_user_ids_by_role for testing purposes."""
             return [self.moderator_id]
-        get_moderator_id_as_list = self.swap(
-            user_services, 'get_user_ids_by_role',
-            fake_get_user_ids_by_role)
 
-        with self.can_send_feedback_email_ctx, self.can_send_emails_ctx:
+        get_moderator_id_as_list = self.swap(
+            user_services, 'get_user_ids_by_role', fake_get_user_ids_by_role
+        )
+
+        with self.can_send_feedback_email_ctx:
             with get_moderator_id_as_list:
 
                 # Create thread.
                 feedback_services.create_thread(
-                    feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id,
-                    self.user_id_a, 'bad subject', 'bad text')
+                    feconf.ENTITY_TYPE_EXPLORATION,
+                    self.exploration.id,
+                    self.user_id_a,
+                    'bad subject',
+                    'bad text',
+                )
 
                 # User B reports thread, sends email.
                 payload = {
                     'exploration_id': self.exploration.id,
                     'report_text': 'He said a bad word :-( ',
-                    'reporter_id': self.user_id_b}
+                    'reporter_id': self.user_id_b,
+                }
                 taskqueue_services.enqueue_task(
-                    feconf.TASK_URL_FLAG_EXPLORATION_EMAILS,
-                    payload, 0)
+                    feconf.TASK_URL_FLAG_EXPLORATION_EMAILS, payload, 0
+                )
                 # Ensure moderator has no messages sent to him yet.
-                messages = self._get_sent_email_messages(
-                    self.MODERATOR_EMAIL)
+                messages = self._get_sent_email_messages(self.MODERATOR_EMAIL)
                 self.assertEqual(len(messages), 0)
 
                 # Invoke Flag Exploration Email Handler.
                 self.process_and_flush_pending_tasks()
 
                 # Ensure moderator has 1 email now.
-                messages = self._get_sent_email_messages(
-                    self.MODERATOR_EMAIL)
+                messages = self._get_sent_email_messages(self.MODERATOR_EMAIL)
                 self.assertEqual(len(messages), 1)
 
                 # Ensure moderator has received correct email.
@@ -328,36 +653,536 @@ class TasksTests(test_utils.EmailTestBase):
                     ' on the following grounds: \nHe said a bad word :-( '
                     ' .\nYou can modify the exploration by clicking here'
                     '.\n\nThanks!\n- The Oppia Team\n\nYou can change your'
-                    ' email preferences via the Preferences page.')
+                    ' email preferences via the Preferences page.'
+                )
                 self.assertEqual(messages[0].body, expected_message)
 
-    def test_deferred_tasks_handler_raises_correct_exceptions(self):
+    def test_deferred_tasks_handler_raises_correct_exceptions(self) -> None:
         incorrect_function_identifier = 'incorrect_function_id'
-        taskqueue_services.defer(
-            incorrect_function_identifier,
-            taskqueue_services.QUEUE_NAME_DEFAULT)
-
-        raises_incorrect_function_id_exception = self.assertRaisesRegexp(
+        raises_incorrect_function_id_exception = self.assertRaisesRegex(
             Exception,
-            'The function id, %s, is not valid.' %
-            incorrect_function_identifier)
+            'Value \'%s\' for property function_id is not an allowed choice'
+            % incorrect_function_identifier,
+        )
 
         with raises_incorrect_function_id_exception:
+            taskqueue_services.defer(
+                incorrect_function_identifier,
+                taskqueue_services.QUEUE_NAME_DEFAULT,
+            )
             self.process_and_flush_pending_tasks()
 
         headers = {
             # Need to convert to bytes since test app doesn't allow unicode.
-            'X-Appengine-QueueName': python_utils.convert_to_bytes('queue'),
-            'X-Appengine-TaskName': python_utils.convert_to_bytes('None'),
-            'X-AppEngine-Fake-Is-Admin': python_utils.convert_to_bytes('1')
+            'X-Appengine-QueueName': b'queue',
+            'X-Appengine-TaskName': b'None',
+            'X-AppEngine-Fake-Is-Admin': b'1',
         }
         csrf_token = self.get_new_csrf_token()
 
         self.post_task(
-            feconf.TASK_URL_DEFERRED, {}, headers,
-            csrf_token=csrf_token, expect_errors=True, expected_status_int=500)
+            feconf.TASK_URL_DEFERRED,
+            {},
+            headers,
+            csrf_token=csrf_token,
+            expect_errors=True,
+            expected_status_int=500,
+        )
 
-    def test_deferred_tasks_handler_handles_tasks_correctly(self):
+    def test_should_handle_deferred_tasks_successfully(self) -> None:
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        new_model_id = 'cloud_task_model_id'
+        project_id = 'dev-project-id'
+        location_id = 'us-central'
+        task_id = uuid.uuid4().hex
+        queue_name = 'test_queue_name'
+        task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id,
+        )
+        function_id = 'delete_exps_from_user_models'
+
+        payload = {
+            'fn_identifier': function_id,
+            'cloud_task_model_id': new_model_id,
+            'args': [['exp1', 'exp2']],
+            'kwargs': {},
+        }
+
+        cloud_task_run_model = taskqueue_services.create_new_cloud_task_model(
+            new_model_id, task_name, function_id
+        )
+        self.assertEqual(cloud_task_run_model.latest_job_state, 'PENDING')
+
+        self.post_task(
+            url,
+            payload,
+            expect_errors=False,
+            expected_status_int=200,
+            csrf_token=csrf_token,
+            headers=headers,
+        )
+
+        cloud_task_run_model_obj = (
+            taskqueue_services.get_cloud_task_run_by_model_id(new_model_id)
+        )
+        assert cloud_task_run_model_obj is not None
+        self.assertEqual(cloud_task_run_model_obj.latest_job_state, 'SUCCEEDED')
+
+    def test_should_handle_voiceover_deferred_tasks_successfully(self) -> None:
+        exploration_id = 'exploration_id'
+        self.save_new_valid_exploration(
+            exploration_id,
+            self.owner_id,
+            content_html='Hello world',
+        )
+        rights_manager.publish_exploration(self.owner, exploration_id)
+
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        new_model_id = 'cloud_task_model_id'
+        project_id = 'dev-project-id'
+        location_id = 'us-central'
+        task_id = uuid.uuid4().hex
+        queue_name = 'test_queue_name'
+        task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id,
+        )
+        function_id = 'regenerate_voiceovers_on_exploration_added_to_topic'
+
+        payload = {
+            'fn_identifier': function_id,
+            'cloud_task_model_id': new_model_id,
+            'args': [exploration_id],
+            'kwargs': {},
+        }
+
+        cloud_task_run_model = taskqueue_services.create_new_cloud_task_model(
+            new_model_id, task_name, function_id
+        )
+        self.assertEqual(cloud_task_run_model.latest_job_state, 'PENDING')
+        self.post_task(
+            url,
+            payload,
+            expect_errors=False,
+            expected_status_int=200,
+            csrf_token=csrf_token,
+            headers=headers,
+        )
+
+        cloud_task_run_model_obj = (
+            taskqueue_services.get_cloud_task_run_by_model_id(new_model_id)
+        )
+        assert cloud_task_run_model_obj is not None
+        self.assertEqual(cloud_task_run_model_obj.latest_job_state, 'RUNNING')
+
+    def test_should_handle_failure_case_for_voiceover_deferred_tasks(
+        self,
+    ) -> None:
+        exploration_id = 'exploration_id'
+        exploration_version = 1
+        language_accent_code = 'en-US'
+        content_ids_to_contents_map = {'content_0': 'Hello world'}
+        self.save_new_valid_exploration(exploration_id, self.owner_id)
+        rights_manager.publish_exploration(self.owner, exploration_id)
+
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        parent_cloud_task_run_id = 'parent_cloud_task_model_id'
+        child_cloud_task_run_id = 'cloud_task_model_id'
+        project_id = 'dev-project-id'
+        location_id = 'us-central'
+        task_id_1 = uuid.uuid4().hex
+        task_id_2 = uuid.uuid4().hex
+        queue_name = 'test_queue_name'
+        parent_task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id_1,
+        )
+        child_task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id_2,
+        )
+        parent_function_id = 'regenerate_voiceovers_on_exploration_update'
+        child_function_id = 'regenerate_voiceovers_for_batch_contents'
+
+        payload = {
+            'fn_identifier': child_function_id,
+            'cloud_task_model_id': child_cloud_task_run_id,
+            'parent_cloud_task_run_id': parent_cloud_task_run_id,
+            'args': [exploration_id],
+            'kwargs': {},
+        }
+
+        taskqueue_services.create_new_cloud_task_model(
+            parent_cloud_task_run_id, parent_task_name, parent_function_id
+        )
+        child_cloud_task_run_model = (
+            taskqueue_services.create_new_cloud_task_model(
+                child_cloud_task_run_id, child_task_name, child_function_id
+            )
+        )
+        voiceover_regeneration_task_batch = (
+            cloud_task_domain.VoiceoverRegenerationTaskBatch(
+                parent_cloud_task_run_id,
+                child_cloud_task_run_id,
+                exploration_id,
+                exploration_version,
+                language_accent_code,
+                content_ids_to_contents_map,
+            )
+        )
+        voiceover_regeneration_job = cloud_task_domain.VoiceoverRegenerationJob(
+            exploration_id,
+            parent_cloud_task_run_id,
+            {'en-US': {'content_0': 'GENERATING'}},
+        )
+
+        voiceover_cloud_task_services.create_voiceover_regeneration_task_batch_model(
+            voiceover_regeneration_task_batch
+        )
+        voiceover_cloud_task_services.save_voiceover_regeneration_job(
+            voiceover_regeneration_job
+        )
+
+        self.assertEqual(child_cloud_task_run_model.latest_job_state, 'PENDING')
+
+        def mock_regenerate_voiceovers_of_exploration(
+            _exploration_id: str,
+            _exploration_version: int,
+            _content_id_to_content_html: Dict[str, str],
+            _language_accent_code: str,
+        ) -> List[Tuple[str, str]]:
+            return [
+                ('content_0', 'Error 1 occurred'),
+            ]
+
+        with self.swap(
+            voiceover_regeneration_services,
+            'regenerate_voiceovers_of_exploration',
+            mock_regenerate_voiceovers_of_exploration,
+        ):
+            self.post_task(
+                url,
+                payload,
+                expect_errors=False,
+                expected_status_int=200,
+                csrf_token=csrf_token,
+                headers=headers,
+            )
+
+        cloud_task_run_model_obj = (
+            taskqueue_services.get_cloud_task_run_by_model_id(
+                child_cloud_task_run_id
+            )
+        )
+        assert cloud_task_run_model_obj is not None
+        self.assertEqual(
+            cloud_task_run_model_obj.latest_job_state, 'PERMANENTLY_FAILED'
+        )
+
+    def test_should_request_batch_regeneration_successfully(self) -> None:
+        exploration_id = 'exploration_id'
+        exploration_version = 1
+        language_accent_code = 'en-US'
+        content_ids_to_contents_map = {'content_0': 'Hello world'}
+        self.save_new_valid_exploration(exploration_id, self.owner_id)
+        rights_manager.publish_exploration(self.owner, exploration_id)
+
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        parent_cloud_task_run_id = 'parent_cloud_task_model_id'
+        child_cloud_task_run_id = 'cloud_task_model_id'
+        project_id = 'dev-project-id'
+        location_id = 'us-central'
+        task_id_1 = uuid.uuid4().hex
+        task_id_2 = uuid.uuid4().hex
+        queue_name = 'test_queue_name'
+        parent_task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id_1,
+        )
+        child_task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id_2,
+        )
+        parent_function_id = 'regenerate_voiceovers_on_exploration_update'
+        child_function_id = 'regenerate_voiceovers_for_batch_contents'
+
+        payload = {
+            'fn_identifier': child_function_id,
+            'cloud_task_model_id': child_cloud_task_run_id,
+            'parent_cloud_task_run_id': parent_cloud_task_run_id,
+            'args': [exploration_id],
+            'kwargs': {},
+        }
+
+        taskqueue_services.create_new_cloud_task_model(
+            parent_cloud_task_run_id, parent_task_name, parent_function_id
+        )
+        child_cloud_task_run_model = (
+            taskqueue_services.create_new_cloud_task_model(
+                child_cloud_task_run_id, child_task_name, child_function_id
+            )
+        )
+        voiceover_regeneration_task_batch = (
+            cloud_task_domain.VoiceoverRegenerationTaskBatch(
+                parent_cloud_task_run_id,
+                child_cloud_task_run_id,
+                exploration_id,
+                exploration_version,
+                language_accent_code,
+                content_ids_to_contents_map,
+            )
+        )
+        voiceover_regeneration_job = cloud_task_domain.VoiceoverRegenerationJob(
+            exploration_id,
+            parent_cloud_task_run_id,
+            {'en-US': {'content_0': 'GENERATING'}},
+        )
+
+        voiceover_cloud_task_services.create_voiceover_regeneration_task_batch_model(
+            voiceover_regeneration_task_batch
+        )
+        voiceover_cloud_task_services.save_voiceover_regeneration_job(
+            voiceover_regeneration_job
+        )
+
+        self.assertEqual(child_cloud_task_run_model.latest_job_state, 'PENDING')
+
+        def mock_regenerate_voiceovers_of_exploration(
+            _exploration_id: str,
+            _exploration_version: int,
+            _content_id_to_content_html: Dict[str, str],
+            _language_accent_code: str,
+        ) -> List[Tuple[str, str]]:
+            return []
+
+        with self.swap(
+            voiceover_regeneration_services,
+            'regenerate_voiceovers_of_exploration',
+            mock_regenerate_voiceovers_of_exploration,
+        ):
+            self.post_task(
+                url,
+                payload,
+                expect_errors=False,
+                expected_status_int=200,
+                csrf_token=csrf_token,
+                headers=headers,
+            )
+
+        cloud_task_run_model_obj = (
+            taskqueue_services.get_cloud_task_run_by_model_id(
+                child_cloud_task_run_id
+            )
+        )
+        assert cloud_task_run_model_obj is not None
+        self.assertEqual(cloud_task_run_model_obj.latest_job_state, 'SUCCEEDED')
+
+    def test_should_raise_error_for_missing_cloud_task_model_id(self) -> None:
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        function_id = 'delete_exps_from_user_models'
+        payload = {
+            'fn_identifier': function_id,
+            'args': [['exp1', 'exp2']],
+            'kwargs': {},
+        }
+
+        response = self.post_task(
+            url,
+            payload,
+            expect_errors=True,
+            expected_status_int=500,
+            csrf_token=csrf_token,
+            headers=headers,
+        )
+        self.assertIn(
+            b'The payload must contain a cloud_task_model_id attribute.',
+            response.body,
+        )
+
+    def test_should_raise_error_for_invalid_function_id(self) -> None:
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        payload = {
+            'fn_identifier': 'invalid_function_id',
+            'args': [['exp1', 'exp2']],
+            'kwargs': {},
+        }
+
+        response = self.post_task(
+            url,
+            payload,
+            expect_errors=True,
+            expected_status_int=500,
+            csrf_token=csrf_token,
+            headers=headers,
+        )
+        self.assertIn(
+            b'The function id, invalid_function_id, is not valid.',
+            response.body,
+        )
+
+    def test_should_mark_failed_and_awaiting_retry_correctly(self) -> None:
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        new_model_id = 'cloud_task_model_id'
+        project_id = 'dev-project-id'
+        location_id = 'us-central'
+        task_id = uuid.uuid4().hex
+        queue_name = 'test_queue_name'
+        task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id,
+        )
+        function_id = 'delete_exps_from_user_models'
+
+        payload = {
+            'fn_identifier': function_id,
+            'cloud_task_model_id': new_model_id,
+            'args': [],
+            'kwargs': {},
+        }
+
+        cloud_task_run_model = taskqueue_services.create_new_cloud_task_model(
+            new_model_id, task_name, function_id
+        )
+        self.assertEqual(cloud_task_run_model.latest_job_state, 'PENDING')
+
+        response = self.post_task(
+            url,
+            payload,
+            expect_errors=False,
+            expected_status_int=500,
+            csrf_token=csrf_token,
+            headers=headers,
+        )
+        error_message = (
+            b'Error running deferred task: delete_explorations_from_user_models'
+        )
+        self.assertIn(error_message, response.body)
+
+        cloud_task_run_model_obj = (
+            taskqueue_services.get_cloud_task_run_by_model_id(new_model_id)
+        )
+        assert cloud_task_run_model_obj is not None
+        self.assertEqual(
+            cloud_task_run_model_obj.latest_job_state,
+            'FAILED_AND_AWAITING_RETRY',
+        )
+
+    def test_should_mark_permanently_failed_correctly(self) -> None:
+        url = feconf.TASK_URL_DEFERRED
+        csrf_token = self.get_new_csrf_token()
+        headers = {
+            'X-Appengine-QueueName': 'queue',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+        new_model_id = 'cloud_task_model_id'
+        project_id = 'dev-project-id'
+        location_id = 'us-central'
+        task_id = uuid.uuid4().hex
+        queue_name = 'voiceover-regeneration'
+        task_name = 'projects/%s/locations/%s/queues/%s/tasks/%s' % (
+            project_id,
+            location_id,
+            queue_name,
+            task_id,
+        )
+        function_id = 'delete_exps_from_user_models'
+
+        payload = {
+            'fn_identifier': function_id,
+            'cloud_task_model_id': new_model_id,
+            'args': [],
+            'kwargs': {},
+        }
+
+        cloud_task_run_model = taskqueue_services.create_new_cloud_task_model(
+            new_model_id, task_name, function_id
+        )
+        cloud_task_run_model.current_retry_attempt = 2
+        cloud_task_run_model.update_timestamps()
+        cloud_task_run_model.put()
+
+        self.assertEqual(cloud_task_run_model.latest_job_state, 'PENDING')
+
+        response = self.post_task(
+            url,
+            payload,
+            expect_errors=False,
+            expected_status_int=500,
+            csrf_token=csrf_token,
+            headers=headers,
+        )
+
+        error_message = (
+            b'Error running deferred task: delete_explorations_from_user_models'
+        )
+        self.assertIn(error_message, response.body)
+        cloud_task_run_model_obj = (
+            taskqueue_services.get_cloud_task_run_by_model_id(new_model_id)
+        )
+        assert cloud_task_run_model_obj is not None
+        self.assertEqual(
+            cloud_task_run_model_obj.latest_job_state, 'PERMANENTLY_FAILED'
+        )
+
+    def test_deferred_tasks_handler_handles_tasks_correctly(self) -> None:
         exp_id = '15'
         self.login(self.VIEWER_EMAIL)
         self.signup(self.VIEWER_EMAIL, self.VIEWER_USERNAME)
@@ -370,8 +1195,8 @@ class TasksTests(test_utils.EmailTestBase):
             state_name: stats_domain.StateStats.create_default()
         }
         exploration_stats = stats_domain.ExplorationStats(
-            exp_id, exp_version, 0, 0, 0, 0, 0, 0,
-            state_stats_mapping)
+            exp_id, exp_version, 0, 0, 0, 0, 0, 0, state_stats_mapping
+        )
         stats_services.create_stats_model(exploration_stats)
 
         aggregated_stats = {
@@ -385,23 +1210,191 @@ class TasksTests(test_utils.EmailTestBase):
                     'total_answers_count': 1,
                     'useful_feedback_count': 1,
                     'num_times_solution_viewed': 1,
-                    'num_completions': 1
+                    'num_completions': 1,
                 }
-            }
+            },
         }
-        self.post_json('/explorehandler/stats_events/%s' % (exp_id), {
-            'aggregated_stats': aggregated_stats,
-            'exp_version': exp_version})
-        self.assertEqual(self.count_jobs_in_taskqueue(
-            taskqueue_services.QUEUE_NAME_STATS), 1)
+        self.post_json(
+            '/explorehandler/stats_events/%s' % (exp_id),
+            {'aggregated_stats': aggregated_stats, 'exp_version': exp_version},
+        )
+        self.assertEqual(
+            self.count_jobs_in_taskqueue(taskqueue_services.QUEUE_NAME_STATS), 1
+        )
         self.process_and_flush_pending_tasks()
 
         # Check that the models are updated.
-        exploration_stats = stats_services.get_exploration_stats_by_id(
-            exp_id, exp_version)
-        self.assertEqual(exploration_stats.num_starts_v2, 1)
-        self.assertEqual(exploration_stats.num_actual_starts_v2, 1)
-        self.assertEqual(exploration_stats.num_completions_v2, 1)
+        updated_exploration_stats = stats_services.get_exploration_stats_by_id(
+            exp_id, exp_version
+        )
+        assert updated_exploration_stats is not None
+        self.assertEqual(updated_exploration_stats.num_starts_v2, 1)
+        self.assertEqual(updated_exploration_stats.num_actual_starts_v2, 1)
+        self.assertEqual(updated_exploration_stats.num_completions_v2, 1)
         self.assertEqual(
-            exploration_stats.state_stats_mapping[
-                state_name].total_hit_count_v2, 1)
+            updated_exploration_stats.state_stats_mapping[
+                state_name
+            ].total_hit_count_v2,
+            1,
+        )
+
+    @test_utils.set_platform_parameters(
+        [
+            (platform_parameter_list.ParamName.EMAIL_FOOTER, EMAIL_FOOTER),
+            (platform_parameter_list.ParamName.EMAIL_SENDER_NAME, 'sender'),
+            (
+                platform_parameter_list.ParamName.ADMIN_EMAIL_ADDRESS,
+                'testadmin@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.SYSTEM_EMAIL_ADDRESS,
+                'system@example.com',
+            ),
+            (
+                platform_parameter_list.ParamName.NOREPLY_EMAIL_ADDRESS,
+                'noreply@example.com',
+            ),
+        ]
+    )
+    def test_status_change_email_drops_task_on_permanent_error(
+        self,
+    ) -> None:
+        """Test that permanent 4xx errors drop status change email."""
+        with self.can_send_feedback_email_ctx:
+            feedback_services.create_thread(
+                feconf.ENTITY_TYPE_EXPLORATION,
+                self.exploration.id,
+                self.user_id_a,
+                'a subject',
+                'some text',
+            )
+            threadlist = feedback_services.get_all_threads(
+                feconf.ENTITY_TYPE_EXPLORATION, self.exploration.id, False
+            )
+            thread_id = threadlist[0].id
+
+            feedback_services.create_message(
+                thread_id,
+                self.user_id_b,
+                feedback_models.STATUS_CHOICES_FIXED,
+                None,
+                'user b message',
+            )
+
+            mock_send_email = mock.Mock(
+                side_effect=email_services.PermanentEmailSendingError(
+                    'Fake 400 error'
+                )
+            )
+
+            with self.swap(
+                email_manager,
+                'send_instant_feedback_message_email',
+                mock_send_email,
+            ):
+                self.process_and_flush_pending_tasks()
+
+
+class RetryEmailHandlerTests(test_utils.EmailTestBase):
+    """Tests for the RetryEmailHandler."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.payload = {
+            'sender_email': 'sender@example.com',
+            'recipient_id': 'recipient@example.com',
+            'subject': 'Test Subject',
+            'html_body': '<html>Test Body</html>',
+            'text_body': 'Test Body',
+        }
+        self.url = feconf.TASK_URL_RETRY_FAILED_EMAIL
+        self.csrf_token = self.get_new_csrf_token()
+
+        self.headers = {
+            'X-Appengine-QueueName': 'emails',
+            'X-Appengine-TaskName': 'None',
+            'X-AppEngine-Fake-Is-Admin': '1',
+        }
+
+    def test_successful_retry_returns_200(self) -> None:
+        def mock_send_mail(*_args: str, **_kwargs: str) -> None:
+            pass
+
+        send_mail_swap = self.swap(email_services, 'send_mail', mock_send_mail)
+
+        with send_mail_swap:
+            self.post_task(
+                self.url,
+                self.payload,
+                self.headers,
+                csrf_token=self.csrf_token,
+                expect_errors=False,
+                expected_status_int=200,
+            )
+
+    def test_failed_retry_raises_exception_to_trigger_cloud_task_retry(
+        self,
+    ) -> None:
+        def mock_send_mail_that_fails(*_args: str, **_kwargs: str) -> None:
+            raise Exception('Mock email failure')
+
+        send_mail_swap = self.swap(
+            email_services, 'send_mail', mock_send_mail_that_fails
+        )
+
+        with send_mail_swap:
+            response = self.post_task(
+                self.url,
+                self.payload,
+                self.headers,
+                csrf_token=self.csrf_token,
+                expect_errors=True,
+                expected_status_int=500,
+            )
+
+        self.assertEqual(response.status_int, 500)
+        self.assertIn(
+            b'Failed to resend email: Mock email failure', response.body
+        )
+
+    def test_drops_task_on_permanent_email_error(self) -> None:
+        def mock_send_mail_permanent_error(*_args: str, **_kwargs: str) -> None:
+            raise email_services.PermanentEmailSendingError('Fake 400 error')
+
+        send_mail_swap = self.swap(
+            email_services, 'send_mail', mock_send_mail_permanent_error
+        )
+
+        with send_mail_swap:
+            response = self.post_task(
+                self.url,
+                self.payload,
+                self.headers,
+                csrf_token=self.csrf_token,
+                expect_errors=False,
+                expected_status_int=200,
+            )
+
+        self.assertEqual(response.status_int, 200)
+
+    def test_drops_task_after_max_retries_exceeded(self) -> None:
+        def mock_send_mail_that_fails(*_args: str, **_kwargs: str) -> None:
+            raise Exception('Mock email failure')
+
+        send_mail_swap = self.swap(
+            email_services, 'send_mail', mock_send_mail_that_fails
+        )
+
+        self.headers['X-AppEngine-TaskExecutionCount'] = '3'
+
+        with send_mail_swap:
+            response = self.post_task(
+                self.url,
+                self.payload,
+                self.headers,
+                csrf_token=self.csrf_token,
+                expect_errors=False,
+                expected_status_int=200,
+            )
+
+        self.assertEqual(response.status_int, 200)

@@ -16,189 +16,318 @@
  * @fileoverview Unit tests for the question misconception editor component.
  */
 
-import { EventEmitter } from '@angular/core';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {
+  Outcome,
+  QuestionMisconceptionEditorComponent,
+} from './question-misconception-editor.component';
+import {ExternalSaveService} from 'services/external-save.service';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {
+  Misconception,
+  MisconceptionSkillMap,
+} from 'domain/skill/misconception.model';
 
-// TODO(#7222): Remove the following block of unnnecessary imports once
-// question-misconception-editor.component.ts is upgraded to Angular 8.
-import { MisconceptionObjectFactory } from
-  'domain/skill/MisconceptionObjectFactory';
-import { OutcomeObjectFactory } from
-  'domain/exploration/OutcomeObjectFactory';
-import { RuleObjectFactory } from 'domain/exploration/RuleObjectFactory';
-import { SolutionValidityService } from
-  'pages/exploration-editor-page/editor-tab/services/solution-validity.service';
-import { StateEditorService } from 'components/state-editor/state-editor-properties-services/state-editor.service';
+class MockNgbModalRef {
+  componentInstance = {
+    taggedSkillMisconceptionId: null,
+  };
+}
 
-// ^^^ This block is to be removed.
+describe('Question Misconception Editor Component', () => {
+  let component: QuestionMisconceptionEditorComponent;
+  let fixture: ComponentFixture<QuestionMisconceptionEditorComponent>;
+  let ngbModal: NgbModal;
+  let stateEditorService: StateEditorService;
 
-require('directives/angular-html-bind.directive.ts');
+  let mockMisconceptionObject: MisconceptionSkillMap;
+  let outcome = {
+    feedback: {
+      content_id: null,
+      html: '',
+    },
+  } as Outcome;
 
-require('domain/utilities/url-interpolation.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-editor.service.ts');
-
-describe('Question misconception editor component', function() {
-  var $componentController = null;
-  var $uibModal = null;
-  var $q = null;
-  var $rootScope = null;
-  var ctrl = null;
-  var misconceptionObjectFactory = null;
-  var mockMisconceptionObject = null;
-  var ses = null;
-
-  var mockExternalSaveEventEmitter = null;
-
-  beforeEach(angular.mock.module('oppia'));
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.value(
-      'MisconceptionObjectFactory', new MisconceptionObjectFactory());
-    $provide.value(
-      'StateEditorService', new StateEditorService(
-        new SolutionValidityService()));
-    mockExternalSaveEventEmitter = new EventEmitter();
-    $provide.value('ExternalSaveService', {
-      onExternalSave: mockExternalSaveEventEmitter
-    });
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [QuestionMisconceptionEditorComponent],
+      providers: [StateEditorService, ExternalSaveService],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
-  beforeEach(angular.mock.inject(
-    function(_$componentController_, _$q_, _$rootScope_, $injector) {
-      $componentController = _$componentController_;
-      $uibModal = $injector.get('$uibModal');
-      $q = _$q_;
-      $rootScope = _$rootScope_;
-      misconceptionObjectFactory = $injector.get('MisconceptionObjectFactory');
-      ses = $injector.get('StateEditorService');
-    }));
+  beforeEach(() => {
+    fixture = TestBed.createComponent(QuestionMisconceptionEditorComponent);
+    component = fixture.componentInstance;
+    ngbModal = TestBed.inject(NgbModal);
+    stateEditorService = TestBed.inject(StateEditorService);
 
-  beforeEach(function() {
-    var onSaveTaggedMisconceptionSpy = jasmine.createSpy(
-      'onSaveTaggedMisconception');
-    var onSaveAnswerGroupFeedbackSpy = jasmine.createSpy(
-      'onSaveAnswerGroupFeedback');
-    var outcome = new OutcomeObjectFactory();
-    var rules = new RuleObjectFactory();
+    component.isEditable = true;
+    component.outcome = outcome;
     mockMisconceptionObject = {
       abc: [
-        misconceptionObjectFactory.create(
-          '1', 'misc1', 'notes1', 'feedback1', true),
-        misconceptionObjectFactory.create(
-          '2', 'misc2', 'notes2', 'feedback1', true)
-      ]
+        Misconception.create(1, 'misc1', 'notes1', 'feedback1', true),
+        Misconception.create(2, 'misc2', 'notes2', 'feedback1', true),
+      ],
     };
-    spyOn(ses, 'getMisconceptionsBySkill').and.callFake(function() {
+    spyOn(stateEditorService, 'getMisconceptionsBySkill').and.callFake(() => {
       return mockMisconceptionObject;
     });
-    ctrl = $componentController('questionMisconceptionEditor', null, {
-      getOnSaveAnswerGroupFeedbackFn: () => onSaveAnswerGroupFeedbackSpy,
-      getOnSaveTaggedMisconception: () => onSaveTaggedMisconceptionSpy,
-      getTaggedSkillMisconceptionId: () => null,
-      isEditable: true,
-      outcome: outcome,
-      rules: rules
-    });
-    ctrl.$onInit();
+
+    component.taggedSkillMisconceptionId = 'abc-1';
+    fixture.detectChanges();
   });
 
-  it(
-    'should initialize correctly when tagged misconception is provided',
-    function() {
-      spyOn(ctrl, 'getTaggedSkillMisconceptionId').and.callFake(() => 'abc-1');
-      ctrl.$onInit();
-      expect(ctrl.misconceptionName).toEqual('misc1');
-      expect(ctrl.selectedMisconception).toEqual(
-        mockMisconceptionObject.abc[0]);
-      expect(ctrl.selectedMisconceptionSkillId).toEqual('abc');
-    });
-
-  it('should use feedback by default', function() {
-    expect(ctrl.feedbackIsUsed).toBeTrue();
-    expect(ctrl.misconceptionsBySkill).toEqual(mockMisconceptionObject);
+  it('should initialize correctly when tagged misconception is provided', () => {
+    expect(component.misconceptionEditorIsOpen).toBeFalse();
+    expect(component.misconceptionName).toEqual('misc1');
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[0]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('abc');
+    expect(component.feedbackIsUsed).toBeTrue();
   });
 
-  it('should enable edit mode correctly', function() {
-    expect(ctrl.misconceptionEditorIsOpen).toBeNull();
-    ctrl.editMisconception();
-    expect(ctrl.misconceptionEditorIsOpen).toBeTrue();
+  it('should throw an error if tagged misconception id is invalid', () => {
+    component.taggedSkillMisconceptionId = 'invalidId';
+
+    expect(() => component.ngOnInit()).toThrowError(
+      'Expected skillMisconceptionId to be <skillId>-<misconceptionId>.'
+    );
   });
 
-  it('should report containing misconceptions correctly', function() {
-    expect(ctrl.containsMisconceptions()).toBeTrue();
-    ctrl.misconceptionsBySkill = [];
-    expect(ctrl.containsMisconceptions()).toBeFalse();
+  it('should initialize feedbackIsUsed to true if no previous state exists', () => {
+    component.previousFeedbackIsUsed = null;
+    component.ngOnInit();
+
+    expect(component.feedbackIsUsed).toBeTrue();
   });
 
-  it(
-    'should throw an error if tagged misconception id is invalid', function() {
-      ctrl.getTaggedSkillMisconceptionId = () => 'invalidId';
-      expect(() => ctrl.$onInit()).toThrowError(
-        'Expected skillMisconceptionId to be <skillId>-<misconceptionId>.');
-    });
+  it('should initialize feedbackIsUsed to true if previous state was true', () => {
+    component.previousFeedbackIsUsed = true;
+    component.ngOnInit();
 
-  it('should tag a misconception correctly', function() {
-    var mockResultObject = {
+    expect(component.feedbackIsUsed).toBeTrue();
+  });
+
+  it('should initialize feedbackIsUsed to false if previous state was false', () => {
+    component.previousFeedbackIsUsed = false;
+    component.ngOnInit();
+
+    expect(component.feedbackIsUsed).toBeFalse();
+  });
+
+  it('should update feedbackIsUsed and store the previous state', () => {
+    component.feedbackIsUsed = true;
+
+    const updatedValues = {
+      misconception: mockMisconceptionObject.abc[1],
+      skillId: 'id',
+      feedbackIsUsed: false,
+    };
+    component.updateValues(updatedValues);
+
+    expect(component.feedbackIsUsed).toBeFalse();
+    expect(component.previousFeedbackIsUsed).toBeTrue();
+  });
+
+  it('should clear outcome feedback if feedbackIsUsed is false and feedback matches misconception feedback', () => {
+    component.selectedMisconception = mockMisconceptionObject.abc[0];
+    component.selectedMisconceptionSkillId = 'abc';
+    component.feedbackIsUsed = false;
+    component.outcome.feedback.html =
+      mockMisconceptionObject.abc[0].getFeedback();
+
+    const saveAnswerGroupFeedbackSpy = spyOn(
+      component.saveAnswerGroupFeedback,
+      'emit'
+    );
+
+    component.updateMisconception();
+
+    const emittedOutcome = saveAnswerGroupFeedbackSpy.calls.first().args[0];
+    expect(emittedOutcome.feedback.html).toEqual('');
+  });
+
+  it('should enable edit mode correctly', () => {
+    expect(component.misconceptionEditorIsOpen).toBeFalse();
+
+    component.editMisconception();
+
+    expect(component.misconceptionEditorIsOpen).toBeTrue();
+  });
+
+  it('should report containing misconceptions in question mode', () => {
+    spyOn(stateEditorService, 'isInQuestionMode').and.returnValue(true);
+    expect(component.containsMisconceptions()).toBeTrue();
+
+    component.misconceptionsBySkill = {};
+
+    expect(component.containsMisconceptions()).toBeFalse();
+  });
+
+  it('should report containing misconceptions for state skill', () => {
+    spyOn(stateEditorService, 'isInQuestionMode').and.returnValue(false);
+    spyOn(stateEditorService, 'getLinkedSkillId').and.returnValue('abc');
+    expect(component.containsMisconceptions()).toBeTrue();
+
+    component.misconceptionsBySkill = {};
+
+    expect(component.containsMisconceptions()).toBeFalse();
+  });
+
+  it('should reset values when linked skill id change event is emitted', fakeAsync(() => {
+    let onUpdateMisconceptionsEmitter = new EventEmitter();
+    spyOnProperty(stateEditorService, 'onUpdateMisconceptions').and.returnValue(
+      onUpdateMisconceptionsEmitter
+    );
+    spyOn(component, 'initValues');
+
+    component.ngOnInit();
+    onUpdateMisconceptionsEmitter.emit();
+    tick();
+
+    expect(component.initValues).toHaveBeenCalled();
+    component.ngOnDestroy();
+  }));
+
+  it('should update values when update misconception event is emitted', fakeAsync(() => {
+    let onChangeLinkedSkillIdEmitter = new EventEmitter();
+    spyOnProperty(stateEditorService, 'onChangeLinkedSkillId').and.returnValue(
+      onChangeLinkedSkillIdEmitter
+    );
+    spyOn(component, 'initValues');
+
+    expect(component.taggedSkillMisconceptionId).toEqual('abc-1');
+
+    component.ngOnInit();
+    onChangeLinkedSkillIdEmitter.emit();
+    tick();
+
+    expect(component.taggedSkillMisconceptionId).toBeNull();
+    expect(component.initValues).toHaveBeenCalled();
+    component.ngOnDestroy();
+  }));
+
+  it('should tag a misconception correctly', fakeAsync(() => {
+    let mockResultObject = {
       misconception: mockMisconceptionObject.abc[1],
       misconceptionSkillId: 'abc',
-      feedbackIsUsed: false
+      feedbackIsUsed: false,
     };
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve(mockResultObject)
+    spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.resolve(mockResultObject),
+      } as NgbModalRef;
     });
-    expect(ctrl.misconceptionName).toBeNull();
-    expect(ctrl.selectedMisconception).toBeNull();
-    expect(ctrl.selectedMisconceptionSkillId).toBeNull();
-    expect(ctrl.feedbackIsUsed).toBeTrue();
-    ctrl.getTaggedSkillMisconceptionId = () => 'abc-1';
-    ctrl.$onInit();
-    expect(ctrl.misconceptionName).toEqual('misc1');
-    expect(ctrl.selectedMisconception).toEqual(mockMisconceptionObject.abc[0]);
-    expect(ctrl.selectedMisconceptionSkillId).toEqual('abc');
-    expect(ctrl.feedbackIsUsed).toBeTrue();
-    ctrl.tagAnswerGroupWithMisconception();
-    $rootScope.$digest();
-    expect(ctrl.misconceptionName).toEqual('misc2');
-    expect(ctrl.selectedMisconception).toEqual(mockMisconceptionObject.abc[1]);
-    expect(ctrl.selectedMisconceptionSkillId).toEqual('abc');
-    expect(ctrl.feedbackIsUsed).toBeFalse();
-    expect(ctrl.misconceptionEditorIsOpen).toBeFalse();
+
+    expect(component.misconceptionName).toEqual('misc1');
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[0]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('abc');
+    expect(component.feedbackIsUsed).toBeTrue();
+
+    component.tagAnswerGroupWithMisconception();
+    tick();
+
+    expect(component.misconceptionName).toEqual('misc2');
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[1]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('abc');
+    expect(component.feedbackIsUsed).toBeFalse();
+    expect(component.misconceptionEditorIsOpen).toBeFalse();
+  }));
+
+  it('should not tag a misconception if the modal was dismissed', () => {
+    spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.reject(),
+      } as NgbModalRef;
+    });
+
+    expect(component.misconceptionName).toEqual('misc1');
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[0]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('abc');
+    expect(component.feedbackIsUsed).toBeTrue();
+
+    component.tagAnswerGroupWithMisconception();
+
+    expect(component.misconceptionName).toEqual('misc1');
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[0]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('abc');
+    expect(component.feedbackIsUsed).toBeTrue();
   });
 
-  it('should not tag a misconception if the modal was dismissed', function() {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject()
-    });
-    expect(ctrl.misconceptionName).toBeNull();
-    expect(ctrl.selectedMisconception).toBeNull();
-    expect(ctrl.selectedMisconceptionSkillId).toBeNull();
-    expect(ctrl.feedbackIsUsed).toBeTrue();
-    ctrl.getTaggedSkillMisconceptionId = () => 'abc-1';
-    ctrl.$onInit();
-    expect(ctrl.misconceptionName).toEqual('misc1');
-    expect(ctrl.selectedMisconception).toEqual(mockMisconceptionObject.abc[0]);
-    expect(ctrl.selectedMisconceptionSkillId).toEqual('abc');
-    expect(ctrl.feedbackIsUsed).toBeTrue();
-    ctrl.tagAnswerGroupWithMisconception();
-    $rootScope.$digest();
-    expect(ctrl.misconceptionName).toEqual('misc1');
-    expect(ctrl.selectedMisconception).toEqual(mockMisconceptionObject.abc[0]);
-    expect(ctrl.selectedMisconceptionSkillId).toEqual('abc');
-    expect(ctrl.feedbackIsUsed).toBeTrue();
+  it('should update tagged misconception name correctly', () => {
+    component.misconceptionEditorIsOpen = false;
+
+    component.editMisconception();
+
+    expect(component.misconceptionEditorIsOpen).toBeTrue();
+
+    component.selectedMisconception = mockMisconceptionObject.abc[0];
+    component.selectedMisconceptionSkillId = 'abc';
+
+    component.updateMisconception();
+
+    expect(component.misconceptionEditorIsOpen).toBeFalse();
+    expect(component.misconceptionName).toEqual('misc1');
   });
 
-  it('should update tagged misconception name correctly', function() {
-    ctrl.outcome.feedback = {
-      setHtml: () => null
+  it('should untag misconception when selectedMisconception is null', () => {
+    const saveTaggedMisconceptionSpy = spyOn(
+      component.saveTaggedMisconception,
+      'emit'
+    );
+    component.selectedMisconception = null;
+    component.selectedMisconceptionSkillId = null;
+    component.misconceptionEditorIsOpen = true;
+
+    component.updateMisconception();
+
+    expect(saveTaggedMisconceptionSpy).toHaveBeenCalledWith(null);
+    expect(component.misconceptionName).toEqual('');
+    expect(component.selectedMisconceptionSkillId).toBeNull();
+    expect(component.misconceptionEditorIsOpen).toBeFalse();
+  });
+
+  it('should update the values', () => {
+    let updatedValues = {
+      misconception: mockMisconceptionObject.abc[1],
+      skillId: 'id',
+      feedbackIsUsed: false,
     };
-    ctrl.editMisconception();
-    expect(ctrl.misconceptionEditorIsOpen).toBeTrue();
-    expect(ctrl.misconceptionName).toBeNull();
-    ctrl.feedbackIsUsed = true;
-    ctrl.selectedMisconception = mockMisconceptionObject.abc[0];
-    ctrl.selectedMisconceptionSkillId = 'abc';
-    ctrl.updateMisconception();
-    expect(ctrl.misconceptionEditorIsOpen).toBeFalse();
-    expect(ctrl.misconceptionName).toEqual('misc1');
+
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[0]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('abc');
+    expect(component.feedbackIsUsed).toBeTrue();
+
+    component.updateValues(updatedValues);
+
+    expect(component.selectedMisconception).toEqual(
+      mockMisconceptionObject.abc[1]
+    );
+    expect(component.selectedMisconceptionSkillId).toEqual('id');
+    expect(component.feedbackIsUsed).toBeFalse();
   });
 });

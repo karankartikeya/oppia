@@ -16,92 +16,90 @@
 
 """Tests for methods in the interaction registry."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
+import importlib
 import json
 import os
 
-from core import feconf
-from core import python_utils
-from core import schema_utils
-from core.domain import exp_services
+from core import feconf, schema_utils
 from core.domain import interaction_registry
 from core.tests import test_utils
 from extensions.interactions import base
 
-EXPECTED_TERMINAL_INTERACTIONS_COUNT = 1
+from typing import Any, Dict, Final
+
+EXPECTED_TERMINAL_INTERACTIONS_COUNT: Final = 1
 
 
 class InteractionDependencyTests(test_utils.GenericTestBase):
     """Tests for the calculation of dependencies for interactions."""
 
-    def setUp(self):
-        super(InteractionDependencyTests, self).setUp()
+    def setUp(self) -> None:
+        super().setUp()
 
         # Register and login as an editor.
         self.signup(self.EDITOR_EMAIL, self.EDITOR_USERNAME)
         self.login(self.EDITOR_EMAIL)
 
-    def test_deduplication_of_dependency_ids(self):
+    def test_deduplication_of_dependency_ids(self) -> None:
         self.assertItemsEqual(
             interaction_registry.Registry.get_deduplicated_dependency_ids(
-                ['CodeRepl']),
-            ['skulpt', 'codemirror'])
-
-        self.assertItemsEqual(
-            interaction_registry.Registry.get_deduplicated_dependency_ids(
-                ['CodeRepl', 'CodeRepl', 'CodeRepl']),
-            ['skulpt', 'codemirror'])
+                ['CodeRepl']
+            ),
+            ['skulpt', 'codemirror'],
+        )
 
         self.assertItemsEqual(
             interaction_registry.Registry.get_deduplicated_dependency_ids(
-                ['CodeRepl', 'AlgebraicExpressionInput']),
-            ['skulpt', 'codemirror', 'guppy', 'nerdamer'])
+                ['CodeRepl', 'CodeRepl', 'CodeRepl']
+            ),
+            ['skulpt', 'codemirror'],
+        )
 
-    def test_dependency_loads_in_exploration_player_page(self):
-        exp_id = '0'
+        self.assertItemsEqual(
+            interaction_registry.Registry.get_deduplicated_dependency_ids(
+                ['CodeRepl', 'AlgebraicExpressionInput']
+            ),
+            ['skulpt', 'codemirror', 'guppy', 'nerdamer'],
+        )
 
-        exp_services.load_demo(exp_id)
-
-        # Ensure that dependencies are added in the exploration reader page.
-        response = self.get_html_response('/explore/%s' % exp_id)
-        response.mustcontain('dependency_html.html')
-
-    def test_no_dependencies_in_non_exploration_pages(self):
+    def test_no_dependencies_in_non_exploration_pages(self) -> None:
         response = self.get_html_response(feconf.LIBRARY_INDEX_URL)
         response.mustcontain(no=['dependency_html.html'])
-
-    def test_dependencies_loaded_in_exploration_editor(self):
-
-        exp_services.load_demo('0')
-
-        # Ensure that dependencies are added in the exploration editor page.
-        response = self.get_html_response('/create/0')
-        response.mustcontain('dependency_html.html')
-
         self.logout()
 
 
 class InteractionRegistryUnitTests(test_utils.GenericTestBase):
     """Test for the interaction registry."""
 
-    def test_interaction_registry(self):
+    def test_interaction_registry(self) -> None:
         """Do some sanity checks on the interaction registry."""
         self.assertEqual(
             {
                 type(i).__name__
                 for i in interaction_registry.Registry.get_all_interactions()
             },
-            set(interaction_registry.Registry.get_all_interaction_ids()))
+            set(interaction_registry.Registry.get_all_interaction_ids()),
+        )
 
-    def test_get_all_specs(self):
+        with self.swap(interaction_registry.Registry, '_interactions', {}):
+            self.assertEqual(
+                {
+                    type(i).__name__
+                    for i in interaction_registry.Registry.get_all_interactions()
+                },
+                set(interaction_registry.Registry.get_all_interaction_ids()),
+            )
+
+    def test_get_all_specs(self) -> None:
         """Test the get_all_specs() method."""
 
         specs_dict = interaction_registry.Registry.get_all_specs()
         self.assertEqual(
             set(specs_dict.keys()),
-            set(interaction_registry.Registry.get_all_interaction_ids()))
+            set(interaction_registry.Registry.get_all_interaction_ids()),
+        )
 
         terminal_interactions_count = 0
         for item in specs_dict.values():
@@ -111,22 +109,26 @@ class InteractionRegistryUnitTests(test_utils.GenericTestBase):
                 terminal_interactions_count += 1
 
         self.assertEqual(
-            terminal_interactions_count, EXPECTED_TERMINAL_INTERACTIONS_COUNT)
+            terminal_interactions_count, EXPECTED_TERMINAL_INTERACTIONS_COUNT
+        )
 
-    def test_interaction_specs_json_sync_all_specs(self):
+    def test_interaction_specs_json_sync_all_specs(self) -> None:
         """Test to ensure that the interaction_specs.json file is upto date
         with additions in the individual interaction files.
         """
         all_specs = interaction_registry.Registry.get_all_specs()
 
         spec_file = os.path.join(
-            'extensions', 'interactions', 'interaction_specs.json')
-        with python_utils.open_file(spec_file, 'r') as f:
+            'extensions', 'interactions', 'interaction_specs.json'
+        )
+        with open(spec_file, 'r', encoding='utf-8') as f:
             specs_from_json = json.loads(f.read())
 
         self.assertDictEqual(all_specs, specs_from_json)
 
-    def test_interaction_specs_customization_arg_specs_names_are_valid(self):
+    def test_interaction_specs_customization_arg_specs_names_are_valid(
+        self,
+    ) -> None:
         """Test to ensure that all customization argument names in
         interaction specs only include alphabetic letters and are
         lowerCamelCase. This is because these properties are involved in the
@@ -135,7 +137,10 @@ class InteractionRegistryUnitTests(test_utils.GenericTestBase):
         all_specs = interaction_registry.Registry.get_all_specs()
         ca_names_in_schema = []
 
-        def traverse_schema_to_find_names(schema):
+        # Here we use type Any because values in schema dictionary can
+        # be of type str, int, List, Dict and other types too. So to make
+        # it generalized for every type of value we used Any here.
+        def traverse_schema_to_find_names(schema: Dict[str, Any]) -> None:
             """Recursively traverses the schema to find all name fields.
             Recursion is required because names can be nested within
             'type: dict' inside a schema.
@@ -162,14 +167,20 @@ class InteractionRegistryUnitTests(test_utils.GenericTestBase):
             self.assertTrue(name.isalpha())
             self.assertTrue(name[0].islower())
 
-    def test_interaction_specs_customization_arg_default_values_are_valid(self):
+    def test_interaction_specs_customization_arg_default_values_are_valid(
+        self,
+    ) -> None:
         """Test to ensure that all customization argument default values
         that contain content_ids are properly set to None.
         """
         all_specs = interaction_registry.Registry.get_all_specs()
 
+        # Here we use type Any because values in schema dictionary can
+        # be of type str, int, List, Dict and other types too. So to make
+        # it generalized for every type of value we used Any here.
         def traverse_schema_to_find_and_validate_subtitled_content(
-                value, schema):
+            value: Any, schema: Dict[str, Any]
+        ) -> None:
             """Recursively traverse the schema to find SubtitledHtml or
             SubtitledUnicode contained or nested in value.
 
@@ -178,37 +189,139 @@ class InteractionRegistryUnitTests(test_utils.GenericTestBase):
                 schema: dict. The customization argument schema.
             """
             is_subtitled_html_spec = (
-                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM and
-                schema['obj_type'] ==
-                schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_HTML)
+                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM
+                and schema['obj_type']
+                == schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_HTML
+            )
             is_subtitled_unicode_spec = (
-                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM and
-                schema['obj_type'] ==
-                schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_UNICODE)
+                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM
+                and schema['obj_type']
+                == schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_UNICODE
+            )
 
             if is_subtitled_html_spec or is_subtitled_unicode_spec:
                 self.assertIsNone(value['content_id'])
             elif schema['type'] == schema_utils.SCHEMA_TYPE_LIST:
                 for x in value:
                     traverse_schema_to_find_and_validate_subtitled_content(
-                        x, schema['items'])
+                        x, schema['items']
+                    )
             elif schema['type'] == schema_utils.SCHEMA_TYPE_DICT:
                 for schema_property in schema['properties']:
                     traverse_schema_to_find_and_validate_subtitled_content(
-                        x[schema_property.name],
-                        schema_property['schema']
+                        x[schema_property.name], schema_property['schema']
                     )
 
         for interaction_id in all_specs:
             for ca_spec in all_specs[interaction_id]['customization_arg_specs']:
                 traverse_schema_to_find_and_validate_subtitled_content(
-                    ca_spec['default_value'], ca_spec['schema'])
+                    ca_spec['default_value'], ca_spec['schema']
+                )
 
-    def test_get_all_specs_for_state_schema_version_for_unsaved_version(self):
-        with self.assertRaisesRegexp(
+    def test_get_all_specs_for_state_schema_version_for_unsaved_version(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
             IOError, 'No specs JSON file found for state schema'
         ):
             (
-                interaction_registry.Registry
-                .get_all_specs_for_state_schema_version(10)
+                interaction_registry.Registry.get_all_specs_for_state_schema_version(
+                    10
+                )
             )
+
+    def test_get_interaction_by_id_raises_error_for_none_interaction_id(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            Exception, 'No interaction exists for the None interaction_id.'
+        ):
+            interaction_registry.Registry.get_interaction_by_id(None)
+
+    def test_refresh_skips_classes_not_inheriting_base_interaction(
+        self,
+    ) -> None:
+        """Test that _refresh skips classes whose base class is not
+        BaseInteraction.
+        """
+
+        class NotAnInteraction:
+            """A dummy class that does not inherit from BaseInteraction."""
+
+            pass
+
+        original_import = importlib.import_module
+
+        # Here we use type Any because the mock_import_module function
+        # needs to return different module types depending on the name,
+        # so a specific return type cannot be used.
+        def mock_import_module(name: str) -> Any:
+            module = original_import(name)
+            # For one specific interaction, replace the class with one that
+            # does not inherit from BaseInteraction. getattr(module,
+            # interaction_id) will then return NotAnInteraction for that id.
+            if name.endswith('.Continue.Continue'):
+                setattr(module, 'Continue', NotAnInteraction)
+            return module
+
+        with self.swap(importlib, 'import_module', mock_import_module):
+            interaction_registry.Registry._refresh()  # pylint: disable=protected-access
+
+        # 'Continue' should NOT be in the registry since its mock class
+        # does not inherit from BaseInteraction.
+        self.assertNotIn(
+            'Continue',
+            interaction_registry.Registry._interactions,  # pylint: disable=protected-access
+        )
+        # But other real interactions should still be registered.
+        self.assertTrue(
+            len(
+                interaction_registry.Registry._interactions  # pylint: disable=protected-access
+            )
+            > 0
+        )
+
+    def test_get_all_specs_for_state_schema_version_with_can_fetch_latest(
+        self,
+    ) -> None:
+        """Test that get_all_specs_for_state_schema_version returns latest
+        specs when the file is not found and can_fetch_latest_specs is True.
+        """
+        result = interaction_registry.Registry.get_all_specs_for_state_schema_version(
+            0, can_fetch_latest_specs=True
+        )
+        expected = interaction_registry.Registry.get_all_specs()
+        self.assertEqual(result, expected)
+
+    def test_get_all_specs_for_state_schema_version_loads_from_file(
+        self,
+    ) -> None:
+        """Test that get_all_specs_for_state_schema_version successfully
+        loads specs from a legacy JSON file and caches them.
+        """
+        # Use a version that has an actual legacy specs file.
+        version = 52
+        # Ensure it's not already cached.
+        if (
+            version
+            in interaction_registry.Registry._state_schema_version_to_interaction_specs  # pylint: disable=protected-access,line-too-long
+        ):
+            del interaction_registry.Registry._state_schema_version_to_interaction_specs[  # pylint: disable=protected-access,line-too-long
+                version
+            ]
+
+        # First call — reads from file and caches (lines 176-182).
+        result_first = interaction_registry.Registry.get_all_specs_for_state_schema_version(
+            version
+        )
+        self.assertTrue(len(result_first) > 0)
+        self.assertIn(
+            version,
+            interaction_registry.Registry._state_schema_version_to_interaction_specs,  # pylint: disable=protected-access,line-too-long
+        )
+
+        # Second call — should return from cache (line 193).
+        result_second = interaction_registry.Registry.get_all_specs_for_state_schema_version(
+            version
+        )
+        self.assertEqual(result_first, result_second)

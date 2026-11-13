@@ -16,37 +16,63 @@
  * @fileoverview Constants for the creator dashboard page.
  */
 
+interface TabDetails {
+  ariaLabel: string;
+  tabName: string;
+  description: string;
+  customizationOptions: string[];
+  enabled: boolean;
+}
+
+export interface ContributorDashboardTabsDetails {
+  myContributionTab: TabDetails;
+  submitQuestionTab: TabDetails;
+  translateTextTab: TabDetails;
+}
+
 export const ContributorDashboardConstants = {
+  // Sentinel used by the entity type filter to mean "do not filter by entity
+  // type". The suggestion list endpoints accept it as their target_type URL
+  // argument, and it never describes an individual opportunity.
+  ENTITY_TYPE_SENTINEL_ALL: 'all',
+
+  // Shown when a suggestion review fails and the endpoint that rejected it
+  // did not report a reason.
+  SUGGESTION_REVIEW_FAILURE_MESSAGE: 'Error updating suggestion',
+
   CONTRIBUTOR_DASHBOARD_TABS_DETAILS: {
     myContributionTab: {
       ariaLabel: 'Check your contributions.',
       tabName: 'My Contributions',
       description: '',
       customizationOptions: [],
-      enabled: true
+      enabled: true,
     },
     submitQuestionTab: {
       ariaLabel: 'See opportunities for adding new questions.',
       tabName: 'Submit Question',
-      description: 'Submit a question for students to answer while ' +
+      description:
+        'Submit a question for students to answer while ' +
         'practicing that skill.',
       customizationOptions: ['sort'],
-      enabled: false
+      enabled: false,
     },
     translateTextTab: {
       ariaLabel: 'See opportunities for translation.',
       tabName: 'Translate Text',
-      description: 'Translate the lesson text to help non-English speakers ' +
+      description:
+        'Translate the lesson text to help non-English speakers ' +
         'follow the lessons.',
-      customizationOptions: ['language', 'sort'],
-      enabled: true
-    }
+      customizationOptions: ['language', 'topic', 'sort'],
+      enabled: true,
+    },
   },
 
   // The text to display for a submitted suggestion if its corresponding
   // opportunity was deleted.
-  CORRESPONDING_DELETED_OPPORTUNITY_TEXT: '[The corresponding opportunity ' +
-    'has been deleted.]',
+  CORRESPONDING_DELETED_OPPORTUNITY_TEXT:
+    '[The corresponding opportunity ' + 'has been deleted.]',
 
-  DEFAULT_OPPORTUNITY_LANGUAGE_CODE: 'hi'
+  DEFAULT_OPPORTUNITY_LANGUAGE_CODE: 'hi',
+  DEFAULT_OPPORTUNITY_TOPIC_NAME: 'All',
 } as const;

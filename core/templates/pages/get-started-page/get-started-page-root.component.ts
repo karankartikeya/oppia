@@ -16,21 +16,44 @@
  * @fileoverview Root component for get started page.
  */
 
-import { Component } from '@angular/core';
-import { AppConstants } from 'app.constants';
-import { PageHeadService } from 'services/page-head.service';
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {TranslateService} from '@ngx-translate/core';
+import {Subscription} from 'rxjs';
+
+import {AppConstants} from 'app.constants';
+import {PageHeadService} from 'services/page-head.service';
 
 @Component({
   selector: 'oppia-get-started-page-root',
-  templateUrl: './get-started-page-root.component.html'
+  templateUrl: './get-started-page-root.component.html',
 })
-export class GetStartedPageRootComponent {
+export class GetStartedPageRootComponent implements OnInit, OnDestroy {
+  directiveSubscriptions = new Subscription();
   constructor(
-    private pageHeadService: PageHeadService
+    private pageHeadService: PageHeadService,
+    private translateService: TranslateService
   ) {}
 
-  ngOnInit(): void {
+  setPageTitleAndMetaTags(): void {
+    let translatedTitle = this.translateService.instant(
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.GET_STARTED.TITLE
+    );
     this.pageHeadService.updateTitleAndMetaTags(
-      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.GET_STARTED);
+      translatedTitle,
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.GET_STARTED.META
+    );
+  }
+
+  ngOnInit(): void {
+    this.setPageTitleAndMetaTags();
+    this.directiveSubscriptions.add(
+      this.translateService.onLangChange.subscribe(() => {
+        this.setPageTitleAndMetaTags();
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
   }
 }

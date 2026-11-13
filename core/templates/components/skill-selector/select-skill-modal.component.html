@@ -5,53 +5,31 @@
   <i class="fa fa-times modal-close-button" (click)="cancel()"></i>
 </div>
 <div class="modal-body">
-  <oppia-skill-selector [sortedSkillSummaries]="skillSummaries"
+  <oppia-skill-selector [sortedSkillSummaries]="groupedSkillSummaries"
                         [selectedSkillId]="selectedSkillId"
                         [countOfSkillsToPrioritize]="skillsInSameTopicCount"
                         [categorizedSkills]="categorizedSkills"
-                        [untriagedSkillSummaries]="untriagedSkillSummaries"
+                        [untriagedSkillSummaries]="untriagedSkillSummariesForSelector"
                         [allowSkillsFromOtherTopics]="allowSkillsFromOtherTopics"
+                        [skillIdsToExclude]="skillIdsToExclude"
                         (selectedSkillIdChange)="setSelectedSkillId($event)">
   </oppia-skill-selector>
 </div>
 <div class="modal-footer">
-  <button class="btn btn-success protractor-test-confirm-skill-selection-button"
-          (click)="confirm()"
-          [disabled]="!selectedSkillId">
-    Done
-  </button>
-  <button class="btn btn-secondary" (click)="cancel()">Cancel</button>
+  <div>
+    <button class="btn btn-secondary" (click)="cancel()">Cancel</button>
+    <span [matTooltip]="errorMessage"
+          matTooltipClass="oppia-mat-tooltip-list"
+          [matTooltipDisabled]="isDoneButtonDisabled()"
+          class="w-100">
+      <button class="btn btn-success e2e-test-confirm-skill-selection-button"
+              (click)="confirm()"
+              [disabled]="isDoneButtonDisabled()">
+        Done
+        <i class="fas fa-exclamation-triangle story-save-draft-warning"
+        *ngIf="!selectedSkillId">
+        </i>
+      </button>
+    </span>
+  </div>
 </div>
-
-<style>
-  @media screen and (max-width: 768px) {
-    .skill-select-modal .modal-dialog {
-      border: 0;
-      border-radius: 0;
-      margin: 0 auto;
-      padding: 0;
-    }
-    .skill-select-modal .modal-header {
-      align-items: center;
-      background-color: #00609C;
-      justify-content: space-between;
-      padding: 12px 10px;
-      width: 100vw;
-    }
-    .skill-select-modal .modal-header h3 {
-      color: #FFF;
-    }
-    .skill-select-modal .modal-content {
-      border: 0;
-      border-radius: 0;
-    }
-    .select-skill-modal-header .modal-close-button {
-      color: #FFF;
-      display: block;
-      font-size: 20px;
-    }
-    .select-skill-modal-header .modal-footer {
-      justify-content: flex-start;
-    }
-  }
-</style>

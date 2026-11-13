@@ -16,15 +16,15 @@
  * @fileoverview Tests for AudioBarStatusService.
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { AudioBarStatusService } from 'services/audio-bar-status.service';
+import {AudioBarStatusService} from 'services/audio-bar-status.service';
 
 describe('AudioBarStatusService', () => {
   let audioBarStatusService: AudioBarStatusService;
 
   beforeEach(() => {
-    audioBarStatusService = TestBed.get(AudioBarStatusService);
+    audioBarStatusService = TestBed.inject(AudioBarStatusService);
   });
   // This is because by default the audio bar is collapsed.
   it('should be collapsed by default', () => {

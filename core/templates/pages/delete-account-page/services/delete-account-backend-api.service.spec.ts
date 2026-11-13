@@ -16,18 +16,39 @@
  * @fileoverview Unit Tests for delete account backend api service.
  */
 
-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
-import { fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { DeleteAccountBackendApiService } from './delete-account-backend-api.service';
+import {
+  HttpClientTestingModule,
+  HttpTestingController,
+} from '@angular/common/http/testing';
+import {fakeAsync, flushMicrotasks, TestBed, tick} from '@angular/core/testing';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {DeleteAccountBackendApiService} from './delete-account-backend-api.service';
+import {UserService} from 'services/user.service';
+import {UserInfo} from 'domain/user/user-info.model';
 
 class MockWindowRef {
   nativeWindow = {
     location: {
-      href: 'pending-account-deletion'
+      href: 'pending-account-deletion',
     },
-    gtag: () => {}
+    gtag: () => {},
   };
+}
+
+class MockUserService {
+  isLoggedIn(): boolean {
+    return false;
+  }
+
+  getUserInfoAsync(): Promise<UserInfo> {
+    return Promise.resolve({
+      isLoggedIn: () => true,
+    } as UserInfo);
+  }
+
+  getLoginUrlAsync(): Promise<string> {
+    return Promise.resolve('/login');
+  }
 }
 
 describe('Delete Account Service', () => {
@@ -42,15 +63,20 @@ describe('Delete Account Service', () => {
       providers: [
         {
           provide: WindowRef,
-          useClass: MockWindowRef
+          useClass: MockWindowRef,
         },
-      ]
+        {
+          provide: UserService,
+          useClass: MockUserService,
+        },
+      ],
     });
   });
 
   beforeEach(() => {
-    deleteAccountBackendApiService =
-     TestBed.inject(DeleteAccountBackendApiService);
+    deleteAccountBackendApiService = TestBed.inject(
+      DeleteAccountBackendApiService
+    );
     windowRef = TestBed.inject(WindowRef);
     http = TestBed.inject(HttpTestingController);
     httpTestingController = TestBed.inject(HttpTestingController);
@@ -71,6 +97,7 @@ describe('Delete Account Service', () => {
     tick(150);
 
     expect(windowRef.nativeWindow.location.href).toBe(
-      '/logout?redirect_url=/pending-account-deletion');
+      '/logout?redirect_url=/pending-account-deletion'
+    );
   }));
 });

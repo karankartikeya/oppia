@@ -16,82 +16,113 @@
  * @fileoverview Component for a blog dashboard card.
  */
 
-import { Component, Input, OnInit, Output, EventEmitter } from '@angular/core';
-import { BlogPostSummary } from 'domain/blog/blog-post-summary.model';
+import {Component, Input, OnInit, Output, EventEmitter} from '@angular/core';
+import {BlogPostSummary} from 'domain/blog/blog-post-summary.model';
 import dayjs from 'dayjs';
-import { BlogDashboardPageService } from '../services/blog-dashboard-page.service';
-import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
-import { BlogPostActionConfirmationModalComponent } from 'pages/blog-dashboard-page/blog-post-action-confirmation/blog-post-action-confirmation.component';
-import { BlogPostEditorBackendApiService } from 'domain/blog/blog-post-editor-backend-api.service';
-import { AlertsService } from 'services/alerts.service';
+import {BlogDashboardPageService} from '../services/blog-dashboard-page.service';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {BlogPostActionConfirmationModalComponent} from 'pages/blog-dashboard-page/blog-post-action-confirmation/blog-post-action-confirmation.component';
+import {BlogPostEditorBackendApiService} from 'domain/blog/blog-post-editor-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
+import {TruncatePipe} from 'filters/string-utility-filters/truncate.pipe';
+
 @Component({
   selector: 'oppia-blog-dashboard-tile',
-  templateUrl: './blog-dashboard-tile.component.html'
+  templateUrl: './blog-dashboard-tile.component.html',
+  styleUrls: ['./blog-dashboard-tile.component.css'],
 })
 export class BlogDashboardTileComponent implements OnInit {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() blogPostSummary!: BlogPostSummary;
-  @Input() blogPostIsPublished: boolean;
-  @Input() activeView: string;
+  @Input() activeView!: string;
+  @Input() blogPostIsPublished: boolean = false;
+  @Input() isLastBlogPostInList: boolean = false;
   lastUpdatedDateString: string = '';
+  summaryContent!: string;
   @Output() unpublisedBlogPost: EventEmitter<void> = new EventEmitter();
   @Output() deletedBlogPost: EventEmitter<void> = new EventEmitter();
   constructor(
     private blogDashboardPageService: BlogDashboardPageService,
     private blogPostEditorBackendService: BlogPostEditorBackendApiService,
     private ngbModal: NgbModal,
-    private alertsService: AlertsService
+    private alertsService: AlertsService,
+    private truncatePipe: TruncatePipe
   ) {}
 
   ngOnInit(): void {
-    this.lastUpdatedDateString = this.getDateStringInWords(
-      this.blogPostSummary.lastUpdated);
+    const lastUpdated = this.blogPostSummary.lastUpdated;
+    if (lastUpdated === undefined) {
+      throw new Error('Last updated date is undefined');
+    }
+    this.lastUpdatedDateString = this.getDateStringInWords(lastUpdated);
+    // Truncating the summary to 220 characters to avoid display in blog
+    // dashboard tile to avoid overflow of text outside the tile.
+    this.summaryContent = this.truncatePipe.transform(
+      this.blogPostSummary.summary,
+      220
+    );
   }
 
   getDateStringInWords(naiveDate: string): string {
-    return dayjs(
-      naiveDate.split(',')[0], 'MM-DD-YYYY').format('MMM D, YYYY');
+    return dayjs(naiveDate.split(',')[0], 'MM-DD-YYYY').format('MMM D, YYYY');
   }
 
   editBlogPost(): void {
     this.blogDashboardPageService.navigateToEditorTabWithId(
-      this.blogPostSummary.id);
+      this.blogPostSummary.id
+    );
   }
 
   deleteBlogPost(): void {
     this.blogDashboardPageService.blogPostAction = 'delete';
-    this.ngbModal.open(BlogPostActionConfirmationModalComponent, {
-      backdrop: 'static',
-      keyboard: false,
-    }).result.then(() => {
-      this.blogDashboardPageService.blogPostId = this.blogPostSummary.id;
-      this.blogDashboardPageService.deleteBlogPost();
-      this.deletedBlogPost.emit();
-    }, () => {
-      // Note to developers:
-      // This callback is triggered when the Cancel button is clicked.
-      // No further action is needed.
-    });
+    this.ngbModal
+      .open(BlogPostActionConfirmationModalComponent, {
+        backdrop: 'static',
+        keyboard: false,
+      })
+      .result.then(
+        () => {
+          this.blogDashboardPageService.blogPostId = this.blogPostSummary.id;
+          this.blogDashboardPageService.deleteBlogPost();
+          this.deletedBlogPost.emit();
+        },
+        () => {
+          // Note to developers:
+          // This callback is triggered when the Cancel button is clicked.
+          // No further action is needed.
+        }
+      );
   }
 
   unpublishBlogPost(): void {
     this.blogDashboardPageService.blogPostAction = 'unpublish';
-    this.ngbModal.open(BlogPostActionConfirmationModalComponent, {
-      backdrop: 'static',
-      keyboard: false,
-    }).result.then(() => {
-      this.blogPostEditorBackendService.updateBlogPostDataAsync(
-        this.blogPostSummary.id, false, {}).then(
+    this.ngbModal
+      .open(BlogPostActionConfirmationModalComponent, {
+        backdrop: 'static',
+        keyboard: false,
+      })
+      .result.then(
         () => {
-          this.unpublisedBlogPost.emit();
-        }, (errorResponse) => {
-          this.alertsService.addWarning(
-            `Failed to unpublish Blog Post. Internal Error: ${errorResponse}`);
+          this.blogPostEditorBackendService
+            .updateBlogPostDataAsync(this.blogPostSummary.id, false, {})
+            .then(
+              () => {
+                this.unpublisedBlogPost.emit();
+              },
+              errorResponse => {
+                this.alertsService.addWarning(
+                  `Failed to unpublish Blog Post. Internal Error: ${errorResponse}`
+                );
+              }
+            );
+        },
+        () => {
+          // Note to developers:
+          // This callback is triggered when the Cancel button is clicked.
+          // No further action is needed.
         }
       );
-    }, () => {
-      // Note to developers:
-      // This callback is triggered when the Cancel button is clicked.
-      // No further action is needed.
-    });
   }
 }

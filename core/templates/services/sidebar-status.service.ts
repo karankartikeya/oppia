@@ -17,31 +17,28 @@
  * hamburger-menu sidebar.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { WindowDimensionsService } from
-  'services/contextual/window-dimensions.service';
+import {Injectable} from '@angular/core';
+
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class SidebarStatusService {
   constructor(private wds: WindowDimensionsService) {}
 
-  private pendingSidebarClick: boolean = false;
   private sidebarIsShown: boolean = false;
+  private hamburgerIconClicked: boolean = false;
 
   private _openSidebar(): void {
     if (this.wds.isWindowNarrow() && !this.sidebarIsShown) {
       this.sidebarIsShown = true;
-      this.pendingSidebarClick = true;
     }
   }
 
   private _closeSidebar(): void {
     if (this.sidebarIsShown) {
       this.sidebarIsShown = false;
-      this.pendingSidebarClick = false;
     }
   }
 
@@ -57,6 +54,19 @@ export class SidebarStatusService {
     this._closeSidebar();
   }
 
+  toggleHamburgerIconStatus(event: Event): void {
+    if (!this.hamburgerIconClicked) {
+      this.hamburgerIconClicked = true;
+      event.stopPropagation();
+    } else {
+      this.hamburgerIconClicked = false;
+    }
+  }
+
+  isHamburgerIconclicked(): boolean {
+    return this.hamburgerIconClicked;
+  }
+
   toggleSidebar(): void {
     if (!this.sidebarIsShown) {
       this._openSidebar();
@@ -66,13 +76,9 @@ export class SidebarStatusService {
   }
 
   onDocumentClick(): void {
-    if (!this.pendingSidebarClick) {
+    if (this.hamburgerIconClicked) {
       this.sidebarIsShown = false;
-    } else {
-      this.pendingSidebarClick = false;
+      this.hamburgerIconClicked = false;
     }
   }
 }
-
-angular.module('oppia').factory(
-  'SidebarStatusService', downgradeInjectable(SidebarStatusService));

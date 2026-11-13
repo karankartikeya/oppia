@@ -13,113 +13,163 @@
 // limitations under the License.
 
 /**
- * @fileoverview Com,ponent for the NumberWithUnits interaction.
+ * @fileoverview Component for the NumberWithUnits interaction.
  */
 
-require(
-  'components/common-layout-directives/common-elements/' +
-  'confirm-or-cancel-modal.controller.ts');
-require('domain/objects/NumberWithUnitsObjectFactory.ts');
-require(
-  'pages/exploration-player-page/services/current-interaction.service.ts');
-require(
-  'interactions/NumberWithUnits/directives/' +
-  'number-with-units-rules.service.ts');
-require('services/html-escaper.service.ts');
+import {Component, Input, OnDestroy, OnInit} from '@angular/core';
+import {Subject, Subscription} from 'rxjs';
+import {debounceTime, distinctUntilChanged} from 'rxjs/operators';
 
-require('domain/objects/objects-domain.constants.ajs.ts');
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
 
-angular.module('oppia').component('oppiaInteractiveNumberWithUnits', {
-  bindings: {
-    savedSolution: '<'
-  },
-  template: require('./number-with-units-interaction.component.html'),
-  controllerAs: '$ctrl',
-  controller: [
-    '$attrs', '$scope', '$uibModal', 'CurrentInteractionService',
-    'NumberWithUnitsObjectFactory', 'NumberWithUnitsRulesService',
-    function(
-        $attrs, $scope, $uibModal, CurrentInteractionService,
-        NumberWithUnitsObjectFactory, NumberWithUnitsRulesService) {
-      var ctrl = this;
-      var errorMessage = '';
-      // Label for errors caused whilst parsing number with units.
-      var FORM_ERROR_TYPE = 'NUMBER_WITH_UNITS_FORMAT_ERROR';
-      ctrl.getWarningText = function() {
-        return errorMessage;
-      };
+import {
+  NumberWithUnitsAnswer,
+  InteractionAnswer,
+} from 'interactions/answer-defs';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {HelpModalNumberWithUnitsComponent} from './oppia-help-modal-number-with-units.component';
+import {NumberConversionService} from 'services/number-conversion.service';
+import {NumberWithUnits} from 'domain/objects/number-with-units.model';
+import {NumberWithUnitsRulesService} from './number-with-units-rules.service';
 
-      ctrl.submitAnswer = function(answer) {
-        try {
-          var numberWithUnits = (
-            NumberWithUnitsObjectFactory.fromRawInputString(answer));
-          CurrentInteractionService.onSubmit(
-            numberWithUnits, NumberWithUnitsRulesService);
-        } catch (parsingError) {
-          errorMessage = parsingError.message;
-          ctrl.NumberWithUnitsForm.answer.$setValidity(
-            FORM_ERROR_TYPE, false);
-        }
-      };
+@Component({
+  selector: 'oppia-interactive-number-with-units',
+  templateUrl: './number-with-units-interaction.component.html',
+  styleUrls: ['./number-with-units-interaction.component.css'],
+})
+export class InteractiveNumberWithUnitsComponent implements OnInit, OnDestroy {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() labelForFocusTarget!: string;
+  @Input() lastAnswer!: NumberWithUnitsAnswer | null;
+  @Input() savedSolution!: InteractionAnswer;
+  componentSubscriptions: Subscription = new Subscription();
+  FORM_ERROR_TYPE: string = 'NUMBER_WITH_UNITS_FORMAT_ERROR';
+  errorMessageI18nKey: string = '';
+  answer: string = '';
+  isValid: boolean = true;
+  answerChanged: Subject<string> = new Subject<string>();
+  NUMBER_WITH_UNITS_FORM_SCHEMA = {
+    type: 'unicode',
+    ui_config: {},
+  };
 
-      ctrl.isAnswerValid = function() {
-        if (ctrl.NumberWithUnitsForm === undefined) {
-          return true;
-        }
-        return (
-          !ctrl.NumberWithUnitsForm.$invalid && ctrl.answer !== '');
-      };
+  constructor(
+    private currentInteractionService: CurrentInteractionService,
+    private focusManagerService: FocusManagerService,
+    private numberWithUnitsRulesService: NumberWithUnitsRulesService,
+    private ngbModal: NgbModal,
+    private numberConversionService: NumberConversionService
+  ) {
+    this.componentSubscriptions.add(
+      this.answerChanged
+        .pipe(
+          // Wait 150ms after the last event before emitting last event.
+          debounceTime(150),
+          // Only emit if value is different from previous value.
+          distinctUntilChanged()
+        )
+        .subscribe(newValue => {
+          this.answer = newValue;
+          this.currentInteractionService.updateCurrentAnswer(this.answer);
+          this.isValid = true;
+          this.errorMessageI18nKey = '';
+          this.currentInteractionService.updateViewWithNewAnswer();
+        })
+    );
+  }
 
-      var submitAnswerFn = function() {
-        ctrl.submitAnswer(ctrl.answer);
-      };
-      ctrl.showHelp = function() {
-        $uibModal.open({
-          template: require(
-            './number-with-units-help-modal.directive.html'),
-          backdrop: true,
-          controller: 'ConfirmOrCancelModalController'
-        }).result.then(function() {}, function() {
+  ngOnInit(): void {
+    if (this.lastAnswer !== null && this.lastAnswer !== undefined) {
+      this.answer = NumberWithUnits.fromDict(this.lastAnswer).toString();
+    } else if (this.savedSolution !== undefined) {
+      let savedSolution = this.savedSolution;
+      savedSolution = NumberWithUnits.fromDict(
+        savedSolution as NumberWithUnitsAnswer
+      ).toString();
+      this.answer = savedSolution;
+    } else {
+      this.answer = '';
+    }
+
+    try {
+      NumberWithUnits.createCurrencyUnits();
+    } catch (parsingError) {}
+
+    const submitAnswerFn = () => this.submitAnswer();
+    const isAnswerValid = () => this.isAnswerValid();
+    this.currentInteractionService.registerCurrentInteraction(
+      submitAnswerFn,
+      isAnswerValid
+    );
+
+    setTimeout(() => {
+      let focusLabel: string = this.labelForFocusTarget;
+      this.focusManagerService.setFocusWithoutScroll(focusLabel);
+    }, 0);
+  }
+
+  submitAnswer(): void {
+    this.isValid = true;
+    this.errorMessageI18nKey = '';
+    try {
+      if (
+        this.answer.trim() === '' &&
+        this.currentInteractionService.showNoResponseError()
+      ) {
+        this.errorMessageI18nKey = 'I18N_INTERACTIONS_INPUT_NO_RESPONSE';
+        this.isValid = false;
+        this.currentInteractionService.updateAnswerIsValid(false);
+        return;
+      }
+      const decimalSeparator =
+        this.numberConversionService.currentDecimalSeparator();
+      const numberWithUnits = NumberWithUnits.fromRawInputString(
+        this.answer,
+        decimalSeparator
+      );
+      this.currentInteractionService.onSubmit(
+        numberWithUnits,
+        this.numberWithUnitsRulesService as NumberWithUnitsRulesService
+      );
+    } catch (parsingError) {
+      if (parsingError instanceof Error) {
+        this.errorMessageI18nKey = parsingError.message;
+      } else {
+        throw parsingError;
+      }
+      this.isValid = false;
+      this.currentInteractionService.updateAnswerIsValid(false);
+    }
+  }
+
+  showHelp(): void {
+    this.ngbModal
+      .open(HelpModalNumberWithUnitsComponent, {
+        backdrop: true,
+        windowClass: 'oppia-help-modal-number-with-units',
+      })
+      .result.then(
+        () => {},
+        () => {
           // Note to developers:
           // This callback is triggered when the Cancel button is clicked.
           // No further action is needed.
-        });
-      };
-      ctrl.$onInit = function() {
-        $scope.$watch('$ctrl.answer', function(newValue) {
-          try {
-            NumberWithUnitsObjectFactory.fromRawInputString(newValue);
-            errorMessage = '';
-            ctrl.NumberWithUnitsForm.answer.$setValidity(
-              FORM_ERROR_TYPE, true);
-          } catch (parsingError) {
-            errorMessage = parsingError.message;
-            ctrl.NumberWithUnitsForm.answer.$setValidity(
-              FORM_ERROR_TYPE, false);
-          }
-        });
-        if (ctrl.savedSolution !== undefined) {
-          let savedSolution = ctrl.savedSolution;
-          savedSolution = NumberWithUnitsObjectFactory.fromDict(
-            savedSolution).toString();
-          ctrl.answer = savedSolution;
-        } else {
-          ctrl.answer = '';
         }
-        ctrl.labelForFocusTarget = $attrs.labelForFocusTarget || null;
+      );
+  }
 
-        ctrl.NUMBER_WITH_UNITS_FORM_SCHEMA = {
-          type: 'unicode',
-          ui_config: {}
-        };
+  isAnswerValid(): boolean {
+    return this.isValid && this.answer !== '';
+  }
 
-        try {
-          NumberWithUnitsObjectFactory.createCurrencyUnits();
-        } catch (parsingError) {}
+  answerValueChanged(): void {
+    this.answerChanged.next(this.answer);
+  }
 
-        CurrentInteractionService.registerCurrentInteraction(
-          submitAnswerFn, ctrl.isAnswerValid);
-      };
-    }
-  ]
-});
+  ngOnDestroy(): void {
+    this.componentSubscriptions.unsubscribe();
+  }
+}

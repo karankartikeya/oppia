@@ -15,53 +15,73 @@
 # limitations under the License.
 
 """Implements additional custom Pylint checkers to be used as part of
-presubmit checks. Next message id would be C0041.
+presubmit checks. Next message id would be C0052.
 """
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
+import copy
+import fnmatch
 import linecache
-import os
 import re
-import sys
 import tokenize
 
-from core.controllers import payload_validator
+from core import handler_schema_constants
 
-from .. import docstrings_checker
+from pylint import lint
+from pylint import utils as pylint_utils
+from typing import (
+    Dict,
+    Final,
+    Generator,
+    List,
+    Optional,
+    Pattern,
+    Set,
+    Tuple,
+    TypedDict,
+)
 
-_PARENT_DIR = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-_PYLINT_PATH = os.path.join(_PARENT_DIR, 'oppia_tools', 'pylint-1.9.4')
-sys.path.insert(0, _PYLINT_PATH)
+from . import docstrings_checker
 
 # List of punctuation symbols that can be used at the end of
 # comments and docstrings.
-ALLOWED_TERMINATING_PUNCTUATIONS = ['.', '?', '}', ']', ')']
+ALLOWED_TERMINATING_PUNCTUATIONS: Final = ['.', '?', '}', ']', ')']
 
 # If any of these phrases are found inside a docstring or comment,
 # the punctuation and capital letter checks will be skipped for that
 # comment or docstring.
-EXCLUDED_PHRASES = [
-    'coding:', 'pylint:', 'http://', 'https://', 'scripts/', 'extract_node'
+EXCLUDED_PHRASES: Final = [
+    'coding:',
+    'pylint:',
+    'http://',
+    'https://',
+    'scripts/',
+    'extract_node',
 ]
 
-ALLOWED_PRAGMAS_FOR_INLINE_COMMENTS = [
-    'pylint:', 'isort:', 'type: ignore', 'pragma:', 'https:']
+ALLOWED_PRAGMAS_FOR_INLINE_COMMENTS: Final = [
+    'pylint:',
+    'isort:',
+    'type: ignore',
+    'pragma:',
+    'https:',
+]
 
-import astroid  # isort:skip  pylint: disable=wrong-import-order, wrong-import-position
-from pylint import checkers  # isort:skip  pylint: disable=wrong-import-order, wrong-import-position
-from pylint import interfaces  # isort:skip  pylint: disable=wrong-import-order, wrong-import-position
-from pylint.checkers import typecheck  # isort:skip  pylint: disable=wrong-import-order, wrong-import-position
-from pylint.checkers import utils as checker_utils  # isort:skip  pylint: disable=wrong-import-order, wrong-import-position
-from pylint.extensions import _check_docs_utils # isort:skip  pylint: disable=wrong-import-order, wrong-import-position
+ALLOWED_LINES_OF_GAP_IN_COMMENT: Final = 15
+
+import astroid
+from pylint import checkers
+from pylint.checkers import strings as string_utils
+from pylint.checkers import utils as checker_utils
+from pylint.extensions import _check_docs_utils
 
 
-def read_from_node(node):
+def read_from_node(node: astroid.nodes.Module) -> List[str]:
     """Returns the data read from the ast node in unicode form.
 
     Args:
-        node: astroid.scoped_nodes.Function. Node to access module content.
+        node: astroid.nodes.Module. Node to access module content.
 
     Returns:
         list(str). The data read from the ast node.
@@ -70,188 +90,10 @@ def read_from_node(node):
     return [line.decode('utf-8') for line in node.stream().readlines()]
 
 
-class ExplicitKeywordArgsChecker(checkers.BaseChecker):
-    """Custom pylint checker which checks for explicit keyword arguments
-    in any function call.
-    """
-
-    __implements__ = interfaces.IAstroidChecker
-
-    name = 'explicit-keyword-args'
-    priority = -1
-    msgs = {
-        'C0001': (
-            'Keyword argument %s should be named explicitly in %s call of %s.',
-            'non-explicit-keyword-args',
-            'All keyword arguments should be explicitly named in function call.'
-        ),
-        'C0027': (
-            'Keyword argument %s used for a non keyword argument in %s '
-            'call of %s.',
-            'arg-name-for-non-keyword-arg',
-            'Position arguments should not be used as keyword arguments '
-            'in function call.'
-        ),
-    }
-
-    def _check_non_explicit_keyword_args(
-            self, node, name, callable_name, keyword_args,
-            num_positional_args_unused, num_mandatory_parameters):
-        """Custom pylint check to ensure that position arguments should not
-        be used as keyword arguments.
-
-        Args:
-            node: astroid.node.Function. The current function call node.
-            name: str. Name of the keyword argument.
-            callable_name: str. Name of method type.
-            keyword_args: list(str). Name of all keyword arguments in function
-                call.
-            num_positional_args_unused: int. Number of unused positional
-                arguments.
-            num_mandatory_parameters: int. Number of mandatory parameters.
-
-        Returns:
-            int. Number of unused positional arguments.
-        """
-        display_name = repr(name)
-
-        if name not in keyword_args and (
-                num_positional_args_unused > (
-                    num_mandatory_parameters)) and (
-                        callable_name != 'constructor'):
-            # This try/except block tries to get the function
-            # name. Since each node may differ, multiple
-            # blocks have been used.
-            try:
-                func_name = node.func.attrname
-            except AttributeError:
-                func_name = node.func.name
-
-            self.add_message(
-                'non-explicit-keyword-args', node=node,
-                args=(
-                    display_name,
-                    callable_name,
-                    func_name))
-            num_positional_args_unused -= 1
-        return num_positional_args_unused
-
-    def _check_argname_for_nonkeyword_arg(
-            self, node, called, callable_name, keyword_args,
-            keyword_args_in_funcdef):
-        """Custom pylint check to ensure that position arguments should not
-        be used as keyword arguments.
-
-        Args:
-            node: astroid.node.Function. The current function call node.
-            called: astroid.Call. The function call object.
-            keyword_args: list(str). Name of all keyword arguments in function
-                call.
-            callable_name: str. Name of method type.
-            keyword_args_in_funcdef: list(str). Name of all keyword arguments in
-                function definition.
-        """
-        for arg in keyword_args:
-            # TODO(#10038): Fix the check to cover below case as well.
-            # If there is *args and **kwargs in the function definition skip the
-            # check because we can use keywords arguments in function call even
-            # if **kwargs is present in the function definition. See Example:
-            # Function def -> def func(entity_id, *args, **kwargs):
-            # Function call -> func(entity_id='1', a=1, b=2, c=3)
-            # By parsing calling method we get
-            # keyword_arguments = entity_id, a, b, c.
-            # From the function definition, we will get keyword_arguments = []
-            # Now we do not have a way to identify which one is a keyword
-            # argument and which one is not.
-            if not called.args.kwarg and callable_name != 'constructor':
-                if not arg in keyword_args_in_funcdef:
-                    # This try/except block tries to get the function
-                    # name.
-                    try:
-                        func_name = node.func.attrname
-                    except AttributeError:
-                        func_name = node.func.name
-
-                    self.add_message(
-                        'arg-name-for-non-keyword-arg', node=node,
-                        args=(repr(arg), callable_name, func_name))
-
-    def visit_call(self, node):
-        """Visits each function call in a lint check.
-
-        Args:
-            node: Call. The current function call node.
-        """
-        called = checker_utils.safe_infer(node.func)
-
-        try:
-            # For the rationale behind the Pylint pragma below,
-            # see https://stackoverflow.com/a/35701863/8115428
-            called, implicit_args, callable_name = (
-                typecheck._determine_callable(called))  # pylint: disable=protected-access
-        except ValueError:
-            return
-
-        if called.args.args is None:
-            # Built-in functions have no argument information.
-            return
-
-        if len(called.argnames()) != len(set(called.argnames())):
-            return
-
-        # Build the set of keyword arguments and count the positional arguments.
-        call_site = astroid.arguments.CallSite.from_call(node)
-
-        num_positional_args = len(call_site.positional_arguments)
-        keyword_args = list(call_site.keyword_arguments.keys())
-
-        already_filled_positionals = getattr(called, 'filled_positionals', 0)
-        already_filled_keywords = getattr(called, 'filled_keywords', {})
-
-        keyword_args += list(already_filled_keywords)
-        num_positional_args += already_filled_positionals
-        num_positional_args += implicit_args
-
-        # Analyze the list of formal parameters.
-        num_mandatory_parameters = len(called.args.args) - len(
-            called.args.defaults)
-
-        parameters = []
-        parameter_name_to_index = {}
-        for i, arg in enumerate(called.args.args):
-            assert isinstance(arg, astroid.AssignName)
-            name = arg.name
-            parameter_name_to_index[name] = i
-            if i >= num_mandatory_parameters:
-                defval = called.args.defaults[i - num_mandatory_parameters]
-            else:
-                defval = None
-            parameters.append([(name, defval), False])
-
-        num_positional_args_unused = num_positional_args
-        # The list below will store all the keyword arguments present in the
-        # function definition.
-        keyword_args_in_funcdef = []
-        # Check that all parameters with a default value have
-        # been called explicitly.
-        for [(name, defval), _] in parameters:
-            if defval:
-                keyword_args_in_funcdef.append(name)
-                num_positional_args_unused = (
-                    self._check_non_explicit_keyword_args(
-                        node, name, callable_name, keyword_args,
-                        num_positional_args_unused, num_mandatory_parameters))
-
-        self._check_argname_for_nonkeyword_arg(
-            node, called, callable_name, keyword_args, keyword_args_in_funcdef)
-
-
-class HangingIndentChecker(checkers.BaseChecker):
+class HangingIndentChecker(checkers.BaseTokenChecker):
     """Custom pylint checker which checks for break after parenthesis in case
     of hanging indentation.
     """
-
-    __implements__ = interfaces.ITokenChecker
 
     name = 'hanging-indent'
     priority = -1
@@ -259,24 +101,26 @@ class HangingIndentChecker(checkers.BaseChecker):
         'C0002': (
             (
                 'There should be a break after parenthesis when content within '
-                'parenthesis spans multiple lines.'),
+                'parenthesis spans multiple lines.'
+            ),
             'no-break-after-hanging-indent',
             (
                 'If something within parenthesis extends along multiple lines, '
-                'break after opening parenthesis.')
+                'break after opening parenthesis.'
+            ),
         ),
     }
 
-    def process_tokens(self, tokens):
+    def process_tokens(self, tokens: List[tokenize.TokenInfo]) -> None:
         """Process tokens to check if there is a line break after the bracket.
 
         Args:
-            tokens: astroid.Tokens. Object to process tokens.
+            tokens: List[TokenInfo]. Object to process tokens.
         """
         escape_character_indicator = '\\'
         string_indicator = '\''
         excluded = False
-        for (token_type, token, (line_num, _), _, line) in tokens:
+        for token_type, token, (line_num, _), _, line in tokens:
             # Check if token type is an operator and is either a
             # left parenthesis '(' or a right parenthesis ')'.
             if token_type == tokenize.OP and token in ('(', ')'):
@@ -290,22 +134,26 @@ class HangingIndentChecker(checkers.BaseChecker):
                     split_line = line.split()
                     if '#' in split_line:
                         comment_index = split_line.index('#')
-                        if split_line[comment_index - 1].endswith('):'):
+                        if split_line[comment_index - 1].endswith(
+                            ':'
+                        ) or split_line[comment_index - 1].endswith('):'):
                             excluded = False
-                    elif line.endswith('):'):
+                    elif line.endswith(':') or line.endswith('):'):
                         excluded = False
                 if excluded:
                     continue
 
                 bracket_count = 0
+                position = 0
                 line_length = len(line)
                 escape_character_found = False
                 in_string = False
                 for char_num in range(line_length):
                     char = line[char_num]
                     if in_string and (
-                            char == escape_character_indicator or
-                            escape_character_found):
+                        char == escape_character_indicator
+                        or escape_character_found
+                    ):
                         escape_character_found = not escape_character_found
                         continue
 
@@ -330,7 +178,7 @@ class HangingIndentChecker(checkers.BaseChecker):
                     separators = set('[{( ')
                     if line[line_length - 1] in separators:
                         continue
-                    content = line[position + 1:]
+                    content = line[position + 1 :]
                     # Skip check if there is nothing after the bracket.
                     split_content = content.split()
                     # Skip check if there is a comment at the end of line.
@@ -338,19 +186,19 @@ class HangingIndentChecker(checkers.BaseChecker):
                         comment_index = split_content.index('#')
                         if comment_index == 0:
                             continue
-                        else:
-                            last_content_before_comment = (
-                                split_content[comment_index - 1])
-                            if last_content_before_comment.endswith(
-                                    ('(', '[', '{')
-                            ):
-                                continue
+
+                        last_content_before_comment = split_content[
+                            comment_index - 1
+                        ]
+                        if last_content_before_comment.endswith(
+                            ('(', '[', '{')
+                        ):
+                            continue
                     self.add_message(
-                        'no-break-after-hanging-indent', line=line_num)
+                        'no-break-after-hanging-indent', line=line_num
+                    )
 
 
-# The following class was derived from
-# https://github.com/PyCQA/pylint/blob/377cc42f9e3116ff97cddd4567d53e9a3e24ebf9/pylint/extensions/docparams.py#L26
 class DocstringParameterChecker(checkers.BaseChecker):
     """Checker for Sphinx, Google, or Numpy style docstrings
 
@@ -369,8 +217,6 @@ class DocstringParameterChecker(checkers.BaseChecker):
         linter: Pylinter. The linter object.
     """
 
-    __implements__ = interfaces.IAstroidChecker
-
     name = 'parameter_documentation'
     msgs = {
         'W9005': (
@@ -378,26 +224,29 @@ class DocstringParameterChecker(checkers.BaseChecker):
             'documented in class and __init__',
             'multiple-constructor-doc',
             'Please remove parameter declarations '
-            'in the class or constructor.'),
+            'in the class or constructor.',
+        ),
         'W9006': (
             '"%s" not documented as being raised',
             'missing-raises-doc',
-            'Please document exceptions for '
-            'all raised exception types.'),
+            'Please document exceptions for all raised exception types.',
+        ),
         'W9008': (
             'Redundant returns documentation',
             'redundant-returns-doc',
-            'Please remove the return/rtype '
-            'documentation from this method.'),
+            'Please remove the return/rtype documentation from this method.',
+        ),
         'W9010': (
             'Redundant yields documentation',
             'redundant-yields-doc',
-            'Please remove the yields documentation from this method.'),
+            'Please remove the yields documentation from this method.',
+        ),
         'W9011': (
             'Missing return documentation',
             'missing-return-doc',
             'Please add documentation about what this method returns.',
-            {'old_names': [('W9007', 'missing-returns-doc')]}),
+            {'old_names': [('W9007', 'missing-returns-doc')]},
+        ),
         'W9012': (
             'Missing return type documentation',
             'missing-return-type-doc',
@@ -409,7 +258,8 @@ class DocstringParameterChecker(checkers.BaseChecker):
             'Missing yield documentation',
             'missing-yield-doc',
             'Please add documentation about what this generator yields.',
-            {'old_names': [('W9009', 'missing-yields-doc')]}),
+            {'old_names': [('W9009', 'missing-yields-doc')]},
+        ),
         'W9014': (
             'Missing yield type documentation',
             'missing-yield-type-doc',
@@ -419,11 +269,12 @@ class DocstringParameterChecker(checkers.BaseChecker):
             '"%s" missing in parameter documentation',
             'missing-param-doc',
             'Please add parameter declarations for all parameters.',
-            {'old_names': [('W9003', 'old-missing-param-doc')]}),
+            {'old_names': [('W9003', 'old-missing-param-doc')]},
+        ),
         'W9016': (
             '"%s" missing in parameter type documentation',
             'missing-type-doc',
-            'Please add parameter type declarations for all parameters.'
+            'Please add parameter type declarations for all parameters.',
         ),
         'W9017': (
             '"%s" differing in parameter documentation',
@@ -440,150 +291,166 @@ class DocstringParameterChecker(checkers.BaseChecker):
             ' args line indentation',
             '4-space-indentation-for-arg-parameters-doc',
             'Please use 4 space indentation in parameter definitions relative'
-            ' to the args line indentation.'
+            ' to the args line indentation.',
         ),
         'W9020': (
             'Line starting with "%s" requires 8 space indentation relative to'
             ' args line indentation',
             '8-space-indentation-for-arg-in-descriptions-doc',
             'Please indent wrap-around descriptions by 8 relative to the args'
-            ' line indentation.'
+            ' line indentation.',
         ),
         'W9021': (
             'Args: indentation is incorrect, must be at the outermost'
             ' indentation level.',
             'incorrect-indentation-for-arg-header-doc',
-            'Please indent args line to the outermost indentation level.'
+            'Please indent args line to the outermost indentation level.',
         ),
         'W9022': (
             '4 space indentation in docstring.',
             '4-space-indentation-in-docstring',
             'Please use 4 space indentation for parameters relative to section'
-            ' headers.'
+            ' headers.',
         ),
         'W9023': (
             '8 space indentation in docstring.',
             '8-space-indentation-in-docstring',
             'Please use 8 space indentation in wrap around messages'
-            ' relative to section headers.'
+            ' relative to section headers.',
         ),
         'W9024': (
             'Raises section should be the following form: Exception_name. '
             'Description.',
             'malformed-raises-section',
-            'The parameter is incorrectly formatted.'
+            'The parameter is incorrectly formatted.',
         ),
         'W9025': (
             'Period is not used at the end of the docstring.',
             'no-period-used',
-            'Please use a period at the end of the docstring,'
+            'Please use a period at the end of the docstring,',
         ),
         'W9026': (
             'Multiline docstring should end with a new line.',
             'no-newline-used-at-end',
-            'Please end multiline docstring with a new line.'
+            'Please end multiline docstring with a new line.',
         ),
         'W9027': (
             'Single line docstring should not span two lines.',
             'single-line-docstring-span-two-lines',
             'Please do not use two lines for a single line docstring. '
             'If line length exceeds 80 characters, '
-            'convert the single line docstring to a multiline docstring.'
+            'convert the single line docstring to a multiline docstring.',
         ),
         'W9028': (
             'Empty line before the end of multi-line docstring.',
             'empty-line-before-end',
             'Please do not use empty line before '
-            'the end of the multi-line docstring.'
+            'the end of the multi-line docstring.',
         ),
         'W9029': (
             'Space after """ in docstring.',
             'space-after-triple-quote',
-            'Please do not use space after """ in docstring.'
+            'Please do not use space after """ in docstring.',
         ),
         'W9030': (
             'Missing single newline below class docstring.',
             'newline-below-class-docstring',
-            'Please add a single newline below class docstring.'
+            'Please add a single newline below class docstring.',
         ),
         'W9031': (
             'Files must have a single newline above args in doc string.',
             'single-space-above-args',
-            'Please enter a single newline above args in doc string.'
+            'Please enter a single newline above args in doc string.',
         ),
         'W9032': (
             'Files must have a single newline above returns in doc string.',
             'single-space-above-returns',
-            'Please enter a single newline above returns in doc string.'
+            'Please enter a single newline above returns in doc string.',
         ),
         'W9033': (
             'Files must have a single newline above raises in doc string.',
             'single-space-above-raises',
-            'Please enter a single newline above raises in doc string.'
+            'Please enter a single newline above raises in doc string.',
         ),
         'W9034': (
             'Files must have a single newline above yield in doc string.',
             'single-space-above-yield',
-            'Please enter a single newline above yield in doc string.'
+            'Please enter a single newline above yield in doc string.',
         ),
         'W9035': (
             'Arguments should be in following form: variable_name: typeinfo. '
             'Description.',
             'malformed-args-section',
-            'The parameter is incorrectly formatted.'
+            'The parameter is incorrectly formatted.',
         ),
         'W9036': (
             'Returns should be in the following form: typeinfo. Description.',
             'malformed-returns-section',
-            'The parameter is incorrectly formatted.'
+            'The parameter is incorrectly formatted.',
         ),
         'W9037': (
             'Yields should be in the following form: typeinfo. Description.',
             'malformed-yields-section',
-            'The parameter is incorrectly formatted.'
+            'The parameter is incorrectly formatted.',
         ),
         'W9038': (
             'Arguments starting with *args should be formatted in the following'
             ' form: *args: list(*). Description.',
             'malformed-args-argument',
-            'The parameter is incorrectly formatted.'
-        )
+            'The parameter is incorrectly formatted.',
+        ),
     }
 
     options = (
         (
             'accept-no-param-doc',
-            {'default': True, 'type': 'yn', 'metavar': '<y or n>',
-             'help': 'Whether to accept totally missing parameter '
-                     'documentation in the docstring of a '
-                     'function that has parameters.'
-            }),
+            {
+                'default': True,
+                'type': 'yn',
+                'metavar': '<y or n>',
+                'help': 'Whether to accept totally missing parameter '
+                'documentation in the docstring of a '
+                'function that has parameters.',
+            },
+        ),
         (
             'accept-no-raise-doc',
-            {'default': True, 'type': 'yn', 'metavar': '<y or n>',
-             'help': 'Whether to accept totally missing raises '
-                     'documentation in the docstring of a function that '
-                     'raises an exception.'
-            }),
+            {
+                'default': True,
+                'type': 'yn',
+                'metavar': '<y or n>',
+                'help': 'Whether to accept totally missing raises '
+                'documentation in the docstring of a function that '
+                'raises an exception.',
+            },
+        ),
         (
             'accept-no-return-doc',
-            {'default': True, 'type': 'yn', 'metavar': '<y or n>',
-             'help': 'Whether to accept totally missing return '
-                     'documentation in the docstring of a function that '
-                     'returns a statement.'
-            }),
+            {
+                'default': True,
+                'type': 'yn',
+                'metavar': '<y or n>',
+                'help': 'Whether to accept totally missing return '
+                'documentation in the docstring of a function that '
+                'returns a statement.',
+            },
+        ),
         (
             'accept-no-yields-doc',
-            {'default': True, 'type': 'yn', 'metavar': '<y or n>',
-             'help': 'Whether to accept totally missing yields '
-                     'documentation in the docstring of a generator.'
-            }),
-        )
+            {
+                'default': True,
+                'type': 'yn',
+                'metavar': '<y or n>',
+                'help': 'Whether to accept totally missing yields '
+                'documentation in the docstring of a generator.',
+            },
+        ),
+    )
 
     priority = -2
 
     constructor_names = {'__init__', '__new__'}
-    not_needed_param_in_docstring = {'self', 'cls'}
+    not_needed_param_in_docstring = {'self', 'cls', 'mcs'}
     docstring_sections = {'Raises:', 'Returns:', 'Yields:'}
 
     # Docstring section headers split up into arguments, returns, yields
@@ -593,7 +460,7 @@ class DocstringParameterChecker(checkers.BaseChecker):
     DOCSTRING_SECTION_YIELDS = 'yields'
     DOCSTRING_SECTION_RAISES = 'raises'
 
-    def visit_classdef(self, node):
+    def visit_classdef(self, node: astroid.nodes.ClassDef) -> None:
         """Visit each class definition in a module and check if there is a
         single new line below each class docstring.
 
@@ -602,7 +469,7 @@ class DocstringParameterChecker(checkers.BaseChecker):
                 in the AST.
         """
         # Check if the given node has docstring.
-        if node.doc is None:
+        if node.doc_node is None:
             return
         line_number = node.fromlineno
         # Iterate till the start of docstring.
@@ -613,25 +480,27 @@ class DocstringParameterChecker(checkers.BaseChecker):
 
             line_number += 1
 
-        doc_length = len(node.doc.split('\n'))
+        doc_length = len(node.doc_node.value.split('\n'))
         line_number += doc_length
         first_line_after_doc = linecache.getline(
-            node.root().file, line_number).strip()
+            node.root().file, line_number
+        ).strip()
         second_line_after_doc = linecache.getline(
-            node.root().file, line_number + 1).strip()
+            node.root().file, line_number + 1
+        ).strip()
         if first_line_after_doc != '':
             self.add_message('newline-below-class-docstring', node=node)
         elif second_line_after_doc == '':
             self.add_message('newline-below-class-docstring', node=node)
 
-    def visit_functiondef(self, node):
+    def visit_functiondef(self, node: astroid.nodes.FunctionDef) -> None:
         """Called for function and method definitions (def).
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.FunctionDef. Node for a function or
                 method definition in the AST.
         """
-        node_doc = docstrings_checker.docstringify(node.doc)
+        node_doc = docstrings_checker.docstringify(node.doc_node)
         self.check_functiondef_params(node, node_doc)
         self.check_functiondef_returns(node, node_doc)
         self.check_functiondef_yields(node, node_doc)
@@ -639,12 +508,16 @@ class DocstringParameterChecker(checkers.BaseChecker):
         self.check_docstring_section_indentation(node)
         self.check_typeinfo(node, node_doc)
 
-    def check_typeinfo(self, node, node_doc):
+    def check_typeinfo(
+        self,
+        node: astroid.nodes.FunctionDef,
+        node_doc: _check_docs_utils.Docstring,
+    ) -> None:
         """Checks whether all parameters in a function definition are
         properly formatted.
 
         Args:
-            node: astroid.node.Function. Node for a function or
+            node: astroid.nodes.FunctionDef. Node for a function or
                 method definition in the AST.
             node_doc: Docstring. Pylint Docstring class instance representing
                 a node's docstring.
@@ -663,16 +536,20 @@ class DocstringParameterChecker(checkers.BaseChecker):
                 [.]+\s )+ \s*
             \s*  [A-Z0-9](.*)[.\]}}\)]+$     # beginning of optional description
         """.format(
-            type=_check_docs_utils.GoogleDocstring.re_multiple_type,
-        ), flags=re.X | re.S | re.M)
+                type=_check_docs_utils.GoogleDocstring.re_multiple_type,
+            ),
+            flags=re.X | re.S | re.M,
+        )
 
         re_returns_line = re.compile(
             r"""
             \s* (({type}|\S*|[\s\S]*).[.]+\s)+        # identifier
             \s* [A-Z0-9](.*)[.\]}}\)]+$               # beginning of description
         """.format(
-            type=_check_docs_utils.GoogleDocstring.re_multiple_type,
-        ), flags=re.X | re.S | re.M)
+                type=_check_docs_utils.GoogleDocstring.re_multiple_type,
+            ),
+            flags=re.X | re.S | re.M,
+        )
 
         re_yields_line = re_returns_line
 
@@ -681,19 +558,28 @@ class DocstringParameterChecker(checkers.BaseChecker):
             \s* ({type}[.])+                    # identifier
             \s* [A-Z0-9](.*)[.\]}}\)]+$         # beginning of description
         """.format(
-            type=_check_docs_utils.GoogleDocstring.re_multiple_type,
-        ), flags=re.X | re.S | re.M)
+                type=_check_docs_utils.GoogleDocstring.re_multiple_type,
+            ),
+            flags=re.X | re.S | re.M,
+        )
+
+        if not isinstance(node_doc, _check_docs_utils.GoogleDocstring):
+            return
 
         # We need to extract the information from the given section for that
         # we need to use _parse_section as this will extract all the arguments
         # from the Args section, as this is a private method hence we need to
         # use the pylint pragma to escape the pylint warning.
         if node_doc.has_params():
-            entries = node_doc._parse_section(  # pylint: disable=protected-access
-                _check_docs_utils.GoogleDocstring.re_param_section)
+            entries = (
+                node_doc._parse_section(  # pylint: disable=protected-access
+                    node_doc.re_param_section
+                )
+            )
             for entry in entries:
                 if entry.lstrip().startswith('*args') and not (
-                        entry.lstrip().startswith('*args: list(*)')):
+                    entry.lstrip().startswith('*args: list(*)')
+                ):
                     self.add_message('malformed-args-argument', node=node)
                 match = re_param_line.match(entry)
                 if not match:
@@ -704,8 +590,11 @@ class DocstringParameterChecker(checkers.BaseChecker):
         # from the Returns section, as this is a private method hence we need to
         # use the pylint pragma to escape the pylint warning.
         if node_doc.has_returns():
-            entries = node_doc._parse_section(  # pylint: disable=protected-access
-                _check_docs_utils.GoogleDocstring.re_returns_section)
+            entries = (
+                node_doc._parse_section(  # pylint: disable=protected-access
+                    node_doc.re_returns_section
+                )
+            )
             entries = [''.join(entries)]
             for entry in entries:
                 match = re_returns_line.match(entry)
@@ -717,8 +606,11 @@ class DocstringParameterChecker(checkers.BaseChecker):
         # from the Yields section, as this is a private method hence we need to
         # use the pylint pragma to escape the pylint warning.
         if node_doc.has_yields():
-            entries = node_doc._parse_section(  # pylint: disable=protected-access
-                _check_docs_utils.GoogleDocstring.re_yields_section)
+            entries = (
+                node_doc._parse_section(  # pylint: disable=protected-access
+                    node_doc.re_yields_section
+                )
+            )
             entries = [''.join(entries)]
             for entry in entries:
                 match = re_yields_line.match(entry)
@@ -730,19 +622,26 @@ class DocstringParameterChecker(checkers.BaseChecker):
         # from the Raises section, as this is a private method hence we need to
         # use the pylint pragma to escape the pylint warning.
         if node_doc.exceptions():
-            entries = node_doc._parse_section(  # pylint: disable=protected-access
-                _check_docs_utils.GoogleDocstring.re_raise_section)
+            entries = (
+                node_doc._parse_section(  # pylint: disable=protected-access
+                    node_doc.re_raise_section
+                )
+            )
             for entry in entries:
                 match = re_raise_line.match(entry)
                 if not match:
                     self.add_message('malformed-raises-section', node=node)
 
-    def check_functiondef_params(self, node, node_doc):
+    def check_functiondef_params(
+        self,
+        node: astroid.nodes.FunctionDef,
+        node_doc: _check_docs_utils.Docstring,
+    ) -> None:
         """Checks whether all parameters in a function definition are
         documented.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.FunctionDef. Node for a function or
                 method definition in the AST.
             node_doc: Docstring. Pylint Docstring class instance representing
                 a node's docstring.
@@ -751,39 +650,43 @@ class DocstringParameterChecker(checkers.BaseChecker):
         if node.name in self.constructor_names:
             class_node = checker_utils.node_frame_class(node)
             if class_node is not None:
-                class_doc = docstrings_checker.docstringify(class_node.doc)
+                class_doc = docstrings_checker.docstringify(class_node.doc_node)
                 self.check_single_constructor_params(
-                    class_doc, node_doc, class_node)
+                    class_doc, node_doc, class_node
+                )
 
                 # __init__ or class docstrings can have no parameters documented
                 # as long as the other documents them.
                 node_allow_no_param = (
-                    class_doc.has_params() or
-                    class_doc.params_documented_elsewhere() or
-                    None
+                    class_doc.has_params()
+                    or class_doc.params_documented_elsewhere()
+                    or None
                 )
                 class_allow_no_param = (
-                    node_doc.has_params() or
-                    node_doc.params_documented_elsewhere() or
-                    None
+                    node_doc.has_params()
+                    or node_doc.params_documented_elsewhere()
+                    or None
                 )
 
                 self.check_arguments_in_docstring(
-                    class_doc, node.args, class_node,
-                    accept_no_param_doc=class_allow_no_param)
+                    class_doc,
+                    node.args,
+                    class_node,
+                    accept_no_param_doc=class_allow_no_param,
+                )
 
         self.check_arguments_in_docstring(
-            node_doc, node.args, node,
-            accept_no_param_doc=node_allow_no_param)
+            node_doc, node.args, node, accept_no_param_doc=node_allow_no_param
+        )
 
-    def check_docstring_style(self, node):
+    def check_docstring_style(self, node: astroid.nodes.FunctionDef) -> None:
         """It fetches a function node and extract the class node from function
         node if it is inside a class body and passes it to
         check_docstring_structure which checks whether the docstring has a
         space at the beginning and a period at the end.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.FunctionDef. Node for a function or
                 method definition in the AST.
         """
         if node.name in self.constructor_names:
@@ -792,13 +695,15 @@ class DocstringParameterChecker(checkers.BaseChecker):
                 self.check_docstring_structure(class_node)
         self.check_docstring_structure(node)
 
-    def check_newline_above_args(self, node, docstring):
+    def check_newline_above_args(
+        self, node: astroid.nodes.FunctionDef, docstring: List[str]
+    ) -> None:
         """Checks to ensure that there is a single space above the
         argument parameters in the docstring.
 
         Args:
-            node: astroid.node.Function. Node for a function or method
-                definition in the AST.
+            node: astroid.nodes.FunctionDef. Node for a function or
+                method definition in the AST.
             docstring: list(str). Function docstring in splitted by newlines.
         """
         blank_line_counter = 0
@@ -808,55 +713,57 @@ class DocstringParameterChecker(checkers.BaseChecker):
                 blank_line_counter += 1
             if blank_line_counter == 0 or blank_line_counter > 1:
                 if line == 'Args:':
-                    self.add_message(
-                        'single-space-above-args', node=node)
+                    self.add_message('single-space-above-args', node=node)
                 elif line == 'Returns:':
-                    self.add_message(
-                        'single-space-above-returns', node=node)
+                    self.add_message('single-space-above-returns', node=node)
                 elif line == 'Raises:':
-                    self.add_message(
-                        'single-space-above-raises', node=node)
+                    self.add_message('single-space-above-raises', node=node)
                 elif line == 'Yields:':
-                    self.add_message(
-                        'single-space-above-yield', node=node)
+                    self.add_message('single-space-above-yield', node=node)
             if line != '':
                 blank_line_counter = 0
 
-    def check_docstring_structure(self, node):
+    def check_docstring_structure(self, node: astroid.nodes.NodeNG) -> None:
         """Checks whether the docstring has the correct structure i.e.
         do not have space at the beginning and have a period at the end of
         docstring.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.NodeNG. Node for a function or
                 method definition in the AST.
         """
-        if node.doc:
-            docstring = node.doc.splitlines()
+        if node.doc_node:
+            docstring = node.doc_node.value.splitlines()
             # Check for space after """ in docstring.
             if len(docstring[0]) > 0 and docstring[0][0] == ' ':
                 self.add_message('space-after-triple-quote', node=node)
             # Check if single line docstring span two lines.
             if len(docstring) == 2 and docstring[-1].strip() == '':
                 self.add_message(
-                    'single-line-docstring-span-two-lines', node=node)
+                    'single-line-docstring-span-two-lines', node=node
+                )
             # Check for punctuation at end of a single line docstring.
-            elif (len(docstring) == 1 and docstring[-1][-1] not in
-                  ALLOWED_TERMINATING_PUNCTUATIONS):
+            elif (
+                len(docstring) == 1
+                and docstring[-1][-1] not in ALLOWED_TERMINATING_PUNCTUATIONS
+            ):
                 self.add_message('no-period-used', node=node)
             # Check for punctuation at the end of a multiline docstring.
             elif len(docstring) > 1:
                 if docstring[-2].strip() == '':
                     self.add_message('empty-line-before-end', node=node)
                 elif docstring[-1].strip() != '':
-                    self.add_message(
-                        'no-newline-used-at-end', node=node)
-                elif (docstring[-2][-1] not in
-                      ALLOWED_TERMINATING_PUNCTUATIONS and not
-                      any(word in docstring[-2] for word in EXCLUDED_PHRASES)):
+                    self.add_message('no-newline-used-at-end', node=node)
+                elif docstring[-2][
+                    -1
+                ] not in ALLOWED_TERMINATING_PUNCTUATIONS and not any(
+                    word in docstring[-2] for word in EXCLUDED_PHRASES
+                ):
                     self.add_message('no-period-used', node=node)
 
-    def check_docstring_section_indentation(self, node):
+    def check_docstring_section_indentation(
+        self, node: astroid.nodes.FunctionDef
+    ) -> None:
         """Checks whether the function argument definitions ("Args": section,
         "Returns": section, "Yield": section, "Raises: section) are indented
         properly. Parameters should be indented by 4 relative to the 'Args:'
@@ -864,119 +771,141 @@ class DocstringParameterChecker(checkers.BaseChecker):
         should be indented by 8.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.FunctionDef. Node for a function or
                 method definition in the AST.
         """
         arguments_node = node.args
         expected_argument_names = set(
-            None if (arg.name in self.not_needed_param_in_docstring)
-            else (arg.name + ':') for arg in arguments_node.args)
+            (
+                None
+                if (arg.name in self.not_needed_param_in_docstring)
+                else (arg.name + ':')
+            )
+            for arg in arguments_node.args + arguments_node.kwonlyargs
+        )
         currently_in_args_section = False
         # When we are in the args section and a line ends in a colon,
         # we can ignore the indentation styling in the next section of
         # description, hence a freeform section.
         currently_in_freeform_section = False
         args_indentation = 0
-        if node.doc:
+        if node.doc_node:
             current_docstring_section = None
             in_description = False
             args_indentation_in_spaces = 0
-            docstring = node.doc.splitlines()
+            docstring = node.doc_node.value.splitlines()
             self.check_newline_above_args(node, docstring)
             for line in docstring:
                 stripped_line = line.lstrip()
-                current_line_indentation = (
-                    len(line) - len(stripped_line))
-                parameter = re.search(
-                    '^[^:]+:',
-                    stripped_line)
+                current_line_indentation = len(line) - len(stripped_line)
+                parameter = re.search('^[^:]+:', stripped_line)
+
                 # Check for empty lines and ignore them.
                 if len(line.strip()) == 0:
                     continue
+
                 # If line starts with Returns: , it is the header of a Returns
                 # subsection.
                 if stripped_line.startswith('Returns:'):
-                    current_docstring_section = (
-                        self.DOCSTRING_SECTION_RETURNS)
+                    current_docstring_section = self.DOCSTRING_SECTION_RETURNS
                     in_freeform_section = False
                     in_description = False
                     args_indentation_in_spaces = current_line_indentation
+
                 # If line starts with Raises: , it is the header of a Raises
                 # subsection.
                 elif stripped_line.startswith('Raises:'):
-                    current_docstring_section = (
-                        self.DOCSTRING_SECTION_RAISES)
+                    current_docstring_section = self.DOCSTRING_SECTION_RAISES
                     in_freeform_section = False
                     in_description = False
                     args_indentation_in_spaces = current_line_indentation
+
                 # If line starts with Yields: , it is the header of a Yields
                 # subsection.
                 elif stripped_line.startswith('Yields:'):
-                    current_docstring_section = (
-                        self.DOCSTRING_SECTION_YIELDS)
+                    current_docstring_section = self.DOCSTRING_SECTION_YIELDS
                     in_freeform_section = False
                     in_description = False
                     args_indentation_in_spaces = current_line_indentation
+
                 # Check if we are in a docstring raises section.
-                elif (current_docstring_section and
-                      (current_docstring_section ==
-                       self.DOCSTRING_SECTION_RAISES)):
+                elif (
+                    current_docstring_section
+                    and current_docstring_section
+                    == self.DOCSTRING_SECTION_RAISES
+                ):
                     # In the raises section, if we see this regex expression, we
                     # can assume it's the start of a new parameter definition.
                     # We check the indentation of the parameter definition.
-                    if re.search(r'^[a-zA-Z0-9_\.\*]+[.] ',
-                                 stripped_line):
+                    if re.search(r'^[a-zA-Z0-9_\.\*]+[.] ', stripped_line):
                         if current_line_indentation != (
-                                args_indentation_in_spaces + 4):
+                            args_indentation_in_spaces + 4
+                        ):
                             self.add_message(
-                                '4-space-indentation-in-docstring',
-                                node=node)
+                                '4-space-indentation-in-docstring', node=node
+                            )
                         in_description = True
+
                     # In a description line that is wrapped around (doesn't
                     # start off with the parameter name), we need to make sure
                     # the indentation is 8.
                     elif in_description:
                         if current_line_indentation != (
-                                args_indentation_in_spaces + 8):
+                            args_indentation_in_spaces + 8
+                        ):
                             self.add_message(
-                                '8-space-indentation-in-docstring',
-                                node=node)
+                                '8-space-indentation-in-docstring', node=node
+                            )
+
                 # Check if we are in a docstring returns or yields section.
                 # NOTE: Each function should only have one yield or return
                 # object. If a tuple is returned, wrap both in a tuple parameter
                 # section.
-                elif (current_docstring_section and
-                      (current_docstring_section ==
-                       self.DOCSTRING_SECTION_RETURNS)
-                      or (current_docstring_section ==
-                          self.DOCSTRING_SECTION_YIELDS)):
+                elif (
+                    current_docstring_section
+                    and current_docstring_section
+                    in (
+                        self.DOCSTRING_SECTION_RETURNS,
+                        self.DOCSTRING_SECTION_YIELDS,
+                    )
+                ):
                     # Check for the start of a new parameter definition in the
                     # format "type (elaboration)." and check the indentation.
-                    if (re.search(r'^[a-zA-Z_() -:,\*]+\.',
-                                  stripped_line) and not in_description):
+                    if (
+                        re.search(r'^[a-zA-Z_() -:,\*]+\.', stripped_line)
+                        and not in_description
+                    ):
                         if current_line_indentation != (
-                                args_indentation_in_spaces + 4):
+                            args_indentation_in_spaces + 4
+                        ):
                             self.add_message(
-                                '4-space-indentation-in-docstring',
-                                node=node)
+                                '4-space-indentation-in-docstring', node=node
+                            )
+
                         # If the line ends with a colon, we can assume the rest
                         # of the section is free form.
                         if re.search(r':$', stripped_line):
                             in_freeform_section = True
+
                         in_description = True
+
                     # In a description line of a returns or yields, we keep the
                     # indentation the same as the definition line.
                     elif in_description:
-                        if (current_line_indentation != (
-                                args_indentation_in_spaces + 4)
-                                and not in_freeform_section):
+                        if (
+                            current_line_indentation
+                            != args_indentation_in_spaces + 4
+                            and not in_freeform_section
+                        ):
                             self.add_message(
-                                '4-space-indentation-in-docstring',
-                                node=node)
+                                '4-space-indentation-in-docstring', node=node
+                            )
+
                         # If the description line ends with a colon, we can
                         # assume the rest of the section is free form.
                         if re.search(r':$', stripped_line):
                             in_freeform_section = True
+
                 # Check for the start of an Args: section and check the correct
                 # indentation.
                 elif stripped_line.startswith('Args:'):
@@ -985,34 +914,41 @@ class DocstringParameterChecker(checkers.BaseChecker):
                     if current_line_indentation % 4 != 0:
                         self.add_message(
                             'incorrect-indentation-for-arg-header-doc',
-                            node=node)
+                            node=node,
+                        )
                         # Since other checks are based on relative indentation,
                         # we need to fix this indentation first.
                         break
+
                     currently_in_args_section = True
+
                 # Check for parameter section header by checking that the
                 # parameter is in the function arguments set. We also check for
                 # arguments that start with * which means it's autofill and will
                 # not appear in the node args list so we handle those too.
-                elif (currently_in_args_section and
-                      parameter and ((
-                          parameter.group(0).strip('*')
-                          in expected_argument_names) or
-                           re.search(r'\*[^ ]+: ', stripped_line))):
+                elif (
+                    currently_in_args_section
+                    and parameter
+                    and (
+                        parameter.group(0).strip('*') in expected_argument_names
+                        or re.search(r'\*[^ ]+: ', stripped_line)
+                    )
+                ):
                     words_in_line = stripped_line.split(' ')
                     currently_in_freeform_section = False
                     # Check if the current parameter section indentation is
                     # correct.
-                    if current_line_indentation != (
-                            args_indentation + 4):
+                    if current_line_indentation != args_indentation + 4:
                         # Use the first word in the line to identify the error.
                         beginning_of_line = (
-                            words_in_line[0]
-                            if words_in_line else None)
+                            words_in_line[0] if words_in_line else None
+                        )
                         self.add_message(
                             '4-space-indentation-for-arg-parameters-doc',
                             node=node,
-                            args=(beginning_of_line))
+                            args=beginning_of_line,
+                        )
+
                     # If the line ends with a colon, that means
                     # the next subsection of description is free form.
                     if line.endswith(':'):
@@ -1022,28 +958,35 @@ class DocstringParameterChecker(checkers.BaseChecker):
                 elif currently_in_args_section:
                     # If it is not a freeform section, we check the indentation.
                     words_in_line = stripped_line.split(' ')
-                    if (not currently_in_freeform_section
-                            and current_line_indentation != (
-                                args_indentation + 8)):
+                    if (
+                        not currently_in_freeform_section
+                        and current_line_indentation != args_indentation + 8
+                    ):
                         # Use the first word in the line to identify the error.
                         beginning_of_line = (
-                            words_in_line[0]
-                            if words_in_line else None)
+                            words_in_line[0] if words_in_line else None
+                        )
                         self.add_message(
                             '8-space-indentation-for-arg-in-descriptions-doc',
                             node=node,
-                            args=(beginning_of_line))
+                            args=beginning_of_line,
+                        )
+
                     # If the line ends with a colon, that
                     # means the next subsection of description is free form.
                     if line.endswith(':'):
                         currently_in_freeform_section = True
 
-    def check_functiondef_returns(self, node, node_doc):
+    def check_functiondef_returns(
+        self,
+        node: astroid.nodes.FunctionDef,
+        node_doc: _check_docs_utils.Docstring,
+    ) -> None:
         """Checks whether a function documented with a return value actually has
         a return statement in its definition.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.FunctionDef. Node for a function or
                 method definition in the AST.
             node_doc: Docstring. Pylint Docstring class instance representing
                 a node's docstring.
@@ -1051,22 +994,23 @@ class DocstringParameterChecker(checkers.BaseChecker):
         if not node_doc.supports_yields and node.is_generator():
             return
 
-        return_nodes = node.nodes_of_class(astroid.Return)
-        if ((
-                node_doc.has_returns() or node_doc.has_rtype()) and
-                not any(
-                    docstrings_checker.returns_something(
-                        ret_node) for ret_node in return_nodes)):
-            self.add_message(
-                'redundant-returns-doc',
-                node=node)
+        return_nodes = node.nodes_of_class(astroid.nodes.Return)
+        if (node_doc.has_returns() or node_doc.has_rtype()) and not any(
+            docstrings_checker.returns_something(ret_node)
+            for ret_node in return_nodes
+        ):
+            self.add_message('redundant-returns-doc', node=node)
 
-    def check_functiondef_yields(self, node, node_doc):
+    def check_functiondef_yields(
+        self,
+        node: astroid.nodes.FunctionDef,
+        node_doc: _check_docs_utils.Docstring,
+    ) -> None:
         """Checks whether a function documented with a yield value actually has
         a yield statement in its definition.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.Function. Node for a function or
                 method definition in the AST.
             node_doc: Docstring. Pylint Docstring class instance representing
                 a node's docstring.
@@ -1074,38 +1018,38 @@ class DocstringParameterChecker(checkers.BaseChecker):
         if not node_doc.supports_yields:
             return
 
-        if ((node_doc.has_yields() or node_doc.has_yields_type()) and
-                not node.is_generator()):
-            self.add_message(
-                'redundant-yields-doc',
-                node=node)
+        if (
+            node_doc.has_yields() or node_doc.has_yields_type()
+        ) and not node.is_generator():
+            self.add_message('redundant-yields-doc', node=node)
 
-    def visit_raise(self, node):
+    def visit_raise(self, node: astroid.nodes.Raise) -> None:
         """Visits a function node that raises an exception and verifies that all
         exceptions raised in the function definition are documented.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.Raise. Node for a function or
                 method definition in the AST.
         """
         func_node = node.frame()
-        if not isinstance(func_node, astroid.FunctionDef):
+        if not isinstance(func_node, astroid.nodes.FunctionDef):
             return
 
         expected_excs = docstrings_checker.possible_exc_types(node)
         if not expected_excs:
             return
 
-        if not func_node.doc:
+        if not func_node.doc_node:
             # If this is a property setter,
             # the property should have the docstring instead.
             setters_property = docstrings_checker.get_setters_property(
-                func_node)
+                func_node
+            )
             if setters_property:
                 func_node = setters_property
 
-        doc = docstrings_checker.docstringify(func_node.doc)
-        if not doc.is_valid():
+        doc = docstrings_checker.docstringify(func_node.doc_node)
+        if doc.matching_sections() == 0:
             if doc.doc:
                 self._handle_no_raise_doc(expected_excs, func_node)
             return
@@ -1114,12 +1058,12 @@ class DocstringParameterChecker(checkers.BaseChecker):
         missing_excs = expected_excs - found_excs
         self._add_raise_message(missing_excs, func_node)
 
-    def visit_return(self, node):
+    def visit_return(self, node: astroid.nodes.Return) -> None:
         """Visits a function node that contains a return statement and verifies
         that the return value and the return type are documented.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
+            node: astroid.nodes.Return. Node for a function or
                 method definition in the AST.
         """
         if not docstrings_checker.returns_something(node):
@@ -1127,67 +1071,68 @@ class DocstringParameterChecker(checkers.BaseChecker):
 
         func_node = node.frame()
 
-        doc = docstrings_checker.docstringify(func_node.doc)
-        if not doc.is_valid() and self.config.accept_no_return_doc:
+        doc = docstrings_checker.docstringify(func_node.doc_node)
+        if (
+            doc.matching_sections() == 0
+            and self.linter.config.accept_no_return_doc
+        ):
             return
 
         is_property = checker_utils.decorated_with_property(func_node)
 
-        if not (doc.has_returns() or
-                (doc.has_property_returns() and is_property)):
-            self.add_message(
-                'missing-return-doc',
-                node=func_node
-            )
+        if not (
+            doc.has_returns() or (doc.has_property_returns() and is_property)
+        ):
+            self.add_message('missing-return-doc', node=func_node)
 
-        if not (doc.has_rtype() or
-                (doc.has_property_type() and is_property)):
-            self.add_message(
-                'missing-return-type-doc',
-                node=func_node
-            )
+        if not (doc.has_rtype() or (doc.has_property_type() and is_property)):
+            self.add_message('missing-return-type-doc', node=func_node)
 
-    def visit_yield(self, node):
+    def visit_yield(
+        self, node: astroid.nodes.Yield | astroid.nodes.YieldFrom
+    ) -> None:
         """Visits a function node that contains a yield statement and verifies
         that the yield value and the yield type are documented.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or
-                method definition in the AST.
+            node: astroid.nodes.Yield|astroid.nodes.YieldFrom. A
+                Node for a function or method definition in the AST.
         """
         func_node = node.frame()
 
-        doc = docstrings_checker.docstringify(func_node.doc)
-        if not doc.is_valid() and self.config.accept_no_yields_doc:
+        doc = docstrings_checker.docstringify(func_node.doc_node)
+        if (
+            doc.matching_sections() == 0
+            and self.linter.config.accept_no_yields_doc
+        ):
             return
 
         doc_has_yields = doc.has_yields()
         doc_has_yields_type = doc.has_yields_type()
 
         if not doc_has_yields:
-            self.add_message(
-                'missing-yield-doc',
-                node=func_node
-            )
+            self.add_message('missing-yield-doc', node=func_node)
 
         if not doc_has_yields_type:
-            self.add_message(
-                'missing-yield-type-doc',
-                node=func_node
-            )
+            self.add_message('missing-yield-type-doc', node=func_node)
 
-    def visit_yieldfrom(self, node):
+    def visit_yieldfrom(self, node: astroid.nodes.YieldFrom) -> None:
         """Visits a function node that contains a yield from statement and
         verifies that the yield from value and the yield from type are
         documented.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node to access module content.
+            node: astroid.nodes.YieldFrom. Node to access module.
         """
         self.visit_yield(node)
 
     def check_arguments_in_docstring(
-            self, doc, arguments_node, warning_node, accept_no_param_doc=None):
+        self,
+        doc: _check_docs_utils.Docstring,
+        arguments_node: astroid.nodes.Arguments,
+        warning_node: astroid.nodes.NodeNG,
+        accept_no_param_doc: Optional[bool] = None,
+    ) -> None:
         """Check that all parameters in a function, method or class constructor
         on the one hand and the parameters mentioned in the parameter
         documentation (e.g. the Sphinx tags 'param' and 'type') on the other
@@ -1208,9 +1153,9 @@ class DocstringParameterChecker(checkers.BaseChecker):
 
         Args:
             doc: str. Docstring for the function, method or class.
-            arguments_node: astroid.scoped_nodes.Arguments. Arguments node
+            arguments_node: astroid.nodes.Arguments. Arguments node
                 for the function, method or class constructor.
-            warning_node: astroid.scoped_nodes.Node. The node to assign
+            warning_node: astroid.nodes.Node. The node to assign
                 the warnings to.
             accept_no_param_doc: bool|None. Whether or not to allow
                 no parameters to be documented. If None then
@@ -1222,16 +1167,15 @@ class DocstringParameterChecker(checkers.BaseChecker):
             return
 
         if accept_no_param_doc is None:
-            accept_no_param_doc = self.config.accept_no_param_doc
+            accept_no_param_doc = self.linter.config.accept_no_param_doc
         tolerate_missing_params = doc.params_documented_elsewhere()
 
         # Collect the function arguments.
-        expected_argument_names = set(
-            arg.name for arg in arguments_node.args)
+        expected_argument_names = set(arg.name for arg in arguments_node.args)
         expected_argument_names.update(
-            arg.name for arg in arguments_node.kwonlyargs)
-        not_needed_type_in_docstring = (
-            self.not_needed_param_in_docstring.copy())
+            arg.name for arg in arguments_node.kwonlyargs
+        )
+        not_needed_type_in_docstring = self.not_needed_param_in_docstring.copy()
 
         if arguments_node.vararg is not None:
             expected_argument_names.add(arguments_node.vararg)
@@ -1242,68 +1186,85 @@ class DocstringParameterChecker(checkers.BaseChecker):
         params_with_doc, params_with_type = doc.match_param_docs()
 
         # Tolerate no parameter documentation at all.
-        if (not params_with_doc and not params_with_type
-                and accept_no_param_doc):
+        if not params_with_doc and not params_with_type and accept_no_param_doc:
             tolerate_missing_params = True
 
         def _compare_missing_args(
-                found_argument_names, message_id, not_needed_names):
+            found_argument_names: Set[str],
+            message_id: str,
+            not_needed_names: Set[str],
+        ) -> None:
             """Compare the found argument names with the expected ones and
             generate a message if there are arguments missing.
 
             Args:
-                found_argument_names: set. Argument names found in the
+                found_argument_names: set(str). Argument names found in the
                     docstring.
                 message_id: str. Pylint message id.
                 not_needed_names: set(str). Names that may be omitted.
             """
             if not tolerate_missing_params:
                 missing_argument_names = (
-                    (expected_argument_names - found_argument_names)
-                    - not_needed_names)
+                    expected_argument_names - found_argument_names
+                ) - not_needed_names
                 if missing_argument_names:
                     self.add_message(
                         message_id,
-                        args=(', '.join(
-                            sorted(missing_argument_names)),),
-                        node=warning_node)
+                        args=(', '.join(sorted(missing_argument_names)),),
+                        node=warning_node,
+                    )
 
         def _compare_different_args(
-                found_argument_names, message_id, not_needed_names):
+            found_argument_names: Set[str],
+            message_id: str,
+            not_needed_names: Set[str],
+        ) -> None:
             """Compare the found argument names with the expected ones and
             generate a message if there are extra arguments found.
 
             Args:
-                found_argument_names: set. Argument names found in the
+                found_argument_names: set(str). Argument names found in the
                     docstring.
                 message_id: str. Pylint message id.
                 not_needed_names: set(str). Names that may be omitted.
             """
             differing_argument_names = (
                 (expected_argument_names ^ found_argument_names)
-                - not_needed_names - expected_argument_names)
+                - not_needed_names
+                - expected_argument_names
+            )
 
             if differing_argument_names:
                 self.add_message(
                     message_id,
-                    args=(', '.join(
-                        sorted(differing_argument_names)),),
-                    node=warning_node)
+                    args=(', '.join(sorted(differing_argument_names)),),
+                    node=warning_node,
+                )
 
         _compare_missing_args(
-            params_with_doc, 'missing-param-doc',
-            self.not_needed_param_in_docstring)
+            params_with_doc,
+            'missing-param-doc',
+            self.not_needed_param_in_docstring,
+        )
         _compare_missing_args(
-            params_with_type, 'missing-type-doc', not_needed_type_in_docstring)
+            params_with_type, 'missing-type-doc', not_needed_type_in_docstring
+        )
 
         _compare_different_args(
-            params_with_doc, 'differing-param-doc',
-            self.not_needed_param_in_docstring)
+            params_with_doc,
+            'differing-param-doc',
+            self.not_needed_param_in_docstring,
+        )
         _compare_different_args(
-            params_with_type, 'differing-type-doc',
-            not_needed_type_in_docstring)
+            params_with_type, 'differing-type-doc', not_needed_type_in_docstring
+        )
 
-    def check_single_constructor_params(self, class_doc, init_doc, class_node):
+    def check_single_constructor_params(
+        self,
+        class_doc: _check_docs_utils.Docstring,
+        init_doc: _check_docs_utils.Docstring,
+        class_node: astroid.nodes.ClassDef,
+    ) -> None:
         """Checks whether a class and corresponding  init() method are
         documented. If both of them are documented, it adds an error message.
 
@@ -1313,34 +1274,39 @@ class DocstringParameterChecker(checkers.BaseChecker):
             init_doc:  Docstring. Pylint docstring class instance representing
                 a method's docstring, the method here is the constructor method
                 for the above class.
-            class_node: astroid.scoped_nodes.Function. Node for class definition
+            class_node: astroid.nodes.ClassDef. Node for class definition
                 in AST.
         """
         if class_doc.has_params() and init_doc.has_params():
             self.add_message(
                 'multiple-constructor-doc',
                 args=(class_node.name,),
-                node=class_node)
+                node=class_node,
+            )
 
-    def _handle_no_raise_doc(self, excs, node):
+    def _handle_no_raise_doc(
+        self, excs: Set[str], node: astroid.nodes.FunctionDef
+    ) -> None:
         """Checks whether the raised exception in a function has been
         documented, add a message otherwise.
 
         Args:
             excs: list(str). A list of exception types.
-            node: astroid.scoped_nodes.Function. Node to access module content.
+            node: astroid.nodes.FunctionDef. Node to access module.
         """
-        if self.config.accept_no_raise_doc:
+        if self.linter.config.accept_no_raise_doc:
             return
 
         self._add_raise_message(excs, node)
 
-    def _add_raise_message(self, missing_excs, node):
+    def _add_raise_message(
+        self, missing_excs: Set[str], node: astroid.nodes.NodeNG
+    ) -> None:
         """Adds a message on :param:`node` for the missing exception type.
 
         Args:
-            missing_excs: list(Exception). A list of missing exception types.
-            node: astroid.node_classes.NodeNG. The node show the message on.
+            missing_excs: list(str). A list of missing exception types.
+            node: astroid.nodes.NodeNG. The node show the message on.
         """
         if not missing_excs:
             return
@@ -1348,15 +1314,14 @@ class DocstringParameterChecker(checkers.BaseChecker):
         self.add_message(
             'missing-raises-doc',
             args=(', '.join(sorted(missing_excs)),),
-            node=node)
+            node=node,
+        )
 
 
 class ImportOnlyModulesChecker(checkers.BaseChecker):
     """Checker for import-from statements. It checks that
     modules are only imported.
     """
-
-    __implements__ = interfaces.IAstroidChecker
 
     name = 'import-only-modules'
     priority = -1
@@ -1369,31 +1334,36 @@ class ImportOnlyModulesChecker(checkers.BaseChecker):
     }
 
     # If import from any of these is made, it may not be a module.
-    EXCLUDED_IMPORT_MODULES = ['__future__', 'typing', 'mypy_imports']
+    EXCLUDED_IMPORT_MODULES = [
+        '__future__',
+        'types',
+        'typing',
+        'mypy_imports',
+    ]
 
-    @checker_utils.check_messages('import-only-modules')
-    def visit_importfrom(self, node):
+    @checker_utils.only_required_for_messages('import-only-modules')
+    def visit_importfrom(self, node: astroid.nodes.ImportFrom) -> None:
         """Visits all import-from statements in a python file and checks that
         modules are imported. It then adds a message accordingly.
 
         Args:
-            node: astroid.node_classes.ImportFrom. Node for a import-from
+            node: astroid.nodes.ImportFrom. Node for a import-from
                 statement in the AST.
         """
 
         try:
             imported_module = node.do_import_module(node.modname)
-        except astroid.AstroidBuildingException:
+        except astroid.exceptions.AstroidBuildingError:
             return
 
         if node.modname in self.EXCLUDED_IMPORT_MODULES:
             return
 
         modname = node.modname
-        for (name, _) in node.names:
+        for name, _ in node.names:
             try:
                 imported_module.import_module(name, True)
-            except astroid.AstroidImportError:
+            except astroid.exceptions.AstroidImportError:
                 self.add_message(
                     'import-only-modules',
                     node=node,
@@ -1406,31 +1376,29 @@ class BackslashContinuationChecker(checkers.BaseChecker):
     for continuation.
     """
 
-    __implements__ = interfaces.IRawChecker
-
     name = 'backslash-continuation'
     priority = -1
     msgs = {
         'C0004': (
             (
                 'Backslash should not be used to break continuation lines. '
-                'Use braces to break long lines.'),
+                'Use braces to break long lines.'
+            ),
             'backslash-continuation',
-            'Use braces to break long lines instead of backslash.'
+            'Use braces to break long lines instead of backslash.',
         ),
     }
 
-    def process_module(self, node):
+    def process_module(self, node: astroid.nodes.Module) -> None:
         """Process a module.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node to access module content.
+            node: astroid.nodes.Module. Node to access module content.
         """
         file_content = read_from_node(node)
-        for (line_num, line) in enumerate(file_content):
+        for line_num, line in enumerate(file_content):
             if line.rstrip('\r\n').endswith('\\'):
-                self.add_message(
-                    'backslash-continuation', line=line_num + 1)
+                self.add_message('backslash-continuation', line=line_num + 1)
 
 
 class FunctionArgsOrderChecker(checkers.BaseChecker):
@@ -1438,7 +1406,6 @@ class FunctionArgsOrderChecker(checkers.BaseChecker):
     definition.
     """
 
-    __implements__ = interfaces.IAstroidChecker
     name = 'function-args-order'
     priority = -1
     msgs = {
@@ -1446,21 +1413,23 @@ class FunctionArgsOrderChecker(checkers.BaseChecker):
             'Wrong order of arguments in function definition '
             '\'self\' should come first.',
             'function-args-order-self',
-            '\'self\' should come first',),
+            '\'self\' should come first',
+        ),
         'C0006': (
             'Wrong order of arguments in function definition '
             '\'cls\' should come first.',
             'function-args-order-cls',
-            '\'cls\' should come first'),
+            '\'cls\' should come first',
+        ),
     }
 
-    def visit_functiondef(self, node):
+    def visit_functiondef(self, node: astroid.nodes.FunctionDef) -> None:
         """Visits every function definition in the python file and check the
         function arguments order. It then adds a message accordingly.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node for a function or method
-                definition in the AST.
+            node: astroid.nodes.FunctionDef. Node for a function or
+                method definition in the AST.
         """
 
         args_list = [args.name for args in node.args.args]
@@ -1475,15 +1444,20 @@ class RestrictedImportChecker(checkers.BaseChecker):
     from their respective restricted layers.
     """
 
-    __implements__ = interfaces.IAstroidChecker
     name = 'invalid-import'
     priority = -1
     msgs = {
         'C0009': (
-            'Importing %s layer in %s layer is prohibited.',
+            'Importing any file from module %s in module "%s" is prohibited.',
             'invalid-import',
-            'Storage layer and domain layer must not import'
-            'domain layer and controller layer respectively.'),
+            'Some modules cannot be imported in other modules.',
+        ),
+        'C0010': (
+            'Importing file named "%s" from module "%s" '
+            'in module "%s" is prohibited.',
+            'invalid-import-from',
+            'Some modules cannot be imported in other modules.',
+        ),
     }
 
     options = (
@@ -1501,113 +1475,167 @@ class RestrictedImportChecker(checkers.BaseChecker):
                     'the \':\' separator, and after that a list of the imports '
                     'that are forbidden separated by \'|\', these imports are '
                     'relative to the root module (e.g. \'core.domain\').'
-                )
-            }
+                ),
+            },
         ),
     )
 
-    def __init__(self, linter=None):
-        super(RestrictedImportChecker, self).__init__(linter=linter)
-        self._module_to_forbidden_imports = []
+    def __init__(self, linter: lint.PyLinter) -> None:
+        super().__init__(linter=linter)
+        self._module_to_forbidden_imports: List[
+            Tuple[str, List[Tuple[str, Optional[str]]]]
+        ] = []
 
-    def open(self):
+    def open(self) -> None:
         """Parse the forbidden imports."""
-        splitted_module_to_forbidden_imports = [
+        module_to_forbidden_imports: List[Tuple[str, str]] = [
             forbidden_import.strip().split(':')
-            for forbidden_import in self.config.forbidden_imports
+            for forbidden_import in self.linter.config.forbidden_imports
         ]
-        self._module_to_forbidden_imports = list(
-            (
-                forbidden_imports[0].strip(),
-                [import_.strip() for import_ in forbidden_imports[1].split('|')]
-            ) for forbidden_imports in splitted_module_to_forbidden_imports
-        )
+        self._module_to_forbidden_imports = []
+        for module_regex, forbidden_imports in module_to_forbidden_imports:
+            processed_forbidden_imports: List[Tuple[str, Optional[str]]] = []
+            for forbidden_import in forbidden_imports.split('|'):
+                stripped_forbidden_import = forbidden_import.strip()
+                if stripped_forbidden_import.startswith('from'):
+                    from_part, import_part = stripped_forbidden_import[
+                        4:
+                    ].split(' import ')
+                    processed_forbidden_imports.append(
+                        (from_part.strip(), import_part.strip())
+                    )
+                else:
+                    processed_forbidden_imports.append(
+                        (stripped_forbidden_import[7:].strip(), None)
+                    )
+            self._module_to_forbidden_imports.append(
+                (module_regex.strip(), processed_forbidden_imports)
+            )
 
-    def _iterate_forbidden_imports(self, node):
+    def _iterate_forbidden_imports(
+        self,
+        node: astroid.nodes.Import | astroid.nodes.ImportFrom,
+    ) -> Generator[Tuple[str, Tuple[str, Optional[str]]], None, None]:
         """Yields pairs of module name and forbidden imports.
 
         Args:
-            node: astroid.node_classes.Import. Node for a import statement
-                in the AST.
+            node: astroid.nodes.Import|astroid.nodes.ImportFrom. A
+                Node from some `import *` or `from * import *` in the AST.
 
         Yields:
-            tuple(str, str). Yields pair of module name and forbidden import.
+            tuple(str, tuple(str, None)). Yields pair of module name and
+            forbidden import.
         """
         modnode = node.root()
         for module_name, forbidden_imports in self._module_to_forbidden_imports:
             for forbidden_import in forbidden_imports:
-                if module_name in modnode.name and not '_test' in modnode.name:
+                if (
+                    fnmatch.fnmatch(modnode.name, module_name)
+                    and not '_test' in modnode.name
+                ):
                     yield module_name, forbidden_import
 
-    def _add_invalid_import_message(self, node, module_name, forbidden_import):
+    def _add_invalid_import_message(
+        self,
+        node: astroid.nodes.Import | astroid.nodes.ImportFrom,
+        module_name: str,
+        forbidden_import_names: Tuple[str, Optional[str]],
+    ) -> None:
         """Adds pylint message about the invalid import.
 
         Args:
-            node: astroid.node_classes.Import. Node for a import statement
-                in the AST.
+            node: astroid.nodes.Import|astroid.nodes.ImportFrom. A
+                Node for a import statement in the AST.
             module_name: str. The module that was checked.
-            forbidden_import: str. The import that was invalid.
+            forbidden_import_names: tuple(str, str|None). The import that
+                was invalid.
         """
-        self.add_message(
-            'invalid-import',
-            node=node,
-            args=(
-                forbidden_import.split('.')[-1],
-                module_name.split('.')[-1]
-            ),
-        )
+        if forbidden_import_names[1] is None:
+            self.add_message(
+                'invalid-import',
+                node=node,
+                args=(forbidden_import_names[0], module_name),
+            )
+        else:
+            self.add_message(
+                'invalid-import-from',
+                node=node,
+                args=(
+                    forbidden_import_names[1],
+                    forbidden_import_names[0],
+                    module_name,
+                ),
+            )
 
-    def visit_import(self, node):
+    def visit_import(self, node: astroid.nodes.Import) -> None:
         """Visits every import statement in the file.
 
         Args:
-            node: astroid.node_classes.Import. Node for a import statement
+            node: astroid.nodes.Import. Node for a import statement
                 in the AST.
         """
         names = [name for name, _ in node.names]
-        for module_name, forbidden_import in self._iterate_forbidden_imports(
-                node):
-            if any(forbidden_import in name for name in names):
+        forbidden_imports = self._iterate_forbidden_imports(node)
+        for module_name, forbidden_import_names in forbidden_imports:
+            if forbidden_import_names[1] is not None:
+                import_to_check = '%s.%s' % (
+                    forbidden_import_names[0],
+                    forbidden_import_names[1],
+                )
+            else:
+                import_to_check = forbidden_import_names[0]
+            if any(fnmatch.fnmatch(name, import_to_check) for name in names):
                 self._add_invalid_import_message(
-                    node, module_name, forbidden_import)
+                    node, module_name, forbidden_import_names
+                )
 
-    def visit_importfrom(self, node):
+    def visit_importfrom(self, node: astroid.nodes.ImportFrom) -> None:
         """Visits all import-from statements in a python file and checks that
         modules are imported. It then adds a message accordingly.
 
         Args:
-            node: astroid.node_classes.ImportFrom. Node for a import-from
+            node: astroid.nodes.ImportFrom. Node for a import-from
                 statement in the AST.
         """
-        for module_name, forbidden_import in self._iterate_forbidden_imports(
-                node):
-            if forbidden_import in node.modname:
-                self._add_invalid_import_message(
-                    node, module_name, forbidden_import)
+        forbidden_imports = self._iterate_forbidden_imports(node)
+        for module_name, forbidden_import_names in forbidden_imports:
+            if fnmatch.fnmatch(node.modname, forbidden_import_names[0]):
+                if forbidden_import_names[1] is None:
+                    self._add_invalid_import_message(
+                        node, module_name, forbidden_import_names
+                    )
+                elif any(
+                    fnmatch.fnmatch(name[0], forbidden_import_names[1])
+                    for name in node.names
+                ):
+                    self._add_invalid_import_message(
+                        node, module_name, forbidden_import_names
+                    )
 
 
 class SingleCharAndNewlineAtEOFChecker(checkers.BaseChecker):
     """Checker for single character files and newline at EOF."""
 
-    __implements__ = interfaces.IRawChecker
     name = 'newline-at-eof'
     priority = -1
     msgs = {
         'C0007': (
             'Files should end in a single newline character.',
             'newline-at-eof',
-            'Please enter a single newline at the end of the file.'),
+            'Please enter a single newline at the end of the file.',
+        ),
         'C0008': (
             'Only one character in file',
             'only-one-character',
-            'Files with only one character are not allowed.'),
+            'Files with only one character are not allowed.',
+        ),
     }
 
-    def process_module(self, node):
+    def process_module(self, node: astroid.nodes.Module) -> None:
         """Process a module.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node to access module content.
+            node: astroid.nodes.Module. Node to access module content.
         """
 
         file_content = read_from_node(node)
@@ -1619,71 +1647,49 @@ class SingleCharAndNewlineAtEOFChecker(checkers.BaseChecker):
             self.add_message('newline-at-eof', line=file_length)
 
 
-class DivisionOperatorChecker(checkers.BaseChecker):
-    """Checks if division operator is used."""
-
-    __implements__ = interfaces.IAstroidChecker
-    name = 'division-operator-used'
-    priority = -1
-    msgs = {
-        'C0015': (
-            'Please use python_utils.divide() instead of the "/" operator',
-            'division-operator-used',
-            'Do not use division operator.'
-        )
-    }
-
-    def visit_binop(self, node):
-        """Visit assign statements to ensure that the division operator('/')
-        is not used and python_utils.divide() is used instead.
-
-        Args:
-            node: astroid.node.BinOp. Node to access module content.
-        """
-        if node.op == '/':
-            self.add_message(
-                'division-operator-used', node=node)
-
-
-class SingleLineCommentChecker(checkers.BaseChecker):
+class SingleLineCommentChecker(checkers.BaseTokenChecker):
     """Checks if comments follow correct style."""
 
-    __implements__ = interfaces.ITokenChecker
     name = 'incorrectly_styled_comment'
     priority = -1
     msgs = {
         'C0016': (
             'Invalid punctuation is used.',
             'invalid-punctuation-used',
-            'Please use valid punctuation.'
+            'Please use valid punctuation.',
         ),
         'C0017': (
             'Please use single space at beginning of comment.',
             'no-space-at-beginning',
-            'Please use single space at the beginning of comment.'
+            'Please use single space at the beginning of comment.',
         ),
         'C0018': (
             'Please use a capital letter at the beginning of comment.',
             'no-capital-letter-at-beginning',
-            'Please use capital letter to begin the content of comment.'
+            'Please use capital letter to begin the content of comment.',
         ),
         'C0040': (
             'This inline comment does not start with any allowed pragma. Please'
             ' put this comment in a new line.',
             'no-allowed-inline-pragma',
-            'Inline comments should always start with an allowed inline pragma.'
-        )
+            'Inline comments should always start with an allowed inline pragma.',
+        ),
     }
-    options = ((
-        'allowed-comment-prefixes',
-        {
-            'default': ('int', 'str', 'float', 'bool', 'v'),
-            'type': 'csv', 'metavar': '<comma separated list>',
-            'help': 'List of allowed prefixes in a comment.'
-        }
-    ),)
+    options = (
+        (
+            'allowed-comment-prefixes',
+            {
+                'default': ('int', 'str', 'float', 'bool', 'v'),
+                'type': 'csv',
+                'metavar': '<comma separated list>',
+                'help': 'List of allowed prefixes in a comment.',
+            },
+        ),
+    )
 
-    def _check_space_at_beginning_of_comments(self, line, line_num):
+    def _check_space_at_beginning_of_comments(
+        self, line: str, line_num: int
+    ) -> None:
         """Checks if the comment starts with a space.
 
         Args:
@@ -1691,10 +1697,11 @@ class SingleLineCommentChecker(checkers.BaseChecker):
             line_num: int. Line number of the current comment.
         """
         if re.search(r'^#[^\s].*$', line) and not line.startswith('#!'):
-            self.add_message(
-                'no-space-at-beginning', line=line_num)
+            self.add_message('no-space-at-beginning', line=line_num)
 
-    def _check_comment_starts_with_capital_letter(self, line, line_num):
+    def _check_comment_starts_with_capital_letter(
+        self, line: str, line_num: int
+    ) -> None:
         """Checks if the comment starts with a capital letter.
         Comments may include a lowercase character at the beginning only if they
         start with version info or a data type or a variable name e.g.
@@ -1713,19 +1720,22 @@ class SingleLineCommentChecker(checkers.BaseChecker):
 
         # Check if allowed prefix is used.
         allowed_prefix_is_present = any(
-            line[2:].startswith(word) for word in
-            self.config.allowed_comment_prefixes)
+            line[2:].startswith(word)
+            for word in self.linter.config.allowed_comment_prefixes
+        )
 
         # Check if comment contains any excluded phrase.
         excluded_phrase_is_present = any(
-            line[1:].strip().startswith(word) for word in EXCLUDED_PHRASES)
-        if (re.search(r'^# [a-z].*', line) and not (
-                excluded_phrase_is_present or
-                starts_with_underscore or allowed_prefix_is_present)):
-            self.add_message(
-                'no-capital-letter-at-beginning', line=line_num)
+            line[1:].strip().startswith(word) for word in EXCLUDED_PHRASES
+        )
+        if re.search(r'^# [a-z].*', line) and not (
+            excluded_phrase_is_present
+            or starts_with_underscore
+            or allowed_prefix_is_present
+        ):
+            self.add_message('no-capital-letter-at-beginning', line=line_num)
 
-    def _check_punctuation(self, line, line_num):
+    def _check_punctuation(self, line: str, line_num: int) -> None:
         """Checks if the comment starts with a correct punctuation.
 
         Args:
@@ -1733,20 +1743,25 @@ class SingleLineCommentChecker(checkers.BaseChecker):
             line_num: int. Line number of the current comment.
         """
         excluded_phrase_is_present_at_end = any(
-            word in line for word in EXCLUDED_PHRASES)
+            word in line for word in EXCLUDED_PHRASES
+        )
         # Comments must end with the proper punctuation.
         last_char_is_invalid = line[-1] not in (
-            ALLOWED_TERMINATING_PUNCTUATIONS)
+            ALLOWED_TERMINATING_PUNCTUATIONS
+        )
 
         excluded_phrase_at_beginning_of_line = any(
-            line[1:].startswith(word) for word in EXCLUDED_PHRASES)
-        if (last_char_is_invalid and not (
-                excluded_phrase_is_present_at_end or
-                excluded_phrase_at_beginning_of_line)):
+            line[1:].startswith(word) for word in EXCLUDED_PHRASES
+        )
+        if last_char_is_invalid and not (
+            excluded_phrase_is_present_at_end
+            or excluded_phrase_at_beginning_of_line
+        ):
             self.add_message('invalid-punctuation-used', line=line_num)
 
     def _check_trailing_comment_starts_with_allowed_pragma(
-            self, line, line_num):
+        self, line: str, line_num: int
+    ) -> None:
         """Checks if the trailing inline comment starts with a valid and
         allowed pragma.
 
@@ -1761,38 +1776,40 @@ class SingleLineCommentChecker(checkers.BaseChecker):
         line = line[comment_start_index:]
         self._check_space_at_beginning_of_comments(line, line_num)
         allowed_inline_pragma_present = any(
-            line[2:].startswith(word) for word in
-            ALLOWED_PRAGMAS_FOR_INLINE_COMMENTS
+            line[2:].startswith(word)
+            for word in ALLOWED_PRAGMAS_FOR_INLINE_COMMENTS
         )
         if allowed_inline_pragma_present:
             return
         self.add_message('no-allowed-inline-pragma', line=line_num)
 
-    def process_tokens(self, tokens):
+    def process_tokens(self, tokens: List[tokenize.TokenInfo]) -> None:
         """Custom pylint checker to ensure that comments follow correct style.
 
         Args:
-            tokens: list(Token). Object to access all tokens of a module.
+            tokens: list(TokenInfo). Object to access all tokens of a module.
         """
         prev_line_num = -1
-        comments_group_list = []
+        comments_group_list: List[List[Tuple[str, int]]] = []
         comments_index = -1
 
-        for (token_type, _, (line_num, _), _, line) in tokens:
+        for token_type, _, (line_num, _), _, line in tokens:
             if token_type == tokenize.COMMENT:
                 line = line.strip()
                 if line.startswith('#'):
                     self._check_space_at_beginning_of_comments(line, line_num)
                     if prev_line_num + 1 == line_num:
                         comments_group_list[comments_index].append(
-                            (line, line_num))
+                            (line, line_num)
+                        )
                     else:
                         comments_group_list.append([(line, line_num)])
                         comments_index += 1
                     prev_line_num = line_num
                 else:
                     self._check_trailing_comment_starts_with_allowed_pragma(
-                        line, line_num)
+                        line, line_num
+                    )
 
         for comments in comments_group_list:
             # Checks first line of comment.
@@ -1808,31 +1825,30 @@ class BlankLineBelowFileOverviewChecker(checkers.BaseChecker):
     (missing-docstring) for missing file overviews.
     """
 
-    __implements__ = interfaces.IAstroidChecker
     name = 'space_between_imports_and_file-overview'
     priority = -1
     msgs = {
         'C0024': (
             'Please add an empty line below the fileoverview docstring.',
             'no-empty-line-provided-below-fileoverview',
-            'please provide an empty line below the fileoverview.'
+            'please provide an empty line below the fileoverview.',
         ),
         'C0025': (
             'Single empty line should be provided below the fileoverview.',
             'only-a-single-empty-line-should-be-provided',
-            'please provide an empty line below the fileoverview.'
-        )
+            'please provide an empty line below the fileoverview.',
+        ),
     }
 
-    def visit_module(self, node):
+    def visit_module(self, node: astroid.nodes.Module) -> None:
         """Visit a module to ensure that there is a blank line below
         file overview docstring.
 
         Args:
-            node: astroid.scoped_nodes.Function. Node to access module content.
+            node: astroid.nodes.Module. Node to access module content.
         """
         # Check if the given node has docstring.
-        if node.doc is None:
+        if node.doc_node is None:
             return
         line_number = node.fromlineno
         # Iterate till the start of docstring.
@@ -1843,26 +1859,28 @@ class BlankLineBelowFileOverviewChecker(checkers.BaseChecker):
 
             line_number += 1
 
-        doc_length = len(node.doc.split('\n'))
+        doc_length = len(node.doc_node.value.split('\n'))
         line_number += doc_length
         first_line_after_doc = linecache.getline(
-            node.root().file, line_number).strip()
+            node.root().file, line_number
+        ).strip()
         second_line_after_doc = linecache.getline(
-            node.root().file, line_number + 1).strip()
+            node.root().file, line_number + 1
+        ).strip()
         if first_line_after_doc != '':
             self.add_message(
-                'no-empty-line-provided-below-fileoverview', node=node)
+                'no-empty-line-provided-below-fileoverview', node=node
+            )
         elif second_line_after_doc == '':
             self.add_message(
-                'only-a-single-empty-line-should-be-provided', node=node)
+                'only-a-single-empty-line-should-be-provided', node=node
+            )
 
 
-class SingleLinePragmaChecker(checkers.BaseChecker):
+class SingleLinePragmaChecker(checkers.BaseTokenChecker):
     """Custom pylint checker which checks if pylint pragma is used to disable
     a rule for a single line only.
     """
-
-    __implements__ = interfaces.ITokenChecker
 
     name = 'single-line-pragma'
     priority = -1
@@ -1871,18 +1889,18 @@ class SingleLinePragmaChecker(checkers.BaseChecker):
             'Pylint pragmas should be used to disable a rule '
             'for a single line only',
             'single-line-pragma',
-            'Please use pylint pragmas to disable a rule for a single line only'
+            'Please use pylint pragmas to disable a rule for a single line only',
         )
     }
 
-    def process_tokens(self, tokens):
+    def process_tokens(self, tokens: List[tokenize.TokenInfo]) -> None:
         """Custom pylint checker which allows paramas to disable a rule for a
         single line only.
 
         Args:
-            tokens: Token. Object to access all tokens of a module.
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
         """
-        for (token_type, _, (line_num, _), _, line) in tokens:
+        for token_type, _, (line_num, _), _, line in tokens:
             if token_type == tokenize.COMMENT:
                 line = line.lstrip()
                 # Ignore line that is enabling this check.
@@ -1897,16 +1915,163 @@ class SingleLinePragmaChecker(checkers.BaseChecker):
                 if re.search(r'^(#\s*pylint:)', line):
                     if 'enable' in line and 'single-line-pragma' in line:
                         continue
+                    self.add_message('single-line-pragma', line=line_num)
+
+
+class TypeIgnoreCommentChecker(checkers.BaseChecker):
+    """Custom pylint checker which checks if MyPy's type ignores are properly
+    documented or not.
+    """
+
+    name = 'type-ignore-comment'
+    priority = -1
+    msgs = {
+        'C0045': (
+            'Please try to avoid the use of \'type: ignore\' if possible.'
+            ' If \'type: ignore\' is really necessary, then add a proper'
+            ' comment with clear justification. The format of the comment'
+            ' should be -> Here we use MyPy ignore because ...',
+            'mypy-ignore-used',
+            'MyPy ignores should be accompanied by proper comments. The format '
+            ' of comments should be -> Here we use MyPy ignore because ...',
+        ),
+        'C0046': (
+            'Extra comment is present for MyPy type: ignore. Please'
+            ' remove it.',
+            'redundant-type-comment',
+            'No corresponding \'type: ignore\' is found for the comment.',
+        ),
+        'C0050': (
+            'Please avoid the usage of \'type: ignore[%s]\' as it is'
+            ' not allowed in the codebase. Instead try to fix the code'
+            ' implementation so that the MyPy error is suppressed. For'
+            ' more information, visit :'
+            ' https://github.com/oppia/oppia/wiki/Backend-Type-Annotations',
+            'prohibited-type-ignore-used',
+            'Only a limited number of type ignores are allowed in the codebase.',
+        ),
+        'C0051': (
+            'Usage of generic MyPy type ignores is prohibited. '
+            'MyPy type ignores can only be used with specific '
+            'error codes: type: ignore[<error-code>]',
+            'generic-mypy-ignore-used',
+            'Generic type ignore can be ambiguous while reading and could be '
+            'dangerous for python static typing. So, only error code specific '
+            'type ignores are allowed.',
+        ),
+    }
+
+    options = (
+        (
+            'allowed-type-ignore-error-codes',
+            {
+                'default': [],
+                'type': 'csv',
+                'metavar': '<comma separated list>',
+                'help': 'List of allowed MyPy type ignore error codes.',
+            },
+        ),
+    )
+
+    def visit_module(self, node: astroid.nodes.Module) -> None:
+        """Visit a module to ensure that there is a comment for each MyPy
+        type ignore.
+
+        Args:
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        tokens = pylint_utils.tokenize_module(node)
+        self._process_module_tokens(tokens, node)
+
+    def _process_module_tokens(
+        self,
+        tokens: List[tokenize.TokenInfo],
+        node: astroid.nodes.Module,
+    ) -> None:
+        """Checks if the MyPy type ignores present in a module are properly
+        documented by a code comment or not. Also, checks for unnecessary code
+        comments for which no corresponding type: ignore is found.
+
+        Args:
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        expected_type_ignore_comment_substring = (
+            r'Here we use MyPy ignore because'
+        )
+        type_ignore_comment_present = False
+        no_of_type_ignore_comments = 0
+        previous_comment_line_number = 0
+        comment_line_number = 0
+
+        for token_type, _, (line_num, _), _, line in tokens:
+            if token_type == tokenize.COMMENT:
+                line = line.lstrip()
+
+                if expected_type_ignore_comment_substring in line:
+                    type_ignore_comment_present = True
+                    no_of_type_ignore_comments += 1
+
+                    if no_of_type_ignore_comments > 1:
+                        previous_comment_line_number = comment_line_number
+                        self.add_message(
+                            'redundant-type-comment',
+                            line=previous_comment_line_number,
+                            node=node,
+                        )
+
+                    comment_line_number = line_num
+
+                specific_type_ignore_matches = re.search(
+                    r'(\s*type:\s*ignore)\[([a-z-\s\,]*)\]', line
+                )
+                if specific_type_ignore_matches:
+                    error_codes = specific_type_ignore_matches.group(2)
+
+                    encountered_error_codes = []
+                    encountered_prohibited_error_codes = []
+                    for error_code in error_codes.split(','):
+                        error_code = error_code.strip()
+                        if (
+                            error_code
+                            not in self.linter.config.allowed_type_ignore_error_codes
+                        ):
+                            encountered_prohibited_error_codes.append(
+                                error_code
+                            )
+                        encountered_error_codes.append(error_code)
+
+                    if encountered_prohibited_error_codes:
+                        self.add_message(
+                            'prohibited-type-ignore-used',
+                            line=line_num,
+                            args=tuple(encountered_prohibited_error_codes),
+                            node=node,
+                        )
+                    if type_ignore_comment_present and line_num <= (
+                        comment_line_number + ALLOWED_LINES_OF_GAP_IN_COMMENT
+                    ):
+                        type_ignore_comment_present = False
+                        no_of_type_ignore_comments = 0
+                    elif not encountered_prohibited_error_codes:
+                        self.add_message(
+                            'mypy-ignore-used', line=line_num, node=node
+                        )
+                elif re.search(r'(\s*type:\s*ignore)', line):
                     self.add_message(
-                        'single-line-pragma', line=line_num)
+                        'generic-mypy-ignore-used', line=line_num, node=node
+                    )
+
+        if type_ignore_comment_present:
+            self.add_message(
+                'redundant-type-comment', line=comment_line_number, node=node
+            )
 
 
-class SingleSpaceAfterKeyWordChecker(checkers.BaseChecker):
+class SingleSpaceAfterKeyWordChecker(checkers.BaseTokenChecker):
     """Custom pylint checker which checks that there is a single space
     after keywords like `if`, `elif`, `while`, and `yield`.
     """
-
-    __implements__ = interfaces.ITokenChecker
 
     name = 'single-space-after-keyword'
     priority = -1
@@ -1920,14 +2085,14 @@ class SingleSpaceAfterKeyWordChecker(checkers.BaseChecker):
 
     keywords = set(['if', 'elif', 'while', 'yield'])
 
-    def process_tokens(self, tokens):
+    def process_tokens(self, tokens: List[tokenize.TokenInfo]) -> None:
         """Custom pylint checker which makes sure that every keyword is
         followed by a single space.
 
         Args:
-            tokens: Token. Object to access all tokens of a module.
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
         """
-        for (token_type, token, (line_num, _), _, line) in tokens:
+        for token_type, token, (line_num, _), _, line in tokens:
             if token_type == tokenize.NAME and token in self.keywords:
                 line = line.strip()
                 # Regex evaluates to True if the line is of the form "if #" or
@@ -1936,15 +2101,444 @@ class SingleSpaceAfterKeyWordChecker(checkers.BaseChecker):
                     self.add_message(
                         'single-space-after-keyword',
                         args=(token),
-                        line=line_num)
+                        line=line_num,
+                    )
+
+
+class ImportStatusDict(TypedDict):
+    """This dictionary which contains the variables
+    that tracks the module's import status."""
+
+    single_line_import: bool
+    inside_multi_line_import_scope: bool
+    import_line_num: int
+
+
+class TypeStatusDict(TypedDict):
+    """The dict containing all the information about the exceptional
+    type that was passed to this method."""
+
+    type_comment_pending: bool
+    type_comment_line_num: int
+    outside_function_signature_block: bool
+    outside_args_section: bool
+    type_present_inside_arg_section: bool
+    type_present_inside_return_section: bool
+    type_present_in_function_signature: bool
+    args_section_end_line_num: int
+    func_def_start_line: int
+
+
+class ExceptionalTypesCommentChecker(checkers.BaseChecker):
+    """Custom pylint checker which checks that there is always a comment
+    for exceptional types in the backend type annotations.
+    """
+
+    EXCEPTIONAL_TYPE_STATUS_DICT: TypeStatusDict = {
+        'type_comment_pending': False,
+        'type_comment_line_num': 0,
+        'outside_function_signature_block': True,
+        'outside_args_section': True,
+        'type_present_inside_arg_section': False,
+        'type_present_inside_return_section': False,
+        'type_present_in_function_signature': False,
+        'args_section_end_line_num': 0,
+        'func_def_start_line': 0,
+    }
+
+    name = 'comment-for-exceptional-types'
+    priority = -1
+    msgs = {
+        'C0047': (
+            'Any type is used. If the Any type is really needed, then please'
+            ' add a proper comment with clear justification why other specific'
+            ' types cannot be used. The format of the comment should be'
+            ' -> Here we use type Any because ...',
+            'any-type-used',
+            'Annotations with Any type should only be done for exceptional'
+            ' cases with proper explanation in the code comment.',
+        ),
+        'C0048': (
+            'cast function is used. If the cast is really needed, then please'
+            ' add a proper comment with clear justification why cast function'
+            ' is needed. The format of the comment should be -> Here use cast'
+            ' because ...',
+            'cast-func-used',
+            'Casting of any value should be done with a proper explanation in'
+            ' the code comment.',
+        ),
+        'C0049': (
+            'object class is used. If the object class is really needed, then'
+            ' please add a proper comment with clear justification why other'
+            ' specific types cannot be used. The format of the comment should'
+            ' be -> Here we use object because ...',
+            'object-class-used',
+            'Annotations with object should only be done for exceptional'
+            ' cases with proper explanation in the code comment.',
+        ),
+    }
+
+    def visit_module(self, node: astroid.nodes.Module) -> None:
+        """Visit a module to ensure that there is a comment for each exceptional
+        type (cast, Any and object).
+
+        Args:
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        tokens = pylint_utils.tokenize_module(node)
+        self._process_module_tokens(tokens, node)
+
+    def _process_module_tokens(
+        self,
+        tokens: List[tokenize.TokenInfo],
+        node: astroid.nodes.Module,
+    ) -> None:
+        """Checks whether an exceptional type in backend type annotations is
+        documented. If exceptional type is not documented, then it adds a
+        message accordingly.
+
+        Args:
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        self.check_comment_is_present_with_any_type(tokens, node)
+        self.check_comment_is_present_with_cast_method(tokens, node)
+        self.check_comment_is_present_with_object_class(tokens, node)
+
+    def _check_import_status(
+        self,
+        import_status_dict: ImportStatusDict,
+        token_type: int,
+        token: str,
+        line_num: int,
+    ) -> None:
+        """Checks whether the single-line import or multi-line import is
+        present inside the module. If multi-line import is present then
+        it checks whether the linters are currently inside multi-line
+        import's scope or not.
+
+        Args:
+            import_status_dict: dict. This dictionary contains the variables
+                that tracks the module's import status, where:
+                1st element of dict: Indicates whether single line import
+                    is encountered or not.
+                2nd element of dict: Indicates the line number if import
+                    is encountered, otherwise it is zero.
+                3rd element of dict: Indicates whether the multi-line import is
+                    encountered and linters are in it's scope or not.
+                    import(
+                        << multi-line import's scope >>
+                    )
+            token_type: int. The kind of token that pylint provided.
+            token: str. The token of module the pylint provided.
+            line_num: int. The line number of given token.
+        """
+        # Checking if single-line import is present.
+        # Eg: from typing import Any.
+        if token_type == tokenize.NAME:
+            if token == 'import':
+                import_status_dict['single_line_import'] = True
+                import_status_dict['import_line_num'] = line_num
+
+        # Checking if multi-line import is present.
+        # Eg: from typing import (
+        #   Any, Callable, Dict, FrozenSet, Iterator, List, Set,
+        #   Tuple, Type, cast
+        # )
+        if token_type == tokenize.OP:
+            if import_status_dict['single_line_import'] and token == '(':
+                import_status_dict['inside_multi_line_import_scope'] = True
+                import_status_dict['single_line_import'] = False
+            if (
+                import_status_dict['inside_multi_line_import_scope']
+                and token == ')'
+            ):
+                import_status_dict['inside_multi_line_import_scope'] = False
+
+    def _check_exceptional_type_is_documented(
+        self,
+        type_status_dict: TypeStatusDict,
+        import_status_dict: Optional[ImportStatusDict],
+        token_type: int,
+        token: str,
+        line: str,
+        line_num: int,
+        exceptional_type: str,
+        node: astroid.nodes.Module,
+    ) -> None:
+        """Checks whether the given exceptional type in a module has been
+        documented or not. If the exceptional type is not documented then
+        adds an error message.
+
+        Args:
+            type_status_dict: dict. The dict containing all the information
+                about the exceptional type that was passed to this method.
+            import_status_dict: Optional[Dict]. This dictionary contains the
+                variables that tracks the module's import status, whether a
+                multi-line import or single-line import is present, or None
+                if the given exceptional_type is not imported in the module.
+            token_type: int. The kind of token that pylint provided.
+            token: str. The token of module the pylint provided.
+            line: str. The line of the module where current token is present.
+            line_num: int. The line number of given token.
+            exceptional_type: str. The exceptional type for which this method
+                is called, Possible values can be 'Any' or 'object'.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        # Checking if linters are in argument-section, return-section or
+        # outside of the function signature.
+        # Eg:
+        #       <outside function signature block>
+        #   def func(<argument-section>) -> <return-section>:
+        #       <outside function signature block>.
+        if token_type == tokenize.NAME:
+            if token == 'def':
+                type_status_dict['outside_function_signature_block'] = False
+                type_status_dict['func_def_start_line'] = line_num
+                type_status_dict['outside_args_section'] = False
+
+        if token_type == tokenize.OP:
+            if token == '->':
+                type_status_dict['outside_args_section'] = True
+                type_status_dict['args_section_end_line_num'] = line_num
+            if type_status_dict['outside_args_section'] and token == ':':
+                type_status_dict['outside_function_signature_block'] = True
+
+        # Checking if exceptional_type is present in function definition or not.
+        if token_type == tokenize.NAME and token == exceptional_type:
+            if not type_status_dict['outside_args_section']:
+                type_status_dict['type_present_inside_arg_section'] = True
+            elif (
+                type_status_dict['outside_args_section']
+                and type_status_dict['args_section_end_line_num'] == line_num
+            ):
+                type_status_dict['type_present_inside_return_section'] = True
+
+        if (
+            type_status_dict['type_present_inside_arg_section']
+            or type_status_dict['type_present_inside_return_section']
+        ):
+            type_status_dict['type_present_in_function_signature'] = True
+
+        if type_status_dict['outside_function_signature_block']:
+            if type_status_dict['type_present_in_function_signature']:
+                if type_status_dict[
+                    'type_comment_pending'
+                ] and type_status_dict['func_def_start_line'] <= (
+                    type_status_dict['type_comment_line_num']
+                    + ALLOWED_LINES_OF_GAP_IN_COMMENT
+                ):
+                    type_status_dict['type_comment_pending'] = False
+                else:
+                    self._add_exceptional_type_error_message(
+                        exceptional_type,
+                        type_status_dict['func_def_start_line'],
+                        node,
+                    )
+
+                type_status_dict['type_present_in_function_signature'] = False
+                type_status_dict['type_present_inside_arg_section'] = False
+                type_status_dict['type_present_inside_return_section'] = False
+            if token_type == tokenize.NAME and token == exceptional_type:
+                if exceptional_type == 'object':
+                    # Excluding the case when object is called:
+                    # Eg: var = object()
+                    if 'object()' in line:
+                        return
+                    # Excluding mock.patch.object usage:
+                    # Eg: mock.patch.object(...)
+                    if 'patch.object' in line:
+                        return
+                # Passing those cases where Any is imported.
+                if exceptional_type == 'Any' and import_status_dict:
+                    if (
+                        import_status_dict['single_line_import']
+                        and import_status_dict['import_line_num'] == line_num
+                    ):
+                        return
+                    elif import_status_dict['inside_multi_line_import_scope']:
+                        return
+                # Checking if comment for exceptional_type is present and it's
+                # with in the range (minimum 15 line of gaps).
+                if type_status_dict['type_comment_pending'] and line_num <= (
+                    type_status_dict['type_comment_line_num']
+                    + ALLOWED_LINES_OF_GAP_IN_COMMENT
+                ):
+                    type_status_dict['type_comment_pending'] = False
+                else:
+                    self._add_exceptional_type_error_message(
+                        exceptional_type, line_num, node
+                    )
+
+    def _add_exceptional_type_error_message(
+        self,
+        exceptional_type: str,
+        line_num: int,
+        node: astroid.nodes.Module,
+    ) -> None:
+        """This method should be called only when an exceptional type error is
+        encountered. If the exceptional type is Any then 'any-type-used' error
+        message is added, for object 'object-class-used' is added and for cast
+        'cast-func-used' is added.
+
+        Args:
+            exceptional_type: str. The exceptional type for which this method
+                is called, Possible values can be 'Any', 'object' and 'cast'.
+            line_num: int. The line number where error is encountered.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        if exceptional_type == 'Any':
+            self.add_message('any-type-used', line=line_num, node=node)
+        if exceptional_type == 'object':
+            self.add_message('object-class-used', line=line_num, node=node)
+        if exceptional_type == 'cast':
+            self.add_message('cast-func-used', line=line_num, node=node)
+
+    def check_comment_is_present_with_object_class(
+        self,
+        tokens: List[tokenize.TokenInfo],
+        node: astroid.nodes.Module,
+    ) -> None:
+        """Checks whether the object class in a module has been documented
+        or not. If the object class is not documented then adds an error
+        message.
+
+        Args:
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        object_class_status_dict: TypeStatusDict = copy.deepcopy(
+            self.EXCEPTIONAL_TYPE_STATUS_DICT
+        )
+
+        expected_object_class_comment_substring = r'Here we use object because'
+
+        for token_type, token, (line_num, _), _, line in tokens:
+            line = line.strip()
+
+            if token_type == tokenize.COMMENT:
+                if expected_object_class_comment_substring in line:
+                    object_class_status_dict['type_comment_pending'] = True
+                    object_class_status_dict['type_comment_line_num'] = line_num
+
+            self._check_exceptional_type_is_documented(
+                object_class_status_dict,
+                None,
+                token_type,
+                token,
+                line,
+                line_num,
+                'object',
+                node,
+            )
+
+    def check_comment_is_present_with_cast_method(
+        self,
+        tokens: List[tokenize.TokenInfo],
+        node: astroid.nodes.Module,
+    ) -> None:
+        """Checks whether the cast method in a module has been documented
+        or not. If the cast method is not documented then adds an error
+        message.
+
+        Args:
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        expected_cast_method_comment_substring = r'Here we use cast because'
+        cast_comment_present = False
+        cast_comment_line_num = 0
+        import_status_dict: ImportStatusDict = {
+            'single_line_import': False,
+            'import_line_num': 0,
+            'inside_multi_line_import_scope': False,
+        }
+
+        for token_type, token, (line_num, _), _, line in tokens:
+            line = line.strip()
+
+            if token_type == tokenize.COMMENT:
+                if expected_cast_method_comment_substring in line:
+                    cast_comment_present = True
+                    cast_comment_line_num = line_num
+
+            self._check_import_status(
+                import_status_dict, token_type, token, line_num
+            )
+
+            if token_type == tokenize.NAME and token == 'cast':
+                # Passing those cases where cast is imported.
+                if (
+                    import_status_dict['single_line_import']
+                    and import_status_dict['import_line_num'] == line_num
+                ):
+                    pass
+                elif import_status_dict['inside_multi_line_import_scope']:
+                    pass
+                # Throwing an error when cast is encountered but there is no
+                # corresponding comment exist.
+                elif cast_comment_present and line_num <= (
+                    cast_comment_line_num + ALLOWED_LINES_OF_GAP_IN_COMMENT
+                ):
+                    cast_comment_present = False
+                else:
+                    self._add_exceptional_type_error_message(
+                        'cast', line_num, node
+                    )
+
+    def check_comment_is_present_with_any_type(
+        self,
+        tokens: List[tokenize.TokenInfo],
+        node: astroid.nodes.Module,
+    ) -> None:
+        """Checks whether the Any type in a module has been documented
+        or not. If the Any type is not documented then adds an error
+        message.
+
+        Args:
+            tokens: List[TokenInfo]. Object to access all tokens of a module.
+            node: astroid.nodes.Module. Node to access module content.
+        """
+        import_status_dict: ImportStatusDict = {
+            'single_line_import': False,
+            'import_line_num': 0,
+            'inside_multi_line_import_scope': False,
+        }
+
+        any_type_status_dict: TypeStatusDict = copy.deepcopy(
+            self.EXCEPTIONAL_TYPE_STATUS_DICT
+        )
+
+        expected_any_type_comment_substring = r'Here we use type Any because'
+
+        for token_type, token, (line_num, _), _, line in tokens:
+            line = line.strip()
+
+            if token_type == tokenize.COMMENT:
+                if expected_any_type_comment_substring in line:
+                    any_type_status_dict['type_comment_pending'] = True
+                    any_type_status_dict['type_comment_line_num'] = line_num
+
+            self._check_import_status(
+                import_status_dict, token_type, token, line_num
+            )
+
+            self._check_exceptional_type_is_documented(
+                any_type_status_dict,
+                import_status_dict,
+                token_type,
+                token,
+                line,
+                line_num,
+                'Any',
+                node,
+            )
 
 
 class InequalityWithNoneChecker(checkers.BaseChecker):
     """Custom pylint checker prohibiting use of "if x != None" and
     enforcing use of "if x is not None" instead.
     """
-
-    __implements__ = interfaces.IAstroidChecker
 
     name = 'inequality-with-none'
     priority = -1
@@ -1953,15 +2547,15 @@ class InequalityWithNoneChecker(checkers.BaseChecker):
             'Please refrain from using "x != None" '
             'and use "x is not None" instead.',
             'inequality-with-none',
-            'Use "is" to assert equality or inequality against None.'
+            'Use "is" to assert equality or inequality against None.',
         )
     }
 
-    def visit_compare(self, node):
+    def visit_compare(self, node: astroid.nodes.Compare) -> None:
         """Called for comparisons (a != b).
 
         Args:
-            node: astroid.node.Compare. A node indicating comparison.
+            node: astroid.nodes.Compare. A node indicating comparison.
         """
 
         ops = node.ops
@@ -1979,8 +2573,6 @@ class NonTestFilesFunctionNameChecker(checkers.BaseChecker):
     names of non-test files.
     """
 
-    __implements__ = interfaces.IAstroidChecker
-
     name = 'non-test-files-function-name-checker'
     priority = -1
     msgs = {
@@ -1989,25 +2581,24 @@ class NonTestFilesFunctionNameChecker(checkers.BaseChecker):
             '"test_only" as its prefix in non-test files.',
             'non-test-files-function-name-checker',
             'Prohibit use of "test_only" prefix in function names of non-test '
-            'files.'
+            'files.',
         )
     }
 
-    def visit_functiondef(self, node):
+    def visit_functiondef(self, node: astroid.nodes.FunctionDef) -> None:
         """Visit every function definition and ensure their name doesn't have
         test_only as its prefix.
 
         Args:
-            node: astroid.nodes.FunctionDef. A node for a function or method
-                definition in the AST.
+            node: astroid.nodes.FunctionDef. A node for a function or
+                method definition in the AST.
         """
         modnode = node.root()
         if modnode.name.endswith('_test'):
             return
         function_name = node.name
         if function_name.startswith('test_only'):
-            self.add_message(
-                'non-test-files-function-name-checker', node=node)
+            self.add_message('non-test-files-function-name-checker', node=node)
 
 
 class DisallowedFunctionsChecker(checkers.BaseChecker):
@@ -2015,7 +2606,6 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
     regex checks of functions calls to be removed or replaced.
     """
 
-    __implements__ = interfaces.IAstroidChecker
     name = 'disallowed-function-calls'
     priority = -1
     msgs = {
@@ -2024,14 +2614,16 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
             'remove-disallowed-function-calls',
             (
                 'Disallows usage of black-listed functions that '
-                'should be removed.'),
+                'should be removed.'
+            ),
         ),
         'C0033': (
             'Please replace the call to %s with %s.',
             'replace-disallowed-function-calls',
             (
                 'Disallows usage of black-listed functions that '
-                'should be replaced by allowed alternatives.'),
+                'should be replaced by allowed alternatives.'
+            ),
         ),
     }
 
@@ -2047,7 +2639,8 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
                     'Strings should be either in the format (1) "A=>B", '
                     'where A is the disallowed function and B is the '
                     'replacement, or (2) in the format "A", which signifies '
-                    'that A should just be removed.')
+                    'that A should just be removed.'
+                ),
             },
         ),
         (
@@ -2063,26 +2656,30 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
                     'is the replacement or in the format "A", which '
                     ' signifies that A should just be removed. '
                     'An example regex entry is: ".*func=>other", which '
-                    'suggests "somefunc" be replaced by "other".')
+                    'suggests "somefunc" be replaced by "other".'
+                ),
             },
-        ),)
+        ),
+    )
 
-    def __init__(self, linter=None):
-        super(DisallowedFunctionsChecker, self).__init__(linter=linter)
-        self.funcs_to_replace_str = {}
-        self.funcs_to_remove_str = set()
-        self.funcs_to_replace_regex = []
-        self.funcs_to_remove_regex = None
+    def __init__(self, linter: lint.PyLinter) -> None:
+        super().__init__(linter=linter)
+        self.funcs_to_replace_str: Dict[str, str] = {}
+        self.funcs_to_remove_str: Set[str] = set()
+        self.funcs_to_replace_regex: List[Tuple[Pattern[str], str]] = []
+        self.funcs_to_remove_regex: Optional[Pattern[str]] = None
 
-    def open(self):
+    def open(self) -> None:
         self._populate_disallowed_functions_and_replacements_str()
         self._populate_disallowed_functions_and_replacements_regex()
 
-    def _populate_disallowed_functions_and_replacements_str(self):
+    def _populate_disallowed_functions_and_replacements_str(self) -> None:
         """Parse pylint config entries for replacements of disallowed
         functions represented by strings.
         """
-        for entry in self.config.disallowed_functions_and_replacements_str:
+        for (
+            entry
+        ) in self.linter.config.disallowed_functions_and_replacements_str:
             splits = [s.strip() for s in entry.split('=>')]
             assert len(splits) in (1, 2)
             if len(splits) == 1:
@@ -2090,12 +2687,14 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
             else:
                 self.funcs_to_replace_str[splits[0]] = splits[1]
 
-    def _populate_disallowed_functions_and_replacements_regex(self):
+    def _populate_disallowed_functions_and_replacements_regex(self) -> None:
         """Parse pylint config entries for replacements of disallowed
         functions represented by regex.
         """
         remove_regexes = []
-        for entry in self.config.disallowed_functions_and_replacements_regex:
+        for (
+            entry
+        ) in self.linter.config.disallowed_functions_and_replacements_regex:
             splits = [s.strip() for s in entry.split('=>')]
             assert len(splits) in (1, 2)
             if len(splits) == 1:
@@ -2106,10 +2705,11 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
 
         # Store removal regexes as one large regex, concatenated by "|".
         if len(remove_regexes) > 0:
-            self.funcs_to_remove_regex = (
-                re.compile(r'{}'.format('|'.join(remove_regexes))))
+            self.funcs_to_remove_regex = re.compile(
+                r'{}'.format('|'.join(remove_regexes))
+            )
 
-    def visit_call(self, node):
+    def visit_call(self, node: astroid.nodes.Call) -> None:
         """Visit a function call to ensure that the call is
         not using any disallowed functions.
 
@@ -2120,17 +2720,16 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
         if func in self.funcs_to_replace_str:
             self.add_message(
                 'replace-disallowed-function-calls',
-                node=node, args=(func, self.funcs_to_replace_str[func]))
-        elif (
-                func in self.funcs_to_remove_str
-                or (
-                    self.funcs_to_remove_regex is not None
-                    and self.funcs_to_remove_regex.match(func) is not None
-                )
-            ):
+                node=node,
+                args=(func, self.funcs_to_replace_str[func]),
+            )
+        elif func in self.funcs_to_remove_str or (
+            self.funcs_to_remove_regex is not None
+            and self.funcs_to_remove_regex.match(func) is not None
+        ):
             self.add_message(
-                'remove-disallowed-function-calls',
-                node=node, args=func)
+                'remove-disallowed-function-calls', node=node, args=func
+            )
         else:
             # Search through list of replacement regexes entries
             # (tuple(rgx, replacement)). If a match is found, return the
@@ -2139,7 +2738,9 @@ class DisallowedFunctionsChecker(checkers.BaseChecker):
                 if rgx.match(func) is not None:
                     self.add_message(
                         'replace-disallowed-function-calls',
-                        node=node, args=(func, replacement))
+                        node=node,
+                        args=(func, replacement),
+                    )
                     break
 
 
@@ -2147,8 +2748,6 @@ class DisallowHandlerWithoutSchema(checkers.BaseChecker):
     """Custom pylint checker prohibiting handlers which do not have schema
     defined within the class.
     """
-
-    __implements__ = interfaces.IAstroidChecker
 
     name = 'disallow-handlers-without-schema'
     priority = -1
@@ -2159,7 +2758,7 @@ class DisallowHandlerWithoutSchema(checkers.BaseChecker):
             'handler-args'
             'to learn how to write schema for handlers.',
             'no-schema-for-url-path-elements',
-            'Enforce writing schema for url path arguments of handler class.'
+            'Enforce writing schema for url path arguments of handler class.',
         ),
         'C0036': (
             'Please add schema in HANDLER_ARGS_SCHEMA for %s class. \nVisit '
@@ -2167,21 +2766,23 @@ class DisallowHandlerWithoutSchema(checkers.BaseChecker):
             'handler-args'
             'to learn how to write schema for handlers.',
             'no-schema-for-handler-args',
-            'Enforce writing schema for request arguments of handler class.'
+            'Enforce writing schema for request arguments of handler class.',
         ),
         'C0037': (
             'URL_PATH_ARGS_SCHEMAS for %s class must be dict.',
             'url-path-args-schemas-must-be-dict',
-            'Enforce URL_ARGS_PATH_SCHEMAS to be of dict type.'
+            'Enforce URL_ARGS_PATH_SCHEMAS to be of dict type.',
         ),
         'C0038': (
             'HANDLER_ARGS_SCHEMAS for %s class must be dict.',
             'handler-args-schemas-must-be-dict',
-            'Enforce HANDLER_ARGS_SCHEMAS to be of dict type.'
-        )
+            'Enforce HANDLER_ARGS_SCHEMAS to be of dict type.',
+        ),
     }
 
-    def check_given_variable_is_a_dict(self, node, variable_name):
+    def check_given_variable_is_a_dict(
+        self, node: astroid.nodes.ClassDef, variable_name: str
+    ) -> bool:
         """Checks whether schema variable of a handlers class is of dict type.
 
         Args:
@@ -2192,15 +2793,18 @@ class DisallowHandlerWithoutSchema(checkers.BaseChecker):
         Returns:
             bool. Whether schema variable of a class is of dict type.
         """
-        generator_object_for_value_of_schemas = (
-            node.locals[variable_name][0].assigned_stmts())
+        generator_object_for_value_of_schemas = node.locals[variable_name][
+            0
+        ].assigned_stmts()
 
         for value_of_schemas in generator_object_for_value_of_schemas:
             if value_of_schemas.name != 'dict':
                 return False
         return True
 
-    def check_parent_class_is_basehandler(self, node):
+    def check_parent_class_is_basehandler(
+        self, node: astroid.nodes.ClassDef
+    ) -> bool:
         """Checks whether the parent class of given class is BaseHandler.
 
         Args:
@@ -2211,11 +2815,11 @@ class DisallowHandlerWithoutSchema(checkers.BaseChecker):
             bool. Whether the parent class of given class is BaseHandler.
         """
         for ancestor_node in node.ancestors():
-            if ancestor_node.name == u'BaseHandler':
+            if ancestor_node.name == 'BaseHandler':
                 return True
         return False
 
-    def visit_classdef(self, node):
+    def visit_classdef(self, node: astroid.nodes.ClassDef) -> None:
         """Visit each class definition in controllers layer module and check
         if it contains schema or not.
 
@@ -2226,32 +2830,37 @@ class DisallowHandlerWithoutSchema(checkers.BaseChecker):
         if not self.check_parent_class_is_basehandler(node):
             return
 
-        if node.name in payload_validator.HANDLER_CLASS_NAMES_WITH_NO_SCHEMA:
+        if (
+            node.name
+            in handler_schema_constants.HANDLER_CLASS_NAMES_WITH_NO_SCHEMA
+        ):
             return
 
         if 'URL_PATH_ARGS_SCHEMAS' not in node.locals:
             self.add_message(
-                'no-schema-for-url-path-elements', node=node, args=(node.name))
+                'no-schema-for-url-path-elements', node=node, args=node.name
+            )
         elif not self.check_given_variable_is_a_dict(
-                node, 'URL_PATH_ARGS_SCHEMAS'):
+            node, 'URL_PATH_ARGS_SCHEMAS'
+        ):
             self.add_message(
-                'url-path-args-schemas-must-be-dict',
-                node=node, args=(node.name))
+                'url-path-args-schemas-must-be-dict', node=node, args=node.name
+            )
 
         if 'HANDLER_ARGS_SCHEMAS' not in node.locals:
             self.add_message(
-                'no-schema-for-handler-args', node=node, args=(node.name))
+                'no-schema-for-handler-args', node=node, args=node.name
+            )
         elif not self.check_given_variable_is_a_dict(
-                node, 'HANDLER_ARGS_SCHEMAS'):
+            node, 'HANDLER_ARGS_SCHEMAS'
+        ):
             self.add_message(
-                'handler-args-schemas-must-be-dict',
-                node=node, args=(node.name))
+                'handler-args-schemas-must-be-dict', node=node, args=node.name
+            )
 
 
 class DisallowedImportsChecker(checkers.BaseChecker):
     """Check that disallowed imports are not made."""
-
-    __implements__ = interfaces.IAstroidChecker
 
     name = 'disallowed-imports'
     priority = -1
@@ -2263,28 +2872,187 @@ class DisallowedImportsChecker(checkers.BaseChecker):
         ),
     }
 
-    def visit_importfrom(self, node):
+    def visit_importfrom(self, node: astroid.nodes.ImportFrom) -> None:
         """Visits all import-from statements in a python file and ensures that
         only allowed imports are made.
 
         Args:
-            node: astroid.node_classes.ImportFrom. Node for a import-from
+            node: astroid.nodes.ImportFrom. Node for a import-from
                 statement in the AST.
         """
         if node.modname != 'typing':
             return
-        for (name, _) in node.names:
+        for name, _ in node.names:
             if name == 'Text':
                 self.add_message('disallowed-text-import', node=node)
 
 
-def register(linter):
+class PreventStringConcatenationChecker(checkers.BaseChecker):
+    """Checks for string concactenation and encourages string interpolation."""
+
+    name = 'use-string-interpolation'
+    priority = -1
+    msgs = {
+        'C0041': (
+            'Please use string interpolation instead of string concatenation',
+            'use-string-interpolation',
+            'Used when string concatenation is detected.',
+        ),
+    }
+
+    def visit_binop(self, node: astroid.nodes.BinOp) -> None:
+        """Visits a binary operation node in the AST
+        then checks if it's a string concatenation operation.
+
+        Args:
+            node: astroid.nodes.BinOp. The binary operation node to
+                check.
+        """
+
+        if isinstance(node, astroid.nodes.BinOp) and node.op == '+':
+            try:
+                left_inferred = next(node.left.infer())
+                right_inferred = next(node.right.infer())
+            except astroid.exceptions.InferenceError:
+                return
+            # Ignore operation if either side is inferred to be a datetime obj.
+            if any(
+                isinstance(
+                    inferred,
+                    (astroid.bases.Instance, astroid.nodes.Const),
+                )
+                and isinstance(inferred.pytype(), str)
+                and 'datetime.datetime' in inferred.pytype()
+                for inferred in [left_inferred, right_inferred]
+            ):
+                return
+            if (
+                isinstance(left_inferred, astroid.nodes.Const)
+                and isinstance(right_inferred, astroid.nodes.Const)
+                and isinstance(left_inferred.value, str)
+                and isinstance(right_inferred.value, str)
+            ):
+                self.add_message('use-string-interpolation', node=node)
+
+
+class QuoteConventionChecker(
+    checkers.BaseTokenChecker, checkers.BaseRawFileChecker
+):
+    """Checks convention for single-quote, triple-quote, and docstrings.
+
+    Replaces the unmaintained `pylint-quotes` plugin. Enforces the conventions
+    that plugin was configured with (string-quote=single, triple-quote=double,
+    docstring-quote=double):
+        * short strings always use single quotes ('); an interior single quote
+          must be backslash-escaped rather than switched to double quotes;
+        * triple-quoted, non-docstring strings use double quotes (\"\"\");
+        * docstrings use double quotes (\"\"\").
+
+    Quote extraction reuses the helpers Pylint ships for its own `string`
+    checker (`pylint.checkers.strings`), so only the convention policy lives
+    here.
+    """
+
+    name = 'string-quotes'
+    priority = -1
+    msgs = {
+        'C0042': (
+            'Invalid string quote `%s`, should be `\'`',
+            'invalid-string-quote',
+            'Used when the string quote character is not `\'`',
+        ),
+        'C0043': (
+            'Invalid triple quote `%s`, should be `"""`',
+            'invalid-triple-quote',
+            'Used when the triple quote characters are not `"""`',
+        ),
+        'C0044': (
+            'Invalid docstring quote `%s`, should be `"""`',
+            'invalid-docstring-quote',
+            'Used when the docstring quote characters are not `"""`',
+        ),
+    }
+
+    NODE_TYPES_WITH_CHECKED_DOCS = (
+        astroid.nodes.ClassDef,
+        astroid.nodes.FunctionDef,
+    )
+
+    def __init__(self, linter: lint.PyLinter) -> None:
+        super().__init__(linter)
+        # Start positions (row, col) of every docstring string token in the
+        # module, populated from the AST before the tokens are classified.
+        self._docstring_token_positions: Set[Tuple[int, int]] = set()
+
+    def process_module(self, node: astroid.nodes.Module) -> None:
+        """Records the source position of every docstring in the module.
+
+        Pylint calls `process_module` (a raw-file-checker hook) before
+        `process_tokens` for a given module, so these positions are available
+        by the time `process_tokens` begins to classify any string tokens.
+
+        Args:
+            node: scoped_nodes.Module. The module node being linted.
+        """
+        nodes_with_checked_docs = (
+            node,
+            *node.nodes_of_class(self.NODE_TYPES_WITH_CHECKED_DOCS),
+        )
+        self._docstring_token_positions = {
+            (n.doc_node.lineno, n.doc_node.col_offset)
+            for n in nodes_with_checked_docs
+            if n.doc_node is not None
+            and n.doc_node.lineno is not None
+            and n.doc_node.col_offset is not None
+        }
+
+    def process_tokens(self, tokens: List[tokenize.TokenInfo]) -> None:
+        """Checks the quote characters used by every string token.
+
+        Args:
+            tokens: list(TokenInfo). The tokens of the module being linted.
+        """
+        for token_type, token, position, _, _ in tokens:
+            # TODO(#21214): Also inspect FSTRING_START tokens once we run on
+            # Python 3.12+, where PEP 701 tokenizes f-strings separately and
+            # their quotes would otherwise escape this STRING-only check.
+            if token_type != tokenize.STRING:
+                continue
+
+            delimiter = string_utils._get_quote_delimiter(  # pylint: disable=protected-access
+                token
+            )
+
+            if position in self._docstring_token_positions:
+                if delimiter != '"':
+                    self.add_message(
+                        'invalid-docstring-quote',
+                        line=position[0],
+                        args=(delimiter * 3,),
+                    )
+            elif string_utils._is_long_string(  # pylint: disable=protected-access
+                token
+            ):
+                if delimiter != '"':
+                    self.add_message(
+                        'invalid-triple-quote',
+                        line=position[0],
+                        args=(delimiter * 3,),
+                    )
+            elif delimiter != '\'':
+                self.add_message(
+                    'invalid-string-quote',
+                    line=position[0],
+                    args=(delimiter,),
+                )
+
+
+def register(linter: lint.PyLinter) -> None:
     """Registers the checker with pylint.
 
     Args:
         linter: Pylinter. The Pylinter object.
     """
-    linter.register_checker(ExplicitKeywordArgsChecker(linter))
     linter.register_checker(HangingIndentChecker(linter))
     linter.register_checker(DocstringParameterChecker(linter))
     linter.register_checker(ImportOnlyModulesChecker(linter))
@@ -2292,13 +3060,16 @@ def register(linter):
     linter.register_checker(FunctionArgsOrderChecker(linter))
     linter.register_checker(RestrictedImportChecker(linter))
     linter.register_checker(SingleCharAndNewlineAtEOFChecker(linter))
-    linter.register_checker(DivisionOperatorChecker(linter))
     linter.register_checker(SingleLineCommentChecker(linter))
     linter.register_checker(BlankLineBelowFileOverviewChecker(linter))
     linter.register_checker(SingleLinePragmaChecker(linter))
+    linter.register_checker(TypeIgnoreCommentChecker(linter))
     linter.register_checker(SingleSpaceAfterKeyWordChecker(linter))
+    linter.register_checker(ExceptionalTypesCommentChecker(linter))
     linter.register_checker(InequalityWithNoneChecker(linter))
     linter.register_checker(NonTestFilesFunctionNameChecker(linter))
     linter.register_checker(DisallowedFunctionsChecker(linter))
     linter.register_checker(DisallowHandlerWithoutSchema(linter))
     linter.register_checker(DisallowedImportsChecker(linter))
+    linter.register_checker(PreventStringConcatenationChecker(linter))
+    linter.register_checker(QuoteConventionChecker(linter))

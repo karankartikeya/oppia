@@ -1,208 +1,86 @@
-<background-banner></background-banner>
-<div class="oppia-classroom-viewer-container position-relative">
-  <div class="oppia-classroom-header">
-    <div class="classroom-header">{{ 'I18N_CLASSROOM_PAGE_HEADING' | translate }}</div>
-    <div class="classroom-name">{{ classroomDisplayName }}</div>
-  </div>
-  <div class="oppia-classroom-banner">
-    <img [src]="bannerImageFileUrl" align="center" width="100%" alt="">
-  </div>
-  <div class="oppia-classroom-details" *ngIf="classroomData">
-    <h2>{{ 'I18N_CLASSROOM_PAGE_COURSE_DETAILS' | translate }}</h2>
-    <!-- The course details and topic list intro texts are hardcoded so that they can be translated.
-    This method should be changed when more classrooms are added in the future. -->
-    <p class="course-details"> {{ 'I18N_MATH_COURSE_DETAILS' | translate }} </p>
-    <h2>{{ 'I18N_CLASSROOM_PAGE_TOPICS_COVERED' | translate }}</h2>
-    <p>{{ 'I18N_MATH_TOPICS_COVERED' | translate }}</p>
-  </div>
-  <div class="oppia-topic-summary-tiles" *ngIf="classroomData">
-    <div *ngFor="let topicSummary of classroomData.getTopicSummaries()"
-         class="oppia-topic-summary-tile protractor-test-topic-summary-tile">
-      <oppia-topic-summary-tile [topicSummary]="topicSummary"
-                                [classroomUrlFragment]="classroomUrlFragment"
-                                [isPublished]="topicSummary.isTopicPublished()">
-      </oppia-topic-summary-tile>
+<div class="oppia-classroom-page-container" *ngIf="classroomData">
+  <div class="classroom-top breadcrumbs-container" aria-label="Classroom banner" [style.background-image]="'url(' + classroomBanner + ')'">
+    <div *ngIf="showPrivateClassroomBanner"
+         class="classroom-admin-banner"
+    >
+      <span>{{'I18N_UNPUBLISHED_CLASSROOM_BANNER_TEXT' | translate}}</span>
+    </div>
+    <div class="classroom-breadcrumbs">
+      <div class="desktop-breadcrumbs">
+        <a *ngIf="publicClassroomsCount === 1" href="/">{{ 'I18N_TOPNAV_HOME' | translate }}</a>
+        <a *ngIf="publicClassroomsCount > 1" href="/learn">{{ 'I18N_CLASSROOM_TOP_NAV_CLASSROOMS_TEXT' | translate }}</a>
+        <i class="fa fa-angle-right" *ngIf="!isLanguageRTL()"></i>
+        <i class="fa fa-angle-left" *ngIf="isLanguageRTL()"></i>
+        <span *ngIf="!isHackyClassroomTranslationDisplayed('name')">{{classroomData.getName() | capitalizePipe}}</span>
+        <span *ngIf="isHackyClassroomTranslationDisplayed('name')">{{classroomTranslationKeys.name | translate}}</span>
+      </div>
+      <div class="mobile-breadcrumbs">
+        <i class="fa fa-angle-left" *ngIf="!isLanguageRTL()"></i>
+        <i class="fa fa-angle-right" *ngIf="isLanguageRTL()"></i>
+        <a href="/" *ngIf="publicClassroomsCount <= 1">{{ 'I18N_BACK_TO_HOME_TEXT' | translate }}</a>
+        <a href="/learn" *ngIf="publicClassroomsCount > 1">{{ 'I18N_BACK_TO_CLASSROOMS' | translate }}</a>
+      </div>
+    </div>
+    <div class="classroom-information-container">
+      <div class="classroom-text-container">
+        <span>{{ 'I18N_CLASSROOM_HEADING' | translate:{ classroomName: classroomData.getName() } }}</span>
+        <h1 *ngIf="!isHackyClassroomTranslationDisplayed('name')" [ngStyle]="{'text-align': isLanguageRTL() ? 'right' : 'left'}" class="e2e-test-classroom-name">{{classroomData.getName() | capitalizePipe}}</h1>
+        <h1 *ngIf="isHackyClassroomTranslationDisplayed('name')" [ngStyle]="{'text-align': isLanguageRTL() ? 'right' : 'left'}" class="e2e-test-classroom-name">{{classroomTranslationKeys.name | translate}}</h1>
+      </div>
+      <div class="classroom-thumbnail-container">
+        <img class="classroom-thumbnail" alt="Classroom thumbnail image" [src]="classroomThumbnail">
+      </div>
     </div>
   </div>
-  <div class="oppia-classroom-search-container">
-    <div class="oppia-classroom-search-section">
-      <div class="classroom-page-help-text initial-help-text">
-        {{ 'I18N_CLASSROOM_PAGE_SEARCH_BAR_HEADING' | translate }}
+
+  <div class="classroom-content-container">
+    <div class="classroom-content">
+      <div class="content-section">
+        <h1 class="classroom-content-heading e2e-test-classroom-content-heading">{{'I18N_CLASSROOM_PAGE_COURSE_DETAILS' | translate}}</h1>
+        <p class="classroom-content-text" *ngIf="!isHackyClassroomTranslationDisplayed('courseDetails')">{{classroomData.getCourseDetails()}}</p>
+        <p class="classroom-content-text" *ngIf="isHackyClassroomTranslationDisplayed('courseDetails')">{{classroomTranslationKeys.courseDetails | translate}}</p>
       </div>
-      <div class="classroom-page-help-text oppia-classroom-page-subheading-text">
-        {{ 'I18N_CLASSROOM_PAGE_SEARCH_BAR_SUBHEADING' | translate }}
+      <div class="content-section">
+        <h1 class="classroom-content-heading e2e-test-classroom-content-heading">{{'I18N_CLASSROOM_PAGE_TOPICS_COVERED' | translate}}</h1>
+        <p class="classroom-content-text" *ngIf="!isHackyClassroomTranslationDisplayed('topicListIntro')">{{classroomData.getTopicListIntro()}}</p>
+        <p class="classroom-content-text" *ngIf="isHackyClassroomTranslationDisplayed('topicListIntro')">{{ classroomTranslationKeys.topicListIntro | translate }}</p>
       </div>
-      <div>
-        <oppia-search-bar [enableDropup]="true"></oppia-search-bar>
+      <div *ngIf="diagnosticTestIsEnabled()" class="content-section diagnostic-test-container">
+        <div class="diagnostic-test-box e2e-test-diagnostic-test-box">
+          <div class="diagnostic-test-info">
+            <h4>{{ 'I18N_CLASSROOM_PAGE_NEW_TO_MATH_HEADING' | translate }}</h4>
+            <p>{{ beginWithFirstTopicButtonText }}</p>
+          </div>
+          <a [href]="firstTopicUrl" class="e2e-test-start-here-button">{{ 'I18N_START_FIRST_CLASSROOM_TOPIC' | translate }}</a>
+        </div>
+        <div class="diagnostic-test-box e2e-test-diagnostic-test-box">
+          <div class="diagnostic-test-info">
+            <h4>{{ 'I18N_CLASSROOM_PAGE_ALREADY_KNOW_SOME_HEADING' | translate:{ classroomName: classroomData.getName() } }}</h4>
+            <p>{{ 'I18N_CLASSROOM_PAGE_ALREADY_KNOW_SOME_TEXT' | translate:{ classroomName: classroomData.getName() } }}</p>
+          </div>
+          <a [routerLink]="['/diagnostic-test-player']" [queryParams]="{ classroom: classroomData.getUrlFragment() }" class="e2e-test-take-diagnostic-test">{{ 'I18N_CLASSROOM_PAGE_QUIZ_TEST_BUTTON' | translate }}</a>
+        </div>
+      </div>
+      <!-- TODO(#24717-M2.3): Design entry point UI for certificate assessment offering -->
+      <div *ngIf="isCertificateAssessmentEnabled() && isUserLoggedIn">
+        <div class="certificate-offering-info">
+          <h4>Ready to show what you’ve learned?</h4>
+          <p>Take a certificate assessment and earn recognition for what you know.</p>
+        </div>
+        <a [routerLink]="['/learn', classroomData.getUrlFragment(), 'certificate-offering-available']"
+           class="e2e-test-take-certificate-assessment">
+          Learn more
+        </a>
+      </div>
+      <div class="topic-tiles-container">
+        <div *ngFor="let topicSummary of classroomData.getTopicSummaries()"
+             class="oppia-topic-summary-tile e2e-test-topic-summary-tile">
+          <oppia-topic-summary-tile [topicSummary]="topicSummary"
+                                    [classroomUrlFragment]="classroomUrlFragment"
+                                    [isPublished]="topicSummary.isTopicPublished()">
+          </oppia-topic-summary-tile>
+        </div>
       </div>
     </div>
   </div>
 </div>
-<style>
-  .oppia-classroom-search-container {
-    background-color: #d7d7d7;
-    bottom: 0;
-    margin-left: -22.5vw;
-    margin-right: -22.5vw;
-    padding-bottom: 10px;
-    position: absolute;
-    width: 100vw;
-  }
-
-  .oppia-classroom-search-section .classroom-page-search-bar {
-    margin-left: -18px;
-  }
-
-  .oppia-classroom-details {
-    font-family: 'Roboto', Arial, sans-serif;
-    font-size: 0.95em;
-  }
-
-  .oppia-classroom-details .course-details {
-    margin-bottom: 4vh;
-  }
-
-  .oppia-classroom-details h2 {
-    color: #545454;
-  }
-
-  .oppia-classroom-details p {
-    line-height: 2;
-  }
-
-  .oppia-classroom-viewer-container,
-  .oppia-classroom-search-section {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-    width: 55vw;
-  }
-
-  .oppia-classroom-search-container .initial-help-text {
-    font-weight: 500;
-    padding-top: 2.5vh;
-  }
-
-  .classroom-page-help-text {
-    color: #01645c;
-    font-family: 'Roboto', Arial, sans-serif;
-    font-size: 1.2em;
-  }
-
-  .oppia-classroom-viewer-container .oppia-classroom-header {
-    color: #01645c;
-    font-family: 'Capriola', 'Roboto', Arial, sans-serif;
-    margin-bottom: 25px;
-    margin-top: 0;
-    padding-top: 66.5px;
-    text-align: left;
-  }
-
-  .oppia-classroom-viewer-container .oppia-topic-summary-tiles {
-    display: grid;
-    grid-gap: 2vw;
-    grid-template-columns: 210px 210px 210px;
-    justify-content: space-between;
-    margin-top: 40px;
-    overflow-y: auto;
-    padding-bottom: 18vh;
-  }
-
-  .oppia-classroom-viewer-container .oppia-topic-summary-tile {
-    padding-bottom: 40px;
-  }
-
-  .oppia-classroom-viewer-container .classroom-name {
-    font-size: 3em;
-  }
-  .oppia-classroom-viewer-container .classroom-header {
-    font-size: 1.2em;
-  }
-  .oppia-classroom-viewer-container .oppia-classroom-banner {
-    margin-left: 25vw;
-    margin-top: -120px;
-    width: 25vw;
-  }
-  classroom-page .oppia-classroom-page-subheading-text {
-    font-size: 1em;
-  }
-
-  @media(max-width: 1150px) {
-    .oppia-classroom-viewer-container .oppia-topic-summary-tiles {
-      grid-template-columns: 180px 180px 180px;
-    }
-
-    .oppia-classroom-viewer-container,
-    .oppia-classroom-search-section {
-      width: 60vw;
-    }
-
-    .oppia-classroom-search-container {
-      margin-left: -20vw;
-    }
-  }
-
-  @media (max-width: 850px) {
-    .oppia-classroom-viewer-container .oppia-topic-summary-tile {
-      padding-bottom: 80px;
-    }
-
-    .oppia-classroom-viewer-container .classroom-header {
-      margin-top: -3vh;
-    }
-    .oppia-classroom-search-container .initial-help-text {
-      padding-top: 0.5vh;
-    }
-
-    .oppia-classroom-viewer-container {
-      width: 80vw;
-    }
-
-    .oppia-classroom-search-section {
-      width: 90vw;
-    }
-
-    .oppia-classroom-search-container {
-      margin-left: -10vw;
-    }
-
-    .classroom-page-help-text {
-      font-size: 1em;
-    }
-
-    .oppia-classroom-viewer-container .oppia-classroom-banner {
-      margin-left: 15vw;
-      margin-top: -7vh;
-      width: 50vw;
-    }
-    .oppia-classroom-viewer-container .oppia-topic-summary-tiles {
-      grid-template-columns: 150px 150px 150px;
-      margin-top: 5vh;
-      padding-bottom: 120px;
-    }
-  }
-
-  @media(max-width: 500px) {
-    .oppia-classroom-viewer-container {
-      width: 85vw;
-    }
-
-    .oppia-classroom-search-container {
-      margin-left: -7.5vw;
-    }
-
-    .oppia-classroom-search-section {
-      width: 90vw;
-    }
-
-    .oppia-classroom-details {
-      font-size: 0.8em;
-    }
-
-    .oppia-classroom-viewer-container .oppia-topic-summary-tiles {
-      display: grid;
-      grid-template-columns: 150px 150px;
-      justify-content: space-between;
-    }
-  }
-</style>

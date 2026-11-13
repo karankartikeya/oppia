@@ -1,8 +1,8 @@
 <div class="blog-admin-navbar">
   <nav class="navbar navbar-default navbar-light oppia-navbar oppia-prevent-selection oppia-navbar-blog-admin" role="navigation">
     <div class="navbar-container oppia-navbar-container">
-      <div class="navbar-header protractor-test-navbar-header float-left">
-        <a class="oppia-navbar-brand-name oppia-transition-200 float-left"
+      <div class="navbar-header e2e-test-navbar-header float-start">
+        <a class="oppia-navbar-brand-name oppia-transition-200 float-start"
            href="/community-library"
            [routerLink]="'/' + PAGES_REGISTERED_WITH_FRONTEND.LIBRARY_INDEX.ROUTE">
           <picture>
@@ -20,29 +20,23 @@
           </li>
         </ul>
       </div>
-      <div class="navbar-header float-right">
+      <div class="navbar-header float-end">
         <ul class="nav oppia-navbar-nav oppia-navbar-profile-blog-admin">
           <li>
             <ul class="nav oppia-navbar-tabs-blog-admin">
-              <li ngbDropdown class="nav-item dropdown float-right" [ngClass]="{'open' : profileDropdownIsActive}">
-                <a ngbDropdownToggle class="nav-link oppia-navbar-dropdown-toggle protractor-test-navbar-dropdown-toggle"
-                   data-toggle="dropdown"
+              <li ngbDropdown class="nav-item dropdown float-end" [ngClass]="{'open' : profileDropdownIsActive}">
+                <a ngbDropdownToggle class="nav-link oppia-navbar-dropdown-toggle e2e-test-navbar-dropdown-toggle"
                    (mouseenter)="activateProfileDropdown()"
                    (mouseleave)="deactivateProfileDropdown()">
-                  <div class="oppia-navbar-profile-picture-container dropdown-toggle float-left">
-                    <span *ngIf="profilePictureDataUrl">
-                      <!--
-                        Lighthouse flags <img> elements that don't have alt attributes:
-                        If the image acts as decoration and does not provide any useful content, give it an empty alt=""
-                        https://web.dev/image-alt/?utm_source=lighthouse&utm_medium=devtools#how-to-add-alternative-text-to-images
-                      -->
-                      <img [src]="profilePictureDataUrl"
-                           class="oppia-navbar-profile-picture rounded-circle"
-                           alt="">
-                    </span>
-                    <div *ngIf="!profilePictureDataUrl" class="dropdown-toggle">
-                      <i class="material-icons md-40 oppia-dropdown-toggle-icon">&#xE853;</i>
-                    </div>
+                  <picture *ngIf="profilePicturePngDataUrl">
+                    <source type="image/webp" [srcset]="profilePictureWebpDataUrl">
+                    <source type="image/png" [srcset]="profilePicturePngDataUrl">
+                    <img [src]="profilePicturePngDataUrl"
+                         class="oppia-navbar-profile-picture rounded-circle"
+                         alt="User profile picture">
+                  </picture>
+                  <div *ngIf="!profilePicturePngDataUrl" class="dropdown-toggle">
+                    <i class="material-icons mat-icon-40 oppia-dropdown-toggle-icon">&#xE853;</i>
                   </div>
                 </a>
                 <ul ngbDropdownMenu class="dropdown-menu dropdown-menu oppia-navbar-dropdown"
@@ -50,23 +44,20 @@
                     (mouseenter)="activateProfileDropdown()"
                     (mouseleave)="deactivateProfileDropdown()">
                   <li>
-                    <a (click)="onMouseoutProfilePictureOrDropdown($event)"
-                       [href]="profileUrl"
+                    <a [href]="profileUrl"
                        class="dropdown-item oppia-dropdown-item-text">
                       <strong>{{ username }}</strong>
                     </a>
                   </li>
                   <hr class="oppia-top-right-menu-item-separator">
                   <li>
-                    <a (click)="onMouseoutProfilePictureOrDropdown($event)"
-                       href="/blog-dashboard"
+                    <a href="/blog-dashboard"
                        class="dropdown-item oppia-dropdown-item-text">
                       Blog Dashboard
                     </a>
                   </li>
                   <li>
-                    <a (click)="onMouseoutProfilePictureOrDropdown($event)"
-                       href="/preferences"
+                    <a href="/preferences"
                        [routerLink]="'/' + PAGES_REGISTERED_WITH_FRONTEND.PREFERENCES.ROUTE"
                        class="dropdown-item oppia-dropdown-item-text">
                       Preferences
@@ -74,8 +65,7 @@
                   </li>
                   <hr class="oppia-top-right-menu-item-separator">
                   <li>
-                    <a (click)="onMouseoutProfilePictureOrDropdown($event)"
-                       [href]="'/' + PAGES_REGISTERED_WITH_FRONTEND.LOGOUT.ROUTE"
+                    <a [href]="'/' + PAGES_REGISTERED_WITH_FRONTEND.LOGOUT.ROUTE"
                        [routerLink]="'/' + PAGES_REGISTERED_WITH_FRONTEND.LOGOUT.ROUTE"
                        class="dropdown-item oppia-dropdown-item-text">
                       Logout
@@ -90,51 +80,3 @@
     </div>
   </nav>
 </div>
-<style>
-  .oppia-navbar-profile-blog-admin .open > a,
-  .nav > li > a:focus,
-  .oppia-navbar-profile-blog-admin > li > a:hover,
-  .oppia-navbar-profile-blog-admin > li > a:focus,
-  .oppia-navbar-tabs-blog-admin > li > a:hover,
-  .oppia-navbar-profile-blog-admin .open > a:hover,
-  .oppia-navbar-profile-blog-admin .open > a:focus,
-  .oppia-navbar-tabs-blog-admin > li > a.active,
-  .oppia-blog-admin-page-dropdown-icon {
-    background-color: #fff;
-    color: #00376d;
-  }
-  .oppia-navbar-tabs-blog-admin .dropdown-toggle::after {
-    color: #fff;
-  }
-  .oppia-navbar-blog-admin {
-    top: 0;
-  }
-  .oppia-navbar-tabs-blog-admin:hover .dropdown-toggle::after,
-  .oppia-navbar-tabs-blog-admin:focus .dropdown-toggle::after {
-    color: #00376d;
-  }
-  .navbar-container.oppia-navbar-container {
-    background-color: #00376d;
-  }
-  .nav .dropdown:hover > .dropdown-menu > li > a.oppia-dropdown-item-text {
-    color: #00376d;
-  }
-  .oppia-dropdown-toggle-icon {
-    margin-top: -1px;
-  }
-  @media screen and (max-width: 710px) {
-    .oppia-blog-admin-page-dropdown {
-      display: block;
-    }
-    .oppia-hide-in-small-width-screens {
-      display: none;
-    }
-  }
-  @media screen and (min-width: 711px) {
-    .oppia-blog-admin-page-dropdown,
-    .oppia-blog-admin-page-dropdown-icon,
-    .oppia-blog-admin-page-dropdown-menu {
-      display: none;
-    }
-  }
-</style>

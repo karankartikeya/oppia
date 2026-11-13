@@ -16,36 +16,48 @@
  * @fileoverview Component for editing user roles.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AdminDataService } from '../services/admin-data.service';
-import { AdminBackendApiService } from 'domain/admin/admin-backend-api.service';
-import { TopicManagerRoleEditorModalComponent } from './topic-manager-role-editor-modal.component';
-import { AlertsService } from 'services/alerts.service';
+import {Component, EventEmitter, OnInit, Output} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {AdminDataService} from '../services/admin-data.service';
+import {
+  AdminBackendApiService,
+  HumanReadableRolesBackendResponse,
+  RoleToActionsBackendResponse,
+} from 'domain/admin/admin-backend-api.service';
+import {TopicManagerRoleEditorModalComponent} from './topic-manager-role-editor-modal.component';
+import {TranslationCoordinatorRoleEditorModalComponent} from './translation-coordinator-role-editor-modal.component';
+import {AlertsService} from 'services/alerts.service';
+import {CreatorTopicSummary} from 'domain/topic/creator-topic-summary.model';
+import constants from 'assets/constants';
 
 @Component({
   selector: 'oppia-admin-roles-tab',
-  templateUrl: './admin-roles-tab.component.html'
+  templateUrl: './admin-roles-tab.component.html',
+  styleUrls: ['./admin-roles-tab.component.css'],
 })
 export class AdminRolesTabComponent implements OnInit {
-  UPDATABLE_ROLES = null;
-  VIEWABLE_ROLES = null;
-  HUMAN_READABLE_ROLES = null;
-  topicSummaries = null;
-  roleToActions = null;
-  rolesFetched = false;
-
-  roleSelectorIsShown = false;
-  username = '';
-  userRoles = [];
-  possibleRolesToAdd = [];
-  managedTopicIds = [];
+  @Output() setStatusMessage: EventEmitter<string> = new EventEmitter();
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  UPDATABLE_ROLES!: string[];
+  VIEWABLE_ROLES!: string[];
+  HUMAN_READABLE_ROLES!: HumanReadableRolesBackendResponse;
+  topicSummaries!: CreatorTopicSummary[];
+  roleToActions!: RoleToActionsBackendResponse;
+  errorMessage!: string;
+  rolesFetched: boolean = false;
+  roleSelectorIsShown: boolean = false;
+  username: string = '';
+  userRoles: string[] = [];
+  possibleRolesToAdd: string[] = [];
+  managedTopicIds: string[] = [];
+  coordinatedLanguageIds: string[] = [];
   // The roleCurrentlyBeingUpdatedInBackend holds the role which is either being
   // removed or added to user roles. This value is used to present a progress
   // spinner next to the role which is currently being updated in the backend.
-  roleCurrentlyBeingUpdatedInBackend = null;
-  errorMessage = null;
+  // RoleCurrentlyBeingUpdatedInBackend is null when no role is being updated.
+  roleCurrentlyBeingUpdatedInBackend: string | null = null;
   bannedStatusChangeInProgress = false;
   userIsBanned = false;
   roleIsCurrentlyBeingEdited = false;
@@ -59,23 +71,31 @@ export class AdminRolesTabComponent implements OnInit {
 
   addWarning(errorMessage: string): void {
     this.alertsService.addWarning(
-      errorMessage || 'Error communicating with server.');
+      errorMessage || 'Error communicating with server.'
+    );
   }
 
   startEditing(): void {
     this.roleIsCurrentlyBeingEdited = true;
-    this.adminBackendApiService.viewUsersRoleAsync(
-      this.username).then((userRoles) => {
-      this.rolesFetched = true;
-      this.userRoles = userRoles.roles;
-      this.managedTopicIds = userRoles.managed_topic_ids;
-      this.userIsBanned = userRoles.banned;
-    });
+    this.adminBackendApiService.viewUsersRoleAsync(this.username).then(
+      userRoles => {
+        this.rolesFetched = true;
+        this.userRoles = userRoles.roles;
+        this.managedTopicIds = userRoles.managed_topic_ids;
+        this.coordinatedLanguageIds = userRoles.coordinated_language_ids;
+        this.userIsBanned = userRoles.banned;
+      },
+      errorResponse => {
+        this.roleIsCurrentlyBeingEdited = false;
+        this.setStatusMessage.emit(errorResponse);
+      }
+    );
   }
 
   showNewRoleSelector(): void {
     this.possibleRolesToAdd = this.UPDATABLE_ROLES.filter(
-      role => !this.userRoles.includes(role)).sort();
+      role => !this.userRoles.includes(role)
+    ).sort();
     this.roleSelectorIsShown = true;
   }
 
@@ -83,32 +103,59 @@ export class AdminRolesTabComponent implements OnInit {
     this.roleCurrentlyBeingUpdatedInBackend = roleToRemove;
 
     var roleIndex = this.userRoles.indexOf(roleToRemove);
-    this.adminBackendApiService.removeUserRoleAsync(
-      roleToRemove, this.username).then(() => {
-      if (roleToRemove === 'TOPIC_MANAGER') {
-        this.managedTopicIds = [];
-      }
-      this.userRoles.splice(roleIndex, 1);
-      this.roleCurrentlyBeingUpdatedInBackend = null;
-    });
+    this.adminBackendApiService
+      .removeUserRoleAsync(roleToRemove, this.username)
+      .then(() => {
+        if (roleToRemove === 'TOPIC_MANAGER') {
+          this.managedTopicIds = [];
+        }
+        if (roleToRemove === 'TRANSLATION_COORDINATOR') {
+          this.coordinatedLanguageIds = [];
+        }
+        this.userRoles.splice(roleIndex, 1);
+        this.roleCurrentlyBeingUpdatedInBackend = null;
+      });
   }
 
   openTopicManagerRoleEditor(): void {
     const modalRef = this.modalService.open(
-      TopicManagerRoleEditorModalComponent);
-    modalRef.componentInstance.managedTopicIds = (
-      this.managedTopicIds);
+      TopicManagerRoleEditorModalComponent
+    );
+    modalRef.componentInstance.managedTopicIds = this.managedTopicIds;
     modalRef.componentInstance.username = this.username;
-    let topicIdToName = {};
+    let topicIdToName: Record<string, string> = {};
     this.topicSummaries.forEach(
-      topicSummary => topicIdToName[topicSummary.id] = topicSummary.name);
+      topicSummary => (topicIdToName[topicSummary.id] = topicSummary.name)
+    );
     modalRef.componentInstance.topicIdToName = topicIdToName;
     modalRef.result.then(managedTopicIds => {
       this.managedTopicIds = managedTopicIds;
-      if (
-        !this.userRoles.includes('TOPIC_MANAGER') &&
-        managedTopicIds.length) {
+      if (!this.userRoles.includes('TOPIC_MANAGER') && managedTopicIds.length) {
         this.userRoles.push('TOPIC_MANAGER');
+      }
+      this.roleSelectorIsShown = false;
+    });
+  }
+
+  openTranslationCoordinatorRoleEditor(): void {
+    const modalRef = this.modalService.open(
+      TranslationCoordinatorRoleEditorModalComponent
+    );
+    modalRef.componentInstance.coordinatedLanguageIds =
+      this.coordinatedLanguageIds;
+    modalRef.componentInstance.username = this.username;
+    let languageIdToName: Record<string, string> = {};
+    constants.SUPPORTED_AUDIO_LANGUAGES.forEach(
+      language => (languageIdToName[language.id] = language.description)
+    );
+    modalRef.componentInstance.languageIdToName = languageIdToName;
+    modalRef.result.then(coordinatedLanguageIds => {
+      this.coordinatedLanguageIds = coordinatedLanguageIds;
+      if (
+        !this.userRoles.includes('TRANSLATION_COORDINATOR') &&
+        coordinatedLanguageIds.length
+      ) {
+        this.userRoles.push('TRANSLATION_COORDINATOR');
       }
       this.roleSelectorIsShown = false;
     });
@@ -120,14 +167,20 @@ export class AdminRolesTabComponent implements OnInit {
       return;
     }
 
+    if (role === 'TRANSLATION_COORDINATOR') {
+      this.openTranslationCoordinatorRoleEditor();
+      return;
+    }
+
     this.roleCurrentlyBeingUpdatedInBackend = role;
     this.userRoles.push(role);
     this.roleSelectorIsShown = false;
 
-    this.adminBackendApiService.addUserRoleAsync(
-      role, this.username).then(() => {
-      this.roleCurrentlyBeingUpdatedInBackend = null;
-    }, this.addWarning.bind(this));
+    this.adminBackendApiService
+      .addUserRoleAsync(role, this.username)
+      .then(() => {
+        this.roleCurrentlyBeingUpdatedInBackend = null;
+      }, this.addWarning.bind(this));
   }
 
   markUserBanned(): void {
@@ -141,12 +194,13 @@ export class AdminRolesTabComponent implements OnInit {
 
   unmarkUserBanned(): void {
     this.bannedStatusChangeInProgress = true;
-    this.adminBackendApiService.unmarkUserBannedAsync(
-      this.username).then(() => {
-      this.bannedStatusChangeInProgress = false;
-      this.userIsBanned = false;
-      this.startEditing();
-    }, this.addWarning.bind(this));
+    this.adminBackendApiService
+      .unmarkUserBannedAsync(this.username)
+      .then(() => {
+        this.bannedStatusChangeInProgress = false;
+        this.userIsBanned = false;
+        this.startEditing();
+      }, this.addWarning.bind(this));
   }
 
   clearEditor(): void {
@@ -172,8 +226,3 @@ export class AdminRolesTabComponent implements OnInit {
     });
   }
 }
-
-angular.module('oppia').directive('oppiaAdminRolesTab',
-  downgradeComponent({
-    component: AdminRolesTabComponent
-  }) as angular.IDirectiveFactory);

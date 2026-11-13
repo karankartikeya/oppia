@@ -16,20 +16,22 @@
  * @fileoverview Component for music phrase editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { AlertsService } from 'services/alerts.service';
-import { MusicPhraseEditorComponent } from './music-phrase-editor.component';
+// @ts-nocheck
+
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {AlertsService} from 'services/alerts.service';
+import {MusicPhraseEditorComponent} from './music-phrase-editor.component';
 
 describe('MusicPhraseEditorComponent', () => {
   let component: MusicPhraseEditorComponent;
   let fixture: ComponentFixture<MusicPhraseEditorComponent>;
   let alertsService: AlertsService;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [MusicPhraseEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -42,9 +44,9 @@ describe('MusicPhraseEditorComponent', () => {
         readableNoteName: 'C4',
         noteDuration: {
           num: 1,
-          den: 1
-        }
-      }
+          den: 1,
+        },
+      },
     ];
   });
 
@@ -89,21 +91,33 @@ describe('MusicPhraseEditorComponent', () => {
     expect(component._proxy).toEqual(['C4']);
   });
 
-  it('should warn user when the numbber of notes on the staff is more' +
-  ' than the limit', () => {
-    spyOn(alertsService, 'addWarning');
-    component.localValue = new Array(8).fill('C4');
+  it(
+    'should warn user when the numbber of notes on the staff is more' +
+      ' than the limit',
+    () => {
+      spyOn(alertsService, 'addWarning');
+      component.localValue = new Array(8).fill('C4');
 
-    component._proxy.push('C4');
+      component._proxy.push('C4');
 
-    expect(alertsService.addWarning)
-      .toHaveBeenCalledWith('There are too many notes on the staff.');
-  });
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'There are too many notes on the staff.'
+      );
+    }
+  );
 
   it('should not execute updateValue when the user adds/deletes a note', () => {
     component.localValue = ['C4'];
 
     component.updateValue(['C4', 'C4']);
+
+    expect(component.localValue).toEqual(['C4']);
+  });
+
+  it('should not execute updateValue when the input is not a string array', () => {
+    component.localValue = ['C4'];
+
+    component.updateValue('C4');
 
     expect(component.localValue).toEqual(['C4']);
   });
@@ -114,17 +128,30 @@ describe('MusicPhraseEditorComponent', () => {
       items: {
         type: 'unicode',
         choices: [
-          'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5',
-          'F5', 'G5', 'A5'
-        ]
+          'C4',
+          'D4',
+          'E4',
+          'F4',
+          'G4',
+          'A4',
+          'B4',
+          'C5',
+          'D5',
+          'E5',
+          'F5',
+          'G5',
+          'A5',
+        ],
       },
       ui_config: {
-        add_element_text: 'Add Note ♩'
+        add_element_text: 'Add Note ♩',
       },
-      validators: [{
-        id: 'has_length_at_most',
-        max_value: component._MAX_NOTES_IN_PHRASE
-      }]
+      validators: [
+        {
+          id: 'has_length_at_most',
+          max_value: component._MAX_NOTES_IN_PHRASE,
+        },
+      ],
     });
   });
 });

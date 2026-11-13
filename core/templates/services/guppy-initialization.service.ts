@@ -16,14 +16,17 @@
  * @fileoverview Service for initializing guppy instances.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
-import { MathInteractionsService } from 'services/math-interactions.service';
+import {MathInteractionsService} from 'services/math-interactions.service';
+import {
+  KNOWN_CSS,
+  LazyCssLoaderService,
+} from 'services/lazy-css-loader.service';
 
 export class GuppyObject {
   // These properties are initialized using constructor function
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   divId!: string;
   guppyInstance!: Guppy;
@@ -34,20 +37,31 @@ export class GuppyObject {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class GuppyInitializationService {
   private guppyInstances: GuppyObject[] = [];
   private onScreenKeyboardShown = false;
   static interactionType: string;
-  private static customOskLetters: string[] = [];
+  private static allowedVariables: string[] = [];
 
-  init(guppyDivClassName: string, placeholderText: string, initialValue = ''):
-      void {
+  constructor(private lazyCssLoaderService: LazyCssLoaderService) {}
+
+  init(
+    guppyDivClassName: string,
+    placeholderText: string,
+    initialValue = ''
+  ): void {
     this.onScreenKeyboardShown = false;
     let guppyDivs = document.querySelectorAll('.' + guppyDivClassName);
     let divId, guppyInstance;
     let mathInteractionsService = new MathInteractionsService();
+    // Guppy editors can be rendered on any page that embeds a math
+    // interaction or editor, such as the question-suggestion flows and the
+    // certificate assessment player. Loading the stylesheet here, before the
+    // Guppy instances are created, keeps those pages styled without having to
+    // load the CSS on every page root. The loader deduplicates repeated calls.
+    this.lazyCssLoaderService.loadCss(KNOWN_CSS.GUPPY);
     for (let i = 0; i < guppyDivs.length; i++) {
       divId = 'guppy_' + Math.floor(Math.random() * 100000000);
       // Dynamically assigns a unique id to the guppy div.
@@ -57,20 +71,23 @@ export class GuppyInitializationService {
 
       guppyInstance.configure(
         'empty_content',
-        '\\color{grey}{\\text{\\small{' + placeholderText + '}}}');
+        '\\color{grey}{\\small \\text{' + placeholderText + '}}'
+      );
 
       // Initialize it with a value for the creator's view.
       if (initialValue.length !== 0) {
         if (initialValue.indexOf('=') !== -1) {
           let splitByEquals = initialValue.split('=');
           splitByEquals[0] = mathInteractionsService.insertMultiplicationSigns(
-            splitByEquals[0]);
+            splitByEquals[0]
+          );
           splitByEquals[1] = mathInteractionsService.insertMultiplicationSigns(
-            splitByEquals[1]);
+            splitByEquals[1]
+          );
           initialValue = splitByEquals.join('=');
         } else {
-          initialValue = mathInteractionsService.insertMultiplicationSigns(
-            initialValue);
+          initialValue =
+            mathInteractionsService.insertMultiplicationSigns(initialValue);
         }
         initialValue = initialValue.replace(/abs\(/g, 'absolutevalue(');
         initialValue = initialValue.replace(/sqrt\(/g, 'squareroot(');
@@ -83,12 +100,25 @@ export class GuppyInitializationService {
   }
 
   findActiveGuppyObject(): GuppyObject | undefined {
-    let activeId = $('.guppy_active').attr('id');
-    for (let guppyObject of this.guppyInstances) {
-      if (guppyObject.divId === activeId) {
-        return guppyObject;
+    const activeElement = document.querySelector('.guppy_active');
+    const activeId = activeElement ? activeElement.id : null;
+
+    if (activeId) {
+      for (let guppyObject of this.guppyInstances) {
+        if (guppyObject.divId === activeId) {
+          return guppyObject;
+        }
       }
     }
+  }
+
+  activate(): void {
+    if (this.guppyInstances.length === 0) {
+      return;
+    }
+    const mostRecentGuppyObject =
+      this.guppyInstances[this.guppyInstances.length - 1];
+    mostRecentGuppyObject.guppyInstance.activate();
   }
 
   getShowOSK(): boolean {
@@ -99,15 +129,11 @@ export class GuppyInitializationService {
     this.onScreenKeyboardShown = value;
   }
 
-  getCustomOskLetters(): string[] {
-    return GuppyInitializationService.customOskLetters;
+  getAllowedVariables(): string[] {
+    return GuppyInitializationService.allowedVariables;
   }
 
-  setCustomOskLetters(customOskLetters: string[]): void {
-    GuppyInitializationService.customOskLetters = customOskLetters;
+  setAllowedVariables(allowedVariables: string[]): void {
+    GuppyInitializationService.allowedVariables = allowedVariables;
   }
 }
-
-angular.module('oppia').factory(
-  'GuppyInitializationService',
-  downgradeInjectable(GuppyInitializationService));

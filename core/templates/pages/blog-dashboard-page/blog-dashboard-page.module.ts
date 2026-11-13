@@ -16,107 +16,47 @@
  * @fileoverview Module for the blog-dashboard page.
  */
 
-import { APP_INITIALIZER, NgModule, StaticProvider, DoBootstrap} from '@angular/core';
-import { MatTabsModule } from '@angular/material/tabs';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { BrowserModule, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HttpClientModule } from '@angular/common/http';
-import { HTTP_INTERCEPTORS } from '@angular/common/http';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { SharedComponentsModule } from 'components/shared-component.module';
-
-import { OppiaAngularRootComponent } from 'components/oppia-angular-root.component';
-import { BlogDashboardPageComponent } from 'pages/blog-dashboard-page/blog-dashboard-page.component';
-import { BlogPostActionConfirmationModalComponent } from 'pages/blog-dashboard-page/blog-post-action-confirmation/blog-post-action-confirmation.component';
-import { BlogCardComponent } from 'pages/blog-dashboard-page/blog-card/blog-card.component';
-import { BlogDashboardTileComponent } from 'pages/blog-dashboard-page/blog-dashboard-tile/blog-dashboard-tile.component';
-import { BlogDashboardNavbarBreadcrumbComponent } from 'pages/blog-dashboard-page/navbar/navbar-breadcrumb/blog-dashboard-navbar-breadcrumb.component';
-import { platformFeatureInitFactory, PlatformFeatureService } from 'services/platform-feature.service';
-import { ToastrModule } from 'ngx-toastr';
-import { BlogPostEditorComponent } from 'pages/blog-dashboard-page/blog-post-editor/blog-post-editor.component';
-import { UploadBlogPostThumbnailModalComponent } from 'pages/blog-dashboard-page/modal-templates/upload-blog-post-thumbnail-modal.component';
-import { BlogCardPreviewModalComponent } from 'pages/blog-dashboard-page/modal-templates/blog-card-preview-modal.component';
-import { UploadBlogPostThumbnailComponent } from 'pages/blog-dashboard-page/modal-templates/upload-blog-post-thumbnail.component';
-import { BlogPostEditorNavbarPreLogoActionComponent } from 'pages/blog-dashboard-page/navbar/navbar-pre-logo-action/blog-post-editor-pre-logo-action.component';
-import { MyHammerConfig, toastrConfig } from 'pages/oppia-root/app.module';
-
+import {MatTabsModule} from '@angular/material/tabs';
+import {MatMenuModule} from '@angular/material/menu';
+import {MatButtonToggleModule} from '@angular/material/button-toggle';
+import {MatTooltipModule} from '@angular/material/tooltip';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {RouterModule} from '@angular/router';
+import {BlogDashboardPageComponent} from 'pages/blog-dashboard-page/blog-dashboard-page.component';
+import {SharedBlogComponentsModule} from 'pages/blog-dashboard-page/shared-blog-components.module';
+import {NgModule} from '@angular/core';
+import {ToastrModule} from 'ngx-toastr';
+import {toastrConfig} from 'pages/oppia-root/app.module';
+import {BlogDashboardPageRootComponent} from './blog-dashboard-page-root.component';
+import {BlogAuthorDetailsEditorComponent} from './modal-templates/author-detail-editor-modal.component';
+import {BlogDashboardPageAuthGuard} from './blog-dashboard-page-auth.guard';
+import {RteHelperService} from 'services/rte-helper.service';
 @NgModule({
   imports: [
-    BrowserModule,
-    HttpClientModule,
     SharedComponentsModule,
-    ToastrModule.forRoot(toastrConfig),
+    SharedBlogComponentsModule,
     MatTabsModule,
     MatMenuModule,
+    MatTooltipModule,
+    ToastrModule.forRoot(toastrConfig),
+    RouterModule.forChild([
+      {
+        path: '',
+        component: BlogDashboardPageRootComponent,
+        canActivate: [BlogDashboardPageAuthGuard],
+      },
+    ]),
     MatButtonToggleModule,
-    BrowserAnimationsModule
   ],
   declarations: [
-    BlogDashboardNavbarBreadcrumbComponent,
     BlogDashboardPageComponent,
-    BlogCardComponent,
-    BlogDashboardTileComponent,
-    BlogPostEditorComponent,
-    BlogPostActionConfirmationModalComponent,
-    UploadBlogPostThumbnailModalComponent,
-    BlogCardPreviewModalComponent,
-    UploadBlogPostThumbnailComponent,
-    BlogPostEditorNavbarPreLogoActionComponent
+    BlogAuthorDetailsEditorComponent,
+    BlogDashboardPageRootComponent,
   ],
   entryComponents: [
-    BlogDashboardNavbarBreadcrumbComponent,
     BlogDashboardPageComponent,
-    BlogCardComponent,
-    BlogDashboardTileComponent,
-    BlogPostEditorComponent,
-    BlogPostActionConfirmationModalComponent,
-    UploadBlogPostThumbnailModalComponent,
-    BlogCardPreviewModalComponent,
-    UploadBlogPostThumbnailComponent,
-    BlogPostEditorNavbarPreLogoActionComponent
+    BlogAuthorDetailsEditorComponent,
   ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: RequestInterceptor,
-      multi: true,
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: platformFeatureInitFactory,
-      deps: [PlatformFeatureService],
-      multi: true,
-    },
-    {
-      provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
-  ],
+  providers: [RteHelperService],
 })
-class BlogDashboardPageModule implements DoBootstrap {
-  ngDoBootstrap() {}
-}
-
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { downgradeModule } from '@angular/upgrade/static';
-
-const bootstrapFnAsync = async(extraProviders: StaticProvider[]) => {
-  const platformRef = platformBrowserDynamic(extraProviders);
-  return platformRef.bootstrapModule(BlogDashboardPageModule);
-};
-const downgradedModule = downgradeModule(bootstrapFnAsync);
-
-declare var angular: ng.IAngularStatic;
-
-angular.module('oppia').requires.push(downgradedModule);
-
-angular.module('oppia').directive(
-  // This directive is the downgraded version of the Angular component to
-  // bootstrap the Angular 8.
-  'oppiaAngularRoot',
-  downgradeComponent({
-    component: OppiaAngularRootComponent
-  }) as angular.IDirectiveFactory);
+export class BlogDashboardPageModule {}

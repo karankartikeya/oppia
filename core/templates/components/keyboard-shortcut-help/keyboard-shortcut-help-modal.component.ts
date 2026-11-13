@@ -16,45 +16,42 @@
  * @fileoverview Controller for keyboard shortcut help modal.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { UrlService } from 'services/contextual/url.service';
-import { ContextService } from 'services/context.service';
+import {Component, OnInit} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {UrlService} from 'services/contextual/url.service';
+import {PageContextService} from 'services/page-context.service';
 
 @Component({
   selector: 'keyboard-shortcut-help-modal',
   templateUrl: './keyboard-shortcut-help-modal.component.html',
-  styleUrls: []
+  styleUrls: ['./keyboard-shortcut-help-modal.component.css'],
 })
 export class KeyboardShortcutHelpModalComponent implements OnInit {
   constructor(
     private activeModal: NgbActiveModal,
     private urlService: UrlService,
-    private contextService: ContextService) {}
+    private pageContextService: PageContextService
+  ) {}
 
   KEYBOARD_SHORTCUTS = {};
 
   ngOnInit(): void {
     const helpShortcutDescription = 'Show this help dialog';
-    const searchShortcutDescription = 'Search';
     const skipShortcutDescription = 'Select skip to main content button';
-    const categoryShortcutDescription = 'Select exploration category';
     const continueShortcutDescription = 'Select the continue button';
     const backShortcutDescription = 'Select the back button';
 
-    if (this.urlService.getPathname() === '/community-library') {
-      this.KEYBOARD_SHORTCUTS = {
-        '?': helpShortcutDescription,
-        '/': searchShortcutDescription,
-        s: skipShortcutDescription,
-        c: categoryShortcutDescription,
-      };
-    } else if (this.contextService.isInExplorationPlayerPage()) {
+    if (this.pageContextService.isInExplorationPlayerPage()) {
       this.KEYBOARD_SHORTCUTS = {
         '?': helpShortcutDescription,
         s: skipShortcutDescription,
         j: continueShortcutDescription,
         k: backShortcutDescription,
+      };
+    } else {
+      this.KEYBOARD_SHORTCUTS = {
+        '?': helpShortcutDescription,
+        s: skipShortcutDescription,
       };
     }
   }

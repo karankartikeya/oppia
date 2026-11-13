@@ -16,53 +16,64 @@
 
 """Python configuration for MusicNotesInput interaction."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.interactions import base
+
+from typing import List
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class MusicNotesInput(base.BaseInteraction):
     """Interaction for music notes input."""
 
-    name = 'Music Notes Input'
-    description = (
+    name: str = 'Music Notes Input'
+    description: str = (
         'Allows learners to drag and drop notes onto the lines of a music '
-        'staff.')
-    display_mode = base.DISPLAY_MODE_SUPPLEMENTAL
-    _dependency_ids = ['midijs']
-    answer_type = 'MusicPhrase'
-    instructions = 'Drag notes to the staff to form a sequence'
-    narrow_instructions = 'Show music staff'
-    needs_summary = True
-    can_have_solution = True
-    show_generic_submit_button = True
+        'staff.'
+    )
+    display_mode: str = base.DISPLAY_MODE_SUPPLEMENTAL
+    _dependency_ids: List[str] = ['midijs']
+    answer_type: str = 'MusicPhrase'
+    instructions: str = 'I18N_INTERACTIONS_MUSIC_INSTRUCTION'
+    narrow_instructions: str = 'I18N_INTERACTIONS_MUSIC_NARROW_INSTRUCTION'
+    needs_summary: bool = True
+    can_have_solution: bool = True
+    show_generic_submit_button: bool = True
 
-    _customization_arg_specs = [{
-        'name': 'sequenceToGuess',
-        'description': 'Correct sequence of notes',
-        'schema': {
-            'type': 'custom',
-            'obj_type': 'MusicPhrase',
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'sequenceToGuess',
+            'description': 'Correct sequence of notes',
+            'schema': {
+                'type': 'custom',
+                'obj_type': 'MusicPhrase',
+            },
+            'default_value': [],
         },
-        'default_value': [],
-    }, {
-        'name': 'initialSequence',
-        'description': 'Starting notes on the staff',
-        'schema': {
-            'type': 'custom',
-            'obj_type': 'MusicPhrase',
+        {
+            'name': 'initialSequence',
+            'description': 'Starting notes on the staff',
+            'schema': {
+                'type': 'custom',
+                'obj_type': 'MusicPhrase',
+            },
+            'default_value': [],
         },
-        'default_value': [],
-    }]
+    ]
 
-    _answer_visualization_specs = [{
-        # Table with answer counts for top N answers.
-        'id': 'FrequencyTable',
-        'options': {
-            'column_headers': ['Answer', 'Count'],
-            'title': 'Top 10 answers',
-        },
-        'calculation_id': 'Top10AnswerFrequencies',
-        'addressed_info_is_supported': True,
-    }]
+    _answer_visualization_specs: List[base.AnswerVisualizationSpecsDict] = [
+        {
+            # Table with answer counts for top N answers.
+            'id': 'FrequencyTable',
+            'options': {
+                'column_headers': ['Answer', 'Count'],
+                'title': 'Top 10 answers',
+            },
+            'calculation_id': 'Top10AnswerFrequencies',
+            'addressed_info_is_supported': True,
+        }
+    ]

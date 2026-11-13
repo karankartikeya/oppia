@@ -16,17 +16,20 @@
  * @fileoverview Backend Api Service for learner local nav.
  */
 
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { ExplorationPlayerConstants } from '../exploration-player-page.constants';
-import { FlagExplorationModalResult } from '../modals/flag-exploration-modal.component';
+import {HttpClient} from '@angular/common/http';
+import {Injectable} from '@angular/core';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {ExplorationPlayerConstants} from '../current-lesson-player/exploration-player-page.constants';
+import {FlagExplorationModalResult} from '../current-lesson-player/modals/flag-exploration-modal.component';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class LearnerLocalNavBackendApiService {
-  flagExplorationUrl: string;
+  // These properties are initialized using postReportAsync method and we
+  // need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  flagExplorationUrl!: string;
 
   constructor(
     private httpClient: HttpClient,
@@ -34,18 +37,26 @@ export class LearnerLocalNavBackendApiService {
   ) {}
 
   async postReportAsync(
-      explorationId: string, result: FlagExplorationModalResult):
-    Promise<Object> {
+    explorationId: string,
+    result: FlagExplorationModalResult
+  ): Promise<Object> {
     this.flagExplorationUrl = this.urlInterpolationService.interpolateUrl(
-      ExplorationPlayerConstants.FLAG_EXPLORATION_URL_TEMPLATE, {
-        exploration_id: explorationId
+      ExplorationPlayerConstants.FLAG_EXPLORATION_URL_TEMPLATE,
+      {
+        exploration_id: explorationId,
       }
     );
-    let report = (
-      '[' + result.state + '] (' + result.report_type + ')' +
-        result.report_text);
-    return this.httpClient.post(this.flagExplorationUrl, {
-      report_text: report
-    }).toPromise();
+    let report =
+      '[' +
+      result.state +
+      '] (' +
+      result.report_type +
+      ')' +
+      result.report_text;
+    return this.httpClient
+      .post(this.flagExplorationUrl, {
+        report_text: report,
+      })
+      .toPromise();
   }
 }

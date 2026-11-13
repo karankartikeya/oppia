@@ -14,47 +14,64 @@
 
 """Controllers for the Oppia skill's concept card viewer."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core import feconf
-from core.controllers import acl_decorators
-from core.controllers import base
-from core.domain import skill_fetchers
+from core.controllers import acl_decorators, base
+from core.domain import skill_fetchers, skill_services
+
+from typing import Dict, List, Optional, TypedDict
 
 
-class ConceptCardDataHandler(base.BaseHandler):
+class ConceptCardDataHandlerNormalizedRequestDict(TypedDict):
+    """Dict representation of ConceptCardDataHandler's GET normalized
+    request dictionary.
+    """
+
+    language_code: Optional[str]
+
+
+class ConceptCardDataHandler(
+    base.BaseHandler[
+        Dict[str, str], ConceptCardDataHandlerNormalizedRequestDict
+    ]
+):
     """A card that shows the explanation of a skill's concept."""
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
     URL_PATH_ARGS_SCHEMAS = {
-        'comma_separated_skill_ids': {
-            'schema': {
-                'type': 'basestring'
-            }
+        'selected_skill_ids': {
+            'schema': {'type': 'custom', 'obj_type': 'JsonEncodedInString'}
         }
     }
     HANDLER_ARGS_SCHEMAS = {
-        'GET': {}
+        'GET': {
+            'language_code': {
+                'schema': {
+                    'type': 'basestring',
+                    'validators': [{'id': 'is_supported_audio_language_code'}],
+                },
+                'default_value': None,
+            }
+        }
     }
 
     @acl_decorators.can_view_skills
-    def get(self, comma_separated_skill_ids):
+    def get(self, selected_skill_ids: List[str]) -> None:
         """Handles GET requests.
 
         Args:
-            comma_separated_skill_ids: str. Comma separated IDs of skills.
+            selected_skill_ids: list(str). List of skill ids.
         """
+        assert self.normalized_request is not None
+        language_code = self.normalized_request.get('language_code')
 
-        skill_ids = comma_separated_skill_ids.split(',')
-        skills = skill_fetchers.get_multi_skills(skill_ids)
+        skills = skill_fetchers.get_multi_skills(selected_skill_ids)
 
-        concept_card_dicts = []
-        for skill in skills:
-            concept_card_dicts.append(skill.skill_contents.to_dict())
+        concept_card_dicts = skill_services.get_concept_card_dicts(
+            skills, language_code
+        )
 
-        self.values.update({
-            'concept_card_dicts': concept_card_dicts
-        })
+        self.values.update({'concept_card_dicts': concept_card_dicts})
 
         self.render_json(self.values)

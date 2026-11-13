@@ -2,18 +2,15 @@
 #
 #   pylint core --rcfile=.pylintrc -i y
 
-[GENERAL]
-init-hook='import sys; sys.path.append("../oppia_tools/google_appengine_1.9.67/google_appengine")'
-
 [MASTER]
 init-hook='import sys; sys.path.append(".")'
 
 # Checks for correct docstring style
-load-plugins=pylint.extensions.docstyle, pylint_quotes, scripts.linters.pylint_extensions
+load-plugins=pylint.extensions.docstyle, scripts.linters.pylint_extensions, pylint.extensions.bad_builtin
 
-string-quote=single
-triple-quote=double
-docstring-quote=double
+[STRING]
+
+check-quote-consistency=yes
 
 [BASIC]
 
@@ -48,61 +45,87 @@ module-rgx=[A-Za-z_][A-Za-z0-9_]*$
 # not require a docstring.
 no-docstring-rgx=test_[a-z_]*|[A-Za-z]*Tests|Mock[A-Za-z]*|mock_[a-z_]*|setUp|tearDown|__.*__
 
+# We allow more flexible type names than pylint normally allows. We allow
+# CamelCased types, with an optional underscore prefix. Pylint normally
+# prohibits type names from ending in 'Type'.
+typevar-rgx=_?([A-Z][a-z0-9]+)+
+
 [DESIGN]
 
 # Minimum number of public methods for a class (see R0903).
 min-public-methods=0
 
 # List of builtin function names that should not be used, separated by a comma
-bad-functions=apply,input
+bad-functions=apply
 
 [FORMAT]
 
-max-line-length=80
 ignore-long-lines=^.*#\stype:\signore.*$|^\s*(# )?<?https?://\S+>?$
 
 indent-string='    '
 
 allowed-comment-prefixes=int,str,float,bool,v
 forbidden-imports=
-    core.controllers:core.platform|core.storage,
-    core.domain:core.controllers,
-    core.storage:core.domain
+    *core.controllers*:
+        import core.platform*|
+        import core.storage*,
+    *core.domain*:
+        import core.controllers*,
+    *core.storage*:
+        import core.domain*,
+    *core.domain.*_domain:
+        from core.domain* import *_service*|
+        from core.domain* import *_cleaner|
+        from core.domain* import *_registry|
+        from core.domain* import *_fetchers|
+        from core.domain* import *_manager|
+        from core.platform import models
 
 disallowed-functions-and-replacements-str=
-  assertEquals=>self.assertEqual,
-  now=>datetime.datetime.utcnow,
-  beam.CombineValues=>beam.CombinePerKey
+    assertEquals=>self.assertEqual,
+    utcnow=>utils.get_current_utc_datetime,
+    beam.CombineValues=>beam.CombinePerKey
 
 disallowed-functions-and-replacements-regex=
-  \.put_async\(=>put,
-  \.put_multi_async\(=>put_multi
+    \.put_async\(=>put,
+    \.put_multi_async\(=>put_multi
 
 [SIMILARITIES]
+
+allowed-type-ignore-error-codes=
+    arg-type,
+    assignment,
+    attr-defined,
+    call-arg,
+    call-overload,
+    dict-item,
+    func-returns-value,
+    index,
+    list-item,
+    misc,
+    override,
+    return,
+    type-arg,
+    typeddict-item,
+    union-attr
 
 ignore-imports=yes
 
 [MESSAGES CONTROL]
 
 disable=abstract-method,
-        arguments-differ,
+        arguments-renamed,
         broad-except,
-        consider-using-ternary,
+        broad-exception-raised,
+        consider-using-f-string,
         duplicate-code,
-        fixme,
-        inconsistent-return-statements,
-        len-as-condition,
-        locally-disabled,
-        locally-enabled,
+        import-outside-toplevel,
         logging-not-lazy,
-        multiple-constructor-doc,
+        line-too-long,
         no-else-return,
         no-member,
-        no-self-use,
-        not-context-manager,
-        redefined-variable-type,
-        redundant-returns-doc,
         too-many-arguments,
+        too-many-positional-arguments,
         too-many-boolean-expressions,
         too-many-branches,
         too-many-instance-attributes,
@@ -111,27 +134,19 @@ disable=abstract-method,
         too-many-nested-blocks,
         too-many-public-methods,
         too-many-statements,
+        ungrouped-imports,
+        unnecessary-lambda-assignment,
+        unnecessary-pass,
         wrong-import-order,
 # TODO(#12912): Remove these after the Python 3 migration.
-        arg-name-for-non-keyword-arg,
-        arguments-renamed,
-        consider-using-dict-items,
+        arguments-differ,
         consider-using-with,
+        # Pylint considers imports to be cyclic even when the cycle is
+        # broken by putting imports inside functions so they aren't
+        # executed upon module import.
         cyclic-import,
-        deprecated-method,
-        import-outside-toplevel,
-        missing-raises-doc,
-        no-else-break,
-        no-else-continue,
-        no-else-raise,
-        non-explicit-keyword-args,
-        not-an-iterable,
-        raise-missing-from,
-        super-with-arguments,
-        unnecessary-pass,
-        useless-object-inheritance,
-        consider-using-f-string,
-        consider-using-in
+# TODO(#14322): Reinstate this.
+        missing-type-doc,
 
 [REPORTS]
 

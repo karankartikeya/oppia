@@ -15,191 +15,524 @@
 /**
  * @fileoverview Unit tests for contributor dashboard page component.
  */
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
 
-require(
-  'pages/contributor-dashboard-page/contributor-dashboard-page.component.ts');
+import {
+  ComponentFixture,
+  fakeAsync,
+  flush,
+  TestBed,
+  waitForAsync,
+} from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {ContributorDashboardPageComponent} from 'pages/contributor-dashboard-page/contributor-dashboard-page.component';
+import {EntityTypeSelectorComponent} from './entity-type-selector/entity-type-selector.component';
+import {ContributionAndReviewService} from './services/contribution-and-review.service';
+import {ContributionOpportunitiesService} from './services/contribution-opportunities.service';
+import {TranslationTopicService} from 'pages/exploration-editor-page/translation-tab/services/translation-topic.service';
+import {TranslationLanguageService} from 'pages/exploration-editor-page/translation-tab/services/translation-language.service';
+import {UserService} from 'services/user.service';
+import {LocalStorageService} from 'services/local-storage.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {UserInfo} from 'domain/user/user-info.model';
+import {AppConstants} from 'app.constants';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {ContributorDashboardConstants} from 'pages/contributor-dashboard-page/contributor-dashboard-page.constants';
 
-describe('Contributor dashboard page', function() {
-  var ctrl = null;
-  var $q = null;
-  var $rootScope = null;
-  var LocalStorageService = null;
-  var $timeout = null;
-  var UserService = null;
-  var TranslationLanguageService = null;
-  var userProfileImage = 'profile-data-url';
-  var userContributionRights = {
+class MockPlatformFeatureService {
+  status = {
+    EnableTranslationOppsWithNewOppModels: {
+      isEnabled: true,
+    },
+  };
+}
+
+describe('Contributor dashboard page', () => {
+  let component: ContributorDashboardPageComponent;
+  let fixture: ComponentFixture<ContributorDashboardPageComponent>;
+  let localStorageService: LocalStorageService;
+  let userService: UserService;
+  let translationLanguageService: TranslationLanguageService;
+  let translationTopicService: TranslationTopicService;
+  let contributionOpportunitiesService: ContributionOpportunitiesService;
+  let mockPlatformFeatureService: MockPlatformFeatureService;
+  let userContributionRights = {
     can_review_translation_for_language_codes: ['en', 'pt', 'hi'],
     can_review_voiceover_for_language_codes: ['en', 'pt', 'hi'],
-    can_review_questions: true
+    can_review_questions: true,
+    can_suggest_questions: true,
   };
-  var windowRef = new WindowRef();
-  var focusManagerService = null;
+  let focusManagerService: FocusManagerService;
+  let getTranslatableTopicNamesAsyncSpy: jasmine.Spy;
+  let getUserInfoAsyncSpy: jasmine.Spy;
+  let urlInterpolationService: UrlInterpolationService;
+  let contributionAndReviewService: ContributionAndReviewService;
 
-  importAllAngularServices();
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.value('WindowRef', windowRef);
+  beforeEach(waitForAsync(() => {
+    mockPlatformFeatureService = new MockPlatformFeatureService();
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [
+        ContributorDashboardPageComponent,
+        EntityTypeSelectorComponent,
+      ],
+      providers: [
+        LocalStorageService,
+        UserService,
+        TranslationLanguageService,
+        TranslationTopicService,
+        ContributionOpportunitiesService,
+        ContributionAndReviewService,
+        {
+          provide: PlatformFeatureService,
+          useValue: mockPlatformFeatureService,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
   beforeEach(() => {
-    TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
-    });
-    focusManagerService = TestBed.get(FocusManagerService);
+    fixture = TestBed.createComponent(ContributorDashboardPageComponent);
+    component = fixture.componentInstance;
+
+    contributionAndReviewService = TestBed.inject(ContributionAndReviewService);
+    contributionOpportunitiesService = TestBed.inject(
+      ContributionOpportunitiesService
+    );
+    localStorageService = TestBed.inject(LocalStorageService);
+    translationLanguageService = TestBed.inject(TranslationLanguageService);
+    translationTopicService = TestBed.inject(TranslationTopicService);
+    userService = TestBed.inject(UserService);
+    focusManagerService = TestBed.inject(FocusManagerService);
+    urlInterpolationService = TestBed.inject(UrlInterpolationService);
+
+    getTranslatableTopicNamesAsyncSpy = spyOn(
+      contributionOpportunitiesService,
+      'getTranslatableTopicNamesAsync'
+    );
+    getTranslatableTopicNamesAsyncSpy.and.returnValue(
+      Promise.resolve(['Topic 1', 'Topic 2'])
+    );
+    spyOn(
+      localStorageService,
+      'getLastSelectedTranslationLanguageCode'
+    ).and.returnValue('');
+    spyOn(
+      localStorageService,
+      'getLastSelectedTranslationTopicName'
+    ).and.returnValue('Topic 1');
+    spyOn(
+      translationLanguageService,
+      'setActiveLanguageCode'
+    ).and.callThrough();
+    spyOn(translationTopicService, 'setActiveTopicName').and.callThrough();
+
+    let userInfo = {
+      isLoggedIn: () => true,
+      getUsername: () => 'username1',
+    };
+
+    getUserInfoAsyncSpy = spyOn(userService, 'getUserInfoAsync');
+    getUserInfoAsyncSpy.and.returnValue(Promise.resolve(userInfo as UserInfo));
+    spyOn(userService, 'getProfileImageDataUrl').and.returnValue([
+      'default-image-url-png',
+      'default-image-url-webp',
+    ]);
+
+    component.ngOnInit();
   });
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    LocalStorageService = $injector.get('LocalStorageService');
-    TranslationLanguageService = $injector.get('TranslationLanguageService');
-    UserService = $injector.get('UserService');
-    $q = $injector.get('$q');
-    $timeout = $injector.get('$timeout');
-    $rootScope = $injector.get('$rootScope');
-    focusManagerService = $injector.get('FocusManagerService');
-    ctrl = $componentController('contributorDashboardPage');
+  it('should set focus on select lang field', fakeAsync(() => {
+    spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+      Promise.resolve(userContributionRights)
+    );
+    let focusSpy = spyOn(focusManagerService, 'setFocusWithoutScroll');
 
-    spyOn(LocalStorageService, 'getLastSelectedTranslationLanguageCode').and
-      .returnValue('');
-    spyOn(TranslationLanguageService, 'setActiveLanguageCode').and
-      .callThrough();
+    component.onTabClick('translateTextTab');
+    flush();
+
+    expect(focusSpy).toHaveBeenCalled();
   }));
 
-  it('should set focus on select lang field', function() {
-    var focusSpy = spyOn(focusManagerService, 'setFocusWithoutScroll');
-    ctrl.onTabClick('translateTextTab');
-    $timeout.flush();
-    expect(focusSpy).toHaveBeenCalled();
-  });
+  it('should throw error if contribution rights is null', fakeAsync(() => {
+    spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+      Promise.resolve(null)
+    );
+    expect(() => {
+      component.ngOnInit();
+      flush();
+    }).toThrowError();
+  }));
 
-  describe('when user is logged in', function() {
-    var userInfo = {
+  it('should set default profile pictures when username is null', fakeAsync(() => {
+    spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+      Promise.resolve(userContributionRights)
+    );
+    let userInfo = {
       isLoggedIn: () => true,
-      getUsername: () => 'username1'
+      getUsername: () => null,
     };
 
-    beforeEach(function() {
-      spyOn(UserService, 'getProfileImageDataUrlAsync')
-        .and.returnValue($q.resolve(userProfileImage));
-      spyOn(UserService, 'getUserContributionRightsDataAsync')
-        .and.returnValue($q.resolve(userContributionRights));
-      spyOn(UserService, 'getUserInfoAsync').and.returnValue(
-        $q.resolve(userInfo));
-      ctrl.$onInit();
-      $rootScope.$apply();
-    });
+    getUserInfoAsyncSpy.and.returnValue(Promise.resolve(userInfo as UserInfo));
 
-    it('should set specific properties after $onInit is called', function() {
-      expect(ctrl.languageCode).toBe('hi');
-      expect(TranslationLanguageService.setActiveLanguageCode)
-        .toHaveBeenCalledWith('hi');
-      expect(ctrl.activeTabName).toBe('myContributionTab');
-      expect(ctrl.OPPIA_AVATAR_IMAGE_URL).toBe(
-        '/assets/images/avatar/oppia_avatar_100px.svg');
-    });
+    component.ngOnInit();
+    flush();
 
-    it('should initialize $scope properties after controller is initialized' +
-      ' and get data from backend', function() {
-      expect(ctrl.userIsLoggedIn).toBe(true);
-      expect(ctrl.username).toBe('username1');
-      expect(ctrl.userCanReviewTranslationSuggestionsInLanguages).toEqual([
-        'English', 'Portuguese', 'Hindi']);
-      expect(ctrl.userCanReviewVoiceoverSuggestionsInLanguages).toEqual([
-        'English', 'Portuguese', 'Hindi']);
-      expect(ctrl.userCanReviewQuestions).toBe(true);
-      expect(ctrl.userIsReviewer).toBe(true);
-      expect(ctrl.profilePictureDataUrl).toBe(userProfileImage);
-    });
+    expect(component.profilePicturePngDataUrl).toBe(
+      urlInterpolationService.getStaticImageUrl(
+        AppConstants.DEFAULT_PROFILE_IMAGE_PNG_PATH
+      )
+    );
+    expect(component.profilePictureWebpDataUrl).toBe(
+      urlInterpolationService.getStaticImageUrl(
+        AppConstants.DEFAULT_PROFILE_IMAGE_WEBP_PATH
+      )
+    );
+  }));
 
-    it('should change active tab name when clicking on translate text tab',
-      function() {
-        var changedTab = 'translateTextTab';
-        expect(ctrl.activeTabName).toBe('myContributionTab');
-        ctrl.onTabClick(changedTab);
-        expect(ctrl.activeTabName).toBe(changedTab);
-      });
-
-    it('should change active language when clicking on language selector',
-      function() {
-        spyOn(LocalStorageService, 'updateLastSelectedTranslationLanguageCode')
-          .and.callThrough();
-
-        ctrl.onChangeLanguage('hi');
-
-        expect(TranslationLanguageService.setActiveLanguageCode)
-          .toHaveBeenCalledWith('hi');
-        expect(LocalStorageService.updateLastSelectedTranslationLanguageCode)
-          .toHaveBeenCalledWith('hi');
-      });
-
-    it('should show language selector based on active tab', function() {
-      var changedTab = 'translateTextTab';
-
-      expect(ctrl.activeTabName).toBe('myContributionTab');
-      expect(ctrl.showLanguageSelector()).toBe(false);
-
-      ctrl.onTabClick(changedTab);
-      expect(ctrl.activeTabName).toBe(changedTab);
-      expect(ctrl.showLanguageSelector()).toBe(true);
-    });
-
-    it('should call scrollFunction on scroll', function() {
-      var dummyScrollEvent = new Event('scroll');
-      var scrollSpy = spyOn(ctrl, 'scrollFunction');
-
-      windowRef.nativeWindow.dispatchEvent(dummyScrollEvent);
-
-      expect(scrollSpy).toHaveBeenCalled();
-    });
-
-    it('should show default header if window pageYOffset is ' +
-      'less than 5', function() {
-      const nativeWindowSpy = spyOnProperty(windowRef, 'nativeWindow');
-      nativeWindowSpy.and.returnValue({
-        pageYOffset: 4
-      });
-
-      ctrl.scrollFunction();
-
-      expect(ctrl.defaultHeaderVisible).toBe(true);
-    });
-
-    it('should show collapsed header if window pageYOffset is' +
-      ' scrolled greater than 5', function() {
-      const nativeWindowSpy = spyOnProperty(windowRef, 'nativeWindow');
-      nativeWindowSpy.and.returnValue({
-        pageYOffset: 6
-      });
-
-      ctrl.scrollFunction();
-
-      expect(ctrl.defaultHeaderVisible).toBe(false);
-    });
-  });
-
-  describe('when user is not logged in', function() {
-    var userInfo = {
-      isLoggedIn: () => false
+  it('should username equal to "" when user is not loggedIn', fakeAsync(() => {
+    spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+      Promise.resolve(userContributionRights)
+    );
+    let userInfo = {
+      isLoggedIn: () => false,
+      getUsername: () => 'username1',
     };
 
-    beforeEach(function() {
-      spyOn(UserService, 'getProfileImageDataUrlAsync')
-        .and.returnValue($q.resolve(userProfileImage));
-      spyOn(UserService, 'getUserContributionRightsDataAsync')
-        .and.returnValue($q.resolve(userContributionRights));
-      spyOn(UserService, 'getUserInfoAsync').and.returnValue(
-        $q.resolve(userInfo));
-      ctrl.$onInit();
-      $rootScope.$apply();
+    getUserInfoAsyncSpy.and.returnValue(Promise.resolve(userInfo as UserInfo));
+
+    component.ngOnInit();
+    flush();
+
+    expect(component.username).toEqual('');
+    expect(component.userIsLoggedIn).toBeFalse();
+    expect(component.profilePicturePngDataUrl).toBe(
+      urlInterpolationService.getStaticImageUrl(
+        AppConstants.DEFAULT_PROFILE_IMAGE_PNG_PATH
+      )
+    );
+    expect(component.profilePictureWebpDataUrl).toBe(
+      urlInterpolationService.getStaticImageUrl(
+        AppConstants.DEFAULT_PROFILE_IMAGE_WEBP_PATH
+      )
+    );
+  }));
+
+  describe('when user is logged in', () => {
+    it('should set specific properties after ngOnInit is called', fakeAsync(() => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      component.ngOnInit();
+      flush();
+
+      expect(component.topicName).toBe('Topic 1');
+      expect(translationTopicService.setActiveTopicName).toHaveBeenCalled();
+      expect(component.activeTabName).toBe('myContributionTab');
+      expect(component.OPPIA_AVATAR_IMAGE_URL).toBe(
+        '/assets/copyrighted-images/avatar/oppia_avatar_100px.svg'
+      );
+      expect(component.profilePicturePngDataUrl).toEqual(
+        'default-image-url-png'
+      );
+      expect(component.profilePictureWebpDataUrl).toEqual(
+        'default-image-url-webp'
+      );
+    }));
+
+    it('should set active topic name as default when no topics are returned', fakeAsync(() => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      getTranslatableTopicNamesAsyncSpy.and.returnValue(Promise.resolve([]));
+
+      component.ngOnInit();
+      flush();
+
+      expect(component.topicName).toBeUndefined();
+      expect(translationTopicService.setActiveTopicName).toHaveBeenCalled();
+    }));
+
+    it('should return language description in kebab case format', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      let languageDescription = 'Deutsch (German)';
+
+      expect(
+        component.provideLanguageForProtractorClass(languageDescription)
+      ).toEqual('deutsch-german');
     });
 
-    it('should have no user data in dashboard page', function() {
-      expect(ctrl.userIsLoggedIn).toBe(false);
-      expect(ctrl.username).toBe('');
+    it(
+      'should initialize component properties after component is initialized' +
+        ' and get data from backend',
+      () => {
+        spyOn(
+          userService,
+          'getUserContributionRightsDataAsync'
+        ).and.returnValue(Promise.resolve(userContributionRights));
+        expect(component.userIsLoggedIn).toBe(false);
+        expect(component.username).toBe('');
+        expect(component.userCanReviewQuestions).toBe(false);
+        expect(component.userIsReviewer).toBe(false);
+      }
+    );
+
+    it('should change active tab name when clicking on translate text tab', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      let changedTab = 'translateTextTab';
+      expect(component.activeTabName).toBe('myContributionTab');
+      component.onTabClick(changedTab);
+      expect(component.activeTabName).toBe(changedTab);
+    });
+
+    it('should render enabled dashboard tabs as focusable buttons', fakeAsync(() => {
+      component.tabsDetails.submitQuestionTab.enabled = true;
+      spyOn(focusManagerService, 'setFocusWithoutScroll');
+      fixture.detectChanges();
+
+      const tabButtons = fixture.nativeElement.querySelectorAll(
+        '.oppia-opportunities-tabs-button'
+      ) as NodeListOf<HTMLButtonElement>;
+      expect(tabButtons.length).toBe(3);
+
+      tabButtons.forEach(tabButton => {
+        expect(tabButton.tagName).toBe('BUTTON');
+        expect(tabButton.type).toBe('button');
+        expect(tabButton.hasAttribute('href')).toBe(false);
+        expect(tabButton.tabIndex).toBe(0);
+      });
+
+      const tabNames = [
+        'myContributionTab',
+        'submitQuestionTab',
+        'translateTextTab',
+      ];
+      const initialHash = window.location.hash;
+
+      tabButtons.forEach((tabButton, index) => {
+        tabButton.click();
+        fixture.detectChanges();
+
+        expect(component.activeTabName).toBe(tabNames[index]);
+        expect(
+          fixture.nativeElement
+            .querySelector('.e2e-test-active-tab')
+            .contains(tabButton)
+        ).toBe(true);
+        expect(window.location.hash).toBe(initialHash);
+      });
+      flush();
+    }));
+
+    it('should hide question submission without contribution rights', fakeAsync(() => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve({
+          ...userContributionRights,
+          can_suggest_questions: false,
+        })
+      );
+
+      component.ngOnInit();
+      flush();
+      fixture.detectChanges();
+
+      expect(
+        fixture.nativeElement.querySelector('.e2e-test-submitQuestionTab')
+      ).toBeNull();
+      expect(
+        fixture.nativeElement.querySelectorAll(
+          '.oppia-opportunities-tabs-button'
+        ).length
+      ).toBe(2);
+      expect(
+        fixture.nativeElement.querySelector('.e2e-test-myContributionTab')
+      ).not.toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('.e2e-test-translateTextTab')
+      ).not.toBeNull();
+    }));
+
+    it('should change active language when clicking on language selector', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      spyOn(
+        localStorageService,
+        'updateLastSelectedTranslationLanguageCode'
+      ).and.callThrough();
+
+      component.onChangeLanguage('hi');
+
+      expect(
+        translationLanguageService.setActiveLanguageCode
+      ).toHaveBeenCalledWith('hi');
+      expect(
+        localStorageService.updateLastSelectedTranslationLanguageCode
+      ).toHaveBeenCalledWith('hi');
+    });
+
+    it('should show language selector based on active tab', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      let changedTab = 'translateTextTab';
+
+      expect(component.activeTabName).toBe('myContributionTab');
+      expect(component.showLanguageSelector()).toBe(false);
+
+      component.onTabClick(changedTab);
+      expect(component.activeTabName).toBe(changedTab);
+      expect(component.showLanguageSelector()).toBe(true);
+    });
+
+    it('should change active topic when clicking on topic selector', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      spyOn(
+        localStorageService,
+        'updateLastSelectedTranslationTopicName'
+      ).and.callThrough();
+
+      component.onChangeTopic('Topic 2');
+
+      expect(translationTopicService.setActiveTopicName).toHaveBeenCalledWith(
+        'Topic 2'
+      );
+      expect(
+        localStorageService.updateLastSelectedTranslationTopicName
+      ).toHaveBeenCalledWith('Topic 2');
+    });
+
+    it('should show topic selector based on active tab', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      let changedTab = 'translateTextTab';
+
+      expect(component.activeTabName).toBe('myContributionTab');
+      expect(component.showLanguageSelector()).toBe(false);
+
+      component.onTabClick(changedTab);
+      expect(component.activeTabName).toBe(changedTab);
+      expect(component.showTopicSelector()).toBe(true);
+    });
+
+    it('should change active entity type when clicking on entity type selector', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      expect(component.activeEntityType).toBe(
+        ContributorDashboardConstants.ENTITY_TYPE_SENTINEL_ALL
+      );
+
+      component.onChangeEntityType(AppConstants.ENTITY_TYPE.SKILL);
+
+      expect(component.activeEntityType).toBe(AppConstants.ENTITY_TYPE.SKILL);
+    });
+
+    it('should show entity type selector based on active tab and feature flag', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      spyOn(
+        contributionAndReviewService,
+        'getActiveSuggestionType'
+      ).and.returnValue('translate_content');
+
+      mockPlatformFeatureService.status.EnableTranslationOppsWithNewOppModels.isEnabled =
+        true;
+      expect(component.activeTabName).toBe('myContributionTab');
+      expect(component.showEntityTypeSelector()).toBe(true);
+
+      component.onTabClick('translateTextTab');
+      expect(component.showEntityTypeSelector()).toBe(true);
+
+      mockPlatformFeatureService.status.EnableTranslationOppsWithNewOppModels.isEnabled =
+        false;
+      expect(component.showEntityTypeSelector()).toBe(false);
+    });
+
+    it('should show the entity type selector on the Translate Text tab whatever was last viewed', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      // The Translate Text tab lists only translation opportunities, so it is
+      // filterable no matter which list the user came from.
+      spyOn(
+        contributionAndReviewService,
+        'getActiveSuggestionType'
+      ).and.returnValue('add_question');
+      mockPlatformFeatureService.status.EnableTranslationOppsWithNewOppModels.isEnabled =
+        true;
+
+      component.onTabClick('translateTextTab');
+
+      expect(component.showEntityTypeSelector()).toBe(true);
+
+      mockPlatformFeatureService.status.EnableTranslationOppsWithNewOppModels.isEnabled =
+        false;
+    });
+
+    it('should hide entity type selector for question suggestions', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      const activeSuggestionTypeSpy = spyOn(
+        contributionAndReviewService,
+        'getActiveSuggestionType'
+      );
+      mockPlatformFeatureService.status.EnableTranslationOppsWithNewOppModels.isEnabled =
+        true;
+
+      // Question contributions and question reviews are both shown inside the
+      // My Contributions tab, and neither can be filtered by entity type.
+      component.onTabClick('myContributionTab');
+      activeSuggestionTypeSpy.and.returnValue('add_question');
+      expect(component.showEntityTypeSelector()).toBe(false);
+
+      activeSuggestionTypeSpy.and.returnValue('translate_content');
+      expect(component.showEntityTypeSelector()).toBe(true);
+
+      // The accomplishments pages show contribution stats and badges rather
+      // than a list of suggestions, so there is nothing to filter there.
+      activeSuggestionTypeSpy.and.returnValue('stats');
+      expect(component.showEntityTypeSelector()).toBe(false);
+
+      activeSuggestionTypeSpy.and.returnValue('badges');
+      expect(component.showEntityTypeSelector()).toBe(false);
+
+      // The Submit Question tab has no entity type filter either.
+      activeSuggestionTypeSpy.and.returnValue('translate_content');
+      component.onTabClick('submitQuestionTab');
+      expect(component.showEntityTypeSelector()).toBe(false);
+
+      mockPlatformFeatureService.status.EnableTranslationOppsWithNewOppModels.isEnabled =
+        false;
+    });
+
+    it('should show topic selector for questions reviews', () => {
+      spyOn(userService, 'getUserContributionRightsDataAsync').and.returnValue(
+        Promise.resolve(userContributionRights)
+      );
+      spyOn(
+        contributionAndReviewService,
+        'getActiveSuggestionType'
+      ).and.returnValue('add_question');
+      spyOn(contributionAndReviewService, 'getActiveTabType').and.returnValue(
+        'reviews'
+      );
+      let changedTab = 'myContributionTab';
+
+      component.onTabClick(changedTab);
+      expect(component.activeTabName).toBe(changedTab);
+      expect(component.showTopicSelector()).toBe(true);
     });
   });
 });

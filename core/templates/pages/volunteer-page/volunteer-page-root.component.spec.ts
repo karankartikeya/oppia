@@ -16,13 +16,14 @@
  * @fileoverview Unit tests for the volunteer page root component.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { AppConstants } from 'app.constants';
-import { PageHeadService } from 'services/page-head.service';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
 
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { VolunteerPageRootComponent } from './volunteer-page-root.component';
+import {AppConstants} from 'app.constants';
+import {PageHeadService} from 'services/page-head.service';
+
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {VolunteerPageRootComponent} from './volunteer-page-root.component';
 
 describe('Volunteer Page Root', () => {
   let fixture: ComponentFixture<VolunteerPageRootComponent>;
@@ -31,14 +32,9 @@ describe('Volunteer Page Root', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [
-        VolunteerPageRootComponent,
-        MockTranslatePipe
-      ],
-      providers: [
-        PageHeadService
-      ],
-      schemas: [NO_ERRORS_SCHEMA]
+      declarations: [VolunteerPageRootComponent, MockTranslatePipe],
+      providers: [PageHeadService],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -48,15 +44,18 @@ describe('Volunteer Page Root', () => {
     pageHeadService = TestBed.inject(PageHeadService);
   });
 
-  it('should successfully instantiate the component',
-    () => {
-      expect(component).toBeDefined();
-    });
+  it('should successfully instantiate the component', () => {
+    expect(component).toBeDefined();
+  });
 
   it('should initialize', () => {
     spyOn(pageHeadService, 'updateTitleAndMetaTags');
+
     component.ngOnInit();
+
     expect(pageHeadService.updateTitleAndMetaTags).toHaveBeenCalledWith(
-      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.VOLUNTEER);
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.VOLUNTEER.TITLE,
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.VOLUNTEER.META
+    );
   });
 });

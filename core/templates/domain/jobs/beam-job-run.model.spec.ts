@@ -16,12 +16,19 @@
  * @fileoverview Unit tests for BeamJobRun.
  */
 
-import { BeamJobRun } from 'domain/jobs/beam-job-run.model';
+import {BeamJobRun} from 'domain/jobs/beam-job-run.model';
 
 describe('Beam Job Run', () => {
   it('should copy values from arguments', () => {
     const beamJobRun = new BeamJobRun(
-      '123', 'FooJob', 'RUNNING', 123, 456, true);
+      '123',
+      'FooJob',
+      'RUNNING',
+      123,
+      456,
+      true,
+      'test-dataflow-job-id'
+    );
 
     expect(beamJobRun.jobId).toEqual('123');
     expect(beamJobRun.jobName).toEqual('FooJob');
@@ -29,6 +36,7 @@ describe('Beam Job Run', () => {
     expect(beamJobRun.jobStartedOnMsecs).toEqual(123);
     expect(beamJobRun.jobUpdatedOnMsecs).toEqual(456);
     expect(beamJobRun.jobIsSynchronous).toBeTrue();
+    expect(beamJobRun.dataflowJobId).toEqual('test-dataflow-job-id');
   });
 
   it('should copy values from backend dict', () => {
@@ -39,6 +47,7 @@ describe('Beam Job Run', () => {
       job_started_on_msecs: 123,
       job_updated_on_msecs: 456,
       job_is_synchronous: true,
+      dataflow_job_id: 'test-dataflow-job-id',
     });
 
     expect(beamJobRun.jobId).toEqual('123');
@@ -47,6 +56,7 @@ describe('Beam Job Run', () => {
     expect(beamJobRun.jobStartedOnMsecs).toEqual(123);
     expect(beamJobRun.jobUpdatedOnMsecs).toEqual(456);
     expect(beamJobRun.jobIsSynchronous).toBeTrue();
+    expect(beamJobRun.dataflowJobId).toEqual('test-dataflow-job-id');
   });
 
   describe('That is running', () => {
@@ -217,8 +227,9 @@ describe('Beam Job Run', () => {
     });
 
     it('should return the appropriate material icon code', () => {
-      expect(beamJobRun.getJobStatusMaterialIconCode())
-        .toEqual('published_with_changes');
+      expect(beamJobRun.getJobStatusMaterialIconCode()).toEqual(
+        'published_with_changes'
+      );
     });
 
     it('should return the appropriate material theme color', () => {
@@ -250,8 +261,9 @@ describe('Beam Job Run', () => {
     });
 
     it('should return the appropriate material icon code', () => {
-      expect(beamJobRun.getJobStatusMaterialIconCode())
-        .toEqual('hourglass_top');
+      expect(beamJobRun.getJobStatusMaterialIconCode()).toEqual(
+        'hourglass_top'
+      );
     });
 
     it('should return the appropriate material theme color', () => {
@@ -283,8 +295,9 @@ describe('Beam Job Run', () => {
     });
 
     it('should return the appropriate material icon code', () => {
-      expect(beamJobRun.getJobStatusMaterialIconCode())
-        .toEqual('hourglass_bottom');
+      expect(beamJobRun.getJobStatusMaterialIconCode()).toEqual(
+        'hourglass_bottom'
+      );
     });
 
     it('should return the appropriate material theme color', () => {
@@ -373,8 +386,14 @@ describe('Beam Job Run', () => {
   });
 
   describe('That is cancelling', () => {
-    const beamJobRun = (
-      new BeamJobRun('123', 'FooJob', 'CANCELLING', 0, 0, true));
+    const beamJobRun = new BeamJobRun(
+      '123',
+      'FooJob',
+      'CANCELLING',
+      0,
+      0,
+      true
+    );
 
     it('should return the appropriate material tooltip', () => {
       expect(beamJobRun.getJobStatusTooltipString()).toEqual('Cancelling...');
@@ -402,6 +421,28 @@ describe('Beam Job Run', () => {
 
     it('should recognize whether it has output', () => {
       expect(beamJobRun.hasOutput()).toBeFalse();
+    });
+  });
+
+  describe('getDataflowUrl', () => {
+    it('should return null if dataflowJobId is not provided', () => {
+      const beamJobRun = new BeamJobRun('123', 'FooJob', 'FAILED', 0, 0, false);
+      expect(beamJobRun.getDataflowUrl()).toBeNull();
+    });
+
+    it('should return the correct Dataflow URL if dataflowJobId is provided', () => {
+      const beamJobRun = new BeamJobRun(
+        '123',
+        'FooJob',
+        'FAILED',
+        0,
+        0,
+        true,
+        'def-456'
+      );
+      expect(beamJobRun.getDataflowUrl()).toEqual(
+        'https://console.cloud.google.com/dataflow/jobs/us-central1/def-456;graphView=0'
+      );
     });
   });
 });

@@ -17,590 +17,820 @@
  *               help tab in the navbar.
  */
 
-require('components/on-screen-keyboard/on-screen-keyboard.component.ts');
-require(
-  'components/version-diff-visualization/' +
-  'version-diff-visualization.component.ts');
-require(
-  'components/common-layout-directives/common-elements/' +
-  'attribution-guide.component.ts');
-require(
-  'components/forms/custom-forms-directives/select2-dropdown.directive.ts');
-require(
-  'components/forms/schema-based-editors/schema-based-editor.directive.ts');
-require(
-  'pages/exploration-editor-page/editor-navigation/' +
-  'editor-navbar-breadcrumb.component.ts');
-require(
-  'pages/exploration-editor-page/editor-navigation/' +
-  'editor-navigation.component.ts');
-require(
-  'pages/exploration-editor-page/exploration-objective-editor/' +
-  'exploration-objective-editor.component.ts');
-require(
-  'pages/exploration-editor-page/exploration-save-and-publish-buttons/' +
-  'exploration-save-and-publish-buttons.component.ts');
-require(
-  'pages/exploration-editor-page/exploration-title-editor/' +
-  'exploration-title-editor.component.ts');
-require(
-  'pages/exploration-editor-page/param-changes-editor/' +
-  'param-changes-editor.component.ts');
-require(
-  'pages/exploration-editor-page/editor-tab/' +
-  'exploration-editor-tab.component.ts');
-require('pages/exploration-editor-page/feedback-tab/feedback-tab.component.ts');
-require('pages/exploration-editor-page/history-tab/history-tab.component.ts');
-require(
-  'pages/exploration-editor-page/improvements-tab/' +
-  'improvements-tab.component.ts');
-require('pages/exploration-editor-page/preview-tab/preview-tab.component.ts');
-require('pages/exploration-editor-page/settings-tab/settings-tab.component.ts');
-require(
-  'pages/exploration-editor-page/statistics-tab/charts/pie-chart.component.ts');
-require(
-  'pages/exploration-editor-page/statistics-tab/issues/' +
-  'playthrough-issues.component.ts');
-require(
-  'pages/exploration-editor-page/statistics-tab/statistics-tab.component.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/translation-tab.component.ts');
-require(
-  'pages/exploration-player-page/learner-experience/' +
-  'conversation-skin.directive.ts');
-require(
-  'pages/exploration-player-page/layout-directives/' +
-  'exploration-footer.component.ts');
-require('value_generators/valueGeneratorsRequires.ts');
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {Subscription} from 'rxjs';
+import {WelcomeModalComponent} from './modal-templates/welcome-modal.component';
+import {HelpModalComponent} from './modal-templates/help-modal.component';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {ParamChanges} from 'domain/exploration/param-changes.model';
+import {
+  ParamSpecsBackendDict,
+  ParamSpecs,
+} from 'domain/exploration/param-specs.model';
+import {AlertsService} from 'services/alerts.service';
+import {BottomNavbarStatusService} from 'services/bottom-navbar-status.service';
+import {PageContextService} from 'services/page-context.service';
+import {EditabilityService} from 'services/editability.service';
+import {ExplorationFeaturesBackendApiService} from 'services/exploration-features-backend-api.service';
+import {ExplorationFeaturesService} from 'services/exploration-features.service';
+import {ExplorationImprovementsService} from 'services/exploration-improvements.service';
+import {InternetConnectivityService} from 'services/internet-connectivity.service';
+import {LoaderService} from 'services/loader.service';
+import {PageTitleService} from 'services/page-title.service';
+import {PreventPageUnloadEventService} from 'services/prevent-page-unload-event.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {UserService} from 'services/user.service';
+import {ThreadDataBackendApiService} from './feedback-tab/services/thread-data-backend-api.service';
+import {AutosaveInfoModalsService} from './services/autosave-info-modals.service';
+import {ChangeListService} from './services/change-list.service';
+import {ExplorationAutomaticTextToSpeechService} from './services/exploration-automatic-text-to-speech.service';
+import {ExplorationCategoryService} from './services/exploration-category.service';
+import {ExplorationDataService} from './services/exploration-data.service';
+import {ExplorationInitStateNameService} from './services/exploration-init-state-name.service';
+import {ExplorationLanguageCodeService} from './services/exploration-language-code.service';
+import {ExplorationObjectiveService} from './services/exploration-objective.service';
+import {ExplorationParamChangesService} from './services/exploration-param-changes.service';
+import {ExplorationParamSpecsService} from './services/exploration-param-specs.service';
+import {ExplorationPropertyService} from './services/exploration-property.service';
+import {ExplorationRightsService} from './services/exploration-rights.service';
+import {ExplorationSaveService} from './services/exploration-save.service';
+import {ExplorationStatesService} from './services/exploration-states.service';
+import {ExplorationTagsService} from './services/exploration-tags.service';
+import {ExplorationTitleService} from './services/exploration-title.service';
+import {ExplorationWarningsService} from './services/exploration-warnings.service';
+import {GraphDataService} from './services/graph-data.service';
+import {RouterService} from './services/router.service';
+import {StateEditorRefreshService} from './services/state-editor-refresh.service';
+import {StateTutorialFirstTimeService} from './services/state-tutorial-first-time.service';
+import {UserEmailPreferencesService} from './services/user-email-preferences.service';
+import {UserExplorationPermissionsService} from './services/user-exploration-permissions.service';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {ExplorationNextContentIdIndexService} from './services/exploration-next-content-id-index.service';
+import {VersionHistoryService} from './services/version-history.service';
+import {ExplorationBackendDict} from 'domain/exploration/exploration.model';
+import {EntityVoiceoversService} from 'services/entity-voiceovers.services';
+import {VoiceoverBackendApiService} from 'domain/voiceover/voiceover-backend-api.service';
+import {TranslatedContent} from 'domain/exploration/translated-content.model';
+import {EntityTranslation} from 'domain/translation/entity-translation.model';
+import {EntityBulkTranslationsBackendApiService} from './services/entity-bulk-translations-backend-api.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {ExplorationChange} from 'domain/exploration/exploration-draft.model';
+import {
+  InsertScriptService,
+  KNOWN_SCRIPTS,
+} from 'services/insert-script.service';
+import {
+  LazyCssLoaderService,
+  KNOWN_CSS,
+} from 'services/lazy-css-loader.service';
 
-require('interactions/interactionsRequires.ts');
-require('objects/objectComponentsRequires.ts');
+interface ExplorationData extends ExplorationBackendDict {
+  exploration_is_linked_to_story: boolean;
+  category: string;
+  objective: string;
+  tags: string;
+  user: string;
+  rights: {
+    owner_names: string[];
+    editor_names: string[];
+    voice_artist_names: string[];
+    viewer_names: string[];
+    status: string;
+    cloned_from: string;
+    community_owned: boolean;
+    viewable_if_private: boolean;
+  };
+  email_preferences: {
+    mute_feedback_notifications: boolean;
+    mute_suggestion_notifications: boolean;
+  };
+  show_state_editor_tutorial_on_load: boolean;
+  show_state_translation_tutorial_on_load: boolean;
+  next_content_id_index: number;
+}
 
-require('domain/exploration/ParamChangesObjectFactory.ts');
-require('domain/exploration/ParamSpecsObjectFactory.ts');
-require('domain/utilities/url-interpolation.service.ts');
-require(
-  'pages/exploration-editor-page/services/autosave-info-modals.service.ts');
-require('pages/exploration-editor-page/services/change-list.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-automatic-text-to-speech.service.ts');
-require(
-  'pages/exploration-editor-page/services/exploration-category.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-correctness-feedback.service.ts');
-require('pages/exploration-editor-page/services/exploration-data.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-init-state-name.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-language-code.service.ts');
-require(
-  'pages/exploration-editor-page/services/exploration-objective.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-param-changes.service.ts');
-require(
-  'pages/exploration-editor-page/services/exploration-param-specs.service.ts');
-require('pages/exploration-editor-page/services/exploration-rights.service.ts');
-require('pages/exploration-editor-page/services/exploration-save.service.ts');
-require('pages/exploration-editor-page/services/exploration-states.service.ts');
-require('pages/exploration-editor-page/services/exploration-tags.service.ts');
-require('pages/exploration-editor-page/services/exploration-title.service.ts');
-require(
-  'pages/exploration-editor-page/services/exploration-warnings.service.ts');
-require('pages/exploration-editor-page/services/graph-data.service.ts');
-require('pages/exploration-editor-page/services/router.service.ts');
-require(
-  'pages/exploration-editor-page/services/state-editor-refresh.service.ts');
-require(
-  'pages/exploration-player-page/services/state-classifier-mapping.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'state-tutorial-first-time.service.ts');
-require(
-  'pages/exploration-editor-page/services/user-email-preferences.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'user-exploration-permissions.service.ts');
-require(
-  'pages/exploration-editor-page/feedback-tab/services/' +
-  'thread-data-backend-api.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-editor.service.ts');
-require('services/context.service.ts');
-require('services/editability.service.ts');
-require('services/exploration-features-backend-api.service.ts');
-require('services/exploration-features.service.ts');
-require('services/exploration-improvements.service.ts');
-require('services/page-title.service.ts');
-require('services/playthrough-issues.service.ts');
-require('services/site-analytics.service.ts');
-require('services/state-top-answers-stats-backend-api.service.ts');
-require('services/state-top-answers-stats.service.ts');
-require('services/prevent-page-unload-event.service.ts');
+@Component({
+  selector: 'exploration-editor-page',
+  templateUrl: './exploration-editor-page.component.html',
+  styleUrls: ['./exploration-editor-page.component.css'],
+})
+export class ExplorationEditorPageComponent implements OnInit, OnDestroy {
+  directiveSubscriptions = new Subscription();
 
-require(
-  'pages/exploration-editor-page/exploration-editor-page.constants.ajs.ts');
-require('pages/interaction-specs.constants.ajs.ts');
-require('services/contextual/window-dimensions.service.ts');
-require('services/bottom-navbar-status.service.ts');
-require('services/internet-connectivity.service.ts');
-require('services/alerts.service.ts');
-require('services/user.service.ts');
-require('services/ngb-modal.service.ts');
+  explorationIsLinkedToStory: boolean = false;
+  screenIsLarge: boolean = false;
+  explorationId: string = '';
+  explorationUrl: string = '';
+  revertExplorationUrl: string = '';
+  checkRevertExplorationValidUrl: string = '';
+  explorationDownloadUrl: string = '';
+  improvementsTabIsEnabled: boolean = false;
+  reconnectedMessageTimeoutMilliseconds: number = 4000;
+  disconnectedMessageTimeoutMilliseconds: number = 5000;
+  autosaveIsInProgress: boolean = false;
+  connectedToInternet: boolean = true;
+  explorationEditorPageHasInitialized: boolean = false;
+  activeThread: string = '';
+  warningsAreShown: boolean = false;
+  currentUserIsCurriculumAdmin: boolean = false;
+  currentUserIsModerator: boolean = false;
+  currentUser: string = '';
+  currentVersion: number = 0;
+  areExplorationWarningsVisible: boolean = false;
+  isModalOpenable: boolean = true;
+  modifyTranslationsFeatureFlagIsEnabled: boolean = false;
 
-require('components/on-screen-keyboard/on-screen-keyboard.component');
-import { Subscription } from 'rxjs';
-import { WelcomeModalComponent } from './modal-templates/welcome-modal.component';
+  constructor(
+    private alertsService: AlertsService,
+    private autosaveInfoModalsService: AutosaveInfoModalsService,
+    private bottomNavbarStatusService: BottomNavbarStatusService,
+    private changeListService: ChangeListService,
+    private pageContextService: PageContextService,
+    public editabilityService: EditabilityService,
+    private entityBulkTranslationsBackendApiService: EntityBulkTranslationsBackendApiService,
+    private entityTranslationsService: EntityTranslationsService,
+    private explorationAutomaticTextToSpeechService: ExplorationAutomaticTextToSpeechService,
+    private explorationCategoryService: ExplorationCategoryService,
+    private explorationDataService: ExplorationDataService,
+    private explorationFeaturesBackendApiService: ExplorationFeaturesBackendApiService,
+    private explorationFeaturesService: ExplorationFeaturesService,
+    private explorationImprovementsService: ExplorationImprovementsService,
+    private explorationInitStateNameService: ExplorationInitStateNameService,
+    private explorationLanguageCodeService: ExplorationLanguageCodeService,
+    private explorationNextContentIdIndexService: ExplorationNextContentIdIndexService,
+    private explorationObjectiveService: ExplorationObjectiveService,
+    private explorationParamChangesService: ExplorationParamChangesService,
+    private explorationParamSpecsService: ExplorationParamSpecsService,
+    private explorationPropertyService: ExplorationPropertyService,
+    public explorationRightsService: ExplorationRightsService,
+    private explorationSaveService: ExplorationSaveService,
+    private explorationStatesService: ExplorationStatesService,
+    private explorationTagsService: ExplorationTagsService,
+    private explorationTitleService: ExplorationTitleService,
+    private explorationWarningsService: ExplorationWarningsService,
+    private focusManagerService: FocusManagerService,
+    private graphDataService: GraphDataService,
+    private internetConnectivityService: InternetConnectivityService,
+    private loaderService: LoaderService,
+    private ngbModal: NgbModal,
+    private pageTitleService: PageTitleService,
+    private platformFeatureService: PlatformFeatureService,
+    private preventPageUnloadEventService: PreventPageUnloadEventService,
+    private routerService: RouterService,
+    private siteAnalyticsService: SiteAnalyticsService,
+    private stateEditorRefreshService: StateEditorRefreshService,
+    private stateEditorService: StateEditorService,
+    private stateTutorialFirstTimeService: StateTutorialFirstTimeService,
+    private threadDataBackendApiService: ThreadDataBackendApiService,
+    private userEmailPreferencesService: UserEmailPreferencesService,
+    private userExplorationPermissionsService: UserExplorationPermissionsService,
+    private userService: UserService,
+    private windowDimensionsService: WindowDimensionsService,
+    private versionHistoryService: VersionHistoryService,
+    private entityVoiceoversService: EntityVoiceoversService,
+    private voiceoverBackendApiService: VoiceoverBackendApiService,
+    private insertScriptService: InsertScriptService,
+    private lazyCssLoaderService: LazyCssLoaderService
+  ) {}
 
-angular.module('oppia').component('explorationEditorPage', {
-  template: require('./exploration-editor-page.component.html'),
-  controller: [
-    '$q', '$rootScope', '$scope', '$uibModal', 'AlertsService',
-    'AutosaveInfoModalsService', 'BottomNavbarStatusService',
-    'ChangeListService', 'ContextService',
-    'EditabilityService', 'ExplorationAutomaticTextToSpeechService',
-    'ExplorationCategoryService', 'ExplorationCorrectnessFeedbackService',
-    'ExplorationDataService', 'ExplorationFeaturesBackendApiService',
-    'ExplorationFeaturesService', 'ExplorationImprovementsService',
-    'ExplorationInitStateNameService', 'ExplorationLanguageCodeService',
-    'ExplorationObjectiveService', 'ExplorationParamChangesService',
-    'ExplorationParamSpecsService', 'ExplorationPropertyService',
-    'ExplorationRightsService', 'ExplorationSaveService',
-    'ExplorationStatesService', 'ExplorationTagsService',
-    'ExplorationTitleService', 'ExplorationWarningsService',
-    'FocusManagerService', 'GraphDataService', 'InternetConnectivityService',
-    'LoaderService', 'NgbModal',
-    'PageTitleService', 'ParamChangesObjectFactory',
-    'ParamSpecsObjectFactory', 'PreventPageUnloadEventService',
-    'RouterService', 'SiteAnalyticsService',
-    'StateClassifierMappingService',
-    'StateEditorRefreshService', 'StateEditorService',
-    'StateTutorialFirstTimeService',
-    'ThreadDataBackendApiService',
-    'UserEmailPreferencesService', 'UserExplorationPermissionsService',
-    'UserService', 'WindowDimensionsService',
-    function(
-        $q, $rootScope, $scope, $uibModal, AlertsService,
-        AutosaveInfoModalsService, BottomNavbarStatusService,
-        ChangeListService, ContextService,
-        EditabilityService, ExplorationAutomaticTextToSpeechService,
-        ExplorationCategoryService, ExplorationCorrectnessFeedbackService,
-        ExplorationDataService, ExplorationFeaturesBackendApiService,
-        ExplorationFeaturesService, ExplorationImprovementsService,
-        ExplorationInitStateNameService, ExplorationLanguageCodeService,
-        ExplorationObjectiveService, ExplorationParamChangesService,
-        ExplorationParamSpecsService, ExplorationPropertyService,
-        ExplorationRightsService, ExplorationSaveService,
-        ExplorationStatesService, ExplorationTagsService,
-        ExplorationTitleService, ExplorationWarningsService,
-        FocusManagerService, GraphDataService, InternetConnectivityService,
-        LoaderService, NgbModal, PageTitleService, ParamChangesObjectFactory,
-        ParamSpecsObjectFactory, PreventPageUnloadEventService,
-        RouterService, SiteAnalyticsService,
-        StateClassifierMappingService,
-        StateEditorRefreshService, StateEditorService,
-        StateTutorialFirstTimeService,
-        ThreadDataBackendApiService,
-        UserEmailPreferencesService, UserExplorationPermissionsService,
-        UserService, WindowDimensionsService) {
-      var ctrl = this;
-      var reconnectedMessageTimeoutMilliseconds = 4000;
-      var disconnectedMessageTimeoutMilliseconds = 5000;
-      ctrl.directiveSubscriptions = new Subscription();
-      ctrl.autosaveIsInProgress = false;
-      ctrl.connectedToInternet = true;
+  setDocumentTitle(): void {
+    if (this.explorationTitleService.savedMemento) {
+      this.pageTitleService.setDocumentTitle(
+        this.explorationTitleService.savedMemento + ' - Oppia Editor'
+      );
+    } else {
+      this.pageTitleService.setDocumentTitle(
+        'Untitled Exploration - Oppia Editor'
+      );
+    }
+  }
 
-      var setDocumentTitle = function() {
-        if (ExplorationTitleService.savedMemento) {
-          PageTitleService.setDocumentTitle(
-            ExplorationTitleService.savedMemento + ' - Oppia Editor');
-        } else {
-          PageTitleService.setDocumentTitle(
-            'Untitled Exploration - Oppia Editor');
+  /** ******************************************
+   * Methods affecting the graph visualization.
+   ********************************************/
+  toggleExplorationWarningVisibility(): void {
+    this.areExplorationWarningsVisible = !this.areExplorationWarningsVisible;
+  }
+
+  getExplorationUrl(explorationId: string): string {
+    return explorationId ? '/explore/' + explorationId : '';
+  }
+
+  // Initializes the exploration page using data from the backend.
+  // Called on page load.
+  initExplorationPage(): Promise<void> {
+    this.editabilityService.lockExploration(true);
+    this.modifyTranslationsFeatureFlagIsEnabled =
+      this.platformFeatureService.status.ExplorationEditorCanModifyTranslations.isEnabled;
+    return Promise.all([
+      this.explorationDataService.getDataAsync((explorationId, lostChanges) => {
+        if (!this.autosaveInfoModalsService.isModalOpen()) {
+          this.autosaveInfoModalsService.showLostChangesModal(
+            lostChanges,
+            explorationId
+          );
         }
-      };
+      }),
+      this.explorationFeaturesBackendApiService.fetchExplorationFeaturesAsync(
+        this.pageContextService.getExplorationId()
+      ),
+      this.threadDataBackendApiService.getFeedbackThreadsAsync(),
+      this.userService.getUserInfoAsync(),
+    ]).then(async ([explorationData, featuresData, _, userInfo]) => {
+      if ((explorationData as ExplorationData).exploration_is_linked_to_story) {
+        this.explorationIsLinkedToStory = true;
+        this.pageContextService.setExplorationIsLinkedToStory();
+      }
 
-      /** ******************************************
-      * Methods affecting the graph visualization.
-      ********************************************/
-      ctrl.toggleExplorationWarningVisibility = function() {
-        ctrl.areExplorationWarningsVisible = (
-          !ctrl.areExplorationWarningsVisible);
-      };
+      this.explorationFeaturesService.init(explorationData, featuresData);
 
-      ctrl.getExplorationUrl = function(explorationId) {
-        return explorationId ? ('/explore/' + explorationId) : '';
-      };
+      this.explorationStatesService.init(
+        explorationData.states,
+        (explorationData as ExplorationData).exploration_is_linked_to_story
+      );
+      const version = explorationData.version;
 
-      // Initializes the exploration page using data from the backend.
-      // Called on page load.
-      ctrl.initExplorationPage = () => {
-        return $q.all([
-          ExplorationDataService.getDataAsync((explorationId, lostChanges) => {
-            if (!AutosaveInfoModalsService.isModalOpen()) {
-              AutosaveInfoModalsService.showLostChangesModal(
-                lostChanges, explorationId);
-              $rootScope.$applyAsync();
+      if (version === undefined || version === null) {
+        throw new Error('Exploration version cannot be null.');
+      }
+      this.entityTranslationsService.init(
+        this.explorationId,
+        'exploration',
+        version
+      );
+      this.pageContextService.setExplorationVersion(version);
+
+      const languageCode =
+        this.entityVoiceoversService.languageCode ||
+        explorationData.language_code;
+      this.entityVoiceoversService.init(
+        this.explorationId,
+        'exploration',
+        version,
+        languageCode
+      );
+      this.entityVoiceoversService.fetchEntityVoiceovers();
+
+      this.explorationTitleService.init(explorationData.title);
+      this.explorationCategoryService.init(
+        (explorationData as ExplorationData).category
+      );
+      this.explorationObjectiveService.init(
+        (explorationData as ExplorationData).objective
+      );
+      this.explorationLanguageCodeService.init(explorationData.language_code);
+      this.explorationInitStateNameService.init(
+        explorationData.init_state_name
+      );
+      this.explorationTagsService.init(
+        (explorationData as ExplorationData).tags
+      );
+      this.explorationParamSpecsService.init(
+        ParamSpecs.createFromBackendDict(
+          explorationData.param_specs as ParamSpecsBackendDict
+        )
+      );
+      this.explorationParamChangesService.init(
+        ParamChanges.createFromBackendList(explorationData.param_changes)
+      );
+      this.explorationAutomaticTextToSpeechService.init(
+        explorationData.auto_tts_enabled
+      );
+      this.explorationNextContentIdIndexService.init(
+        explorationData.next_content_id_index
+      );
+      if (explorationData.edits_allowed) {
+        this.editabilityService.lockExploration(false);
+      }
+
+      this.currentUserIsCurriculumAdmin = userInfo.isCurriculumAdmin();
+      this.currentUserIsModerator = userInfo.isModerator();
+      this.currentUser = (explorationData as ExplorationData).user;
+      this.currentVersion = version;
+
+      this.explorationRightsService.init(
+        (explorationData as ExplorationData).rights.owner_names,
+        (explorationData as ExplorationData).rights.editor_names,
+        (explorationData as ExplorationData).rights.voice_artist_names,
+        (explorationData as ExplorationData).rights.viewer_names,
+        (explorationData as ExplorationData).rights.status,
+        (explorationData as ExplorationData).rights.cloned_from,
+        (explorationData as ExplorationData).rights.community_owned,
+        (explorationData as ExplorationData).rights.viewable_if_private
+      );
+      this.userEmailPreferencesService.init(
+        (explorationData as ExplorationData).email_preferences
+          .mute_feedback_notifications,
+        (explorationData as ExplorationData).email_preferences
+          .mute_suggestion_notifications
+      );
+
+      this.userExplorationPermissionsService
+        .getPermissionsAsync()
+        .then(permissions => {
+          if (permissions.canEdit) {
+            this.editabilityService.markEditable();
+          }
+          if (permissions.canVoiceover || permissions.canEdit) {
+            this.editabilityService.markTranslatable();
+          }
+        });
+
+      this.versionHistoryService.init(version);
+
+      this.graphDataService.recompute();
+
+      const activeStateName = this.stateEditorService.getActiveStateName();
+
+      if (
+        !activeStateName ||
+        !this.explorationStatesService.getState(activeStateName)
+      ) {
+        this.stateEditorService.setActiveStateName(
+          this.explorationInitStateNameService.displayed as string
+        );
+      }
+
+      const currentStateName =
+        this.routerService.getCurrentStateFromLocationPath();
+
+      if (
+        !this.routerService.isLocationSetToNonStateEditorTab() &&
+        (!currentStateName ||
+          !explorationData.states.hasOwnProperty(currentStateName))
+      ) {
+        if (this.threadDataBackendApiService.getOpenThreadsCount() > 0) {
+          this.routerService.navigateToFeedbackTab();
+        }
+      }
+
+      if (this.modifyTranslationsFeatureFlagIsEnabled) {
+        this.entityBulkTranslationsBackendApiService
+          .fetchEntityBulkTranslationsAsync(
+            this.explorationId,
+            'exploration',
+            this.currentVersion
+          )
+          .then(response => {
+            for (let language in response) {
+              // Initialize the entity translation objects with the last published translations
+              // in order to compare translation changes made.
+              let languageTranslations =
+                response[language].translationMappingToBackendDict();
+              this.entityTranslationsService.languageCodeToLastPublishedEntityTranslations[
+                language
+              ] = EntityTranslation.createFromBackendDict({
+                entity_id: this.explorationId,
+                entity_type: 'exploration',
+                entity_version: response[language].entityVersion,
+                language_code: language,
+                translations: languageTranslations,
+              });
+
+              this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+                language
+              ] = EntityTranslation.createFromBackendDict({
+                entity_id: this.explorationId,
+                entity_type: 'exploration',
+                entity_version: response[language].entityVersion,
+                language_code: language,
+                translations: languageTranslations,
+              });
             }
-          }),
-          ExplorationFeaturesBackendApiService.fetchExplorationFeaturesAsync(
-            ContextService.getExplorationId()),
-          ThreadDataBackendApiService.getOpenThreadsCountAsync(),
-          UserService.getUserInfoAsync()
-        ]).then(async(
-            [explorationData, featuresData, openThreadsCount, userInfo]) => {
-          if (explorationData.exploration_is_linked_to_story) {
-            ctrl.explorationIsLinkedToStory = true;
-            ContextService.setExplorationIsLinkedToStory();
-          }
-
-          ExplorationFeaturesService.init(explorationData, featuresData);
-
-          StateClassifierMappingService.init(
-            ContextService.getExplorationId(), explorationData.version);
-          ExplorationStatesService.init(explorationData.states);
-
-          ExplorationTitleService.init(explorationData.title);
-          ExplorationCategoryService.init(explorationData.category);
-          ExplorationObjectiveService.init(explorationData.objective);
-          ExplorationLanguageCodeService.init(
-            explorationData.language_code);
-          ExplorationInitStateNameService.init(
-            explorationData.init_state_name);
-          ExplorationTagsService.init(explorationData.tags);
-          ExplorationParamSpecsService.init(
-            ParamSpecsObjectFactory.createFromBackendDict(
-              explorationData.param_specs));
-          ExplorationParamChangesService.init(
-            ParamChangesObjectFactory.createFromBackendList(
-              explorationData.param_changes));
-          ExplorationAutomaticTextToSpeechService.init(
-            explorationData.auto_tts_enabled);
-          ExplorationCorrectnessFeedbackService.init(
-            explorationData.correctness_feedback_enabled);
-
-
-          ctrl.explorationTitleService = ExplorationTitleService;
-          ctrl.explorationCategoryService = ExplorationCategoryService;
-          ctrl.explorationObjectiveService = ExplorationObjectiveService;
-          ctrl.ExplorationRightsService = ExplorationRightsService;
-          ctrl.explorationInitStateNameService = (
-            ExplorationInitStateNameService);
-
-          ctrl.currentUserIsCurriculumAdmin = userInfo.isCurriculumAdmin();
-          ctrl.currentUserIsModerator = userInfo.isModerator();
-
-          ctrl.currentUser = explorationData.user;
-          ctrl.currentVersion = explorationData.version;
-
-          ExplorationRightsService.init(
-            explorationData.rights.owner_names,
-            explorationData.rights.editor_names,
-            explorationData.rights.voice_artist_names,
-            explorationData.rights.viewer_names,
-            explorationData.rights.status,
-            explorationData.rights.cloned_from,
-            explorationData.rights.community_owned,
-            explorationData.rights.viewable_if_private);
-          UserEmailPreferencesService.init(
-            explorationData.email_preferences.mute_feedback_notifications,
-            explorationData.email_preferences
-              .mute_suggestion_notifications);
-
-          UserExplorationPermissionsService.getPermissionsAsync()
-            .then(permissions => {
-              if (permissions.canEdit) {
-                EditabilityService.markEditable();
-              }
-              if (permissions.canVoiceover || permissions.canEdit) {
-                EditabilityService.markTranslatable();
-              }
-            });
-
-          StateEditorService.updateExplorationWhitelistedStatus(
-            featuresData.isExplorationWhitelisted);
-
-          GraphDataService.recompute();
-
-          if (!StateEditorService.getActiveStateName() ||
-              !ExplorationStatesService.getState(
-                StateEditorService.getActiveStateName())) {
-            StateEditorService.setActiveStateName(
-              ExplorationInitStateNameService.displayed);
-          }
-
-          if (!RouterService.isLocationSetToNonStateEditorTab() &&
-              !explorationData.states.hasOwnProperty(
-                RouterService.getCurrentStateFromLocationPath('gui'))) {
-            if (openThreadsCount > 0) {
-              RouterService.navigateToFeedbackTab();
-            } else {
-              RouterService.navigateToMainTab();
-            }
-          }
-
-          // Initialize changeList by draft changes if they exist.
-          if (explorationData.draft_changes !== null) {
-            ChangeListService.loadAutosavedChangeList(
-              explorationData.draft_changes);
-            $rootScope.$applyAsync();
-          }
-
-          if (explorationData.is_version_of_draft_valid === false &&
-              explorationData.draft_changes !== null &&
-              explorationData.draft_changes.length > 0) {
-            // Show modal displaying lost changes if the version of draft
-            // changes is invalid, and draft_changes is not `null`.
-            AutosaveInfoModalsService.showVersionMismatchModal(
-              ChangeListService.getChangeList());
-            $rootScope.$applyAsync();
-            return;
-          }
-          RouterService.onRefreshStatisticsTab.emit();
-
-          RouterService.onRefreshVersionHistory.emit({
-            forceRefresh: true
+            // Populate the entity translations with draft changes
+            // if they exist.
+            this.populateEntityTranslationsWithDraftChanges(
+              explorationData.draft_changes,
+              version
+            );
           });
+      } else {
+        // Simply populate draft changes for the translation tab in case the feature flag is not enabled.
+        this.populateEntityTranslationsWithDraftChanges(
+          explorationData.draft_changes,
+          version
+        );
+      }
 
-          if (ExplorationStatesService.getState(
-            StateEditorService.getActiveStateName())) {
-            StateEditorRefreshService.onRefreshStateEditor.emit();
+      // Initialize changeList by draft changes if they exist.
+      if (explorationData.draft_changes !== null) {
+        this.changeListService.loadAutosavedChangeList(
+          explorationData.draft_changes
+        );
+      }
+
+      if (
+        explorationData.is_version_of_draft_valid === false &&
+        explorationData.draft_changes !== null &&
+        explorationData.draft_changes.length > 0
+      ) {
+        // Show modal displaying lost changes if the version of draft
+        // changes is invalid, and draft_changes is not `null`.
+        this.autosaveInfoModalsService.showVersionMismatchModal(
+          this.changeListService.getChangeList()
+        );
+      }
+      this.routerService.onRefreshStatisticsTab.emit();
+
+      this.routerService.onRefreshVersionHistory.emit({
+        forceRefresh: true,
+      });
+
+      if (
+        activeStateName &&
+        this.explorationStatesService.getState(activeStateName)
+      ) {
+        this.stateEditorRefreshService.onRefreshStateEditor.emit();
+      }
+
+      this.stateTutorialFirstTimeService.initEditor(
+        (explorationData as ExplorationData).show_state_editor_tutorial_on_load,
+        this.explorationId
+      );
+
+      if (
+        (explorationData as ExplorationData)
+          .show_state_translation_tutorial_on_load
+      ) {
+        this.stateTutorialFirstTimeService.markTranslationTutorialNotSeenBefore();
+      }
+
+      // TODO(#13352): Initialize StateTopAnswersStatsService and register
+      // relevant callbacks.
+      await this.explorationImprovementsService.initAsync();
+      await this.explorationImprovementsService.flushUpdatedTasksToBackend();
+
+      this.explorationWarningsService.updateWarnings();
+      this.stateEditorRefreshService.onRefreshStateEditor.emit();
+      this.explorationEditorPageHasInitialized = true;
+    });
+  }
+
+  isVoiceoverTabEnabled(): boolean {
+    if (this.pageContextService.isExplorationLinkedToStory()) {
+      return true;
+    }
+    return this.platformFeatureService.status
+      .ShowVoiceoverTabForNonCuratedExplorations.isEnabled;
+  }
+
+  populateEntityTranslationsWithDraftChanges(
+    draftChanges: ExplorationChange[] | null,
+    version: number
+  ): void {
+    if (draftChanges !== null) {
+      for (let i in draftChanges) {
+        let changeDict = draftChanges[i];
+
+        if (changeDict.cmd === 'edit_translation') {
+          // Create the entity translation objects first if they don't exist.
+          if (
+            !this.entityTranslationsService.languageCodeToLatestEntityTranslations.hasOwnProperty(
+              changeDict.language_code
+            )
+          ) {
+            this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+              changeDict.language_code
+            ] = EntityTranslation.createFromBackendDict({
+              entity_id: this.explorationId,
+              entity_type: 'exploration',
+              entity_version: version,
+              language_code: changeDict.language_code,
+              translations: {},
+            });
           }
 
-          StateTutorialFirstTimeService.initEditor(
-            explorationData.show_state_editor_tutorial_on_load,
-            ctrl.explorationId);
-
-          if (explorationData.show_state_translation_tutorial_on_load) {
-            StateTutorialFirstTimeService
-              .markTranslationTutorialNotSeenBefore();
+          // Update the translations appropriately, via latest draft changes.
+          if (changeDict.translation.content_value) {
+            this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+              changeDict.language_code
+            ].updateTranslation(
+              changeDict.content_id,
+              TranslatedContent.createFromBackendDict(changeDict.translation)
+            );
+          } else {
+            this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+              changeDict.language_code
+            ].removeTranslation(changeDict.content_id);
           }
-
-          // TODO(#13352): Initialize StateTopAnswersStatsService and register
-          // relevant callbacks.
-
-          await ExplorationImprovementsService.initAsync();
-          await ExplorationImprovementsService.flushUpdatedTasksToBackend();
-
-          ExplorationWarningsService.updateWarnings();
-          StateEditorRefreshService.onRefreshStateEditor.emit();
-          $scope.$applyAsync();
-        });
-      };
-
-      ctrl.getActiveTabName = function() {
-        return RouterService.getActiveTabName();
-      };
-
-      ctrl.setFocusOnActiveTab = function(activeTab) {
-        if (activeTab === 'history') {
-          FocusManagerService.setFocus('usernameInputField');
+        } else if (changeDict.cmd === 'remove_translations') {
+          this.entityTranslationsService.removeAllTranslationsForContent(
+            changeDict.content_id
+          );
+        } else if (
+          changeDict.cmd === 'mark_translation_needs_update_for_language'
+        ) {
+          this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+            changeDict.language_code
+          ].markTranslationAsNeedingUpdate(changeDict.content_id);
+        } else if (changeDict.cmd === 'mark_translations_needs_update') {
+          this.entityTranslationsService.markAllTranslationsAsNeedingUpdate(
+            changeDict.content_id
+          );
         }
-        if (activeTab === 'feedback') {
-          if (!ctrl.activeThread) {
-            FocusManagerService.setFocus('newThreadButton');
-          }
-          if (ctrl.activeThread) {
-            FocusManagerService.setFocus('tmpMessageText');
-          }
-        }
-      };
+      }
+    }
+  }
 
-      ctrl.startEditorTutorial = function() {
-        EditabilityService.onStartTutorial();
-        if (RouterService.getActiveTabName() !== 'main') {
-          ctrl.selectMainTab();
-        } else {
-          StateEditorRefreshService.onRefreshStateEditor.emit();
-        }
-      };
+  getActiveTabName(): string {
+    return this.routerService.getActiveTabName();
+  }
 
-      ctrl.startTranslationTutorial = function() {
-        EditabilityService.onStartTutorial();
-        if (RouterService.getActiveTabName() !== 'translation') {
-          ctrl.selectTranslationTab();
-        } else {
-          RouterService.onRefreshTranslationTab.emit();
-        }
-      };
+  setFocusOnActiveTab(activeTab: string): void {
+    if (activeTab === 'history') {
+      this.focusManagerService.setFocus('usernameInputField');
+    }
+    if (activeTab === 'feedback') {
+      if (!this.activeThread) {
+        this.focusManagerService.setFocus('newThreadButton');
+      }
+      if (this.activeThread) {
+        this.focusManagerService.setFocus('tmpMessageText');
+      }
+    }
+  }
 
-      ctrl.showWelcomeExplorationModal = function() {
-        NgbModal.open(WelcomeModalComponent, {
+  skipEditorNavbar(): void {
+    let mainContentElement: HTMLElement | null = document.querySelector(
+      '.exploration-editor-content'
+    );
+
+    if (mainContentElement) {
+      mainContentElement.tabIndex = -1;
+      mainContentElement.scrollIntoView();
+      mainContentElement.focus();
+    }
+  }
+
+  startEditorTutorial(): void {
+    this.editabilityService.onStartTutorial();
+
+    if (this.routerService.getActiveTabName() !== 'main') {
+      this.selectMainTab();
+    } else {
+      this.stateEditorRefreshService.onRefreshStateEditor.emit();
+    }
+  }
+
+  startTranslationTutorial(): void {
+    this.editabilityService.onStartTutorial();
+
+    if (this.routerService.getActiveTabName() !== 'translation') {
+      this.selectTranslationTab();
+    } else {
+      this.routerService.onRefreshTranslationTab.emit();
+    }
+  }
+
+  showWelcomeExplorationModal(): void {
+    if (this.isModalOpenable) {
+      this.isModalOpenable = false;
+      this.ngbModal
+        .open(WelcomeModalComponent, {
           backdrop: true,
-          windowClass: 'oppia-welcome-modal'
-        }).result.then(function(explorationId) {
-          SiteAnalyticsService.registerAcceptTutorialModalEvent(
-            explorationId);
-          ctrl.startEditorTutorial();
-        }, function(explorationId) {
-          SiteAnalyticsService.registerDeclineTutorialModalEvent(
-            explorationId);
-          StateTutorialFirstTimeService.markEditorTutorialFinished();
-        });
-      };
+          windowClass: 'oppia-welcome-modal',
+        })
+        .result.then(
+          explorationId => {
+            this.siteAnalyticsService.registerAcceptTutorialModalEvent(
+              explorationId
+            );
+            this.startEditorTutorial();
+            this.isModalOpenable = true;
+          },
+          explorationId => {
+            this.siteAnalyticsService.registerDeclineTutorialModalEvent(
+              explorationId
+            );
+            this.stateTutorialFirstTimeService.markEditorTutorialFinished();
+            this.isModalOpenable = true;
+          }
+        );
+    }
+  }
 
-      ctrl.getNavbarText = function() {
-        return 'Exploration Editor';
-      };
+  generateAriaLabelForWarnings(): string {
+    const warnings = this.getWarnings();
+    const warningLabels = warnings
+      .map(
+        (warning, index) => 'Warning ' + (index + 1) + ': ' + warning.message
+      )
+      .join('. ');
 
-      ctrl.countWarnings = () => ExplorationWarningsService.countWarnings();
-      ctrl.getWarnings = () => ExplorationWarningsService.getWarnings();
-      ctrl.hasCriticalWarnings = () => (
-        ExplorationWarningsService.hasCriticalWarnings);
-      ctrl.selectMainTab = () => {
-        RouterService.navigateToMainTab();
-        $rootScope.$applyAsync();
-      };
-      ctrl.selectTranslationTab = (
-        () => RouterService.navigateToTranslationTab());
-      ctrl.selectPreviewTab = () => RouterService.navigateToPreviewTab();
-      ctrl.selectSettingsTab = () => RouterService.navigateToSettingsTab();
-      ctrl.selectStatsTab = () => RouterService.navigateToStatsTab();
-      ctrl.selectImprovementsTab = (
-        () => RouterService.navigateToImprovementsTab());
-      ctrl.selectHistoryTab = () => {
-        RouterService.navigateToHistoryTab();
-        ctrl.setFocusOnActiveTab('history');
-      };
-      ctrl.selectFeedbackTab = () => {
-        RouterService.navigateToFeedbackTab();
-        ctrl.setFocusOnActiveTab('feedback');
-      };
-      ctrl.getOpenThreadsCount = (
-        () => ThreadDataBackendApiService.getOpenThreadsCount());
-      ctrl.showUserHelpModal = () => {
-        var explorationId = ContextService.getExplorationId();
-        SiteAnalyticsService.registerClickHelpButtonEvent(explorationId);
-        var EDITOR_TUTORIAL_MODE = 'editor';
-        var TRANSLATION_TUTORIAL_MODE = 'translation';
-        $uibModal.open({
-          template: require(
-            'pages/exploration-editor-page/modal-templates/' +
-              'help-modal.template.html'),
-          backdrop: true,
-          controller: 'HelpModalController',
-          windowClass: 'oppia-help-modal'
-        }).result.then(mode => {
+    return 'Total warnings: ' + this.countWarnings() + '. ' + warningLabels;
+  }
+
+  getNavbarText(): string {
+    return 'Exploration Editor';
+  }
+
+  countWarnings(): number {
+    return this.explorationWarningsService.countWarnings();
+  }
+
+  getWarnings(): {type: string; message: string}[] {
+    return this.explorationWarningsService.getWarnings();
+  }
+
+  hasCriticalWarnings(): boolean {
+    return this.explorationWarningsService.hasCriticalWarnings();
+  }
+
+  selectMainTab(): void {
+    this.routerService.navigateToMainTab(null);
+  }
+
+  selectTranslationTab(): void {
+    this.routerService.navigateToTranslationTab();
+  }
+
+  selectPreviewTab(): void {
+    this.routerService.navigateToPreviewTab();
+  }
+
+  selectSettingsTab(): void {
+    this.routerService.navigateToSettingsTab();
+  }
+
+  selectStatsTab(): void {
+    this.routerService.navigateToStatsTab();
+  }
+
+  selectImprovementsTab(): void {
+    this.routerService.navigateToImprovementsTab();
+  }
+
+  selectHistoryTab(): void {
+    this.routerService.navigateToHistoryTab();
+    this.setFocusOnActiveTab('history');
+  }
+
+  selectFeedbackTab(): void {
+    this.routerService.navigateToFeedbackTab();
+    this.setFocusOnActiveTab('feedback');
+  }
+
+  getOpenThreadsCount(): number {
+    return this.threadDataBackendApiService.getOpenThreadsCount();
+  }
+
+  showUserHelpModal(): void {
+    let explorationId = this.pageContextService.getExplorationId();
+    this.siteAnalyticsService.registerClickHelpButtonEvent(explorationId);
+    let EDITOR_TUTORIAL_MODE = 'editor';
+    let TRANSLATION_TUTORIAL_MODE = 'translation';
+    this.ngbModal
+      .open(HelpModalComponent, {
+        backdrop: true,
+        windowClass: 'oppia-help-modal',
+      })
+      .result.then(
+        mode => {
           if (mode === EDITOR_TUTORIAL_MODE) {
-            StateTutorialFirstTimeService.onOpenEditorTutorial.emit();
+            this.stateTutorialFirstTimeService.onOpenEditorTutorial.emit();
           } else if (mode === TRANSLATION_TUTORIAL_MODE) {
-            StateTutorialFirstTimeService.onOpenTranslationTutorial.emit();
+            this.stateTutorialFirstTimeService.onOpenTranslationTutorial.emit();
           }
-        }, () => {
+        },
+        () => {
           // Note to developers:
           // This callback is triggered when the Cancel button is clicked.
           // No further action is needed.
-        });
-      };
+        }
+      );
+  }
 
-      ctrl.$onInit = function() {
-        InternetConnectivityService.startCheckingConnection();
-        ctrl.directiveSubscriptions.add(
-          ExplorationPropertyService.onExplorationPropertyChanged.subscribe(
-            () => {
-              setDocumentTitle();
-              $rootScope.$applyAsync();
+  isWarningsAreShown(value: boolean): void {
+    this.warningsAreShown = value;
+  }
+
+  ngOnInit(): void {
+    this.internetConnectivityService.startCheckingConnection();
+
+    this.insertScriptService.loadScript(KNOWN_SCRIPTS.PENCILCODE);
+    this.lazyCssLoaderService.loadCss(KNOWN_CSS.GUPPY);
+    this.lazyCssLoaderService.loadCss(KNOWN_CSS.SHEPHERD);
+
+    this.directiveSubscriptions.add(
+      this.explorationPropertyService.onExplorationPropertyChanged.subscribe(
+        () => {
+          this.setDocumentTitle();
+        }
+      )
+    );
+
+    this.directiveSubscriptions.add(
+      this.internetConnectivityService.onInternetStateChange.subscribe(
+        internetAccessible => {
+          this.connectedToInternet = internetAccessible;
+          if (internetAccessible) {
+            this.alertsService.addSuccessMessage(
+              'Reconnected. Checking whether your changes are mergeable.',
+              this.reconnectedMessageTimeoutMilliseconds
+            );
+            this.preventPageUnloadEventService.removeListener();
+          } else {
+            this.alertsService.addInfoMessage(
+              'Looks like you are offline. ' +
+                'You can continue working, and can save ' +
+                'your changes once reconnected.',
+              this.disconnectedMessageTimeoutMilliseconds
+            );
+            this.preventPageUnloadEventService.addListener();
+            if (this.routerService.getActiveTabName() !== 'main') {
+              this.selectMainTab();
             }
-          )
-        );
-        ctrl.directiveSubscriptions.add(
-          InternetConnectivityService.onInternetStateChange.subscribe(
-            internetAccessible => {
-              ctrl.connectedToInternet = internetAccessible;
-              if (internetAccessible) {
-                AlertsService.addSuccessMessage(
-                  'Reconnected. Checking whether your changes are mergeable.',
-                  reconnectedMessageTimeoutMilliseconds);
-                PreventPageUnloadEventService.removeListener();
-              } else {
-                AlertsService.addInfoMessage(
-                  'Looks like you are offline. ' +
-                  'You can continue working, and can save ' +
-                  'your changes once reconnected.',
-                  disconnectedMessageTimeoutMilliseconds);
-                PreventPageUnloadEventService.addListener();
-                if (RouterService.getActiveTabName() !== 'main') {
-                  ctrl.selectMainTab();
-                }
-              }
-            })
-        );
-        ctrl.directiveSubscriptions.add(
-          ChangeListService.autosaveIsInProgress$.subscribe(
-            autosaveIsInProgress => {
-              ctrl.autosaveIsInProgress = autosaveIsInProgress;
-              $rootScope.$applyAsync();
-            }
-          )
-        );
-        ctrl.screenIsLarge = WindowDimensionsService.getWidth() >= 1024;
-        BottomNavbarStatusService.markBottomNavbarStatus(true);
+          }
+        }
+      )
+    );
 
-        ctrl.directiveSubscriptions.add(
-          ExplorationSaveService.onInitExplorationPage.subscribe(
-            (successCallback) => {
-              ctrl.initExplorationPage().then(successCallback);
-            }
-          )
-        );
-        ctrl.directiveSubscriptions.add(
-          ExplorationStatesService.onRefreshGraph.subscribe(() => {
-            GraphDataService.recompute();
-            ExplorationWarningsService.updateWarnings();
-          }));
-        ctrl.directiveSubscriptions.add(
-          // eslint-disable-next-line max-len
-          StateTutorialFirstTimeService.onEnterEditorForTheFirstTime.subscribe(() => {
-            ctrl.showWelcomeExplorationModal();
-          })
-        );
-        ctrl.directiveSubscriptions.add(
-          StateTutorialFirstTimeService.onOpenEditorTutorial.subscribe(
-            () => {
-              ctrl.startEditorTutorial();
-            })
-        );
-        ctrl.directiveSubscriptions.add(
-          StateTutorialFirstTimeService.onOpenTranslationTutorial.subscribe(
-            () => {
-              ctrl.startTranslationTutorial();
-            })
-        );
-        ctrl.EditabilityService = EditabilityService;
-        ctrl.StateEditorService = StateEditorService;
+    this.directiveSubscriptions.add(
+      this.changeListService.autosaveIsInProgress$.subscribe(
+        autosaveIsInProgress => {
+          this.autosaveIsInProgress = autosaveIsInProgress;
+        }
+      )
+    );
 
-        /** ********************************************************
-         * Called on initial load of the exploration editor page.
-         *********************************************************/
-        LoaderService.showLoadingScreen('Loading');
+    this.screenIsLarge = this.windowDimensionsService.getWidth() >= 1024;
+    this.bottomNavbarStatusService.markBottomNavbarStatus(true);
 
-        ctrl.explorationId = ContextService.getExplorationId();
-        ctrl.explorationUrl = '/create/' + ctrl.explorationId;
-        ctrl.explorationDownloadUrl = (
-          '/createhandler/download/' + ctrl.explorationId);
-        ctrl.revertExplorationUrl = (
-          '/createhandler/revert/' + ctrl.explorationId);
-        ctrl.areExplorationWarningsVisible = false;
-        // The initExplorationPage function is written separately since it
-        // is also called in $scope.$on when some external events are
-        // triggered.
-        ctrl.initExplorationPage();
+    this.directiveSubscriptions.add(
+      this.explorationSaveService.onInitExplorationPage.subscribe(() => {
+        this.initExplorationPage();
+      })
+    );
 
-        let improvementsTabIsEnabled = false;
-        $q.when(ExplorationImprovementsService.isImprovementsTabEnabledAsync())
-          .then(improvementsTabIsEnabledResponse => {
-            improvementsTabIsEnabled = improvementsTabIsEnabledResponse;
-          });
-        ctrl.isImprovementsTabEnabled = () => improvementsTabIsEnabled;
-      };
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
-    }
-  ]
-});
+    this.directiveSubscriptions.add(
+      this.explorationStatesService.onRefreshGraph.subscribe(() => {
+        this.graphDataService.recompute();
+        this.explorationWarningsService.updateWarnings();
+      })
+    );
+
+    this.directiveSubscriptions.add(
+      // eslint-disable-next-line max-len
+      this.stateTutorialFirstTimeService.onEnterEditorForTheFirstTime.subscribe(
+        () => {
+          this.showWelcomeExplorationModal();
+        }
+      )
+    );
+
+    this.directiveSubscriptions.add(
+      this.stateTutorialFirstTimeService.onOpenEditorTutorial.subscribe(() => {
+        this.startEditorTutorial();
+      })
+    );
+
+    this.directiveSubscriptions.add(
+      this.routerService.onRefreshTranslationTab.subscribe(() => {})
+    );
+
+    this.directiveSubscriptions.add(
+      this.stateTutorialFirstTimeService.onOpenTranslationTutorial.subscribe(
+        () => {
+          this.startTranslationTutorial();
+        }
+      )
+    );
+
+    /** ********************************************************
+     * Called on initial load of the exploration editor page.
+     *********************************************************/
+    this.loaderService.showLoadingScreen('Loading');
+
+    this.explorationId = this.pageContextService.getExplorationId();
+    this.explorationUrl = '/create/' + this.explorationId;
+    this.explorationDownloadUrl =
+      '/createhandler/download/' + this.explorationId;
+    this.checkRevertExplorationValidUrl =
+      '/createhandler/check_revert_valid/' + this.explorationId;
+    this.revertExplorationUrl = '/createhandler/revert/' + this.explorationId;
+    this.areExplorationWarningsVisible = false;
+
+    // The initExplorationPage function is written separately since it
+    // is also called in directiveSubscriptions when some external events are
+    // triggered.
+    this.initExplorationPage();
+    this.improvementsTabIsEnabled = false;
+
+    Promise.resolve(
+      this.explorationImprovementsService.isImprovementsTabEnabledAsync()
+    ).then(improvementsTabIsEnabledResponse => {
+      this.improvementsTabIsEnabled = improvementsTabIsEnabledResponse;
+    });
+  }
+
+  isImprovementsTabEnabled(): boolean {
+    return this.improvementsTabIsEnabled;
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

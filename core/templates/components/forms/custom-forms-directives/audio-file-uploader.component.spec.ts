@@ -16,35 +16,38 @@
  * @fileoverview Tests for audio-file-uploader component.
  */
 
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { MockRouterModule } from 'hybrid-router-module-provider';
-import { AudioFileUploaderComponent } from './audio-file-uploader.component';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {APP_BASE_HREF} from '@angular/common';
+import {RouterModule} from '@angular/router';
+
+import {AudioFileUploaderComponent} from './audio-file-uploader.component';
 
 describe('Audio File Uploader Component', () => {
   let component: AudioFileUploaderComponent;
-  let fixture:
-    ComponentFixture<AudioFileUploaderComponent>;
+  let fixture: ComponentFixture<AudioFileUploaderComponent>;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        MockRouterModule
-      ],
+      imports: [RouterModule.forRoot([])],
       declarations: [AudioFileUploaderComponent],
+      providers: [
+        {
+          provide: APP_BASE_HREF,
+          useValue: '/',
+        },
+      ],
     }).compileComponents();
   }));
 
   beforeEach(() => {
-    fixture =
-      TestBed.createComponent(AudioFileUploaderComponent);
+    fixture = TestBed.createComponent(AudioFileUploaderComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });
 
-  it('should successfully instantiate the component from beforeEach block',
-    () => {
-      expect(component).toBeDefined();
-    });
+  it('should successfully instantiate the component from beforeEach block', () => {
+    expect(component).toBeDefined();
+  });
 
   it('should upload an audio file', () => {
     let files = [
@@ -53,14 +56,14 @@ describe('Audio File Uploader Component', () => {
       }),
       new File(['bar'], 'audio.mp3', {
         type: 'audio/mp3',
-      })
+      }),
     ];
     spyOn(component.fileChange, 'emit');
     spyOn(component.fileClear, 'emit');
 
     files.forEach(file => {
       component.fileInputRef.nativeElement = {
-        files: [file]
+        files: [file],
       };
 
       component.addAudio(new Event('add'));
@@ -70,56 +73,63 @@ describe('Audio File Uploader Component', () => {
     });
   });
 
-  it('should not upload an audio file when the file fails' +
-    ' validation criteria', () => {
-    const testCases = [
-      {
-        title: 'Uploading a file that is not an mp3 audio.',
-        file: new File(['foo'], 'audio.mp3', {type: 'audio/aac'}),
-        expected: 'Only the MP3 audio format is currently supported.'
-      },
-      {
-        title: 'Uploading a file with no name.',
-        file: new File(['foo'], '', {type: 'audio/mpeg'}),
-        expected: 'Filename must not be empty.'
-      },
-      {
-        title: 'Uploading an audio whose audio format does not match the' +
-          ' filename extension.',
-        file: new File(['foo'], 'video.mp4', {type: 'audio/mpeg'}),
-        expected: 'This audio format does not match the filename extension.'
-      },
-      {
-        title: 'Uploading a non-audio file.',
-        file: new File(['foo'], 'video.mp4', {type: 'png'}),
-        expected: 'This file is not recognized as an audio file.'
-      }
-    ];
+  it(
+    'should not upload an audio file when the file fails' +
+      ' validation criteria',
+    () => {
+      const testCases = [
+        {
+          title: 'Uploading a file that is not an mp3 audio.',
+          file: new File(['foo'], 'audio.mp3', {type: 'audio/aac'}),
+          expected: 'Only the MP3 audio format is currently supported.',
+        },
+        {
+          title: 'Uploading a file with no name.',
+          file: new File(['foo'], '', {type: 'audio/mpeg'}),
+          expected: 'Filename must not be empty.',
+        },
+        {
+          title:
+            'Uploading an audio whose audio format does not match the' +
+            ' filename extension.',
+          file: new File(['foo'], 'video.mp4', {type: 'audio/mpeg'}),
+          expected: 'This audio format does not match the filename extension.',
+        },
+        {
+          title: 'Uploading a non-audio file.',
+          file: new File(['foo'], 'video.mp4', {type: 'png'}),
+          expected: 'This file is not recognized as an audio file.',
+        },
+      ];
 
-    spyOn(component.fileClear, 'emit');
-    spyOn(component.fileChange, 'emit');
-    spyOn(component.inputFormRef.nativeElement, 'reset');
+      spyOn(component.fileClear, 'emit');
+      spyOn(component.fileChange, 'emit');
+      spyOn(component.inputFormRef.nativeElement, 'reset');
 
-    testCases.forEach(testCase => {
+      testCases.forEach(testCase => {
+        component.fileInputRef.nativeElement = {
+          files: [testCase.file],
+        };
+
+        component.addAudio(new Event('add'));
+
+        expect(component.errorMessage).toEqual(
+          testCase.expected,
+          testCase.title
+        );
+        expect(component.fileClear.emit).toHaveBeenCalled();
+        expect(component.fileChange.emit).not.toHaveBeenCalled();
+        expect(component.inputFormRef.nativeElement.reset).toHaveBeenCalled();
+      });
+
+      // Testing an empty file separately, as inputForm.nativeElement.reset() is
+      // not called in that case.
       component.fileInputRef.nativeElement = {
-        files: [testCase.file]
+        files: [null],
       };
-
       component.addAudio(new Event('add'));
-
-      expect(component.errorMessage).toEqual(testCase.expected, testCase.title);
       expect(component.fileClear.emit).toHaveBeenCalled();
       expect(component.fileChange.emit).not.toHaveBeenCalled();
-      expect(component.inputFormRef.nativeElement.reset).toHaveBeenCalled();
-    });
-
-    // Testing an empty file separately, as inputForm.nativeElement.reset() is
-    // not called in that case.
-    component.fileInputRef.nativeElement = {
-      files: [null]
-    };
-    component.addAudio(new Event('add'));
-    expect(component.fileClear.emit).toHaveBeenCalled();
-    expect(component.fileChange.emit).not.toHaveBeenCalled();
-  });
+    }
+  );
 });

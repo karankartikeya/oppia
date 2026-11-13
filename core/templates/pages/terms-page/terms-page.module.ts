@@ -16,27 +16,22 @@
  * @fileoverview Module for the terms page.
  */
 
-import { NgModule } from '@angular/core';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { TermsPageComponent } from
-  'pages/terms-page/terms-page.component';
-import { TermsPageRootComponent } from './terms-page-root.component';
-import { CommonModule } from '@angular/common';
-import { TermsPageRoutingModule } from './terms-page-routing.module';
+import {NgModule} from '@angular/core';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {TermsPageComponent} from 'pages/terms-page/terms-page.component';
+import {TermsPageRootComponent} from './terms-page-root.component';
+import {CommonModule} from '@angular/common';
+import {TermsPageRoutingModule} from './terms-page-routing.module';
+import {RouterModule} from '@angular/router';
 
 @NgModule({
   imports: [
     CommonModule,
     SharedComponentsModule,
-    TermsPageRoutingModule
+    RouterModule,
+    TermsPageRoutingModule,
   ],
-  declarations: [
-    TermsPageComponent,
-    TermsPageRootComponent
-  ],
-  entryComponents: [
-    TermsPageComponent,
-    TermsPageRootComponent
-  ]
+  declarations: [TermsPageComponent, TermsPageRootComponent],
+  entryComponents: [TermsPageComponent, TermsPageRootComponent],
 })
 export class TermsPageModule {}

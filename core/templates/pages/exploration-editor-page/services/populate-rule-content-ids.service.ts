@@ -16,16 +16,15 @@
  * @fileoverview Service that populates rule content ids.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { AppConstants } from 'app.constants';
-import { BaseTranslatableObject } from 'interactions/rule-input-defs';
-import { GenerateContentIdService } from 'services/generate-content-id.service';
-import { Rule } from 'domain/exploration/RuleObjectFactory';
+import {AppConstants} from 'app.constants';
+import {BaseTranslatableObject} from 'interactions/rule-input-defs';
+import {GenerateContentIdService} from 'services/generate-content-id.service';
+import {Rule} from 'domain/exploration/rule.model';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class PopulateRuleContentIdsService {
   constructor(private generateContentIdService: GenerateContentIdService) {}
@@ -46,23 +45,21 @@ export class PopulateRuleContentIdsService {
     }
 
     Object.keys(inputTypes).forEach(inputName => {
-      const hasContentId = (
-        inputTypes[inputName].indexOf('Translatable') === 0);
+      const ruleInput = inputs[inputName] as BaseTranslatableObject;
+      // All rules input types which are translatable are subclasses of
+      // BaseTranslatableObject having dict structure with contentId
+      // as a key.
+      const hasContentId = ruleInput && ruleInput.hasOwnProperty('contentId');
       if (!hasContentId) {
         return;
       }
-      const inputValue = <BaseTranslatableObject>inputs[inputName];
-      const needsContentId = inputValue.contentId === null;
+      const needsContentId = ruleInput.contentId === null;
 
       if (needsContentId) {
-        inputValue.contentId = (
-          this.generateContentIdService.getNextStateId(
-            `${AppConstants.COMPONENT_NAME_RULE_INPUT}`));
+        ruleInput.contentId = this.generateContentIdService.getNextStateId(
+          `${AppConstants.COMPONENT_NAME_RULE_INPUT}`
+        );
       }
     });
   }
 }
-
-angular.module('oppia').factory(
-  'PopulateRuleContentIdsService',
-  downgradeInjectable(PopulateRuleContentIdsService));

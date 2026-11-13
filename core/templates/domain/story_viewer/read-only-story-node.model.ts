@@ -19,23 +19,24 @@
 
 import {
   LearnerExplorationSummary,
-  LearnerExplorationSummaryBackendDict
+  LearnerExplorationSummaryBackendDict,
 } from 'domain/summary/learner-exploration-summary.model';
 
 export interface StoryNodeBackendDict {
-  'id': string;
-  'title': string;
-  'description': string;
-  'destination_node_ids': string[];
-  'prerequisite_skill_ids': string[];
-  'acquired_skill_ids': string[];
-  'outline': string;
-  'outline_is_finalized': boolean;
-  'exploration_id': string;
-  'exp_summary_dict': LearnerExplorationSummaryBackendDict;
-  'completed': boolean;
-  'thumbnail_bg_color': string;
-  'thumbnail_filename': string;
+  id: string;
+  title: string;
+  description: string;
+  destination_node_ids: string[];
+  prerequisite_skill_ids: string[];
+  acquired_skill_ids: string[];
+  outline: string;
+  outline_is_finalized: boolean;
+  exploration_id: string;
+  exp_summary_dict: LearnerExplorationSummaryBackendDict;
+  completed: boolean;
+  thumbnail_bg_color: string;
+  thumbnail_filename: string;
+  status: string;
 }
 
 export class ReadOnlyStoryNode {
@@ -52,14 +53,24 @@ export class ReadOnlyStoryNode {
   completed: boolean;
   thumbnailBgColor: string;
   thumbnailFilename: string;
+  status: string;
 
   constructor(
-      id: string, title: string, description: string,
-      destinationNodeIds: string[], prerequisiteSkillIds: string[],
-      acquiredSkillIds: string[], outline: string,
-      outlineIsFinalized: boolean, explorationId: string,
-      explorationSummary: LearnerExplorationSummary, completed: boolean,
-      thumbnailBgColor: string, thumbnailFilename: string) {
+    id: string,
+    title: string,
+    description: string,
+    destinationNodeIds: string[],
+    prerequisiteSkillIds: string[],
+    acquiredSkillIds: string[],
+    outline: string,
+    outlineIsFinalized: boolean,
+    explorationId: string,
+    explorationSummary: LearnerExplorationSummary,
+    completed: boolean,
+    thumbnailBgColor: string,
+    thumbnailFilename: string,
+    status: string
+  ) {
     this.id = id;
     this.title = title;
     this.description = description;
@@ -73,12 +84,15 @@ export class ReadOnlyStoryNode {
     this.completed = completed;
     this.thumbnailBgColor = thumbnailBgColor;
     this.thumbnailFilename = thumbnailFilename;
+    this.status = status;
   }
 
   static createFromBackendDict(
-      storyNodeBackendDict: StoryNodeBackendDict): ReadOnlyStoryNode {
+    storyNodeBackendDict: StoryNodeBackendDict
+  ): ReadOnlyStoryNode {
     let explorationSummary = LearnerExplorationSummary.createFromBackendDict(
-      storyNodeBackendDict.exp_summary_dict);
+      storyNodeBackendDict.exp_summary_dict
+    );
 
     return new ReadOnlyStoryNode(
       storyNodeBackendDict.id,
@@ -93,7 +107,9 @@ export class ReadOnlyStoryNode {
       explorationSummary,
       storyNodeBackendDict.completed,
       storyNodeBackendDict.thumbnail_bg_color,
-      storyNodeBackendDict.thumbnail_filename);
+      storyNodeBackendDict.thumbnail_filename,
+      storyNodeBackendDict.status
+    );
   }
 
   getId(): string {
@@ -134,5 +150,9 @@ export class ReadOnlyStoryNode {
 
   getThumbnailBgColor(): string {
     return this.thumbnailBgColor;
+  }
+
+  getStatus(): string {
+    return this.status;
   }
 }

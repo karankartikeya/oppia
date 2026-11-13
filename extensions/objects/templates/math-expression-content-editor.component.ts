@@ -20,19 +20,31 @@
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
 
-import { Component, EventEmitter, Input, OnInit, Output, SimpleChanges } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { Subscription } from 'rxjs';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+  SimpleChanges,
+} from '@angular/core';
+import {Subject, Subscription} from 'rxjs';
+import {debounceTime} from 'rxjs/operators';
 
-import { AlertsService } from 'services/alerts.service';
-import { ExternalRteSaveService } from 'services/external-rte-save.service';
-import { ImageUploadHelperService } from 'services/image-upload-helper.service';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
-import 'mathjaxConfig.ts';
+import {AlertsService} from 'services/alerts.service';
+import {ExternalRteSaveService} from 'services/external-rte-save.service';
+import {ImageUploadHelperService} from 'services/image-upload-helper.service';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
+
+import 'core/templates/mathjaxConfig';
+import {
+  InsertScriptService,
+  KNOWN_SCRIPTS,
+} from 'services/insert-script.service';
 
 interface MathExpression {
-  'svg_filename': string;
-  'raw_latex': string;
+  svg_filename: string;
+  raw_latex: string;
   mathExpressionSvgIsBeingProcessed: boolean;
   svgFile: string;
 }
@@ -40,30 +52,40 @@ interface MathExpression {
 @Component({
   selector: 'math-expression-content-editor',
   templateUrl: './math-expression-content-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class MathExpressionContentEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   @Input() alwaysEditable: boolean = false;
   @Input() value!: MathExpression;
   @Output() valueChanged = new EventEmitter();
+  debouncedUpdate$: Subject<string> = new Subject();
   numberOfElementsInQueue!: number;
   svgString!: string;
   placeholderText = '\\frac{x}{y}';
   active: boolean = false;
-  localValue: { label: string } = { label: '' };
+  localValue: {label: string} = {label: ''};
 
   constructor(
     private alertsService: AlertsService,
     private externalRteSaveService: ExternalRteSaveService,
     private imageUploadHelperService: ImageUploadHelperService,
-    private svgSanitizerService: SvgSanitizerService
+    private svgSanitizerService: SvgSanitizerService,
+    private insertScriptService: InsertScriptService
   ) {}
 
   ngOnInit(): void {
+    this.insertScriptService.loadScript(KNOWN_SCRIPTS.MATHJAX, () => {
+      MathJax.Hub.Queue(() => {
+        this.init();
+      });
+    });
+  }
+
+  private init(): void {
     // Reset the component each time the value changes (e.g. if this is
     // part of an editable list).
     this.svgString = '';
@@ -72,6 +94,14 @@ export class MathExpressionContentEditorComponent implements OnInit {
     // that an existing math expression is being edited. In this case, the
     // editor template can be initialised with the actual values instead of
     // default ones.
+    if (!this.value) {
+      this.value = {
+        raw_latex: '',
+        svg_filename: '',
+        svgFile: '',
+        mathExpressionSvgIsBeingProcessed: false,
+      };
+    }
     if (this.value.svg_filename && this.value.raw_latex) {
       this.localValue.label = this.value.raw_latex;
       this.value.mathExpressionSvgIsBeingProcessed = false;
@@ -80,6 +110,9 @@ export class MathExpressionContentEditorComponent implements OnInit {
       this.value.mathExpressionSvgIsBeingProcessed = true;
     }
     this.valueChanged.emit(this.value);
+    if (this.value.raw_latex) {
+      this.localValue.label = this.value.raw_latex;
+    }
     this.directiveSubscriptions.add(
       this.externalRteSaveService.onExternalRteSave.subscribe(() => {
         this.processAndSaveSvg();
@@ -88,7 +121,11 @@ export class MathExpressionContentEditorComponent implements OnInit {
         }
       })
     );
-
+    this.directiveSubscriptions.add(
+      this.debouncedUpdate$.pipe(debounceTime(300)).subscribe(newValue => {
+        this.updateLocalValue(newValue);
+      })
+    );
     if (!this.alwaysEditable) {
       this.closeEditor();
     }
@@ -111,8 +148,12 @@ export class MathExpressionContentEditorComponent implements OnInit {
     outputElement.innerHTML = s.outerHTML;
     // Naturally MathJax works asynchronously, but we can add processes
     // which we want to happen synchronously into the MathJax Hub Queue.
+    this.numberOfElementsInQueue = Math.max(
+      0,
+      this.numberOfElementsInQueue + 1
+    );
     MathJax.Hub.Queue(['Typeset', MathJax.Hub, outputElement]);
-    this.numberOfElementsInQueue++;
+
     MathJax.Hub.Queue(() => {
       if (outputElement.getElementsByTagName('svg')[0] !== undefined) {
         let svgElement = outputElement.getElementsByTagName('svg')[0];
@@ -125,7 +166,11 @@ export class MathExpressionContentEditorComponent implements OnInit {
         svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
         this.svgString = svgElement.outerHTML;
       }
-      this.numberOfElementsInQueue--;
+      this.numberOfElementsInQueue = Math.max(
+        0,
+        this.numberOfElementsInQueue - 1
+      );
+
       // We need to ensure that all the typepsetting requests in the
       // MathJax queue is finished before we save the final SVG.
       if (this.numberOfElementsInQueue === 0) {
@@ -134,6 +179,7 @@ export class MathExpressionContentEditorComponent implements OnInit {
       }
     });
   }
+
   // This method cleans the SVG string and generates a filename before
   // the SVG can be saved to the backend in the RteHelperModalController.
   // The method doesn't save the SVG to the backend, it just updates
@@ -141,22 +187,25 @@ export class MathExpressionContentEditorComponent implements OnInit {
   // RteHelperModalController will handle the saving of the file to the
   // backend.
   private processAndSaveSvg() {
-    const cleanedSvgString = (
-      this.svgSanitizerService.cleanMathExpressionSvgString(
-        this.svgString));
-    const dimensions = (
-      this.svgSanitizerService.
-        extractDimensionsFromMathExpressionSvgString(cleanedSvgString));
-    const fileName = (
+    const cleanedSvgString =
+      this.svgSanitizerService.cleanMathExpressionSvgString(this.svgString);
+    const dimensions =
+      this.svgSanitizerService.extractDimensionsFromMathExpressionSvgString(
+        cleanedSvgString
+      );
+    const fileName =
       this.imageUploadHelperService.generateMathExpressionImageFilename(
-        dimensions.height, dimensions.width, dimensions.verticalPadding));
+        dimensions.height,
+        dimensions.width,
+        dimensions.verticalPadding
+      );
     // We need use unescape and encodeURIComponent in order to
     // handle the case when SVGs have non-ascii unicode characters.
-    const dataURI = (
+    const dataURI =
       'data:image/svg+xml;base64,' +
-      btoa(unescape(encodeURIComponent(cleanedSvgString))));
-    const invalidTagsAndAttributes = (
-      this.svgSanitizerService.getInvalidSvgTagsAndAttrsFromDataUri(dataURI));
+      btoa(unescape(encodeURIComponent(cleanedSvgString)));
+    const invalidTagsAndAttributes =
+      this.svgSanitizerService.getInvalidSvgTagsAndAttrsFromDataUri(dataURI);
     const tags = invalidTagsAndAttributes.tags;
     const attrs = invalidTagsAndAttributes.attrs;
     if (tags.length === 0 && attrs.length === 0) {
@@ -171,6 +220,7 @@ export class MathExpressionContentEditorComponent implements OnInit {
   }
 
   updateLocalValue(newValue: string): void {
+    this.localValue.label = newValue;
     this.value.mathExpressionSvgIsBeingProcessed = true;
     this.value.raw_latex = newValue;
     this.valueChanged.emit(this.value);
@@ -196,7 +246,7 @@ export class MathExpressionContentEditorComponent implements OnInit {
       return;
     }
     this.localValue = {
-      label: newValue
+      label: newValue,
     };
     this.value.raw_latex = newValue;
     this.valueChanged.emit(this.value);
@@ -204,12 +254,16 @@ export class MathExpressionContentEditorComponent implements OnInit {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes.value &&
+    if (
+      this.insertScriptService.hasScriptLoaded(KNOWN_SCRIPTS.MATHJAX) &&
+      changes.value &&
       changes.value.currentValue.raw_latex !==
-      changes.value.previousValue.raw_latex) {
+        changes.value.previousValue?.raw_latex
+    ) {
       this.localValue = {
         label: this.value.raw_latex || '',
       };
+      this.convertLatexStringToSvg(this.localValue.label);
     }
   }
 
@@ -217,9 +271,3 @@ export class MathExpressionContentEditorComponent implements OnInit {
     this.directiveSubscriptions.unsubscribe();
   }
 }
-
-angular.module('oppia').directive(
-  'mathExpressionContentEditor',
-  downgradeComponent({
-    component: MathExpressionContentEditorComponent
-  }));

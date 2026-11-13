@@ -16,37 +16,48 @@
  * @fileoverview Component for Subtitled Html editor.
  */
 
-import { Component, EventEmitter, Input, OnInit, Output, ChangeDetectorRef } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+  ChangeDetectorRef,
+} from '@angular/core';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {
+  Schema,
+  SchemaDefaultValue,
+} from 'services/schema-default-value.service';
 
 interface SubtitledHtmlEditorSchema {
-  type: string;
-  'ui_config': unknown | {}
+  type: 'html';
+  ui_config: Schema | {};
 }
 
 @Component({
   selector: 'subtitled-html-editor',
-  templateUrl: './subtitled-html-editor.component.html'
+  templateUrl: './subtitled-html-editor.component.html',
 })
 export class SubtitledHtmlEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
-  @Input() schema!: { 'replacement_ui_config': unknown | {} };
-  @Input() value!: { _html: unknown };
+  @Input() schema!: {replacement_ui_config: Schema | {}};
+  @Input() value!: SubtitledHtml;
   @Output() valueChanged = new EventEmitter();
   SCHEMA!: SubtitledHtmlEditorSchema;
 
-  constructor(private changeDetectorRef: ChangeDetectorRef) { }
+  constructor(private changeDetectorRef: ChangeDetectorRef) {}
 
   ngOnInit(): void {
-    const uiConfig = (
-      this.schema.replacement_ui_config ? this.schema.replacement_ui_config : {}
-    );
+    const uiConfig = this.schema.replacement_ui_config
+      ? this.schema.replacement_ui_config
+      : {};
     this.SCHEMA = {
       type: 'html',
-      ui_config: uiConfig
+      ui_config: uiConfig,
     };
   }
 
@@ -54,16 +65,19 @@ export class SubtitledHtmlEditorComponent implements OnInit {
     return this.SCHEMA;
   }
 
-  updateValue(newValue: unknown): void {
-    if (this.value._html === newValue) {
+  updateValue(newValue: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only html strings are accepted.
+    if (typeof newValue !== 'string') {
       return;
     }
-    this.value._html = newValue;
-    this.valueChanged.emit(this.value);
-    this.changeDetectorRef.detectChanges();
+    if (this.value) {
+      if (this.value.html === newValue) {
+        return;
+      }
+      this.value.html = newValue;
+      this.valueChanged.emit(this.value);
+      this.changeDetectorRef.detectChanges();
+    }
   }
 }
-
-angular.module('oppia').directive('subtitledHtmlEditor', downgradeComponent({
-  component: SubtitledHtmlEditorComponent
-}) as angular.IDirectiveFactory);

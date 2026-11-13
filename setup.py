@@ -18,26 +18,49 @@ Google Cloud Dataflow workers (Apache Beam).
 The package is built by running 'python setup.py sdist' in the build.py.
 """
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-import pkg_resources
+import re
+
+from core import feconf
+
 import setuptools
+from packaging import requirements
 
-# Configure the required packages and scripts to install.
-with open('requirements.txt', encoding='utf-8') as requirements_txt: # pylint: disable=replace-disallowed-function-calls
-    # The 'parse_requirements' returns a list of 'Requirement' objects.
-    # We need to transform these to strings using the str() function.
-    REQUIRED_PACKAGES = [
-        str(requirement)  # pylint: disable=replace-disallowed-function-calls
-        for requirement in pkg_resources.parse_requirements(requirements_txt)
-    ]
 
-setuptools.setup(
-    name='oppia-beam-job',
-    version='0.0.1',
-    description='Oppia Apache Beam package',
-    install_requires=REQUIRED_PACKAGES,
-    packages=setuptools.find_packages(),
-    include_package_data=True,
-)
+def main() -> None:
+    """Builds python package used by Google Cloud Dataflow workers."""
+    # Configure the required packages and scripts to install.
+    with open(
+        'requirements.txt', encoding='utf-8'
+    ) as requirements_txt:  # pylint: disable=replace-disallowed-function-calls
+        requirements_content = requirements_txt.read()
+        # Removing the hashes from the requirements.txt file because they are
+        # not supported by the 'Requirement' parsing while parsing the
+        # requirements.
+        modified_requirements_content = re.sub(
+            r'^\s*--hash=sha256:.*$|\\$',
+            '',
+            requirements_content,
+            flags=re.MULTILINE,
+        )
+
+        # Parse each non-empty, non-comment line as a requirement.
+        required_packages = [
+            str(requirements.Requirement(line))
+            for line in modified_requirements_content.splitlines()
+            if line.strip() and not line.strip().startswith('#')
+        ]
+
+    setuptools.setup(
+        name='oppia-beam-job',
+        version=feconf.OPPIA_VERSION,
+        description='Oppia Apache Beam package',
+        install_requires=required_packages,
+        packages=setuptools.find_packages(),
+        include_package_data=True,
+    )
+
+
+if __name__ == '__main__':  # pragma: no cover
+    main()

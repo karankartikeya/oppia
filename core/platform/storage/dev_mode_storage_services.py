@@ -16,12 +16,11 @@
 
 """Provides various functions from the Cloud Storage emulator."""
 
-from __future__ import absolute_import  # pylint: disable=import-only-modules
-from __future__ import unicode_literals  # pylint: disable=import-only-modules
+from __future__ import annotations
 
 from core.platform.storage import cloud_storage_emulator
 
-from typing import List, Union
+from typing import List, Optional, Union
 
 CLIENT = cloud_storage_emulator.CloudStorageEmulator()
 
@@ -56,10 +55,10 @@ def get(unused_bucket_name: str, filepath: str) -> bytes:
 
 
 def commit(
-        unused_bucket_name: str,
-        filepath: str,
-        raw_bytes: Union[bytes, str],
-        mimetype: str
+    unused_bucket_name: str,
+    filepath: str,
+    raw_bytes: Union[bytes, str],
+    mimetype: Optional[str],
 ) -> None:
     """Commits bytes to the relevant file.
 
@@ -67,12 +66,13 @@ def commit(
         unused_bucket_name: str. Unused name of the GCS bucket.
         filepath: str. The path to the relevant file.
         raw_bytes: bytes|str. The content to be stored in the file.
-        mimetype: str. The content-type of the file.
+        mimetype: Optional[str]. The content-type of the file.
     """
     # TODO(#13500): Refactor this method that only bytes are passed
     # into raw_bytes.
     blob = cloud_storage_emulator.EmulatorBlob(
-        filepath, raw_bytes, content_type=mimetype)
+        filepath, raw_bytes, content_type=mimetype
+    )
     CLIENT.upload_blob(filepath, blob)
 
 
@@ -87,7 +87,7 @@ def delete(unused_bucket_name: str, filepath: str) -> None:
 
 
 def copy(
-        unused_bucket_name: str, source_assets_path: str, dest_assets_path: str
+    unused_bucket_name: str, source_assets_path: str, dest_assets_path: str
 ) -> None:
     """Copies images from source_path.
 
@@ -97,15 +97,21 @@ def copy(
             folder.
         dest_assets_path: str. The path to the relevant file within the entity's
             assets folder.
+
+    Raises:
+        ValueError. Source asset does not exist at the given path.
     """
     src_blob = CLIENT.get_blob(source_assets_path)
     if src_blob is None:
-        raise Exception('Source asset does not exist.')
+        raise ValueError(
+            'Source asset does not exist at %s.' % source_assets_path,
+            source_assets_path,
+        )
     CLIENT.copy_blob(src_blob, dest_assets_path)
 
 
 def listdir(
-        unused_bucket_name: str, dir_name: str
+    unused_bucket_name: str, dir_name: str
 ) -> List[cloud_storage_emulator.EmulatorBlob]:
     """Lists all files in a directory.
 

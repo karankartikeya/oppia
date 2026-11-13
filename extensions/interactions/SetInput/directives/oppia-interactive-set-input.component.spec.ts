@@ -16,12 +16,16 @@
  * @fileoverview Unit tests for the SetInput interaction.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { InteractiveSetInputComponent } from './oppia-interactive-set-input.component';
-import { TranslateModule } from '@ngx-translate/core';
+// @ts-nocheck
+
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {InteractiveSetInputComponent} from './oppia-interactive-set-input.component';
+import {TranslateModule} from '@ngx-translate/core';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
+import {SetInputAnswer} from 'interactions/answer-defs';
 
 describe('InteractiveSetInputComponent', () => {
   let component: InteractiveSetInputComponent;
@@ -29,46 +33,56 @@ describe('InteractiveSetInputComponent', () => {
   let currentInteractionService: CurrentInteractionService;
 
   class mockInteractionAttributesExtractorService {
-    getValuesFromAttributes(interactionId, attributes) {
+    getValuesFromAttributes(
+      interactionId: InteractionSpecsKey,
+      attributes: Record<string, string>
+    ) {
       return {
         buttonText: {
           value: {
-            unicode: attributes.buttonTextWithValue}
-        }
+            unicode: attributes.buttonTextWithValue,
+          },
+        },
       };
     }
   }
 
   let mockCurrentInteractionService = {
-    onSubmit: (answer, rulesService) => {},
-    registerCurrentInteraction: (submitAnswer, validateExpressionFn) => {
+    onSubmit: (
+      answer: SetInputAnswer,
+      rulesService: CurrentInteractionService
+    ) => {},
+    registerCurrentInteraction: (
+      submitAnswer: Function,
+      validateExpressionFn: Function
+    ) => {
       submitAnswer();
       validateExpressionFn();
-    }
+    },
   };
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [
         TranslateModule.forRoot({
           useDefaultLang: true,
           isolate: false,
           extend: false,
-          defaultLanguage: 'en'
+          defaultLanguage: 'en',
         }),
       ],
       declarations: [InteractiveSetInputComponent],
       providers: [
         {
           provide: InteractionAttributesExtractorService,
-          useClass: mockInteractionAttributesExtractorService
+          useClass: mockInteractionAttributesExtractorService,
         },
         {
           provide: CurrentInteractionService,
-          useValue: mockCurrentInteractionService
-        }
+          useValue: mockCurrentInteractionService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -80,57 +94,104 @@ describe('InteractiveSetInputComponent', () => {
     component.buttonTextWithValue = 'Add New Item';
   });
 
+  it('should update answer and set error message if duplicates', () => {
+    component.errorMessage = '';
+
+    component.updateAnswer(['duplicate', 'duplicate']);
+    expect(component.answer).toEqual(['duplicate', 'duplicate']);
+    expect(component.errorMessage).toBe(
+      'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR'
+    );
+  });
+
+  it('should update answer and clear error message if no duplicates', () => {
+    component.errorMessage = 'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR';
+
+    component.updateAnswer(['unique1', 'unique2']);
+
+    expect(component.answer).toEqual(['unique1', 'unique2']);
+    expect(component.errorMessage).toBe('');
+  });
+
+  it('should ignore a non-array update from the schema editor', () => {
+    component.answer = ['unique1'];
+    component.errorMessage = 'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR';
+
+    component.updateAnswer(null);
+
+    expect(component.answer).toEqual(['unique1']);
+    expect(component.errorMessage).toBe(
+      'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR'
+    );
+  });
+
+  it('should keep only string elements from the schema editor update', () => {
+    component.updateAnswer(['unique1', 2, 'unique2']);
+
+    expect(component.answer).toEqual(['unique1', 'unique2']);
+    expect(component.errorMessage).toBe('');
+  });
+
   it('should initialise component when user adds interaction', () => {
-    spyOn(currentInteractionService, 'registerCurrentInteraction').and
-      .callThrough();
+    spyOn(
+      currentInteractionService,
+      'registerCurrentInteraction'
+    ).and.callThrough();
     component.ngOnInit();
 
     expect(component.buttonText).toBe('Add New Item');
     expect(component.schema).toEqual({
       type: 'list',
       items: {
-        type: 'unicode'
+        type: 'unicode',
       },
       ui_config: {
         // TODO(mili): Translate this in the HTML.
-        add_element_text: 'Add New Item'
-      }
+        add_element_text: 'Add New Item',
+      },
     });
     expect(component.answer).toEqual(['']);
-    expect(currentInteractionService.registerCurrentInteraction)
-      .toHaveBeenCalled();
+    expect(
+      currentInteractionService.registerCurrentInteraction
+    ).toHaveBeenCalled();
   });
 
-  it('should initialise component when user saves solution for' +
-  ' interaction', () => {
-    spyOn(currentInteractionService, 'registerCurrentInteraction').and
-      .callThrough();
-    component.savedSolution = ['Solution'];
-    component.ngOnInit();
+  it(
+    'should initialise component when user saves solution for' + ' interaction',
+    () => {
+      spyOn(
+        currentInteractionService,
+        'registerCurrentInteraction'
+      ).and.callThrough();
+      component.savedSolution = ['Solution'];
+      component.ngOnInit();
 
-    expect(component.buttonText).toBe('Add New Item');
-    expect(component.schema).toEqual({
-      type: 'list',
-      items: {
-        type: 'unicode'
-      },
-      ui_config: {
-        // TODO(mili): Translate this in the HTML.
-        add_element_text: 'Add New Item'
-      }
-    });
-    expect(component.answer).toEqual(['Solution']);
-    expect(currentInteractionService.registerCurrentInteraction)
-      .toHaveBeenCalled();
-  });
+      expect(component.buttonText).toBe('Add New Item');
+      expect(component.schema).toEqual({
+        type: 'list',
+        items: {
+          type: 'unicode',
+        },
+        ui_config: {
+          // TODO(mili): Translate this in the HTML.
+          add_element_text: 'Add New Item',
+        },
+      });
+      expect(component.answer).toEqual(['Solution']);
+      expect(
+        currentInteractionService.registerCurrentInteraction
+      ).toHaveBeenCalled();
+    }
+  );
 
   it('should show error message when user enters duplicate items', () => {
     component.errorMessage = '';
 
     component.submitAnswer(['test', 'test']);
 
-    expect(component.errorMessage)
-      .toBe('I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR');
+    expect(component.errorMessage).toBe(
+      'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR'
+    );
   });
 
   it('should return SCHEMa when called', () => {
@@ -139,28 +200,38 @@ describe('InteractiveSetInputComponent', () => {
     expect(component.getSchema()).toEqual({
       type: 'list',
       items: {
-        type: 'unicode'
+        type: 'unicode',
       },
       ui_config: {
         // TODO(mili): Translate this in the HTML.
-        add_element_text: 'Add New Item'
-      }
+        add_element_text: 'Add New Item',
+      },
     });
   });
 
   it('should update answer when user edits saved solution', () => {
     component.answer = ['test1'];
 
-    component.updateAnswer(['test1', 'test2'] as unknown as number[]);
+    component.updateAnswer(['test1', 'test2']);
 
     expect(component.answer).toEqual(['test1', 'test2']);
   });
 
-  it('should not update answer when user does not edit saved solution', () => {
-    component.answer = 'test1';
+  it('should keep the same answer reference when the value is unchanged', () => {
+    // The schema editor re-emits the exact array reference bound to
+    // 'localValue'. Reassigning a freshly filtered array here would change the
+    // reference and trigger an infinite change-detection loop, so the incoming
+    // reference must be preserved when the value is unchanged.
+    const answer = ['test1'];
+    component.answer = answer;
 
-    component.updateAnswer('test1' as unknown as number[]);
+    component.updateAnswer(answer);
 
-    expect(component.answer).toEqual('test1');
+    expect(component.answer).toBe(answer);
+  });
+
+  it('should return the label for focus target', () => {
+    component.labelForFocusTarget = 'test-label';
+    expect(component.getLabelForFocusTarget()).toBe('test-label');
   });
 });

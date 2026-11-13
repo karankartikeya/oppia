@@ -1,60 +1,28 @@
-<div>
+<div *ngIf="!isShowRestructuredStudyGuidesFeatureEnabled()" class="e2e-test-subtopic-preview-container">
   <div class="content-box">
     <div class="content">
       <span class="content-title">{{ editableTitle }}</span>
       <div class="html-content">
-        <angular-html-bind-wrapper [htmlData]="pageContents?.getHtml()">
-        </angular-html-bind-wrapper>
+        <oppia-rte-output-display [rteString]="pageContents?.getHtml()">
+        </oppia-rte-output-display>
       </div>
     </div>
   </div>
 </div>
 
-<style>
-  .content-box {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    margin: 0 auto;
-    top: 20vh;
-    width: 70%;
-  }
-  .content {
-    background-color: #FFF;
-    border-radius: 5px;
-    padding: 30px 35px;
-    width: 65%;
-  }
-  .content-title {
-    color: #00645C;
-    display: block;
-    font-family: Capriola, Roboto, Arial, sans-serif;
-    font-size: 30px;
-    margin-bottom: 15px;
-  }
-  .html-content {
-    background-color: #ECF5FC;
-    padding: 15px 25px;
-  }
-
-  @media screen and (max-width: 1100px) {
-    .content-box {
-      width: 100%;
-    }
-  }
-
-  @media screen and (max-width: 700px) {
-    .back-to-subtopic-container {
-      margin-bottom: 20px;
-      margin-left: 1%;
-      margin-top: 40px;
-    }
-    .content,
-    .content-box {
-      width: 100%;
-    }
-    .content {
-      padding: 30px;
-    }
-  }
-</style>
+<div *ngIf="isShowRestructuredStudyGuidesFeatureEnabled()" class="oppia-subtopic-viewer-container">
+  <p class="content-title">{{ editableTitle }}</p>
+  <div class="content-box">
+    <div class="content">
+      <div class="card" *ngFor="let section of sections">
+        <div class="card-header">
+          <h3 class="card-title">{{ section.heading.unicode }}</h3>
+        </div>
+        <div class="card-content">
+          <oppia-rte-output-display [rteString]="section.content.html">
+          </oppia-rte-output-display>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -8,8 +8,8 @@
   </p>
   <form role="form" class="form-horizontal">
     <fieldset>
-      <div class="form-group">
-        <label for="newFileInput">
+      <div class="mb-3">
+        <label for="newFileInput" class="form-label">
           Upload YAML file
         </label>
         <div class="col-lg-10 col-md-10 col-sm-10">
@@ -20,8 +20,8 @@
   </form>
 </div>
 <div class="modal-footer">
-  <button class="btn btn-secondary protractor-test-cancel-create" (click)="cancel()">Cancel</button>
-  <button class="btn btn-success protractor-test-submit-new-exploration" type="submit"
+  <button class="btn btn-secondary e2e-test-cancel-create" (click)="cancel()">Cancel</button>
+  <button class="btn btn-success e2e-test-submit-new-exploration" type="submit"
           (click)="save()">
     Upload Exploration
   </button>

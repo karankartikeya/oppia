@@ -16,20 +16,21 @@
  * @fileoverview Component for the Create Exploration/Collection modal.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { UserService } from 'services/user.service';
-import { ExplorationCreationService } from 'components/entity-creation-services/exploration-creation.service';
-import { CollectionCreationService } from 'components/entity-creation-services/collection-creation.service';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
+import {Component, OnInit} from '@angular/core';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {UserService} from 'services/user.service';
+import {ExplorationCreationService} from 'components/entity-creation-services/exploration-creation.service';
+import {CollectionCreationService} from 'components/entity-creation-services/collection-creation.service';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 
 @Component({
   selector: 'create-activity-modal',
   templateUrl: './create-activity-modal.component.html',
+  styleUrls: ['./create-activity-modal.component.css'],
 })
 export class CreateActivityModalComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   explorationImageUrl!: string;
   collectionImageUrl!: string;
@@ -43,9 +44,8 @@ export class CreateActivityModalComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.userService.getUserInfoAsync().then((userInfo) => {
-      this.canCreateCollections = (
-        userInfo.canCreateCollections());
+    this.userService.getUserInfoAsync().then(userInfo => {
+      this.canCreateCollections = userInfo.canCreateCollections();
     });
   }
 

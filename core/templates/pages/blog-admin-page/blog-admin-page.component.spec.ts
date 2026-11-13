@@ -16,15 +16,26 @@
  * @fileoverview Tests for Blog Admin tab component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, fakeAsync, flushMicrotasks, TestBed, tick } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  flushMicrotasks,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {FormsModule} from '@angular/forms';
 
-import { BlogAdminBackendApiService, BlogAdminPageData } from 'domain/blog-admin/blog-admin-backend-api.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { AdminTaskManagerService } from 'pages/admin-page/services/admin-task-manager.service';
-import { BlogAdminPageComponent } from 'pages/blog-admin-page/blog-admin-page.component';
+import {
+  BlogAdminBackendApiService,
+  BlogAdminPageData,
+} from 'domain/blog-admin/blog-admin-backend-api.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {AdminTaskManagerService} from 'pages/admin-page/services/admin-task-manager.service';
+import {BlogAdminPageComponent} from 'pages/blog-admin-page/blog-admin-page.component';
+import {AlertsService} from 'services/alerts.service';
+
 class MockWindowRef {
   nativeWindow = {
     confirm() {
@@ -35,11 +46,11 @@ class MockWindowRef {
       href: 'href',
       pathname: 'pathname',
       search: 'search',
-      hash: 'hash'
+      hash: 'hash',
     },
     open() {
       return;
-    }
+    },
   };
 }
 
@@ -49,53 +60,47 @@ describe('Blog Admin Page component ', () => {
 
   let blogAdminBackendApiService: BlogAdminBackendApiService;
   let adminTaskManagerService: AdminTaskManagerService;
+  let alertsService: AlertsService;
   let mockWindowRef: MockWindowRef;
 
   let confirmSpy: jasmine.Spy;
   let startTaskSpy: jasmine.Spy;
   let finishTaskSpy: jasmine.Spy;
+  let addInfoMessageSpy: jasmine.Spy;
+  let addSuccessMessageSpy: jasmine.Spy;
+  let addWarningSpy: jasmine.Spy;
 
   const blogAdminPageData: BlogAdminPageData = {
     roleToActions: {
-      blog_post_editor: ['action for editor']
+      blog_post_editor: ['action for editor'],
     },
-    configProperties: {
-      list_of_default_tags_for_blog_post: {
-        description: 'List of tags',
-        value: ['News'],
-        schema: {
-          type: 'list',
-          items: {
-            type: 'unicode'
-          },
-          validators: [{
-            id: 'is_uniquified',
-          }],
-        }
-      }
+    platformParameters: {
+      max_number_of_tags_assigned_to_blog_post: {
+        description: 'Max number of tags.',
+        value: 10,
+        schema: {type: 'float'},
+      },
     },
     updatableRoles: {
-      blog_post_editor: 'blog_post_editor'
-    }
+      blog_post_editor: 'blog_post_editor',
+    },
   };
 
   beforeEach(() => {
     mockWindowRef = new MockWindowRef();
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-        FormsModule
-      ],
+      imports: [HttpClientTestingModule, FormsModule],
       declarations: [BlogAdminPageComponent],
       providers: [
         BlogAdminBackendApiService,
         AdminTaskManagerService,
+        AlertsService,
         {
           provide: WindowRef,
-          useValue: mockWindowRef
-        }
+          useValue: mockWindowRef,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
 
     fixture = TestBed.createComponent(BlogAdminPageComponent);
@@ -105,11 +110,16 @@ describe('Blog Admin Page component ', () => {
   beforeEach(() => {
     blogAdminBackendApiService = TestBed.inject(BlogAdminBackendApiService);
     adminTaskManagerService = TestBed.inject(AdminTaskManagerService);
+    alertsService = TestBed.inject(AlertsService);
 
     startTaskSpy = spyOn(adminTaskManagerService, 'startTask');
     finishTaskSpy = spyOn(adminTaskManagerService, 'finishTask');
-    spyOn(blogAdminBackendApiService, 'getDataAsync')
-      .and.resolveTo(blogAdminPageData);
+    addInfoMessageSpy = spyOn(alertsService, 'addInfoMessage');
+    addSuccessMessageSpy = spyOn(alertsService, 'addSuccessMessage');
+    addWarningSpy = spyOn(alertsService, 'addWarning');
+    spyOn(blogAdminBackendApiService, 'getDataAsync').and.resolveTo(
+      blogAdminPageData
+    );
     confirmSpy = spyOn(mockWindowRef.nativeWindow, 'confirm');
   });
 
@@ -124,35 +134,35 @@ describe('Blog Admin Page component ', () => {
     expect(component.formData.removeEditorRole.username).toBe('');
   }));
 
-  it('should set correct values for properties when initialized',
-    fakeAsync(() => {
-      expect(component.UPDATABLE_ROLES).toEqual({});
-      expect(component.roleToActions).toBe(undefined);
-
-      component.ngOnInit();
-      tick();
-
-      expect(component.UPDATABLE_ROLES).toEqual(
-        blogAdminPageData.updatableRoles);
-      expect(component.roleToActions).toEqual(
-        blogAdminPageData.roleToActions);
-    }));
-
-  it('should reload config properties when initialized', fakeAsync(() => {
-    expect(component.configProperties).toEqual({});
+  it('should set correct values for properties when initialized', fakeAsync(() => {
+    expect(component.UPDATABLE_ROLES).toEqual({});
+    expect(component.roleToActions).toBe(undefined);
 
     component.ngOnInit();
     tick();
 
-    expect(component.configProperties).toEqual(
-      blogAdminPageData.configProperties);
+    expect(component.UPDATABLE_ROLES).toEqual(blogAdminPageData.updatableRoles);
+    expect(component.roleToActions).toEqual(blogAdminPageData.roleToActions);
   }));
 
-  it('should return schema callback when calling ' +
-  '\'getSchemaCallback\'', () => {
-    let result = component.getSchemaCallback({type: 'bool'});
-    expect(result()).toEqual({type: 'bool'});
-  });
+  it('should reload platform parameters when initialized', fakeAsync(() => {
+    expect(component.platformParameters).toEqual({});
+
+    component.ngOnInit();
+    tick();
+
+    expect(component.platformParameters).toEqual(
+      blogAdminPageData.platformParameters
+    );
+  }));
+
+  it(
+    'should return schema callback when calling ' + "'getSchemaCallback'",
+    () => {
+      let result = component.getSchemaCallback({type: 'bool'});
+      expect(result()).toEqual({type: 'bool'});
+    }
+  );
 
   describe('when updating role of user ', () => {
     it('should submit update role form successfully', fakeAsync(() => {
@@ -160,90 +170,91 @@ describe('Blog Admin Page component ', () => {
       tick();
       component.formData.updateRole.newRole = 'BLOG_ADMIN';
       component.formData.updateRole.username = 'username';
-      spyOn(blogAdminBackendApiService, 'updateUserRoleAsync')
-        .and.returnValue(Promise.resolve());
+      spyOn(blogAdminBackendApiService, 'updateUserRoleAsync').and.returnValue(
+        Promise.resolve()
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
       component.submitUpdateRoleForm(component.formData.updateRole);
 
       expect(startTaskSpy).toHaveBeenCalled();
-      expect(component.statusMessage).toBe('Updating User Role');
+      expect(addInfoMessageSpy).toHaveBeenCalledWith('Updating User Role');
 
       flushMicrotasks();
 
-      expect(component.statusMessage).toBe(
-        'Role of username successfully updated to BLOG_ADMIN');
+      expect(addSuccessMessageSpy).toHaveBeenCalledWith(
+        'Role of username successfully updated to BLOG_ADMIN',
+        10000
+      );
       expect(finishTaskSpy).toHaveBeenCalled();
     }));
 
-    it('should not submit update role form if already a task is in queue',
-      fakeAsync(() => {
-        component.ngOnInit();
-        tick();
-        component.formData.updateRole.newRole = 'BLOG_ADMIN';
-        component.formData.updateRole.username = 'username';
-        spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
+    it('should not submit update role form if already a task is in queue', fakeAsync(() => {
+      component.ngOnInit();
+      tick();
+      component.formData.updateRole.newRole = 'BLOG_ADMIN';
+      component.formData.updateRole.username = 'username';
+      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
 
-        component.submitUpdateRoleForm(component.formData.updateRole);
+      component.submitUpdateRoleForm(component.formData.updateRole);
 
-        expect(startTaskSpy).not.toHaveBeenCalled();
-        expect(finishTaskSpy).not.toHaveBeenCalled();
-      }));
+      expect(startTaskSpy).not.toHaveBeenCalled();
+      expect(finishTaskSpy).not.toHaveBeenCalled();
+    }));
 
-    it('should not submit update role form in case of backend error',
-      fakeAsync(() => {
-        component.ngOnInit();
-        tick();
-        component.formData.updateRole.newRole = 'BLOG_ADMIN';
-        component.formData.updateRole.username = 'username';
-        spyOn(blogAdminBackendApiService, 'updateUserRoleAsync')
-          .and.returnValue(Promise.reject('Internal Server Error.'));
-        spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
-        component.submitUpdateRoleForm(component.formData.updateRole);
+    it('should not submit update role form in case of backend error', fakeAsync(() => {
+      component.ngOnInit();
+      tick();
+      component.formData.updateRole.newRole = 'BLOG_ADMIN';
+      component.formData.updateRole.username = 'username';
+      spyOn(blogAdminBackendApiService, 'updateUserRoleAsync').and.returnValue(
+        Promise.reject('The user already has this role.')
+      );
+      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
+      component.submitUpdateRoleForm(component.formData.updateRole);
 
-        expect(startTaskSpy).toHaveBeenCalled();
-        expect(component.statusMessage).toBe('Updating User Role');
+      expect(startTaskSpy).toHaveBeenCalled();
+      expect(addInfoMessageSpy).toHaveBeenCalledWith('Updating User Role');
 
-        flushMicrotasks();
+      flushMicrotasks();
 
-        expect(component.statusMessage).toBe(
-          'Server error: Internal Server Error.');
-        expect(finishTaskSpy).toHaveBeenCalled();
-      }));
+      expect(addWarningSpy).toHaveBeenCalledWith(
+        'The user already has this role.'
+      );
+      expect(finishTaskSpy).toHaveBeenCalled();
+    }));
 
-    it('should not enable update role button if the input values are invalid',
-      fakeAsync(() => {
-        component.ngOnInit();
-        tick();
-        component.formData.updateRole.newRole = 'BLOG_ADMIN';
-        component.formData.updateRole.username = '';
+    it('should not enable update role button if the input values are invalid', fakeAsync(() => {
+      component.ngOnInit();
+      tick();
+      component.formData.updateRole.newRole = 'BLOG_ADMIN';
+      component.formData.updateRole.username = '';
 
-        expect(component.formData.updateRole.isValid()).toBe(false);
+      expect(component.formData.updateRole.isValid()).toBe(false);
 
-        component.formData.updateRole.newRole = 'BLOG';
-        component.formData.updateRole.username = 'username';
+      component.formData.updateRole.newRole = 'BLOG';
+      component.formData.updateRole.username = 'username';
 
-        expect(component.formData.updateRole.isValid()).toBe(false);
+      expect(component.formData.updateRole.isValid()).toBe(false);
 
-        component.formData.updateRole.newRole = 'ADMIN';
-        component.formData.updateRole.newRole = '';
+      component.formData.updateRole.newRole = 'ADMIN';
+      component.formData.updateRole.newRole = '';
 
-        expect(component.formData.updateRole.isValid()).toBe(false);
+      expect(component.formData.updateRole.isValid()).toBe(false);
 
-        component.formData.updateRole.newRole = null;
-        component.formData.updateRole.username = 'username';
+      component.formData.updateRole.newRole = null;
+      component.formData.updateRole.username = 'username';
 
-        expect(component.formData.updateRole.isValid()).toBe(false);
-      }));
+      expect(component.formData.updateRole.isValid()).toBe(false);
+    }));
 
-    it('should enable update role button if the input values are valid',
-      fakeAsync(() => {
-        component.ngOnInit();
-        tick();
-        component.formData.updateRole.newRole = 'BLOG_POST_EDITOR';
-        component.formData.updateRole.username = 'username';
+    it('should enable update role button if the input values are valid', fakeAsync(() => {
+      component.ngOnInit();
+      tick();
+      component.formData.updateRole.newRole = 'BLOG_POST_EDITOR';
+      component.formData.updateRole.username = 'username';
 
-        expect(component.formData.updateRole.isValid()).toBe(true);
-      }));
+      expect(component.formData.updateRole.isValid()).toBe(true);
+    }));
   });
 
   describe('when removing a blog editor', () => {
@@ -251,171 +262,154 @@ describe('Blog Admin Page component ', () => {
       component.ngOnInit();
       tick();
       component.formData.removeEditorRole.username = 'username';
-      spyOn(blogAdminBackendApiService, 'removeBlogEditorAsync')
-        .and.returnValue(Promise.resolve(Object));
+      spyOn(
+        blogAdminBackendApiService,
+        'removeBlogEditorAsync'
+      ).and.returnValue(Promise.resolve(Object));
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
       component.submitRemoveEditorRoleForm(component.formData.updateRole);
 
       expect(startTaskSpy).toHaveBeenCalled();
-      expect(component.statusMessage).toBe('Processing query...');
+      expect(addInfoMessageSpy).toHaveBeenCalledWith('Processing query...');
 
       flushMicrotasks();
 
-      expect(component.statusMessage).toBe('Success.');
+      expect(addSuccessMessageSpy).toHaveBeenCalledWith('Success.', 10000);
       expect(finishTaskSpy).toHaveBeenCalled();
     }));
 
-    it('should not submit remove editor role form if already' +
-      'a task is in queue', fakeAsync(() => {
-      component.ngOnInit();
-      tick();
-      component.formData.removeEditorRole.username = 'username';
-      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
-
-      component.submitRemoveEditorRoleForm(component.formData.updateRole);
-
-      expect(startTaskSpy).not.toHaveBeenCalled();
-      expect(finishTaskSpy).not.toHaveBeenCalled();
-    }));
-
-    it('should not submit remove editor role form in case of backend error',
+    it(
+      'should not submit remove editor role form if already' +
+        'a task is in queue',
       fakeAsync(() => {
         component.ngOnInit();
         tick();
         component.formData.removeEditorRole.username = 'username';
-        spyOn(blogAdminBackendApiService, 'removeBlogEditorAsync')
-          .and.returnValue(Promise.reject({
-            error: { error: 'Internal Server Error.'}
-          }));
-        spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
+        spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
 
         component.submitRemoveEditorRoleForm(component.formData.updateRole);
 
-        expect(startTaskSpy).toHaveBeenCalled();
-        expect(component.statusMessage).toBe('Processing query...');
+        expect(startTaskSpy).not.toHaveBeenCalled();
+        expect(finishTaskSpy).not.toHaveBeenCalled();
+      })
+    );
 
-        flushMicrotasks();
-
-        expect(component.statusMessage).toBe(
-          'Server error: Internal Server Error.');
-        expect(finishTaskSpy).toHaveBeenCalled();
-      }));
-
-    it('should not enable remove role button if the input values are invalid',
-      fakeAsync(() => {
-        component.ngOnInit();
-        tick();
-        component.formData.removeEditorRole.username = '';
-
-        expect(component.formData.removeEditorRole.isValid()).toBe(false);
-      }));
-
-    it('should enable remove role button if the input values are valid',
-      fakeAsync(() => {
-        component.ngOnInit();
-        tick();
-        component.formData.removeEditorRole.username = 'username';
-
-        expect(component.formData.removeEditorRole.isValid()).toBe(true);
-      }));
-  });
-
-  describe('when clicking on revert to default button ', () => {
-    it('should revert to default config property ' +
-      'successfully', fakeAsync(() => {
-      // Setting confirm button clicked to be true.
-      confirmSpy.and.returnValue(true);
-      spyOn(blogAdminBackendApiService, 'revertConfigPropertyAsync')
-        .and.returnValue(Promise.resolve());
-
-      component.revertToDefaultConfigPropertyValue('configId1');
+    it('should not submit remove editor role form in case of backend error', fakeAsync(() => {
+      component.ngOnInit();
       tick();
+      component.formData.removeEditorRole.username = 'username';
+      spyOn(
+        blogAdminBackendApiService,
+        'removeBlogEditorAsync'
+      ).and.returnValue(
+        Promise.reject({
+          error: {error: 'Internal Server Error.'},
+        })
+      );
+      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
 
-      expect(component.statusMessage).toBe(
-        'Config property reverted successfully.');
+      component.submitRemoveEditorRoleForm(component.formData.updateRole);
+
+      expect(startTaskSpy).toHaveBeenCalled();
+      expect(addInfoMessageSpy).toHaveBeenCalledWith('Processing query...');
+
+      flushMicrotasks();
+
+      expect(addWarningSpy).toHaveBeenCalledWith(
+        'Server error: Internal Server Error.'
+      );
+      expect(finishTaskSpy).toHaveBeenCalled();
     }));
 
-    it('should not revert to default config property ' +
-      'in case of backend error', fakeAsync(() => {
-      // Setting confirm button clicked to be true.
-      confirmSpy.and.returnValue(true);
-      spyOn(blogAdminBackendApiService, 'revertConfigPropertyAsync')
-        .and.returnValue(Promise.reject('Internal Server Error.'));
-
-      component.revertToDefaultConfigPropertyValue('configId1');
+    it('should not enable remove role button if the input values are invalid', fakeAsync(() => {
+      component.ngOnInit();
       tick();
+      component.formData.removeEditorRole.username = '';
 
-      expect(component.statusMessage).toBe(
-        'Server error: Internal Server Error.');
+      expect(component.formData.removeEditorRole.isValid()).toBe(false);
     }));
 
-    it('should not request backend to revert to default config property ' +
-      'if cancel button is clicked in the alert', fakeAsync(() => {
-      // Setting confirm button clicked to be false.
-      confirmSpy.and.returnValue(false);
-      let revertConfigSpy = spyOn(
-        blogAdminBackendApiService, 'revertConfigPropertyAsync');
-
-      component.revertToDefaultConfigPropertyValue('configId1');
+    it('should enable remove role button if the input values are valid', fakeAsync(() => {
+      component.ngOnInit();
       tick();
+      component.formData.removeEditorRole.username = 'username';
 
-      expect(revertConfigSpy).not.toHaveBeenCalled();
+      expect(component.formData.removeEditorRole.isValid()).toBe(true);
     }));
   });
 
   describe('when clicking on save button ', () => {
-    it('should save config properties successfully', fakeAsync(() => {
+    it('should save platform parameters successfully', fakeAsync(() => {
       // Setting confirm button clicked to be true.
       confirmSpy.and.returnValue(true);
-      spyOn(blogAdminBackendApiService, 'saveConfigPropertiesAsync')
-        .and.returnValue(Promise.resolve());
+      spyOn(
+        blogAdminBackendApiService,
+        'savePlatformParametersAsync'
+      ).and.returnValue(Promise.resolve());
 
-      component.configProperties = blogAdminPageData.configProperties;
-      component.saveConfigProperties();
+      component.platformParameters = blogAdminPageData.platformParameters;
+      component.savePlatformParameters();
       tick();
 
-      expect(component.statusMessage).toBe(
-        'Data saved successfully.');
+      expect(addSuccessMessageSpy).toHaveBeenCalledWith(
+        'Data saved successfully.',
+        10000
+      );
     }));
 
-    it('should not save config properties ' +
-      'in case of backend error', fakeAsync(() => {
-      // Setting confirm button clicked to be true.
-      confirmSpy.and.returnValue(true);
-      spyOn(blogAdminBackendApiService, 'saveConfigPropertiesAsync')
-        .and.returnValue(Promise.reject('Internal Server Error.'));
+    it(
+      'should not save platform parameters ' + 'in case of backend error',
+      fakeAsync(() => {
+        // Setting confirm button clicked to be true.
+        confirmSpy.and.returnValue(true);
+        spyOn(
+          blogAdminBackendApiService,
+          'savePlatformParametersAsync'
+        ).and.returnValue(Promise.reject('Internal Server Error.'));
 
-      component.saveConfigProperties();
-      tick();
+        component.savePlatformParameters();
+        tick();
 
-      expect(component.statusMessage).toBe(
-        'Server error: Internal Server Error.');
-    }));
+        expect(addWarningSpy).toHaveBeenCalledWith(
+          'Server error: Internal Server Error.'
+        );
+      })
+    );
 
-    it('should not save config properties ' +
-      'if a task is still running in the queue', fakeAsync(() => {
-      // Setting task is still running to be true.
-      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
-      let saveConfigSpy = spyOn(
-        blogAdminBackendApiService, 'saveConfigPropertiesAsync');
+    it(
+      'should not save platform parameters ' +
+        'if a task is still running in the queue',
+      fakeAsync(() => {
+        // Setting task is still running to be true.
+        spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
+        let saveConfigSpy = spyOn(
+          blogAdminBackendApiService,
+          'savePlatformParametersAsync'
+        );
 
-      component.saveConfigProperties();
-      tick();
+        component.savePlatformParameters();
+        tick();
 
-      expect(saveConfigSpy).not.toHaveBeenCalled();
-    }));
+        expect(saveConfigSpy).not.toHaveBeenCalled();
+      })
+    );
 
-    it('should not request backend to save config properties ' +
-      'if cancel button is clicked in the alert', fakeAsync(() => {
-      // Setting confirm button clicked to be false.
-      confirmSpy.and.returnValue(false);
-      let saveConfigSpy = spyOn(
-        blogAdminBackendApiService, 'saveConfigPropertiesAsync');
+    it(
+      'should not request backend to save platform parameters ' +
+        'if cancel button is clicked in the alert',
+      fakeAsync(() => {
+        // Setting confirm button clicked to be false.
+        confirmSpy.and.returnValue(false);
+        let saveConfigSpy = spyOn(
+          blogAdminBackendApiService,
+          'savePlatformParametersAsync'
+        );
 
-      component.saveConfigProperties();
-      tick();
+        component.savePlatformParameters();
+        tick();
 
-      expect(saveConfigSpy).not.toHaveBeenCalled();
-    }));
+        expect(saveConfigSpy).not.toHaveBeenCalled();
+      })
+    );
   });
 });

@@ -20,44 +20,52 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { SetInputRulesService } from './set-input-rules.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {SetInputRulesService} from './set-input-rules.service';
 import eq from 'lodash/eq';
-import { InteractionRulesService } from 'pages/exploration-player-page/services/answer-classification.service';
-import { SetInputCustomizationArgs } from 'interactions/customization-args-defs';
-import { Schema } from 'services/schema-default-value.service';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {SetInputCustomizationArgs} from 'interactions/customization-args-defs';
+import {
+  Schema,
+  SchemaDefaultValue,
+} from 'services/schema-default-value.service';
+import type {SetInputAnswer} from 'interactions/answer-defs';
 
 @Component({
   selector: 'oppia-interactive-set-input',
-  templateUrl: './set-input-interaction.component.html'
+  templateUrl: './set-input-interaction.component.html',
 })
 export class InteractiveSetInputComponent implements OnInit {
-  @Input() buttonTextWithValue: string;
-  @Input() savedSolution;
-  errorMessage: string;
-  answer;
-  schema: {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() buttonTextWithValue!: string;
+  @Input() savedSolution!: SetInputAnswer;
+  @Input() labelForFocusTarget!: string;
+  errorMessage!: string;
+  answer!: SetInputAnswer;
+  schema!: {
     type: string;
-    items: {
-      type: string;
-    };
-    'ui_config': {
-      'add_element_text': string;
+    items:
+      | {
+          type: string;
+        }
+      | Schema;
+    ui_config: {
+      add_element_text: string;
     };
   };
-  buttonText: string;
+
+  buttonText!: string;
 
   constructor(
     private currentInteractionService: CurrentInteractionService,
-    private interactionAttributesExtractorService:
-      InteractionAttributesExtractorService,
+    private interactionAttributesExtractorService: InteractionAttributesExtractorService,
     private setInputRulesService: SetInputRulesService
-  ) { }
+  ) {}
 
-  private hasDuplicates(answer) {
+  private hasDuplicates(answer: SetInputAnswer): boolean {
     for (var i = 0; i < answer.length; i++) {
       for (var j = 0; j < i; j++) {
         if (eq(answer[i], answer[j])) {
@@ -68,75 +76,86 @@ export class InteractiveSetInputComponent implements OnInit {
     return false;
   }
 
-  private hasBlankOption(answer) {
-    return answer.some((element) => {
-      return (element === '');
+  private hasBlankOption(answer: SetInputAnswer): boolean {
+    return answer.some(element => {
+      return element === '';
     });
   }
 
-  updateAnswer(answer: number[]): void {
+  updateAnswer(answer: SchemaDefaultValue): void {
+    // The schema editor may emit non-array values (e.g. null) in some edge
+    // cases, so only array values are used as the set answer, and each element
+    // is narrowed to a string as the editor produces string elements.
+    if (!Array.isArray(answer)) {
+      return;
+    }
+    // The schema editor's 'localValue' setter re-emits 'localValueChange'
+    // whenever the bound value changes reference. Since this handler reassigns
+    // 'answer' to a freshly filtered array, skipping the update when the value
+    // is unchanged prevents an infinite change-detection loop. TextInput and
+    // NumericInput already use the same identity guard.
     if (this.answer === answer) {
       return;
     }
-    this.answer = answer;
+    this.answer = answer.filter(
+      (element): element is string => typeof element === 'string'
+    );
+    this.errorMessage = this.hasDuplicates(this.answer)
+      ? 'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR'
+      : '';
   }
 
   getSchema(): Schema {
-    return this.schema as unknown as Schema;
+    return this.schema as Schema;
+  }
+
+  getLabelForFocusTarget(): string {
+    return this.labelForFocusTarget;
   }
 
   ngOnInit(): void {
-    const {
-      buttonText
-    } = this.interactionAttributesExtractorService.getValuesFromAttributes(
-      'SetInput',
-      {buttonTextWithValue: this.buttonTextWithValue}
-    ) as SetInputCustomizationArgs;
+    const {buttonText} =
+      this.interactionAttributesExtractorService.getValuesFromAttributes(
+        'SetInput',
+        {buttonTextWithValue: this.buttonTextWithValue}
+      ) as SetInputCustomizationArgs;
     this.buttonText = buttonText.value.unicode;
     this.schema = {
       type: 'list',
       items: {
-        type: 'unicode'
+        type: 'unicode',
       },
       ui_config: {
         // TODO(mili): Translate this in the HTML.
-        add_element_text: 'I18N_INTERACTIONS_SET_INPUT_ADD_ITEM'
-      }
+        add_element_text: 'I18N_INTERACTIONS_SET_INPUT_ADD_ITEM',
+      },
     };
     if (this.buttonText) {
       this.schema.ui_config.add_element_text = this.buttonText;
     }
 
     // Adds an input field by default.
-    this.answer = (
-      this.savedSolution !== undefined ?
-      this.savedSolution : ['']
-    );
+    this.answer = this.savedSolution !== undefined ? this.savedSolution : [''];
 
     this.currentInteractionService.registerCurrentInteraction(
-      () => this.submitAnswer(this.answer), () => this.isAnswerValid());
+      () => this.submitAnswer(this.answer),
+      () => this.isAnswerValid()
+    );
   }
 
-  submitAnswer(answer: unknown): void {
+  submitAnswer(answer: SetInputAnswer): void {
     if (this.hasDuplicates(answer)) {
-      this.errorMessage = (
-        'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR');
+      this.errorMessage = 'I18N_INTERACTIONS_SET_INPUT_DUPLICATES_ERROR';
     } else {
       this.errorMessage = '';
       this.currentInteractionService.onSubmit(
-        answer as string,
-        this.setInputRulesService as unknown as InteractionRulesService);
+        answer,
+        this.setInputRulesService
+      );
     }
   }
 
   isAnswerValid(): boolean {
-    return (
-      this.answer.length > 0 && !this.hasBlankOption(this.answer));
+    return this.answer.length > 0 && !this.hasBlankOption(this.answer);
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaInteractiveSetInput',
-  downgradeComponent({
-    component: InteractiveSetInputComponent
-  }));

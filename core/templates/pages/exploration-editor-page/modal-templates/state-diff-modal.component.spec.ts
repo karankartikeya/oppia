@@ -16,39 +16,39 @@
  * @fileoverview Unit tests for StateDiffModalComponent.
  */
 
-import { StateObjectFactory } from 'domain/state/StateObjectFactory';
-import { StateDiffModalBackendApiService } from '../services/state-diff-modal-backend-api.service';
-import { ComponentFixture, fakeAsync, TestBed, tick, waitForAsync } from '@angular/core/testing';
-import { StateDiffModalComponent } from './state-diff-modal.component';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ContextService } from 'services/context.service';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
+import {State} from 'domain/state/state.model';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {
+  headersAndYamlStrs,
+  StateDiffModalComponent,
+} from './state-diff-modal.component';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {HistoryTabYamlConversionService} from '../services/history-tab-yaml-conversion.service';
 
 describe('State Diff Modal Component', () => {
-  let sof: StateObjectFactory;
-  let sdmbas: StateDiffModalBackendApiService;
-  let contextService: ContextService;
   let component: StateDiffModalComponent;
   let fixture: ComponentFixture<StateDiffModalComponent>;
+  let historyTabYamlConversionService: HistoryTabYamlConversionService;
 
-  let headers = null;
-  let newState = null;
+  let headers: headersAndYamlStrs;
+  let newState: State | null;
   let newStateName = 'New state';
-  let oldState = null;
+  let oldState: State | null;
   let oldStateName = 'Old state';
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
       declarations: [StateDiffModalComponent],
-      providers: [
-        NgbActiveModal,
-        UrlInterpolationService,
-        ContextService,
-        StateDiffModalBackendApiService
-      ],
+      providers: [NgbActiveModal, HistoryTabYamlConversionService],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
@@ -56,104 +56,74 @@ describe('State Diff Modal Component', () => {
   beforeEach(() => {
     fixture = TestBed.createComponent(StateDiffModalComponent);
     component = fixture.componentInstance;
-    sof = TestBed.inject(StateObjectFactory);
-    sdmbas = TestBed.inject(StateDiffModalBackendApiService);
-    sdmbas = (sdmbas as unknown) as
-     jasmine.SpyObj<StateDiffModalBackendApiService>;
-    contextService = TestBed.inject(ContextService);
-    contextService = (contextService as unknown) as
-     jasmine.SpyObj<ContextService>;
+    historyTabYamlConversionService = TestBed.inject(
+      HistoryTabYamlConversionService
+    );
   });
 
-  describe('when new state and old state are truthy', () => {
-    beforeEach(() => {
-      newState = sof.createDefaultState(newState);
-      oldState = sof.createDefaultState(oldState);
+  beforeEach(() => {
+    newState = State.createDefaultState(
+      newStateName,
+      'content_0',
+      'default_outcome_1'
+    );
+    oldState = State.createDefaultState(
+      oldStateName,
+      'content_0',
+      'default_outcome_1'
+    );
 
-      component.headers = headers;
-      component.newState = newState;
-      component.newStateName = newStateName;
-      component.oldState = oldState;
-      component.oldStateName = oldStateName;
+    component.headers = headers;
+    component.newState = newState;
+    component.newStateName = newStateName;
+    component.oldState = oldState;
+    component.oldStateName = oldStateName;
+  });
+
+  it('should initialize component properties after component is initialized', fakeAsync(() => {
+    spyOn(
+      historyTabYamlConversionService,
+      'getYamlStringFromStateOrMetadata'
+    ).and.resolveTo('YAML data');
+
+    component.ngOnInit();
+    tick(201);
+
+    fixture.whenStable().then(() => {
+      expect(component.headers).toBe(headers);
+      expect(component.newStateName).toBe(newStateName);
+      expect(component.oldStateName).toBe(oldStateName);
     });
+  }));
 
-    it('should initialize component properties after component is initialized',
-      fakeAsync(() => {
-        spyOn(sdmbas, 'fetchYaml').and.returnValue(Promise.resolve({
-          yaml: 'Yaml data'
-        }));
-        spyOn(contextService, 'getExplorationId').and.returnValue('exp1');
+  it('should evaluate YAML strings object', fakeAsync(() => {
+    spyOn(
+      historyTabYamlConversionService,
+      'getYamlStringFromStateOrMetadata'
+    ).and.resolveTo('YAML data');
 
-        component.ngOnInit();
-        tick(201);
-        fixture.whenStable()
-          .then(() => {
-            expect(component.headers).toBe(headers);
-            expect(component.newStateName).toBe(newStateName);
-            expect(component.oldStateName).toBe(oldStateName);
-          });
-      }));
+    component.ngOnInit();
+    tick(201);
 
-    it('should evaluate yaml strings object', fakeAsync(() => {
-      spyOn(sdmbas, 'fetchYaml').and.returnValue(Promise.resolve({
-        yaml: 'Yaml data'
-      }));
-      spyOn(contextService, 'getExplorationId').and.returnValue('exp1');
-
-      component.ngOnInit();
-      tick(201);
-      fixture.whenStable()
-        .then(() => {
-          expect(component.yamlStrs.leftPane).toBe('Yaml data');
-          expect(component.yamlStrs.rightPane).toBe('Yaml data');
-        });
-    }));
-  });
-
-  describe('when new state and old state are falsy', () => {
-    beforeEach(() => {
-      oldState = null;
-      newState = null;
-
-      component.headers = headers;
-      component.newState = newState;
-      component.newStateName = newStateName;
-      component.oldState = oldState;
-      component.oldStateName = oldStateName;
+    fixture.whenStable().then(() => {
+      expect(component.yamlStrs.leftPane).toBe('YAML data');
+      expect(component.yamlStrs.rightPane).toBe('YAML data');
     });
+  }));
 
-    it('should initialize component properties after component is initialized',
-      fakeAsync(() => {
-        spyOn(sdmbas, 'fetchYaml').and.returnValue(Promise.resolve({
-          yaml: 'Yaml data'
-        }));
-        spyOn(contextService, 'getExplorationId').and.returnValue('exp1');
+  it('should evaluate YAML string objects for translation changes', fakeAsync(() => {
+    spyOn(
+      historyTabYamlConversionService,
+      'getYamlStringFromTranslations'
+    ).and.resolveTo('YAML data');
 
-        component.ngOnInit();
-        tick(201);
-        fixture.whenStable()
-          .then(() => {
-            expect(component.headers).toBe(headers);
-            expect(component.newStateName).toBe(newStateName);
-            expect(component.oldStateName).toBe(oldStateName);
-          });
-      }));
+    component.showingTranslationChanges = true;
+    component.ngOnInit();
+    tick();
 
-    it('should evaluate yaml strings object when timeout tasks are flushed',
-      fakeAsync(() => {
-        spyOn(sdmbas, 'fetchYaml').and.returnValue(Promise.resolve({
-          yaml: 'Yaml data'
-        }));
-
-        spyOn(contextService, 'getExplorationId').and.returnValue('exp1');
-
-        component.ngOnInit();
-        tick(201);
-        fixture.whenStable()
-          .then(() => {
-            expect(component.yamlStrs.leftPane).toBe('');
-            expect(component.yamlStrs.rightPane).toBe('');
-          });
-      }));
-  });
+    fixture.whenStable().then(() => {
+      expect(component.yamlStrs.leftPane).toBe('YAML data');
+      expect(component.yamlStrs.rightPane).toBe('YAML data');
+    });
+  }));
 });

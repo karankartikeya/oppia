@@ -20,21 +20,20 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 interface ClickRegion {
-  clickPosition: number[],
-  clickedRegions: string[]
+  clickPosition: number[];
+  clickedRegions: string[];
 }
 @Component({
   selector: 'oppia-short-response-image-click-input',
   templateUrl: './image-click-input-short-response.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class ShortResponseImageClickInput implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() answer!: string;
   clickRegionLabel!: string;
@@ -43,14 +42,13 @@ export class ShortResponseImageClickInput implements OnInit {
 
   ngOnInit(): void {
     const _answer = this.htmlEscaperService.escapedJsonToObj(
-      this.answer) as ClickRegion;
-    this.clickRegionLabel = '(Clicks on ' + (
-      _answer.clickedRegions.length > 0 ?
-        '\'' + _answer.clickedRegions[0] + '\'' : 'image') + ')';
+      this.answer
+    ) as ClickRegion;
+    this.clickRegionLabel =
+      '(Clicks on ' +
+      (_answer.clickedRegions.length > 0
+        ? "'" + _answer.clickedRegions[0] + "'"
+        : 'image') +
+      ')';
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaShortResponseImageClickInput', downgradeComponent({
-    component: ShortResponseImageClickInput
-  }) as angular.IDirectiveFactory);

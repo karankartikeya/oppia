@@ -16,41 +16,38 @@
  * @fileoverview Unit tests for ExplorationPropertyService.
  */
 
-import { TestBed, waitForAsync } from '@angular/core/testing';
+import {TestBed, waitForAsync} from '@angular/core/testing';
 
-import { ExplorationPropertyService } from 'pages/exploration-editor-page/services/exploration-property.service';
-import { ChangeListService } from 'pages/exploration-editor-page/services/change-list.service';
+import {ExplorationPropertyService} from 'pages/exploration-editor-page/services/exploration-property.service';
+import {ChangeListService} from 'pages/exploration-editor-page/services/change-list.service';
 
-import { ParamChangesObjectFactory } from 'domain/exploration/ParamChangesObjectFactory';
-import { ParamSpecsObjectFactory } from 'domain/exploration/ParamSpecsObjectFactory';
-import { ParamSpecObjectFactory } from 'domain/exploration/ParamSpecObjectFactory';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import {ParamChanges} from 'domain/exploration/param-changes.model';
+import {ParamSpecs} from 'domain/exploration/param-specs.model';
+import {ParamSpec} from 'domain/exploration/param-spec.model';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ParamChange} from 'domain/exploration/param-change.model';
 
 describe('Exploration Property Service', () => {
   let explorationPropertyService: ExplorationPropertyService;
-  let paramChangesObjectFactory: ParamChangesObjectFactory;
-  let paramSpecsObjectFactory: ParamSpecsObjectFactory;
-  let paramSpecObjectFactory: ParamSpecObjectFactory;
   let changeListService: ChangeListService;
-  let editExplorationPropertySpy;
+  let editExplorationPropertySpy: jasmine.Spy;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
+      imports: [HttpClientTestingModule],
     });
 
     explorationPropertyService = TestBed.inject(ExplorationPropertyService);
     changeListService = TestBed.inject(ChangeListService);
-    paramChangesObjectFactory = TestBed.inject(ParamChangesObjectFactory);
-    paramSpecsObjectFactory = TestBed.inject(ParamSpecsObjectFactory);
-    paramSpecObjectFactory = TestBed.inject(ParamSpecObjectFactory);
 
     editExplorationPropertySpy = spyOn(
-      changeListService, 'editExplorationProperty').and.returnValue(null);
+      changeListService,
+      'editExplorationProperty'
+    ).and.returnValue();
   });
 
-  it('should create a new exploration properties object', function() {
-    expect(function() {
+  it('should create a new exploration properties object', function () {
+    expect(function () {
       explorationPropertyService.init('initial value');
     }).toThrowError('Exploration property name cannot be null.');
 
@@ -60,21 +57,25 @@ describe('Exploration Property Service', () => {
     expect(explorationPropertyService.hasChanged()).toBe(false);
   });
 
-  it('should overrides _normalize and _isValid methods', function() {
+  it('should overrides _normalize and _isValid methods', function () {
     let childToOverride = Object.create(explorationPropertyService);
 
-    childToOverride._isValid = function(value) {
+    childToOverride._isValid = function (value: string) {
       return !!value;
     };
 
-    childToOverride._normalize = function(value) {
+    childToOverride._normalize = function (value: string) {
       return value;
     };
 
-    let overrideIsValidSpy = spyOn(childToOverride, '_isValid').and
-      .callThrough();
-    let overrideNormalizeSpy = spyOn(childToOverride, '_normalize').and
-      .callThrough();
+    let overrideIsValidSpy = spyOn(
+      childToOverride,
+      '_isValid'
+    ).and.callThrough();
+    let overrideNormalizeSpy = spyOn(
+      childToOverride,
+      '_normalize'
+    ).and.callThrough();
 
     childToOverride.propertyName = 'property_1';
     childToOverride.saveDisplayedValue();
@@ -84,6 +85,8 @@ describe('Exploration Property Service', () => {
   });
 
   it('should save the displayed value when init is not called', () => {
+    explorationPropertyService.propertyName = null;
+
     expect(() => {
       explorationPropertyService.saveDisplayedValue();
     }).toThrowError('Exploration property name cannot be null.');
@@ -94,11 +97,11 @@ describe('Exploration Property Service', () => {
     explorationPropertyService.hasChanged();
   });
 
-  it('should not save the displayed value when it\'s empty', function() {
+  it("should not save the displayed value when it's empty", function () {
     let child = Object.create(explorationPropertyService);
     child.propertyName = 'property_1';
 
-    child._isValid = function(value) {
+    child._isValid = function (value: string) {
       if (!value) {
         throw new Error('this.displayed should have a valid value.');
       }
@@ -106,7 +109,7 @@ describe('Exploration Property Service', () => {
     };
 
     child.init();
-    expect(function() {
+    expect(function () {
       child.saveDisplayedValue();
     }).toThrowError('this.displayed should have a valid value.');
 
@@ -116,35 +119,39 @@ describe('Exploration Property Service', () => {
     expect(child.hasChanged()).toBe(false);
   });
 
-  it('should save displayed value when is ParamChanges object', function() {
+  it('should save displayed value when is ParamChanges object', function () {
     let child = Object.create(explorationPropertyService);
     child.propertyName = 'param_changes';
-    child._normalize = function(paramChanges) {
+    child._normalize = function (paramChanges: ParamChange[]) {
       // Changing paramChanges so hasChanged() turns to be true on line 87.
-      paramChanges.forEach(function(paramChange) {
+      paramChanges.forEach(function (paramChange: ParamChange) {
         paramChange.resetCustomizationArgs();
       });
       return paramChanges;
     };
 
-    let normalizeSpy = spyOn(child, '_normalize').and
-      .callThrough();
+    let normalizeSpy = spyOn(child, '_normalize').and.callThrough();
 
-    child.init(paramChangesObjectFactory.createFromBackendList([{
-      customization_args: {
-        parse_with_jinja: true,
-        value: ''
-      },
-      generator_id: 'Copier',
-      name: 'Param change 1'
-    }, {
-      customization_args: {
-        parse_with_jinja: true,
-        value: ''
-      },
-      generator_id: 'RandomSelector',
-      name: 'Param change 2'
-    }]));
+    child.init(
+      ParamChanges.createFromBackendList([
+        {
+          customization_args: {
+            parse_with_jinja: true,
+            value: '',
+          },
+          generator_id: 'Copier',
+          name: 'Param change 1',
+        },
+        {
+          customization_args: {
+            parse_with_jinja: true,
+            value: '',
+          },
+          generator_id: 'RandomSelector',
+          name: 'Param change 2',
+        },
+      ])
+    );
     child.saveDisplayedValue();
 
     expect(normalizeSpy).toHaveBeenCalled();
@@ -152,27 +159,28 @@ describe('Exploration Property Service', () => {
     expect(child.hasChanged()).toBe(false);
   });
 
-  it('should save displayed value when is ParamSpecs object', function() {
+  it('should save displayed value when is ParamSpecs object', function () {
     let child = Object.create(explorationPropertyService);
     child.propertyName = 'param_specs';
-    child._normalize = function(paramSpecs) {
+    child._normalize = function (paramSpecs: ParamSpecs) {
       // Changing paramSpecs so hasChanged() turns to be true on line 87.
-      let paramSpec = paramSpecObjectFactory.createDefault();
+      let paramSpec = ParamSpec.createDefault();
       paramSpecs.addParamIfNew('z', paramSpec);
       return paramSpecs;
     };
 
-    let normalizeSpy = spyOn(child, '_normalize').and
-      .callThrough();
+    let normalizeSpy = spyOn(child, '_normalize').and.callThrough();
 
-    child.init(paramSpecsObjectFactory.createFromBackendDict({
-      x: {
-        obj_type: 'UnicodeString'
-      },
-      y: {
-        obj_type: 'UnicodeString'
-      }
-    }));
+    child.init(
+      ParamSpecs.createFromBackendDict({
+        x: {
+          obj_type: 'UnicodeString',
+        },
+        y: {
+          obj_type: 'UnicodeString',
+        },
+      })
+    );
     child.saveDisplayedValue();
 
     expect(normalizeSpy).toHaveBeenCalled();
@@ -180,25 +188,31 @@ describe('Exploration Property Service', () => {
     expect(child.hasChanged()).toBe(false);
   });
 
-  it('should return stream of observables when exploration' +
-    ' property is changed', () => {
-    let count = 0;
-    let subscription = explorationPropertyService.onExplorationPropertyChanged;
-    subscription
-      .subscribe((event) => {
+  it(
+    'should return stream of observables when exploration' +
+      ' property is changed',
+    () => {
+      let count = 0;
+      let subscription =
+        explorationPropertyService.onExplorationPropertyChanged;
+      subscription.subscribe(event => {
         expect(event).toBe(null);
         count++;
       });
 
-    explorationPropertyService._explorationPropertyChangedEventEmitter
-      .emit(null);
-    explorationPropertyService._explorationPropertyChangedEventEmitter
-      .emit(null);
-    explorationPropertyService._explorationPropertyChangedEventEmitter
-      .emit(null);
+      explorationPropertyService._explorationPropertyChangedEventEmitter.emit(
+        null
+      );
+      explorationPropertyService._explorationPropertyChangedEventEmitter.emit(
+        null
+      );
+      explorationPropertyService._explorationPropertyChangedEventEmitter.emit(
+        null
+      );
 
-    waitForAsync(() => {
-      expect(count).toBe(3);
-    });
-  });
+      waitForAsync(() => {
+        expect(count).toBe(3);
+      });
+    }
+  );
 });

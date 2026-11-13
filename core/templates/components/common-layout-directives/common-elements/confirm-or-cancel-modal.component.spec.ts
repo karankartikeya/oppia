@@ -16,9 +16,10 @@
  * @fileoverview Unit tests for ConfirmOrCancelModalController.
  */
 
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ConfirmOrCancelModal } from './confirm-or-cancel-modal.component';
-
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {MatBottomSheetRef} from '@angular/material/bottom-sheet';
+import {Subject} from 'rxjs';
+import {ConfirmOrCancelModal} from './confirm-or-cancel-modal.component';
 
 describe('Confirm Or Cancel Modal Component', () => {
   let confirmOrCancelModal: ConfirmOrCancelModal;
@@ -34,20 +35,61 @@ describe('Confirm Or Cancel Modal Component', () => {
     closeSpy = spyOn(modalInstance, 'close').and.callThrough();
   });
 
-  it('should close modal with the correct value', function() {
+  it('should close modal with the correct value', function () {
     const message = 'closing';
     confirmOrCancelModal.confirm<string>(message);
     expect(closeSpy).toHaveBeenCalledWith(message);
   });
 
-  it('should dismiss modal', function() {
+  it('should dismiss modal', function () {
     confirmOrCancelModal.cancel<string>();
     expect(dismissSpy).toHaveBeenCalledWith('cancel');
   });
 
-  it('should dismiss modal with the correct value', function() {
+  it('should dismiss modal with the correct value', function () {
     const message = 'canceling';
     confirmOrCancelModal.cancel<string>(message);
     expect(dismissSpy).toHaveBeenCalledWith(message);
+  });
+});
+
+describe('Confirm Or Cancel Modal Component in bottom sheet mode', () => {
+  let confirmOrCancelModal: ConfirmOrCancelModal;
+  let bottomSheetRef: jasmine.SpyObj<MatBottomSheetRef>;
+  let keydownSubject: Subject<KeyboardEvent>;
+
+  beforeEach(() => {
+    keydownSubject = new Subject<KeyboardEvent>();
+    bottomSheetRef = jasmine.createSpyObj('MatBottomSheetRef', [
+      'dismiss',
+      'keydownEvents',
+    ]);
+    bottomSheetRef.keydownEvents.and.returnValue(keydownSubject.asObservable());
+    confirmOrCancelModal = new ConfirmOrCancelModal(
+      null as unknown as NgbActiveModal,
+      bottomSheetRef
+    );
+  });
+
+  it('should dismiss bottom sheet with the correct value on confirm', () => {
+    const message = 'closing';
+    confirmOrCancelModal.confirm<string>(message);
+    expect(bottomSheetRef.dismiss).toHaveBeenCalledWith(message);
+  });
+
+  it('should dismiss bottom sheet with the correct value on cancel', () => {
+    const message = 'canceling';
+    confirmOrCancelModal.cancel<string>(message);
+    expect(bottomSheetRef.dismiss).toHaveBeenCalledWith(message);
+  });
+
+  it('should dismiss bottom sheet when Escape key is pressed', () => {
+    keydownSubject.next(new KeyboardEvent('keydown', {key: 'Escape'}));
+    expect(bottomSheetRef.dismiss).toHaveBeenCalled();
+  });
+
+  it('should not dismiss bottom sheet when a non-Escape key is pressed', () => {
+    keydownSubject.next(new KeyboardEvent('keydown', {key: 'Enter'}));
+    expect(bottomSheetRef.dismiss).not.toHaveBeenCalled();
   });
 });

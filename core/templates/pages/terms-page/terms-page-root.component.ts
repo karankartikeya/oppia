@@ -16,21 +16,43 @@
  * @fileoverview Root component for Terms Page.
  */
 
-import { Component } from '@angular/core';
-import { AppConstants } from 'app.constants';
-import { PageHeadService } from 'services/page-head.service';
+import {Component, OnDestroy} from '@angular/core';
+import {TranslateService} from '@ngx-translate/core';
+import {Subscription} from 'rxjs';
+
+import {AppConstants} from 'app.constants';
+import {PageHeadService} from 'services/page-head.service';
 
 @Component({
   selector: 'oppia-terms-page-root',
-  templateUrl: './terms-page-root.component.html'
+  templateUrl: './terms-page-root.component.html',
 })
-export class TermsPageRootComponent {
+export class TermsPageRootComponent implements OnDestroy {
+  directiveSubscriptions = new Subscription();
   constructor(
-    private pageHeadService: PageHeadService
+    private pageHeadService: PageHeadService,
+    private translateService: TranslateService
   ) {}
 
-  ngOnInit(): void {
+  setPageTitleAndMetaTags(): void {
+    let translatedTitle = this.translateService.instant(
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.TERMS.TITLE
+    );
     this.pageHeadService.updateTitleAndMetaTags(
-      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.TERMS);
+      translatedTitle,
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.TERMS.META
+    );
+  }
+
+  ngOnInit(): void {
+    this.directiveSubscriptions.add(
+      this.translateService.onLangChange.subscribe(() => {
+        this.setPageTitleAndMetaTags();
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
   }
 }

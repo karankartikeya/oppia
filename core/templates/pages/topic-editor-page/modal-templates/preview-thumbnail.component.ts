@@ -16,18 +16,18 @@
  * @fileoverview Component for previewing thumbnails.
  */
 
-import { Component, Input } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ContextService } from 'services/context.service';
-import { ImageUploadHelperService } from 'services/image-upload-helper.service';
+import {Component, Input} from '@angular/core';
+import {PageContextService} from 'services/page-context.service';
+import {ImageUploadHelperService} from 'services/image-upload-helper.service';
 
 @Component({
   selector: 'oppia-preview-thumbnail',
-  templateUrl: './preview-thumbnail.component.html'
+  templateUrl: './preview-thumbnail.component.html',
+  styleUrls: ['./preview-thumbnail.component.css'],
 })
 export class PreviewThumbnailComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() bgColor!: string;
   @Input() filename!: string;
@@ -40,26 +40,20 @@ export class PreviewThumbnailComponent {
   editableThumbnailDataUrl!: string;
 
   constructor(
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
     private imageUploadHelperService: ImageUploadHelperService
   ) {}
 
   ngOnInit(): void {
-    let entityType = this.contextService.getEntityType();
+    let entityType = this.pageContextService.getEntityType();
     if (entityType === undefined) {
       throw new Error('No image present for preview');
     }
-    this.editableThumbnailDataUrl = (
+    this.editableThumbnailDataUrl =
       this.imageUploadHelperService.getTrustedResourceUrlForThumbnailFilename(
         this.filename,
         entityType,
-        this.contextService.getEntityId()
-      )
-    );
+        this.pageContextService.getEntityId()
+      );
   }
 }
-
-angular.module('oppia').directive('oppiaPreviewThumbnail',
-  downgradeComponent({
-    component: PreviewThumbnailComponent
-  }) as angular.IDirectiveFactory);

@@ -4,132 +4,41 @@
     "sourceType": "module"
   },
   "extends": [
-    "eslint:recommended"
+    "eslint:recommended",
+    "prettier"
   ],
   "plugins": [
-    "angular",
     "html",
     "unused-imports",
     "@typescript-eslint",
-    "oppia"
+    "oppia",
+    "@angular-eslint",
+    "@angular-eslint/template"
   ],
   "overrides": [
     {
       // We exclude test files from dependency injection format checks because
-      // they are never minified.
-      "files": ["*Spec.js", "*Spec.ts"],
+      // they are never minified. Also, we exclude no-loss-of-precision check as
+      // it is only relevant for non-test files, since when running
+      // frontend tests there is no loss of precision.
+      "files": ["*Spec.js","*.spec.ts"],
       "rules": {
-        "angular/di": "off"
+        "no-loss-of-precision": "off"
       }
     },
     {
       "files": ["*.js", "*.ts"],
       "excludedFiles": [
-      "complete.spec.ts",
-      "student.spec.ts",
-      "teacher.spec.ts"
+        "complete.spec.ts",
+        "student.spec.ts",
+        "teacher.spec.ts"
       ],
       "rules": {
         "oppia/no-to-throw": "error"
       }
     },
     {
-      // We only run the e2e action checks on end-to-end test files, and
-      // we exclude files that we haven't fixed yet.
-      "files": [
-        "core/tests/protractor/*.js",
-        "core/tests/protractor_utils/*.js",
-        "core/tests/protractor_desktop/*.js"
-      ],
-      "excludedFiles": [
-        "ClassroomPage.js",
-        "DeleteAccountPage.js",
-        "ExplorationEditorHistoryTab.js",
-        "ExplorationEditorMainTab.js",
-        "ExplorationEditorPage.js",
-        "ExplorationEditorSettingsTab.js",
-        "ExplorationEditorStatsTab.js",
-        "ExplorationEditorTranslationTab.js",
-        "GetStartedPage.js",
-        "LearnerDashboardPage.js",
-        "LibraryPage.js",
-        "ProfilePage.js",
-        "ProtractorConstants.js",
-        "SkillEditorPage.js",
-        "StoryEditorPage.js",
-        "SubscriptionDashboardPage.js",
-        "ThanksPage.js",
-        "TopicAndStoryViewerPage.js",
-        "TopicEditorPage.js",
-        "TopicsAndSkillsDashboardPage.js",
-        "action.js",
-        "forms.js",
-        "general.js",
-        "users.js",
-        "waitFor.js",
-        "workflow.js",
-        "additionalEditorFeatures.js",
-        "additionalPlayerFeatures.js",
-        "adminTabFeatures.js",
-        "classroomPage.js",
-        "classroomPageFileUploadFeatures.js",
-        "collections.js",
-        "contributorDashboard.js",
-        "coreEditorAndPlayerFeatures.js",
-        "creatorDashboard.js",
-        "embedding.js",
-        "explorationFeedbackTab.js",
-        "explorationHistoryTab.js",
-        "explorationImprovementsTab.js",
-        "explorationStatisticsTab.js",
-        "explorationTranslationTab.js",
-        "extensions.js",
-        "fileUploadExtensions.js",
-        "learnerDashboard.js",
-        "navigation.js",
-        "playVoiceovers.js",
-        "preferences.js",
-        "profileFeatures.js",
-        "publicationAndLibrary.js",
-        "skillEditor.js",
-        "topicAndStoryEditor.js",
-        "topicAndStoryEditorFileUploadFeatures.js",
-        "topicAndStoryViewer.js",
-        "topicsAndSkillsDashboard.js",
-        "userJourneys.js",
-        "voiceoverUploadFeatures.js",
-        "wipeout.js",
-        "accessibility.js",
-        "learnerFlow.js",
-        "libraryFlow.js",
-        "profileMenuFlow.js",
-        "excludedForTesting.js"
-      ],
-      "rules": {
-        "oppia/e2e-action": "error"
-      }
-    },
-    {
-      // We only run the protractor practices checks on protractor end-to-end test files.
-      "files": [
-        "core/tests/protractor/*.js",
-        "core/tests/protractor_utils/*.js",
-        "core/tests/protractor_desktop/*.js"
-      ],
-      "rules": {
-        "oppia/protractor-practices": "error"
-      }
-    },
-    {
-      "files": [
-        "core/tests/protractor_utils/*.js",
-      ],
-      "rules": {
-        "oppia/check-element-selector-at-top": "error"
-      }
-    },
-    {
-      // We exclude spec files to the no-testonly check
+      // We exclude spec files from the no-testonly check
       "files": ["*spec.js", "*spec.ts"],
       "rules": {
         "oppia/no-testonly": "off"
@@ -138,12 +47,11 @@
      {
       "files": ["*.js", "*.ts"],
       "excludedFiles": [
-      "Polyfills.ts",
-      "ck-editor-copy-content.service.spec.ts",
-      "unit-test-utils.ajs.ts",
-      "mathjax.directive.ts",
-      "math-expression-content-editor.component.ts",
-      "core/tests/*"
+        "Polyfills.ts",
+        "ck-editor-copy-content.service.spec.ts",
+        "mathjax.directive.ts",
+        "math-expression-content-editor.component.ts",
+        "core/tests/*"
       ],
       "rules": {
         "oppia/no-inner-html": "error"
@@ -152,56 +60,73 @@
     {
       "files": ["*.js", "*.ts"],
       "excludedFiles": [
-      "core/tests/**"
+        "core/tests/**"
       ],
       "rules": {
         "oppia/no-relative-import": "error"
       }
+    },
+    {
+      "files": ["*.ts"],
+      "rules": {
+        "@angular-eslint/component-class-suffix": "warn",
+        "@angular-eslint/contextual-lifecycle": "error",
+        "@angular-eslint/directive-class-suffix": "error",
+        "@angular-eslint/no-conflicting-lifecycle": "error",
+        "@angular-eslint/no-empty-lifecycle-method": "warn",
+        "@angular-eslint/no-host-metadata-property": "error",
+        "@angular-eslint/no-input-rename": "error",
+        "@angular-eslint/no-inputs-metadata-property": "error",
+        "@angular-eslint/no-output-native": "warn",
+        "@angular-eslint/no-output-on-prefix": "warn",
+        "@angular-eslint/no-output-rename": "error",
+        "@angular-eslint/no-outputs-metadata-property": "error",
+        "@angular-eslint/use-lifecycle-interface": "warn",
+        "@angular-eslint/use-pipe-transform-interface": "error",
+        "@angular-eslint/component-selector": [
+          "warn",
+          {
+            "type": "element",
+            "prefix": "oppia",
+            "style": "kebab-case"
+          }
+        ],
+        "@angular-eslint/directive-selector": [
+          "warn",
+          {
+            "type": "attribute",
+            "prefix": "oppia",
+            "style": "camelCase"
+          }
+        ]
+      }
+    },
+    {
+      "files": ["*.component.html", "*.directive.html"],
+      "extends": [
+        "plugin:@angular-eslint/template/recommended"
+      ],
+      "rules": {
+        "max-len": ["error", { "code": 140 }]
+      }
     }
   ],
   "rules": {
-    "oppia/break-after-parens": "error",
     "oppia/constant-declaration": "error",
     "oppia/comment-style": "error",
     "oppia/disallow-flags": "error",
     "oppia/disallow-httpclient": "error",
-    "oppia/disallow-angularjs-properties": "error",
     "oppia/import-lodash": "error",
     "oppia/no-multiple-component": "error",
     "oppia/no-multiline-disable": "error",
-    "oppia/directive-scope": "error",
     "oppia/no-testonly": "error",
-    "oppia/sorted-dependencies": "error",
     "oppia/test-message-style": "error",
-    "oppia/dependency-checks": "error",
-    "oppia/match-line-break": "error",
     "oppia/no-test-blockers": "error",
-    "oppia/no-inject": "error",
     "oppia/no-bypass-security-phrase": "error",
-    "angular/di": [
-      "error",
-      "array"
-    ],
-    "angular/di-unused": "error",
-    "angular/directive-restrict": [
-      "error",
-      {
-        "restrict": "E"
-      }
-    ],
-    "angular/no-inline-template": [
-      "error",
-      {
-        "allowSimple": true
-      }
-    ],
+    "oppia/no-view-encapsulation-none": "error",
     "array-bracket-spacing": [
       "error",
       "never"
-    ],
-    "brace-style":[
-      "error",
-      "1tbs"
     ],
     "camelcase": [
       "error",
@@ -215,13 +140,6 @@
       {
         "ignorePattern": "disable-bad-pattern-check|fall-through",
         "ignoreConsecutiveComments": true
-      }
-    ],
-    "comma-spacing": [
-      "error",
-      {
-        "before": false,
-        "after": true
       }
     ],
     "curly": [
@@ -246,39 +164,7 @@
       "error",
       "expression"
     ],
-    "indent": [
-      "error",
-      2,
-      {
-        "ArrayExpression": 1,
-        "flatTernaryExpressions": true,
-        "FunctionExpression": {
-          "body": 1,
-          "parameters": 2
-        },
-        "MemberExpression": 1,
-        "SwitchCase": 1,
-        "ignoredNodes": [
-          "ConditionalExpression"
-        ]
-      }
-    ],
     "key-spacing": "error",
-    "keyword-spacing": [
-      "error",
-      {
-        "before": true,
-        "after": true
-      }
-    ],
-    "max-len": [
-      "error",
-      {
-        "code": 80,
-        "ignoreUrls": true,
-        "ignorePattern": "^import \\{"
-      }
-    ],
     "no-compare-neg": "off",
     "no-console": [
       "error",
@@ -336,27 +222,12 @@
     "one-var": [
       "off"
     ],
-    "operator-linebreak": [
-      "error",
-      "after"
-    ],
     "padded-blocks": [
       "error",
       "never"
     ],
     "quotes": [
-      "error",
-      "single",
-      {
-        "avoidEscape": true
-      }
-    ],
-    "quote-props": [
-      "error",
-      "as-needed",
-      {
-        "keywords": true
-      }
+      "off"
     ],
     // The following must be off so that we can enable
     // "@typescript-eslint/semi", which checks semicolons in TS files.
@@ -364,18 +235,11 @@
     // The following must be off so that we can enable
     // "@typescript-eslint/no-extra-semi".
     "no-extra-semi": "off",
+    "lines-between-class-members": "off",
     "semi-spacing": "error",
     "space-before-blocks": [
       "error",
       "always"
-    ],
-    "space-before-function-paren": [
-      "error",
-      {
-        "anonymous": "never",
-        "asyncArrow": "never",
-        "named": "never"
-      }
     ],
     "spaced-comment": [
       "error",
@@ -431,6 +295,8 @@
         "default": "array"
       }
     ],
+    "@typescript-eslint/consistent-type-assertions": ["error"],
+    "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
     "@typescript-eslint/no-non-null-assertion": ["error"],
     "@typescript-eslint/no-non-null-asserted-optional-chain": ["error"],
     "@typescript-eslint/prefer-namespace-keyword": ["error"],
@@ -441,7 +307,8 @@
     "@typescript-eslint/no-unused-vars": [
       "error",
       {
-        "args": "none"
+        "args": "none",
+        "varsIgnorePattern": "^_$"
       }
     ],
     "@typescript-eslint/explicit-module-boundary-types": ["error"],
@@ -453,6 +320,31 @@
       "error",
       "any"
     ],
-    "@typescript-eslint/method-signature-style": ["error"]
+    "@typescript-eslint/member-delimiter-style": ["error"],
+    "@typescript-eslint/method-signature-style": ["error"],
+    "@typescript-eslint/keyword-spacing": [
+      "error",
+      {
+        "before": true,
+        "after": true
+      }
+    ],
+    "@typescript-eslint/comma-spacing": [
+      "error",
+      {
+        "before": false,
+        "after": true
+      }
+    ],
+    "@typescript-eslint/quotes": [
+      "error",
+      "single",
+      {
+        "avoidEscape": true
+      }
+    ],
+    "no-dupe-class-members": "off",
+    "@typescript-eslint/no-dupe-class-members": ["error"],
+    "@typescript-eslint/no-namespace": ["error"]
   }
 }

@@ -16,21 +16,19 @@
  * @fileoverview Factory for calculating the statistics of a particular state.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { AnswerClassificationService } from
-  'pages/exploration-player-page/services/answer-classification.service';
-import { Fraction } from 'domain/objects/fraction.model';
-import { InteractionAnswer, FractionAnswer, MultipleChoiceAnswer } from
-  'interactions/answer-defs';
-import { MultipleChoiceInputCustomizationArgs } from
-  'extensions/interactions/customization-args-defs';
-import { InteractionRulesRegistryService } from
-  'services/interaction-rules-registry.service';
-import { State } from 'domain/state/StateObjectFactory';
-import { StateInteractionStatsBackendApiService } from
-  'domain/exploration/state-interaction-stats-backend-api.service';
+import {AnswerClassificationService} from 'pages/exploration-player-page/services/answer-classification.service';
+import {Fraction} from 'domain/objects/fraction.model';
+import {
+  InteractionAnswer,
+  FractionAnswer,
+  MultipleChoiceAnswer,
+} from 'interactions/answer-defs';
+import {MultipleChoiceInputCustomizationArgs} from 'extensions/interactions/customization-args-defs';
+import {InteractionRulesRegistryService} from 'services/interaction-rules-registry.service';
+import {State} from 'domain/state/state.model';
+import {StateInteractionStatsBackendApiService} from 'domain/exploration/state-interaction-stats-backend-api.service';
 
 type Option = string | string[];
 
@@ -40,7 +38,7 @@ interface AnswerData {
   isAddressed: boolean;
 }
 
-interface VisualizationInfo {
+export interface VisualizationInfo {
   addressedInfoIsSupported: boolean;
   data: AnswerData[];
   id: string;
@@ -61,10 +59,10 @@ export class StateInteractionStatsService {
   statsCache: Map<string, Promise<StateInteractionStats>> = new Map();
 
   constructor(
-      private answerClassificationService: AnswerClassificationService,
-      private interactionRulesRegistryService: InteractionRulesRegistryService,
-      private stateInteractionStatsBackendApiService:
-      StateInteractionStatsBackendApiService) {}
+    private answerClassificationService: AnswerClassificationService,
+    private interactionRulesRegistryService: InteractionRulesRegistryService,
+    private stateInteractionStatsBackendApiService: StateInteractionStatsBackendApiService
+  ) {}
 
   /**
    * Returns whether given state has an implementation for displaying the
@@ -76,15 +74,16 @@ export class StateInteractionStatsService {
 
   // Converts answer to a more-readable representation based on its type.
   private getReadableAnswerString(
-      state: State, answer: InteractionAnswer): InteractionAnswer {
+    state: State,
+    answer: InteractionAnswer
+  ): InteractionAnswer {
     if (state.interaction.id === 'FractionInput') {
-      return Fraction.fromDict(<FractionAnswer> answer).toString();
+      return Fraction.fromDict(answer as FractionAnswer).toString();
     } else if (state.interaction.id === 'MultipleChoiceInput') {
-      const customizationArgs = (
-        <MultipleChoiceInputCustomizationArgs>
-        state.interaction.customizationArgs);
-      return customizationArgs.choices.value[
-        <MultipleChoiceAnswer> answer].html;
+      const customizationArgs = state.interaction
+        .customizationArgs as MultipleChoiceInputCustomizationArgs;
+      return customizationArgs.choices.value[answer as MultipleChoiceAnswer]
+        .html;
     }
     return answer;
   }
@@ -94,40 +93,61 @@ export class StateInteractionStatsService {
    * answer-statistics.
    */
   async computeStatsAsync(
-      expId: string, state: State): Promise<StateInteractionStats> {
-    if (this.statsCache.has(state.name)) {
-      return this.statsCache.get(state.name);
+    expId: string,
+    state: State
+  ): Promise<StateInteractionStats> {
+    const stateName = state.name;
+    if (stateName === null) {
+      throw new Error('State name cannot be null.');
     }
-    const interactionRulesService = (
+    if (this.statsCache.has(stateName)) {
+      return this.statsCache.get(stateName) as Promise<StateInteractionStats>;
+    }
+
+    const interactionId = state.interaction.id;
+    if (!interactionId) {
+      throw new Error('Cannot compute stats for a state with no interaction.');
+    }
+    const interactionRulesService =
       this.interactionRulesRegistryService.getRulesServiceByInteractionId(
-        state.interaction.id));
-    const statsPromise = (
-      this.stateInteractionStatsBackendApiService.getStatsAsync(
-        expId,
-        state.name)).then(vizInfo => <StateInteractionStats> {
-          explorationId: expId,
-          stateName: state.name,
-          visualizationsInfo: vizInfo.map(info => <VisualizationInfo> ({
-            addressedInfoIsSupported: info.addressedInfoIsSupported,
-            data: info.data.map(datum => <AnswerData>{
-              answer: this.getReadableAnswerString(state, datum.answer),
-              frequency: datum.frequency,
-              isAddressed: (
-                info.addressedInfoIsSupported ?
-                this.answerClassificationService
-                  .isClassifiedExplicitlyOrGoesToNewState(
-                    state.name, state, datum.answer, interactionRulesService) :
-                undefined)
-            }),
-            id: info.id,
-            options: info.options
-          })),
-        });
-    this.statsCache.set(state.name, statsPromise);
+        interactionId
+      );
+    const statsPromise = this.stateInteractionStatsBackendApiService
+      .getStatsAsync(expId, stateName)
+      .then(
+        vizInfo =>
+          ({
+            explorationId: expId,
+            stateName: stateName,
+            visualizationsInfo: vizInfo.map(
+              info =>
+                ({
+                  addressedInfoIsSupported: info.addressedInfoIsSupported,
+                  data: info.data.map(
+                    datum =>
+                      ({
+                        answer: this.getReadableAnswerString(
+                          state,
+                          datum.answer
+                        ),
+                        frequency: datum.frequency,
+                        isAddressed: info.addressedInfoIsSupported
+                          ? this.answerClassificationService.isClassifiedExplicitlyOrGoesToNewState(
+                              stateName,
+                              state,
+                              datum.answer,
+                              interactionRulesService
+                            )
+                          : undefined,
+                      }) as AnswerData
+                  ),
+                  id: info.id,
+                  options: info.options,
+                }) as VisualizationInfo
+            ),
+          }) as StateInteractionStats
+      );
+    this.statsCache.set(stateName, statsPromise);
     return statsPromise;
   }
 }
-
-angular.module('oppia').factory(
-  'StateInteractionStatsService',
-  downgradeInjectable(StateInteractionStatsService));

@@ -15,18 +15,29 @@ extensions/classifiers/proto/*.js
 .git/*
 third_party/*
 assets/hashes.json
-backend_prod_files/*
 local_compiled_js/*
 local_compiled_js_for_test/*
 core/templates/prod/*
-webpack_bundles/*
 core/tests/.browserstack.env
+core/tests/puppeteer-acceptance-tests/build
+core/tests/puppeteer-acceptance-tests/specs/*/prod-desktop-screenshots/diff-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/prod-mobile-screenshots/diff-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/dev-desktop-screenshots/diff-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/dev-mobile-screenshots/diff-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/prod-desktop-screenshots/new-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/prod-mobile-screenshots/new-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/dev-desktop-screenshots/new-snapshots
+core/tests/puppeteer-acceptance-tests/specs/*/dev-mobile-screenshots/new-snapshots
+core/tests/test-dependencies/*.js
 node_modules/*
+# .angular is temp folder used by angular to put logs and other artefacts.
+.angular/*
+# dist is our angular build folder output.
+dist/*
 .coverage*
 !.coveragerc
 coverage.xml
 .viminfo
-.vscode/*
 .nyc_output/*
 libpeerconnection.log
 readme_test_dir/*
@@ -48,11 +59,14 @@ yarn-error.log
 .lighthouseci
 .direnv/*
 .envrc
+portserver.socket
+temp-tsconfig-strict.json
 
 # Oppia uses cache slugs for various resources and we need separate resource
 # directories for dev and prod. Resource directories for prod are generated
 # via build.py and should not be committed to the repo.
 build/*
+backend_prod_files/*
 
 # .python-version is generated dynamically so needs to be ignored.
 .python-version
@@ -63,4 +77,8 @@ dump.rdb
 ui-debug.log
 firebase-debug.log
 debug.log
-.python-version
+# development logs and status entries
+.dev
+
+# Puppeteer acceptance tests.
+jest-runtime-config.json

@@ -14,44 +14,48 @@
 
 """This script produces the expression parser."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import argparse
 import os
 import subprocess
 
-from core import python_utils
+from typing import Optional, Sequence
 
 from . import common
-from . import setup
 
 _PARSER = argparse.ArgumentParser(
     description="""
 Run this script from the oppia root folder:
     python -m scripts.create_expression_parser
 The root folder MUST be named 'oppia'.
-""")
+"""
+)
 
 
-def main(args=None):
+def main(args: Optional[Sequence[str]] = None) -> None:
     """Produces the expression parser."""
     unused_parsed_args = _PARSER.parse_args(args=args)
-    setup.main(args=[])
 
     expression_parser_definition = os.path.join(
-        'core', 'templates', 'expressions', 'parser.pegjs')
+        'core', 'templates', 'expressions', 'parser.pegjs'
+    )
     expression_parser_js = os.path.join(
-        'core', 'templates', 'expressions', 'parser.js')
+        'core', 'templates', 'expressions', 'parser.js'
+    )
 
     common.install_npm_library('pegjs', '0.8.0', common.OPPIA_TOOLS_DIR)
 
-    subprocess.check_call([
-        os.path.join(common.NODE_MODULES_PATH, 'pegjs', 'bin', 'pegjs'),
-        expression_parser_definition, expression_parser_js])
+    subprocess.check_call(
+        [
+            os.path.join(common.NODE_MODULES_PATH, 'pegjs', 'bin', 'pegjs'),
+            expression_parser_definition,
+            expression_parser_js,
+        ]
+    )
 
-    python_utils.PRINT('Done!')
+    print('Done!')
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     main()

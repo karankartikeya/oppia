@@ -16,45 +16,52 @@
 
 """Python configuration for NumericInput interaction."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.interactions import base
+
+from typing import List, Optional
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class NumericInput(base.BaseInteraction):
     """Interaction for numeric input."""
 
-    name = 'Number Input'
-    description = (
-        'Allows learners to enter integers and floating point numbers.')
-    display_mode = base.DISPLAY_MODE_INLINE
-    is_trainable = False
-    _dependency_ids = []
-    answer_type = 'Real'
-    instructions = None
-    narrow_instructions = None
-    needs_summary = False
-    can_have_solution = True
-    show_generic_submit_button = True
+    name: str = 'Number Input'
+    description: str = (
+        'Allows learners to enter integers and floating point numbers.'
+    )
+    display_mode: str = base.DISPLAY_MODE_INLINE
+    is_trainable: bool = False
+    _dependency_ids: List[str] = []
+    answer_type: str = 'Real'
+    instructions: Optional[str] = None
+    narrow_instructions: Optional[str] = None
+    needs_summary: bool = False
+    can_have_solution: bool = True
+    show_generic_submit_button: bool = True
 
-    _customization_arg_specs = [{
-        'name': 'requireNonnegativeInput',
-        'description': (
-            'Allow only input greater than or equal to zero.'),
-        'schema': {
-            'type': 'bool'
-        },
-        'default_value': False
-    }]
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'requireNonnegativeInput',
+            'description': ('Allow only input greater than or equal to zero.'),
+            'schema': {'type': 'bool'},
+            'default_value': False,
+        }
+    ]
 
-    _answer_visualization_specs = [{
-        # Table with answer counts for top N answers.
-        'id': 'FrequencyTable',
-        'options': {
-            'column_headers': ['Answer', 'Count'],
-            'title': 'Top 10 answers',
-        },
-        'calculation_id': 'Top10AnswerFrequencies',
-        'addressed_info_is_supported': True,
-    }]
+    _answer_visualization_specs: List[base.AnswerVisualizationSpecsDict] = [
+        {
+            # Table with answer counts for top N answers.
+            'id': 'FrequencyTable',
+            'options': {
+                'column_headers': ['Answer', 'Count'],
+                'title': 'Top 10 answers',
+            },
+            'calculation_id': 'Top10AnswerFrequencies',
+            'addressed_info_is_supported': True,
+        }
+    ]

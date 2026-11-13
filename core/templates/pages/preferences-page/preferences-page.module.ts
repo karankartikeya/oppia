@@ -16,32 +16,30 @@
  * @fileoverview Module for the preferences page.
  */
 
-import { NgModule } from '@angular/core';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { PreferencesPageComponent } from './preferences-page.component';
-import { ReactiveFormsModule } from '@angular/forms';
-import { NgbPopoverModule } from '@ng-bootstrap/ng-bootstrap';
-import { PreferredSiteLanguageSelectorComponent } from './form-fields/preferred-language-selector.component';
-import { PreferredLanguagesComponent } from './form-fields/preferred-languages.component';
-import { SubjectInterestsComponent } from './form-fields/subject-interests.component';
-import { PreferencesPageRootComponent } from './preferences-page-root.component';
-import { CommonModule } from '@angular/common';
-import { PreferencesPageRoutingModule } from './preferences-page-routing.module';
-import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
-import { Error404PageModule } from 'pages/error-pages/error-404/error-404-page.module';
-import { EditProfilePictureModalComponent } from './modal-templates/edit-profile-picture-modal.component';
+import {NgModule} from '@angular/core';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {PreferencesPageComponent} from './preferences-page.component';
+import {ReactiveFormsModule} from '@angular/forms';
+import {NgbPopoverModule} from '@ng-bootstrap/ng-bootstrap';
+import {PreferredSiteLanguageSelectorComponent} from './form-fields/preferred-language-selector.component';
+import {PreferredLanguagesComponent} from './form-fields/preferred-languages.component';
+import {SubjectInterestsComponent} from './form-fields/subject-interests.component';
+import {PreferencesPageRootComponent} from './preferences-page-root.component';
+import {CommonModule} from '@angular/common';
+import {PreferencesPageRoutingModule} from './preferences-page-routing.module';
+import {Error404PageModule} from 'pages/error-pages/error-404/error-404-page.module';
+import {EditProfilePictureModalComponent} from './modal-templates/edit-profile-picture-modal.component';
+import {RouterModule} from '@angular/router';
 
 @NgModule({
   imports: [
     CommonModule,
     NgbPopoverModule,
-    // TODO(#13443): Remove hybrid router module provider once all pages are
-    // migrated to angular router.
-    HybridRouterModuleProvider.provide(),
+    RouterModule,
     ReactiveFormsModule,
     SharedComponentsModule,
     PreferencesPageRoutingModule,
-    Error404PageModule
+    Error404PageModule,
   ],
   declarations: [
     EditProfilePictureModalComponent,
@@ -49,7 +47,7 @@ import { EditProfilePictureModalComponent } from './modal-templates/edit-profile
     PreferencesPageRootComponent,
     PreferredLanguagesComponent,
     PreferredSiteLanguageSelectorComponent,
-    SubjectInterestsComponent
+    SubjectInterestsComponent,
   ],
   entryComponents: [
     EditProfilePictureModalComponent,
@@ -57,7 +55,7 @@ import { EditProfilePictureModalComponent } from './modal-templates/edit-profile
     PreferencesPageRootComponent,
     PreferredLanguagesComponent,
     PreferredSiteLanguageSelectorComponent,
-    SubjectInterestsComponent
-  ]
+    SubjectInterestsComponent,
+  ],
 })
 export class PreferencesPageModule {}

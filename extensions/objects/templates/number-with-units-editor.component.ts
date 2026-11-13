@@ -16,40 +16,42 @@
  * @fileoverview Component for number with units editor.
  */
 
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ObjectFormValidityChangeEvent } from 'app-events/app-events';
-import { EventBusGroup, EventBusService } from 'app-events/event-bus.service';
-import { NumberWithUnitsObjectFactory } from 'domain/objects/NumberWithUnitsObjectFactory';
-import { NumberWithUnitsAnswer } from 'interactions/answer-defs';
+import {Component, EventEmitter, Input, OnInit, Output} from '@angular/core';
+import {ObjectFormValidityChangeEvent} from 'app-events/app-events';
+import {EventBusGroup, EventBusService} from 'app-events/event-bus.service';
+import {NumberConversionService} from 'services/number-conversion.service';
+import {NumberWithUnits} from 'domain/objects/number-with-units.model';
+import {NumberWithUnitsAnswer} from 'interactions/answer-defs';
 
 @Component({
   selector: 'number-with-units-editor',
   templateUrl: './number-with-units-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class NumberWithUnitsEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   // 'value' will be null if user has not input any value.
   @Input() value!: NumberWithUnitsAnswer | null;
   @Output() valueChanged = new EventEmitter();
   numberWithUnitsString!: string;
-  errorMessage: string = '';
+  errorMessageI18nKey: string = '';
   eventBusGroup: EventBusGroup;
 
   constructor(
     private eventBusService: EventBusService,
-    private numberWithUnitsObjectFactory: NumberWithUnitsObjectFactory) {
+    private numberConversionService: NumberConversionService
+  ) {
     this.eventBusGroup = new EventBusGroup(this.eventBusService);
   }
 
   ngOnInit(): void {
-    if (this.value !== null) {
-      const defaultNumberWithUnits =
-        this.numberWithUnitsObjectFactory.fromDict(this.value);
+    if (this.value === null || this.value === undefined) {
+      return;
+    } else {
+      const defaultNumberWithUnits = NumberWithUnits.fromDict(this.value);
       this.numberWithUnitsString = defaultNumberWithUnits.toString();
       this.valueChanged.emit(this.value);
     }
@@ -57,26 +59,35 @@ export class NumberWithUnitsEditorComponent implements OnInit {
 
   updateValue(newValue: string): void {
     try {
-      let numberWithUnits =
-        this.numberWithUnitsObjectFactory.fromRawInputString(newValue);
+      const decimalSeparator =
+        this.numberConversionService.currentDecimalSeparator();
+      let numberWithUnits = NumberWithUnits.fromRawInputString(
+        newValue,
+        decimalSeparator
+      );
       this.value = numberWithUnits;
       this.valueChanged.emit(this.value);
-      this.eventBusGroup.emit(new ObjectFormValidityChangeEvent({
-        value: false,
-        modalId: this.modalId
-      }));
+      this.eventBusGroup.emit(
+        new ObjectFormValidityChangeEvent({
+          value: false,
+          modalId: this.modalId,
+        })
+      );
+      this.errorMessageI18nKey = '';
+      // We use unknown type because we are unsure of the type of error
+      // that was thrown. Since the catch block cannot identify the
+      // specific type of error, we are unable to further optimise the
+      // code by introducing more types of errors.
     } catch (parsingError: unknown) {
-      this.eventBusGroup.emit(new ObjectFormValidityChangeEvent({
-        value: true,
-        modalId: this.modalId
-      }));
+      this.eventBusGroup.emit(
+        new ObjectFormValidityChangeEvent({
+          value: true,
+          modalId: this.modalId,
+        })
+      );
       if (parsingError instanceof Error) {
-        this.errorMessage = parsingError.message;
+        this.errorMessageI18nKey = parsingError.message;
       }
     }
   }
 }
-
-angular.module('oppia').directive('numberWithUnitsEditor', downgradeComponent({
-  component: NumberWithUnitsEditorComponent
-}) as angular.IDirectiveFactory);

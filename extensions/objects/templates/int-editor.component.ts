@@ -20,34 +20,34 @@
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
 
-import { Component, EventEmitter, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, EventEmitter, Input, OnInit} from '@angular/core';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
 interface IntValidatorSchema {
-  type: string,
-  validators: { id: string }[]
+  type: 'int';
+  validators: {id: string}[];
 }
 
 @Component({
   selector: 'int-editor',
   templateUrl: './int-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class IntEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   @Input() value!: number;
   @Input() valueChanged: EventEmitter<number> = new EventEmitter<number>();
   SCHEMA: IntValidatorSchema = {
     type: 'int',
-    validators: [{
-      id: 'is_integer'
-    }]
+    validators: [
+      {
+        id: 'is_integer',
+      },
+    ],
   };
-
-
 
   ngOnInit(): void {
     if (!this.value) {
@@ -60,12 +60,13 @@ export class IntEditorComponent implements OnInit {
     return this.SCHEMA;
   }
 
-  updateValue(value: number): void {
+  updateValue(value: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only numbers are accepted.
+    if (typeof value !== 'number') {
+      return;
+    }
     this.value = value;
     this.valueChanged.emit(value);
   }
 }
-
-angular.module('oppia').directive('intEditor', downgradeComponent({
-  component: IntEditorComponent
-}) as angular.IDirectiveFactory);

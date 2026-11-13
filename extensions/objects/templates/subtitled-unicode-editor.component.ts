@@ -16,38 +16,50 @@
  * @fileoverview Directive for Subtitled Unicode editor.
  */
 
-import { ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+} from '@angular/core';
+import {SubtitledUnicode} from 'domain/exploration/subtitled-unicode.model';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
 @Component({
   selector: 'subtitled-unicode-editor',
-  templateUrl: './subtitled-unicode-editor.component.html'
+  templateUrl: './subtitled-unicode-editor.component.html',
 })
 export class SubtitledUnicodeEditorComponent {
   // These property is initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() value!: { _unicode: string };
+  @Input() value!: SubtitledUnicode;
   @Output() valueChanged = new EventEmitter();
-  schema: { type: string } ={
+  schema: {type: 'unicode'} = {
     type: 'unicode',
   };
-  constructor(private changeDetectorRef: ChangeDetectorRef) { }
 
-  updateValue(val: string): void {
-    if (this.value._unicode === val) {
+  constructor(private changeDetectorRef: ChangeDetectorRef) {}
+
+  updateValue(val: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only unicode strings are accepted.
+    if (typeof val !== 'string') {
       return;
     }
-    this.value._unicode = val;
-    this.valueChanged.emit(this.value);
-    this.changeDetectorRef.detectChanges();
+    if (this.value) {
+      if (this.value.unicode === val) {
+        return;
+      }
+
+      this.value.unicode = val;
+      this.valueChanged.emit(this.value);
+      this.changeDetectorRef.detectChanges();
+    }
   }
 
-  getSchema(): { type: string } {
+  getSchema(): {type: 'unicode'} {
     return this.schema;
   }
 }
-
-angular.module('oppia').directive('subtitledUnicodeEditor', downgradeComponent({
-  component: SubtitledUnicodeEditorComponent
-}) as angular.IDirectiveFactory);

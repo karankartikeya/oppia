@@ -20,31 +20,25 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 
 @Component({
   selector: 'oppia-response-text-input',
-  templateUrl: './text-input-response.component.html'
+  templateUrl: './text-input-response.component.html',
 })
 export class ResponseTextInputComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input('answer') answerWithValue!: string;
-  answer!: string;
+  @Input() answer!: string;
+  escapedAnswer!: string;
 
-  constructor(private htmlEscaperService: HtmlEscaperService) { }
+  constructor(private htmlEscaperService: HtmlEscaperService) {}
 
   ngOnInit(): void {
-    this.answer = this.htmlEscaperService.escapedJsonToObj(
-      this.answerWithValue) as string;
+    this.escapedAnswer = this.htmlEscaperService.escapedJsonToObj(
+      this.answer
+    ) as string;
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaResponseTextInput',
-  downgradeComponent({
-    component: ResponseTextInputComponent
-  }));

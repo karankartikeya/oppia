@@ -16,219 +16,304 @@
  * @fileoverview Component for the state translation editor.
  */
 
-import { Subscription } from 'rxjs';
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {Subscription} from 'rxjs';
+import {MarkAudioAsNeedingUpdateModalComponent} from 'components/forms/forms-templates/mark-audio-as-needing-update-modal.component';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {ExplorationStatesService} from 'pages/exploration-editor-page/services/exploration-states.service';
+import {GraphDataService} from 'pages/exploration-editor-page/services/graph-data.service';
+import {EditabilityService} from 'services/editability.service';
+import {ExternalSaveService} from 'services/external-save.service';
+import {ExternalRteSaveService} from 'services/external-rte-save.service';
+import {TranslationLanguageService} from '../services/translation-language.service';
+import {TranslationStatusService} from '../services/translation-status.service';
+import {TranslationTabActiveContentIdService} from '../services/translation-tab-active-content-id.service';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {
+  DataFormatToDefaultValuesKey,
+  TranslatedContent,
+} from 'domain/exploration/translated-content.model';
+import {Schema, UnicodeSchema} from 'services/schema-default-value.service';
+import {ChangeListService} from 'pages/exploration-editor-page/services/change-list.service';
+import {EntityTranslation} from 'domain/translation/entity-translation.model';
+import {PageContextService} from 'services/page-context.service';
+import {EntityVoiceoversService} from 'services/entity-voiceovers.services';
 
-require(
-  'components/common-layout-directives/common-elements/' +
-  'confirm-or-cancel-modal.controller.ts');
-require('services/external-save.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-editor.service.ts');
+interface HTMLSchema {
+  type: 'html';
+  ui_config: {
+    rte_component_config_id: string;
+    language: string;
+    languageDirection: string;
+  };
+}
 
-angular.module('oppia').component('stateTranslationEditor', {
-  template: require('./state-translation-editor.component.html'),
-  controller: [
-    '$scope', '$uibModal', 'EditabilityService',
-    'ExplorationStatesService', 'ExternalSaveService',
-    'StateEditorService', 'StateWrittenTranslationsService',
-    'TranslationLanguageService', 'TranslationStatusService',
-    'TranslationTabActiveContentIdService',
-    'WrittenTranslationObjectFactory',
-    function(
-        $scope, $uibModal, EditabilityService,
-        ExplorationStatesService, ExternalSaveService,
-        StateEditorService, StateWrittenTranslationsService,
-        TranslationLanguageService, TranslationStatusService,
-        TranslationTabActiveContentIdService,
-        WrittenTranslationObjectFactory) {
-      var ctrl = this;
-      ctrl.directiveSubscriptions = new Subscription();
-      var showMarkAudioAsNeedingUpdateModalIfRequired = function(
-          contentId, languageCode) {
-        var stateName = StateEditorService.getActiveStateName();
-        var state = ExplorationStatesService.getState(stateName);
-        var recordedVoiceovers = state.recordedVoiceovers;
-        var availableAudioLanguages = (
-          recordedVoiceovers.getLanguageCodes(contentId));
-        if (availableAudioLanguages.indexOf(languageCode) !== -1) {
-          var voiceover = recordedVoiceovers.getVoiceover(
-            contentId, languageCode);
-          if (voiceover.needsUpdate) {
-            return;
-          }
-          $uibModal.open({
-            template: require(
-              'components/forms/forms-templates/' +
-              'mark-audio-as-needing-update-modal.directive.html'),
-            backdrop: 'static',
-            controller: 'ConfirmOrCancelModalController'
-          }).result.then(function() {
-            recordedVoiceovers.toggleNeedsUpdateAttribute(
-              contentId, languageCode);
-            ExplorationStatesService.saveRecordedVoiceovers(
-              stateName, recordedVoiceovers);
-          }, function() {
+interface ListSchema {
+  type: 'list';
+  items: Schema;
+  validators: {id: string}[];
+}
+
+@Component({
+  selector: 'oppia-state-translation-editor',
+  templateUrl: './state-translation-editor.component.html',
+  styleUrls: ['./state-translation-editor.component.css'],
+})
+export class StateTranslationEditorComponent implements OnInit, OnDestroy {
+  directiveSubscriptions = new Subscription();
+
+  contentId: string = '';
+  languageCode: string = '';
+  activeWrittenTranslation: TranslatedContent | null = null;
+  translationEditorIsOpen: boolean = false;
+  dataFormat: DataFormatToDefaultValuesKey | string = '';
+  UNICODE_SCHEMA: UnicodeSchema = {
+    type: 'unicode',
+  };
+  explorationId!: string;
+  explorationVersion!: number;
+
+  SET_OF_STRINGS_SCHEMA: ListSchema = {
+    type: 'list',
+    items: {
+      type: 'unicode',
+    },
+    validators: [
+      {
+        id: 'is_uniquified',
+      },
+    ],
+  };
+
+  HTML_SCHEMA: HTMLSchema | null = null;
+
+  constructor(
+    private editabilityService: EditabilityService,
+    private entityTranslationsService: EntityTranslationsService,
+    private explorationStatesService: ExplorationStatesService,
+    private changeListService: ChangeListService,
+    private externalSaveService: ExternalSaveService,
+    private externalRteSaveService: ExternalRteSaveService,
+    private graphDataService: GraphDataService,
+    private ngbModal: NgbModal,
+    private stateEditorService: StateEditorService,
+    private translationLanguageService: TranslationLanguageService,
+    private translationStatusService: TranslationStatusService,
+    private translationTabActiveContentIdService: TranslationTabActiveContentIdService,
+    private pageContextService: PageContextService,
+    private entityVoiceoversService: EntityVoiceoversService,
+    private i18nLanguageCodeService: I18nLanguageCodeService
+  ) {}
+
+  showMarkAudioAsNeedingUpdateModalIfRequired(
+    contentId: string,
+    languageCode: string
+  ): void {
+    let canShowModal =
+      this.entityVoiceoversService.languageCode === languageCode &&
+      this.entityVoiceoversService.getAllVoiceovers().length > 0;
+    if (canShowModal) {
+      this.ngbModal
+        .open(MarkAudioAsNeedingUpdateModalComponent, {
+          backdrop: 'static',
+        })
+        .result.then(
+          () => {
+            this.changeListService.markVoiceoversAsNeedingUpdate(
+              contentId,
+              languageCode
+            );
+          },
+          () => {
             // Note to developers:
             // This callback is triggered when the Cancel button is clicked.
             // No further action is needed.
-          });
-        }
-      };
-      var contentId = null;
-      var languageCode = null;
-      $scope.activeWrittenTranslation = null;
-      $scope.translationEditorIsOpen = false;
-      $scope.isEditable = function() {
-        return EditabilityService.isEditable();
-      };
-
-      var initEditor = function() {
-        $scope.activeWrittenTranslation = null;
-        $scope.translationEditorIsOpen = false;
-        contentId = (
-          TranslationTabActiveContentIdService.getActiveContentId());
-        languageCode = TranslationLanguageService.getActiveLanguageCode();
-
-        $scope.HTML_SCHEMA = {
-          type: 'html',
-          ui_config: {
-            language: TranslationLanguageService.getActiveLanguageCode(),
-            languageDirection: (
-              TranslationLanguageService.getActiveLanguageDirection())
           }
-        };
-
-        if (StateWrittenTranslationsService.displayed.hasWrittenTranslation(
-          contentId, languageCode)) {
-          $scope.activeWrittenTranslation = (
-            StateWrittenTranslationsService.displayed
-              .getWrittenTranslation(contentId, languageCode));
-        }
-      };
-      var saveTranslation = function() {
-        var oldWrittenTranslation = null;
-        var newWrittenTranslation = null;
-        contentId = (
-          TranslationTabActiveContentIdService.getActiveContentId());
-        languageCode = TranslationLanguageService.getActiveLanguageCode();
-        if (StateWrittenTranslationsService
-          .savedMemento.hasWrittenTranslation(contentId, languageCode)) {
-          var writtenTranslation = (
-            StateWrittenTranslationsService
-              .savedMemento.getWrittenTranslation(contentId, languageCode));
-          oldWrittenTranslation = writtenTranslation;
-        }
-        var writtenTranslation = (
-          StateWrittenTranslationsService
-            .displayed.getWrittenTranslation(contentId, languageCode));
-        var newWrittenTranslation = writtenTranslation;
-        if (oldWrittenTranslation === null || (
-          (oldWrittenTranslation.translation !==
-           newWrittenTranslation.translation) ||
-          (oldWrittenTranslation.needsUpdate !== (
-            newWrittenTranslation.needsUpdate)))
-        ) {
-          var stateName = StateEditorService.getActiveStateName();
-          showMarkAudioAsNeedingUpdateModalIfRequired(
-            contentId, languageCode);
-          ExplorationStatesService.saveWrittenTranslation(
-            contentId, newWrittenTranslation.dataFormat, languageCode,
-            stateName, newWrittenTranslation.translation);
-          StateWrittenTranslationsService.saveDisplayedValue();
-          TranslationStatusService.refresh();
-        }
-        $scope.translationEditorIsOpen = false;
-      };
-
-      $scope.openTranslationEditor = function() {
-        if ($scope.isEditable()) {
-          $scope.translationEditorIsOpen = true;
-          if (!$scope.activeWrittenTranslation) {
-            $scope.activeWrittenTranslation = (
-              WrittenTranslationObjectFactory.createNew($scope.dataFormat));
-          }
-        }
-      };
-
-      $scope.onSaveTranslationButtonClicked = function() {
-        var displayedWrittenTranslations = (
-          StateWrittenTranslationsService.displayed);
-        if (displayedWrittenTranslations.hasWrittenTranslation(
-          contentId, languageCode)) {
-          displayedWrittenTranslations.updateWrittenTranslation(
-            contentId, languageCode,
-            $scope.activeWrittenTranslation.translation);
-        } else {
-          displayedWrittenTranslations.addWrittenTranslation(
-            contentId, languageCode,
-            $scope.dataFormat,
-            $scope.activeWrittenTranslation.translation);
-        }
-
-        saveTranslation();
-      };
-
-      $scope.cancelEdit = function() {
-        StateWrittenTranslationsService.restoreFromMemento();
-        initEditor();
-      };
-
-      ctrl.$onInit = function() {
-        $scope.dataFormat = (
-          TranslationTabActiveContentIdService.getActiveDataFormat());
-
-        $scope.UNICODE_SCHEMA = {
-          type: 'unicode'
-        };
-
-        $scope.SET_OF_STRINGS_SCHEMA = {
-          type: 'list',
-          items: {
-            type: 'unicode'
-          },
-          validators: [{
-            id: 'is_uniquified'
-          }]
-        };
-
-        ctrl.directiveSubscriptions.add(
-          TranslationTabActiveContentIdService.onActiveContentIdChanged.
-            subscribe(
-              (dataFormat) => {
-                $scope.dataFormat = dataFormat;
-                initEditor();
-              }
-            )
         );
-        ctrl.directiveSubscriptions.add(
-          TranslationLanguageService.onActiveLanguageChanged.subscribe(
-            () => initEditor()
-          )
-        );
-        initEditor();
-        ctrl.directiveSubscriptions.add(
-          ExternalSaveService.onExternalSave.subscribe(()=> {
-            if ($scope.translationEditorIsOpen) {
-              saveTranslation();
-            }
-          }));
-      };
-
-      $scope.markAsNeedingUpdate = function() {
-        let contentId = (
-          TranslationTabActiveContentIdService.getActiveContentId());
-        let stateName = StateEditorService.getActiveStateName();
-        let languageCode = TranslationLanguageService.getActiveLanguageCode();
-        $scope.activeWrittenTranslation.needsUpdate = true;
-        ExplorationStatesService.markWrittenTranslationAsNeedingUpdate(
-          contentId, languageCode, stateName);
-        TranslationStatusService.refresh();
-      };
-
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
     }
-  ]
-});
+  }
+
+  isEditable(): boolean {
+    return this.editabilityService.isEditable();
+  }
+
+  initEditor(): void {
+    this.translationEditorIsOpen = false;
+    this.contentId =
+      this.translationTabActiveContentIdService.getActiveContentId() as string;
+    this.languageCode = this.translationLanguageService.getActiveLanguageCode();
+
+    this.HTML_SCHEMA = {
+      type: 'html',
+      ui_config: {
+        rte_component_config_id: 'ALL_COMPONENTS',
+        language: this.languageCode,
+        languageDirection:
+          this.translationLanguageService.getActiveLanguageDirection(),
+      },
+    };
+
+    const entityTranslations =
+      this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+        this.languageCode
+      ];
+    if (entityTranslations) {
+      this.activeWrittenTranslation = entityTranslations.getWrittenTranslation(
+        this.translationTabActiveContentIdService.getActiveContentId() as string
+      );
+    } else {
+      this.activeWrittenTranslation = TranslatedContent.createNew(
+        this.dataFormat
+      );
+    }
+  }
+
+  saveTranslation(): void {
+    this.contentId =
+      this.translationTabActiveContentIdService.getActiveContentId() as string;
+    this.languageCode = this.translationLanguageService.getActiveLanguageCode();
+
+    this.showMarkAudioAsNeedingUpdateModalIfRequired(
+      this.contentId,
+      this.languageCode
+    );
+    this.activeWrittenTranslation = this
+      .activeWrittenTranslation as TranslatedContent;
+    this.changeListService.editTranslation(
+      this.contentId,
+      this.languageCode,
+      this.activeWrittenTranslation
+    );
+
+    let newTranslation = this.activeWrittenTranslation.translation;
+
+    // Check if the new translation isn't empty.
+    if (newTranslation) {
+      // Initialize the entity translation object if it doesn't exist.
+      if (
+        !this.entityTranslationsService.languageCodeToLatestEntityTranslations.hasOwnProperty(
+          this.languageCode
+        )
+      ) {
+        this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+          this.languageCode
+        ] = EntityTranslation.createFromBackendDict({
+          entity_id: this.explorationId,
+          entity_type: 'exploration',
+          entity_version: this.explorationVersion,
+          language_code: this.languageCode,
+          translations: {},
+        });
+      }
+      this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+        this.languageCode
+      ].updateTranslation(this.contentId, this.activeWrittenTranslation);
+    } else {
+      // If the translation is blank, remove the existing translation appropriately.
+      if (
+        this.entityTranslationsService.languageCodeToLatestEntityTranslations.hasOwnProperty(
+          this.languageCode
+        )
+      ) {
+        this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+          this.languageCode
+        ].removeTranslation(this.contentId);
+      }
+    }
+
+    this.translationStatusService.refresh();
+    this.translationEditorIsOpen = false;
+
+    setTimeout(() => {
+      this.graphDataService.recompute();
+    });
+  }
+
+  openTranslationEditor(): void {
+    if (this.isEditable()) {
+      this.translationEditorIsOpen = true;
+      if (!this.activeWrittenTranslation) {
+        this.activeWrittenTranslation = TranslatedContent.createNew(
+          this.dataFormat
+        );
+      }
+    }
+  }
+
+  onSaveTranslationButtonClicked(): void {
+    this.externalRteSaveService.onExternalRteSave.emit();
+    this.activeWrittenTranslation = this
+      .activeWrittenTranslation as TranslatedContent;
+    this.activeWrittenTranslation.needsUpdate = false;
+    this.saveTranslation();
+  }
+
+  cancelEdit(): void {
+    this.initEditor();
+  }
+
+  markAsNeedingUpdate(): void {
+    let contentId =
+      this.translationTabActiveContentIdService.getActiveContentId() as string;
+    let languageCode = this.translationLanguageService.getActiveLanguageCode();
+    this.activeWrittenTranslation = this
+      .activeWrittenTranslation as TranslatedContent;
+    this.activeWrittenTranslation.markAsNeedingUpdate();
+    this.changeListService.editTranslation(
+      contentId,
+      languageCode,
+      this.activeWrittenTranslation
+    );
+    this.translationStatusService.refresh();
+  }
+
+  ngOnInit(): void {
+    this.dataFormat =
+      this.translationTabActiveContentIdService.getActiveDataFormat() as string;
+    this.explorationId = this.pageContextService.getExplorationId();
+    this.explorationVersion =
+      this.pageContextService.getExplorationVersion() as number;
+
+    this.directiveSubscriptions.add(
+      this.translationTabActiveContentIdService.onActiveContentIdChanged.subscribe(
+        dataFormat => {
+          this.dataFormat = dataFormat;
+          this.initEditor();
+        }
+      )
+    );
+
+    this.directiveSubscriptions.add(
+      this.translationLanguageService.onActiveLanguageChanged.subscribe(() =>
+        this.initEditor()
+      )
+    );
+
+    this.initEditor();
+
+    this.directiveSubscriptions.add(
+      this.externalSaveService.onExternalSave.subscribe(() => {
+        if (this.translationEditorIsOpen) {
+          this.saveTranslation();
+        }
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+
+  isTranslationLanguageRTL(): boolean {
+    return this.i18nLanguageCodeService.isLanguageRTL(this.languageCode);
+  }
+
+  getActiveTranslationAsHtml(): string {
+    // This method is only invoked when the active written translation is in
+    // the HTML data format, so the translation is guaranteed to be a string.
+    const translation = this.activeWrittenTranslation?.getTranslation();
+    return typeof translation === 'string' ? translation : '';
+  }
+}

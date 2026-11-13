@@ -16,29 +16,79 @@
 
 """Option class for configuring the behavior of Oppia jobs."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import argparse
+
 from core import feconf
+from core.platform import models
 
 from apache_beam.options import pipeline_options
-
 from typing import List, Optional
 
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import app_identity_services
 
-class JobOptions(pipeline_options.PipelineOptions): # type: ignore[misc]
+app_identity_services = models.Registry.import_app_identity_services()
+
+
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that PipelineOptions class is of type Any. Thus to avoid MyPy's
+# error (Class cannot subclass 'PipelineOptions' (has type 'Any')), we
+# added an ignore here.
+class JobOptions(pipeline_options.PipelineOptions):  # type: ignore[misc]
     """Option class for configuring the behavior of Oppia jobs."""
 
     JOB_OPTIONS = {
         'namespace': (
-            str, 'Namespace for isolating the NDB operations during tests.'),
+            str,
+            'Namespace for isolating the NDB operations during tests.',
+        ),
+        'oppia_project_id': (
+            str,
+            'The ID of the Google Cloud Project for Oppia.',
+        ),
+    }
+
+    # A subset of Dataflow pipeline options related to resource utilization.
+    # For the complete list of available options, refer to:
+    # https://docs.cloud.google.com/dataflow/docs/reference/pipeline-options#resource_utilization
+    DATAFLOW_RESOURCE_OPTIONS = {
+        'max_num_workers',
+        'num_workers',
+        'autoscaling_algorithm',
+    }
+
+    # Historically, Beam jobs get data from the datastore and process it.
+    # In some cases, we may want to run parameterized Beam jobs that get data
+    # from other sources. For example, in the case of bulk regeneration of
+    # voiceovers by language accent, we want to pass language accent code as a
+    # parameter to the Beam job.
+    SPECIAL_JOB_OPTIONS = {
+        'language_accent_code': (
+            str,
+            'Language-accent code to scope voiceover synthesis jobs.',
+        ),
+    }
+
+    # A subset of Google Cloud options related to security and networking.
+    # For the complete list of available options, refer to:
+    # https://docs.cloud.google.com/dataflow/docs/reference/pipeline-options#security_and_networking
+    GOOGLE_CLOUD_OPTIONS = {
+        'service_account_email': (
+            str,
+            'Identifies a user-managed worker service account to run virtual '
+            'machines as. If not set, workers use the Compute Engine service '
+            'account of the project as the worker service account.',
+        ),
     }
 
     def __init__(
         self,
         flags: Optional[List[str]] = None,
-        **job_options: Optional[str]
+        **job_options: Optional[str | int],
     ) -> None:
         """Initializes a new JobOptions instance.
 
@@ -49,20 +99,36 @@ class JobOptions(pipeline_options.PipelineOptions): # type: ignore[misc]
                 (unmodified) because PipelineOptions, a parent class, needs it.
             **job_options: dict(str: *). One of the options defined in the class
                 JOB_OPTIONS dict.
+
+        Raises:
+            ValueError. Unsupported job option(s).
         """
-        unsupported_options = set(job_options).difference(self.JOB_OPTIONS)
+        allowed_options = set(self.JOB_OPTIONS.keys()).union(
+            self.DATAFLOW_RESOURCE_OPTIONS,
+            self.SPECIAL_JOB_OPTIONS,
+            self.GOOGLE_CLOUD_OPTIONS,
+        )
+        unsupported_options = set(job_options).difference(allowed_options)
         if unsupported_options:
             joined_unsupported_options = ', '.join(sorted(unsupported_options))
             raise ValueError(
-                'Unsupported option(s): %s' % joined_unsupported_options)
-        super(JobOptions, self).__init__(
+                'Unsupported option(s): %s' % joined_unsupported_options
+            )
+        oppia_project_id = app_identity_services.get_application_id()
+
+        assert isinstance(oppia_project_id, str)
+        super().__init__(
             # Needed by PipelineOptions.
             flags=flags,
             # Needed by GoogleCloudOptions.
-            project=feconf.OPPIA_PROJECT_ID,
+            project=oppia_project_id,
             region=feconf.GOOGLE_APP_ENGINE_REGION,
-            temp_location=feconf.DATAFLOW_TEMP_LOCATION,
-            staging_location=feconf.DATAFLOW_STAGING_LOCATION,
+            temp_location=(
+                feconf.DATAFLOW_TEMP_LOCATION_TEMPLATE % oppia_project_id
+            ),
+            staging_location=(
+                feconf.DATAFLOW_STAGING_LOCATION_TEMPLATE % oppia_project_id
+            ),
             # The 'use_runner_v2' is used since some of our jobs require
             # the v2 of the runner. See the docs:
             # https://cloud.google.com/dataflow/docs/guides/deploying-a-pipeline#dataflow-runner-v2
@@ -71,7 +137,8 @@ class JobOptions(pipeline_options.PipelineOptions): # type: ignore[misc]
             # the Dataflow dashboard that is available to the Oppia admins.
             experiments=['use_runner_v2', 'enable_recommendations'],
             extra_packages=[feconf.OPPIA_PYTHON_PACKAGE_PATH],
-            **job_options)
+            **job_options,
+        )
 
     @classmethod
     def _add_argparse_args(cls, parser: argparse.ArgumentParser) -> None:
@@ -82,4 +149,13 @@ class JobOptions(pipeline_options.PipelineOptions): # type: ignore[misc]
         """
         for option_name, (option_type, option_doc) in cls.JOB_OPTIONS.items():
             parser.add_argument(
-                '--%s' % option_name, help=option_doc, type=option_type)
+                '--%s' % option_name, help=option_doc, type=option_type
+            )
+
+        for option_name, (
+            option_type,
+            option_doc,
+        ) in cls.SPECIAL_JOB_OPTIONS.items():
+            parser.add_argument(
+                '--%s' % option_name, help=option_doc, type=option_type
+            )

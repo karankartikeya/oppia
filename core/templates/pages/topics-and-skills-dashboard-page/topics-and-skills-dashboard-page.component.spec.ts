@@ -16,54 +16,74 @@
  * @fileoverview Unit tests for the topics and skills dashboard component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, fakeAsync, TestBed, tick, waitForAsync } from '@angular/core/testing';
-import { TopicCreationService } from 'components/entity-creation-services/topic-creation.service';
-import { SkillSummary } from 'domain/skill/skill-summary.model';
-import { CreatorTopicSummary } from 'domain/topic/creator-topic-summary.model';
-import { TopicsAndSkillsDashboardBackendApiService } from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
-import { TopicsAndSkillsDashboardFilter } from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-filter.model';
-import { CreateNewSkillModalService } from 'pages/topic-editor-page/services/create-new-skill-modal.service';
-import { WindowDimensionsService } from 'services/contextual/window-dimensions.service';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { TopicsAndSkillsDashboardPageComponent } from './topics-and-skills-dashboard-page.component';
-import { TopicsAndSkillsDashboardPageService } from './topics-and-skills-dashboard-page.service';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {TopicCreationService} from 'components/entity-creation-services/topic-creation.service';
+import {AugmentedSkillSummary} from 'domain/skill/augmented-skill-summary.model';
+import {SkillSummary} from 'domain/skill/skill-summary.model';
+import {CreatorTopicSummary} from 'domain/topic/creator-topic-summary.model';
+import {TopicsAndSkillsDashboardBackendApiService} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
+import {TopicsAndSkillsDashboardFilter} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-filter.model';
+import {CreateNewSkillModalService} from 'pages/topic-editor-page/services/create-new-skill-modal.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {TopicsAndSkillsDashboardPageComponent} from './topics-and-skills-dashboard-page.component';
+import {TopicsAndSkillsDashboardPageService} from './topics-and-skills-dashboard-page.service';
+import {PlatformFeatureService} from '../../services/platform-feature.service';
+import {
+  ETopicPublishedOptions,
+  ETopicStatusOptions,
+  TopicsAndSkillsDashboardPageConstants,
+} from './topics-and-skills-dashboard-page.constants';
 
 /**
  * @fileoverview Unit tests for the topics and skills dashboard component.
  */
 
+class MockPlatformFeatureService {
+  status = {
+    SerialChapterLaunchCurriculumAdminView: {
+      isEnabled: false,
+    },
+  };
+}
+
 describe('Topics and skills dashboard page component', () => {
   let fixture: ComponentFixture<TopicsAndSkillsDashboardPageComponent>;
   let componentInstance: TopicsAndSkillsDashboardPageComponent;
   let windowDimensionsService: WindowDimensionsService;
-  let topicsAndSkillsDashboardBackendApiService:
-    TopicsAndSkillsDashboardBackendApiService;
+  let topicsAndSkillsDashboardBackendApiService: TopicsAndSkillsDashboardBackendApiService;
   let focusManagerService: FocusManagerService;
   let topicCreationService: TopicCreationService;
   let createNewSkillModalService: CreateNewSkillModalService;
   let topicsAndSkillsDashboardPageService: TopicsAndSkillsDashboardPageService;
+  let mockPlatformFeatureService = new MockPlatformFeatureService();
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule
-      ],
-      declarations: [
-        TopicsAndSkillsDashboardPageComponent,
-        MockTranslatePipe
-      ],
+      imports: [HttpClientTestingModule],
+      declarations: [TopicsAndSkillsDashboardPageComponent, MockTranslatePipe],
       providers: [
         FocusManagerService,
         CreateNewSkillModalService,
         TopicCreationService,
         TopicsAndSkillsDashboardBackendApiService,
         TopicsAndSkillsDashboardPageService,
-        WindowDimensionsService
+        WindowDimensionsService,
+        {
+          provide: PlatformFeatureService,
+          useValue: mockPlatformFeatureService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -72,12 +92,14 @@ describe('Topics and skills dashboard page component', () => {
     componentInstance = fixture.componentInstance;
     windowDimensionsService = TestBed.inject(WindowDimensionsService);
     topicsAndSkillsDashboardBackendApiService = TestBed.inject(
-      TopicsAndSkillsDashboardBackendApiService);
+      TopicsAndSkillsDashboardBackendApiService
+    );
     focusManagerService = TestBed.inject(FocusManagerService);
     topicCreationService = TestBed.inject(TopicCreationService);
     createNewSkillModalService = TestBed.inject(CreateNewSkillModalService);
     topicsAndSkillsDashboardPageService = TestBed.inject(
-      TopicsAndSkillsDashboardPageService);
+      TopicsAndSkillsDashboardPageService
+    );
   });
 
   it('should create', () => {
@@ -86,21 +108,82 @@ describe('Topics and skills dashboard page component', () => {
 
   it('should initialize', fakeAsync(() => {
     spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
-    spyOn(TopicsAndSkillsDashboardFilter, 'createDefault').and.returnValue(
-      null);
+    spyOn(TopicsAndSkillsDashboardFilter, 'createDefault').and.callThrough();
     spyOn(componentInstance, '_initDashboard');
     componentInstance.ngOnInit();
-    topicsAndSkillsDashboardBackendApiService
-      .onTopicsAndSkillsDashboardReinitialized.emit(true);
+    topicsAndSkillsDashboardBackendApiService.onTopicsAndSkillsDashboardReinitialized.emit(
+      true
+    );
     tick();
     expect(componentInstance._initDashboard).toHaveBeenCalled();
   }));
 
+  it('should correctly initialize sort and status options list', () => {
+    type TopicPublishedOptionsKeys =
+      keyof typeof TopicsAndSkillsDashboardPageConstants.TOPIC_PUBLISHED_OPTIONS;
+    type TopicSortOptionsKeys =
+      keyof typeof TopicsAndSkillsDashboardPageConstants.TOPIC_SORT_OPTIONS;
+    type TopicSortingOptionsKeys =
+      keyof typeof TopicsAndSkillsDashboardPageConstants.TOPIC_SORTING_OPTIONS;
+    type TopicStatusOptionsKeys =
+      keyof typeof TopicsAndSkillsDashboardPageConstants.TOPIC_STATUS_OPTIONS;
+
+    mockPlatformFeatureService.status.SerialChapterLaunchCurriculumAdminView.isEnabled =
+      false;
+
+    let topicSortOptions: string[] = [];
+    for (let key in TopicsAndSkillsDashboardPageConstants.TOPIC_SORT_OPTIONS) {
+      topicSortOptions.push(
+        TopicsAndSkillsDashboardPageConstants.TOPIC_SORT_OPTIONS[
+          key as TopicSortOptionsKeys
+        ]
+      );
+    }
+    let topicStatusOptions: (ETopicPublishedOptions | ETopicStatusOptions)[] =
+      [];
+    for (let key in TopicsAndSkillsDashboardPageConstants.TOPIC_PUBLISHED_OPTIONS) {
+      topicStatusOptions.push(
+        TopicsAndSkillsDashboardPageConstants.TOPIC_PUBLISHED_OPTIONS[
+          key as TopicPublishedOptionsKeys
+        ]
+      );
+    }
+
+    componentInstance.ngOnInit();
+    expect(componentInstance.sortOptions).toEqual(topicSortOptions);
+    expect(componentInstance.statusOptions).toEqual(topicStatusOptions);
+
+    mockPlatformFeatureService.status.SerialChapterLaunchCurriculumAdminView.isEnabled =
+      true;
+
+    topicSortOptions = [];
+    for (let key in TopicsAndSkillsDashboardPageConstants.TOPIC_SORTING_OPTIONS) {
+      topicSortOptions.push(
+        TopicsAndSkillsDashboardPageConstants.TOPIC_SORTING_OPTIONS[
+          key as TopicSortingOptionsKeys
+        ]
+      );
+    }
+    topicStatusOptions = [];
+    for (let key in TopicsAndSkillsDashboardPageConstants.TOPIC_STATUS_OPTIONS) {
+      topicStatusOptions.push(
+        TopicsAndSkillsDashboardPageConstants.TOPIC_STATUS_OPTIONS[
+          key as TopicStatusOptionsKeys
+        ]
+      );
+    }
+
+    componentInstance.ngOnInit();
+    expect(componentInstance.sortOptions).toEqual(topicSortOptions);
+    expect(componentInstance.statusOptions).toEqual(topicStatusOptions);
+  });
+
   it('should destroy', () => {
     spyOn(componentInstance.directiveSubscriptions, 'unsubscribe');
     componentInstance.ngOnDestroy();
-    expect(componentInstance.directiveSubscriptions.unsubscribe)
-      .toHaveBeenCalled();
+    expect(
+      componentInstance.directiveSubscriptions.unsubscribe
+    ).toHaveBeenCalled();
   });
 
   it('should generate numbers till range', () => {
@@ -109,19 +192,30 @@ describe('Topics and skills dashboard page component', () => {
 
   it('should check whether next skill page is present', () => {
     for (let i = 0; i < 10; i++) {
-      componentInstance.skillSummaries.push(new SkillSummary(
-        '', '', '', 1, 2, 3, 4, 5));
+      componentInstance.skillSummaries.push(
+        AugmentedSkillSummary.createFromBackendDict({
+          id: '',
+          description: '',
+          language_code: '',
+          version: 1,
+          misconception_count: 2,
+          skill_model_created_on: 3,
+          skill_model_last_updated: 4,
+          topic_names: [],
+          classroom_names: [],
+        })
+      );
     }
     componentInstance.skillPageNumber = 0;
     componentInstance.itemsPerPage = 4;
-    expect(componentInstance.isNextSkillPagePresent()).toBeTrue();
+    expect(componentInstance.isNextSkillPagePresent()).toBeTruthy();
     componentInstance.itemsPerPage = 11;
-    expect(componentInstance.isNextSkillPagePresent()).toBeFalse();
+    expect(componentInstance.isNextSkillPagePresent()).toBeFalsy();
   });
 
   it('should set topic tab as active tab', () => {
     componentInstance.filterObject = {
-      reset: () => {}
+      reset: () => {},
     } as TopicsAndSkillsDashboardFilter;
     spyOn(componentInstance.filterObject, 'reset');
     spyOn(componentInstance, 'goToPageNumber');
@@ -134,7 +228,7 @@ describe('Topics and skills dashboard page component', () => {
 
   it('should set skills tab as active tab', () => {
     componentInstance.filterObject = {
-      reset: () => {}
+      reset: () => {},
     } as TopicsAndSkillsDashboardFilter;
     spyOn(componentInstance.filterObject, 'reset');
     spyOn(componentInstance, 'initSkillDashboard');
@@ -148,8 +242,8 @@ describe('Topics and skills dashboard page component', () => {
   it('should intialize skill dashboard', () => {
     spyOn(componentInstance, 'applyFilters');
     componentInstance.initSkillDashboard();
-    expect(componentInstance.moreSkillsPresent).toBeTrue();
-    expect(componentInstance.firstTimeFetchingSkills).toBeTrue();
+    expect(componentInstance.moreSkillsPresent).toBeTruthy();
+    expect(componentInstance.firstTimeFetchingSkills).toBeTruthy();
     expect(componentInstance.applyFilters).toHaveBeenCalledWith();
   });
 
@@ -170,8 +264,32 @@ describe('Topics and skills dashboard page component', () => {
     for (let i = 0; i < 20; i++) {
       componentInstance.topicSummaries.push(
         new CreatorTopicSummary(
-          '', '', 2, 2, 2, 2, 2, '', '', 2, 2, 2, 2, true, true, '', '',
-          '', ''));
+          '',
+          '',
+          2,
+          2,
+          2,
+          2,
+          2,
+          '',
+          '',
+          2,
+          2,
+          2,
+          2,
+          true,
+          true,
+          true,
+          '',
+          '',
+          '',
+          '',
+          1,
+          1,
+          [5, 4],
+          [3, 4]
+        )
+      );
     }
     componentInstance.pageNumber = 1;
     componentInstance.itemsPerPage = 4;
@@ -180,8 +298,19 @@ describe('Topics and skills dashboard page component', () => {
 
     componentInstance.activeTab = componentInstance.TAB_NAME_SKILLS;
     for (let i = 0; i < 10; i++) {
-      componentInstance.skillSummaries.push(new SkillSummary(
-        '', '', '', 1, 2, 3, 4, 5));
+      componentInstance.skillSummaries.push(
+        AugmentedSkillSummary.createFromBackendDict({
+          id: '',
+          description: '',
+          language_code: '',
+          version: 1,
+          misconception_count: 2,
+          skill_model_created_on: 3,
+          skill_model_last_updated: 4,
+          topic_names: [],
+          classroom_names: [],
+        })
+      );
     }
     componentInstance.pageNumber = 1;
     componentInstance.itemsPerPage = 2;
@@ -196,11 +325,12 @@ describe('Topics and skills dashboard page component', () => {
     const resp = {
       skillSummaries: [],
       nextCursor: '',
-      more: true
+      more: true,
     };
     spyOn(
       topicsAndSkillsDashboardBackendApiService,
-      'fetchSkillsDashboardDataAsync').and.returnValue(Promise.resolve(resp));
+      'fetchSkillsDashboardDataAsync'
+    ).and.returnValue(Promise.resolve(resp));
     spyOn(componentInstance, 'goToPageNumber');
 
     componentInstance.fetchSkills();
@@ -208,23 +338,37 @@ describe('Topics and skills dashboard page component', () => {
     expect(componentInstance.moreSkillsPresent).toEqual(resp.more);
     expect(componentInstance.nextCursor).toEqual(resp.nextCursor);
     expect(componentInstance.currentCount).toEqual(
-      componentInstance.skillSummaries.length);
+      componentInstance.skillSummaries.length
+    );
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(0);
-    expect(componentInstance.firstTimeFetchingSkills).toBeFalse();
+    expect(componentInstance.firstTimeFetchingSkills).toBeFalsy();
     componentInstance.fetchSkills();
     tick();
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(
-      componentInstance.pageNumber + 1);
+      componentInstance.pageNumber + 1
+    );
     componentInstance.skillPageNumber = 1;
     componentInstance.itemsPerPage = 1;
     componentInstance.moreSkillsPresent = false;
     for (let i = 0; i < 5; i++) {
-      componentInstance.skillSummaries.push(new SkillSummary(
-        '', '', '', 1, 2, 3, 4, 5));
+      componentInstance.skillSummaries.push(
+        AugmentedSkillSummary.createFromBackendDict({
+          id: '',
+          description: '',
+          language_code: '',
+          version: 1,
+          misconception_count: 2,
+          skill_model_created_on: 3,
+          skill_model_last_updated: 4,
+          topic_names: [],
+          classroom_names: [],
+        })
+      );
     }
     componentInstance.fetchSkills();
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(
-      componentInstance.pageNumber + 1);
+      componentInstance.pageNumber + 1
+    );
   }));
 
   it('should apply filters', () => {
@@ -236,23 +380,59 @@ describe('Topics and skills dashboard page component', () => {
 
     // Topics tab.
     componentInstance.activeTab = componentInstance.TAB_NAME_TOPICS;
-    spyOn(topicsAndSkillsDashboardPageService, 'getFilteredTopics')
-      .and.returnValue([]);
+    spyOn(
+      topicsAndSkillsDashboardPageService,
+      'getFilteredTopics'
+    ).and.returnValue([]);
     spyOn(componentInstance, 'goToPageNumber');
     componentInstance.applyFilters();
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(0);
   });
 
+  it('should update the status filter when the status dropdown changes', () => {
+    componentInstance.filterObject =
+      TopicsAndSkillsDashboardFilter.createDefault();
+    spyOn(componentInstance, 'applyFilters');
+
+    componentInstance.onStatusFilterChanged('Published');
+
+    expect(componentInstance.filterObject.status).toBe('Published');
+    expect(componentInstance.applyFilters).toHaveBeenCalled();
+  });
+
+  it('should update the status filter when the skill status dropdown changes', () => {
+    componentInstance.filterObject =
+      TopicsAndSkillsDashboardFilter.createDefault();
+    spyOn(componentInstance, 'applyFilters');
+
+    componentInstance.onStatusFilterChanged('Assigned');
+
+    expect(componentInstance.filterObject.status).toBe('Assigned');
+    expect(componentInstance.applyFilters).toHaveBeenCalled();
+  });
+
+  it('should update the sort filter when the sort dropdown changes', () => {
+    componentInstance.filterObject =
+      TopicsAndSkillsDashboardFilter.createDefault();
+    spyOn(componentInstance, 'applyFilters');
+
+    componentInstance.onSortFilterChanged('Most Recently Updated');
+
+    expect(componentInstance.filterObject.sort).toBe('Most Recently Updated');
+    expect(componentInstance.applyFilters).toHaveBeenCalled();
+  });
+
   it('should reset filters', () => {
     componentInstance.filterObject = {
-      reset: () => {}
+      reset: () => {},
     } as TopicsAndSkillsDashboardFilter;
     spyOn(componentInstance, 'getUpperLimitValueForPagination');
     spyOn(componentInstance.filterObject, 'reset');
     spyOn(componentInstance, 'applyFilters');
     componentInstance.resetFilters();
-    expect(componentInstance.getUpperLimitValueForPagination)
-      .toHaveBeenCalled();
+    expect(
+      componentInstance.getUpperLimitValueForPagination
+    ).toHaveBeenCalled();
     expect(componentInstance.filterObject.reset).toHaveBeenCalled();
     expect(componentInstance.applyFilters).toHaveBeenCalled();
   });
@@ -260,7 +440,31 @@ describe('Topics and skills dashboard page component', () => {
   it('should toggle filter box', () => {
     componentInstance.filterBoxIsShown = false;
     componentInstance.toggleFilterBox();
-    expect(componentInstance.filterBoxIsShown).toBeTrue();
+    expect(componentInstance.filterBoxIsShown).toBeTruthy();
+    componentInstance.toggleFilterBox();
+    expect(componentInstance.filterBoxIsShown).toBeFalsy();
+  });
+
+  it('should display filter box on maximizing the window', () => {
+    componentInstance.filterBoxIsShown = false;
+
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+    spyOnProperty(window, 'innerWidth').and.returnValue(1024);
+
+    componentInstance.filterBoxOnResize();
+
+    expect(componentInstance.filterBoxIsShown).toBeTruthy();
+  });
+
+  it('should hide filter box on minimizing the window', () => {
+    componentInstance.filterBoxIsShown = true;
+
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(true);
+    spyOnProperty(window, 'innerWidth').and.returnValue(768);
+
+    componentInstance.filterBoxOnResize();
+
+    expect(componentInstance.filterBoxIsShown).toBeFalsy();
   });
 
   it('should get upper limit value for pagination', () => {
@@ -271,12 +475,24 @@ describe('Topics and skills dashboard page component', () => {
   });
 
   it('should get total count value for skills', () => {
+    componentInstance.totalSkillCount = 32;
     componentInstance.skillSummaries = [
-      new SkillSummary('', '', '', 2, 3, 4, 6, 7)];
+      AugmentedSkillSummary.createFromBackendDict({
+        id: '',
+        description: '',
+        language_code: '',
+        version: 2,
+        misconception_count: 3,
+        skill_model_created_on: 4,
+        skill_model_last_updated: 6,
+        topic_names: [],
+        classroom_names: [],
+      }),
+    ];
     componentInstance.itemsPerPage = 0;
-    expect(componentInstance.getTotalCountValueForSkills()).toEqual('many');
+    expect(componentInstance.getTotalCountValueForSkills()).toEqual(32);
     componentInstance.itemsPerPage = 2;
-    expect(componentInstance.getTotalCountValueForSkills()).toEqual(1);
+    expect(componentInstance.getTotalCountValueForSkills()).toEqual(32);
   });
 
   it('should refresh pagination', () => {
@@ -287,8 +503,10 @@ describe('Topics and skills dashboard page component', () => {
 
   it('should initialize topics and skills dashboard', fakeAsync(() => {
     spyOn(
-      topicsAndSkillsDashboardBackendApiService, 'fetchDashboardDataAsync')
-      .and.returnValues(Promise.resolve({
+      topicsAndSkillsDashboardBackendApiService,
+      'fetchDashboardDataAsync'
+    ).and.returnValues(
+      Promise.resolve({
         allClassroomNames: ['math'],
         canDeleteSkill: true,
         canDeleteTopic: true,
@@ -297,10 +515,35 @@ describe('Topics and skills dashboard page component', () => {
         untriagedSkillSummaries: [],
         mergeableSkillSummaries: [],
         totalSkillCount: 5,
-        topicSummaries: [new CreatorTopicSummary(
-          '', '', 2, 2, 2, 2, 2, '', '', 1, 1, 2, 3, true, true, '', '', '',
-          '')],
-        categorizedSkillsDict: {}
+        topicSummaries: [
+          new CreatorTopicSummary(
+            '',
+            '',
+            2,
+            2,
+            2,
+            2,
+            2,
+            '',
+            '',
+            1,
+            1,
+            2,
+            3,
+            true,
+            true,
+            true,
+            '',
+            '',
+            '',
+            '',
+            1,
+            1,
+            [5, 4],
+            [3, 4]
+          ),
+        ],
+        categorizedSkillsDict: {},
       }),
       Promise.resolve({
         allClassroomNames: ['math'],
@@ -308,14 +551,13 @@ describe('Topics and skills dashboard page component', () => {
         canDeleteTopic: true,
         canCreateTopic: true,
         canCreateSkill: true,
-        untriagedSkillSummaries: [
-          new SkillSummary('', '', '', 2, 3, 4, 5, 6)
-        ],
+        untriagedSkillSummaries: [new SkillSummary('', '', '', 2, 3, 4, 5)],
         mergeableSkillSummaries: [],
         totalSkillCount: 5,
         topicSummaries: [],
-        categorizedSkillsDict: {}
-      }));
+        categorizedSkillsDict: {},
+      })
+    );
     spyOn(componentInstance, 'applyFilters');
     spyOn(focusManagerService, 'setFocus');
     spyOn(componentInstance, 'initSkillDashboard');
@@ -328,12 +570,15 @@ describe('Topics and skills dashboard page component', () => {
   it('should navigate to skill page', () => {
     componentInstance.fetchSkillsDebounced = () => {};
     spyOn(componentInstance, 'isNextSkillPagePresent').and.returnValues(
-      true, false);
+      true,
+      false
+    );
     spyOn(componentInstance, 'goToPageNumber');
     spyOn(componentInstance, 'fetchSkillsDebounced');
     componentInstance.navigateSkillPage(componentInstance.MOVE_TO_NEXT_PAGE);
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(
-      componentInstance.pageNumber + 1);
+      componentInstance.pageNumber + 1
+    );
     componentInstance.navigateSkillPage(componentInstance.MOVE_TO_NEXT_PAGE);
     expect(componentInstance.fetchSkillsDebounced).toHaveBeenCalled();
     componentInstance.pageNumber = 5;
@@ -348,10 +593,12 @@ describe('Topics and skills dashboard page component', () => {
     spyOn(componentInstance, 'goToPageNumber');
     componentInstance.changePageByOne(componentInstance.MOVE_TO_PREV_PAGE);
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(
-      componentInstance.pageNumber - 1);
+      componentInstance.pageNumber - 1
+    );
     componentInstance.pageNumber = 1;
     componentInstance.changePageByOne(componentInstance.MOVE_TO_NEXT_PAGE);
     expect(componentInstance.goToPageNumber).toHaveBeenCalledWith(
-      componentInstance.pageNumber + 1);
+      componentInstance.pageNumber + 1
+    );
   });
 });

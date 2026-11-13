@@ -16,8 +16,7 @@
 
 """Unit tests for jobs.transforms.improvements_validation."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.jobs import job_test_utils
 from core.jobs.transforms.validation import improvements_validation
@@ -26,14 +25,19 @@ from core.platform import models
 
 import apache_beam as beam
 
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import improvements_models
+
 (improvements_models,) = models.Registry.import_models(
-    [models.NAMES.improvements])
+    [models.Names.IMPROVEMENTS]
+)
 
 
 class ValidateCompositeEntityIdTests(job_test_utils.PipelinedTestBase):
 
-    def test_model_with_invalid_composite_entity(self):
-        model = improvements_models.TaskEntryModel(
+    def test_model_with_invalid_composite_entity(self) -> None:
+        model = improvements_models.ExplorationStatsTaskEntryModel(
             id='123',
             entity_id='999',
             entity_type='exploration',
@@ -51,13 +55,14 @@ class ValidateCompositeEntityIdTests(job_test_utils.PipelinedTestBase):
             | beam.Create([model])
             | beam.ParDo(improvements_validation.ValidateCompositeEntityId())
         )
-        self.assert_pcoll_equal(output, [
-            improvements_validation_errors.InvalidCompositeEntityError(model)
-        ])
+        self.assert_pcoll_equal(
+            output,
+            [improvements_validation_errors.InvalidCompositeEntityError(model)],
+        )
 
-    def test_model_with_valid_composite_entity(self):
+    def test_model_with_valid_composite_entity(self) -> None:
         # Value has the form: "[entity_type].[entity_id].[entity_version]".
-        model = improvements_models.TaskEntryModel(
+        model = improvements_models.ExplorationStatsTaskEntryModel(
             id='23',
             entity_id='999',
             entity_type='exploration',

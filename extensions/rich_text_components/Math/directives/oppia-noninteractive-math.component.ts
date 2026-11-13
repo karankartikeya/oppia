@@ -34,20 +34,25 @@
  * value.
  */
 
-import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
-import { SafeResourceUrl } from '@angular/platform-browser';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-import { ImagePreloaderService } from 'pages/exploration-player-page/services/image-preloader.service';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { ContextService } from 'services/context.service';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ImageLocalStorageService } from 'services/image-local-storage.service';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
+import {
+  Component,
+  Input,
+  OnChanges,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
+import {SafeResourceUrl} from '@angular/platform-browser';
+import {AppConstants} from 'app.constants';
+import {ImagePreloaderService} from 'pages/exploration-player-page/services/image-preloader.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
 
 export interface MathExpression {
-  'raw_latex': string;
-  'svg_filename': string;
+  raw_latex: string;
+  svg_filename: string;
 }
 
 interface ImageContainerStyle {
@@ -58,16 +63,20 @@ interface ImageContainerStyle {
 @Component({
   selector: 'oppia-noninteractive-math',
   templateUrl: './math.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class NoninteractiveMath implements OnInit, OnChanges {
-  @Input() mathContentWithValue: string;
-  imageContainerStyle: ImageContainerStyle;
-  imageUrl: string | ArrayBuffer | SafeResourceUrl;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() mathContentWithValue!: string | Object;
+  imageContainerStyle!: ImageContainerStyle;
+  // Null ff the SVG is not valid or not trusted.
+  imageUrl!: string | ArrayBuffer | SafeResourceUrl | null;
 
   constructor(
     private assetsBackendApiService: AssetsBackendApiService,
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
     private htmlEscaperService: HtmlEscaperService,
     private imageLocalStorageService: ImageLocalStorageService,
     private imagePreloaderService: ImagePreloaderService,
@@ -79,18 +88,19 @@ export class NoninteractiveMath implements OnInit, OnChanges {
       return;
     }
     const mathExpressionContent = this.htmlEscaperService.escapedJsonToObj(
-      this.mathContentWithValue) as MathExpression;
-    if (mathExpressionContent as unknown as string === '') {
+      this.mathContentWithValue as string
+    ) as MathExpression;
+    if (typeof mathExpressionContent === 'string') {
       return;
     }
     if (mathExpressionContent.hasOwnProperty('raw_latex')) {
       const svgFilename = mathExpressionContent.svg_filename;
-      const dimensions = this.imagePreloaderService.getDimensionsOfMathSvg(
-        svgFilename);
+      const dimensions =
+        this.imagePreloaderService.getDimensionsOfMathSvg(svgFilename);
       this.imageContainerStyle = {
         height: dimensions.height + 'ex',
         width: dimensions.width + 'ex',
-        'vertical-align': '-' + dimensions.verticalPadding + 'ex'
+        'vertical-align': '-' + dimensions.verticalPadding + 'ex',
       };
     }
     // If viewing a concept card in the exploration player, don't use the
@@ -102,13 +112,14 @@ export class NoninteractiveMath implements OnInit, OnChanges {
     // preloader service beforehand.
     if (
       this.imagePreloaderService.inExplorationPlayer() &&
-      !(this.contextService.getEntityType() === AppConstants.ENTITY_TYPE.SKILL)
+      !(
+        this.pageContextService.getEntityType() ===
+        AppConstants.ENTITY_TYPE.SKILL
+      )
     ) {
-      this.imagePreloaderService.getImageUrlAsync(
-        mathExpressionContent.svg_filename
-      ).then(
-        objectUrl => this.imageUrl = objectUrl
-      );
+      this.imagePreloaderService
+        .getImageUrlAsync(mathExpressionContent.svg_filename)
+        .then(objectUrl => (this.imageUrl = objectUrl));
     } else {
       // This is the case when user is not in the exploration player. We
       // don't pre-load the images in this case. So we directly assign
@@ -121,25 +132,40 @@ export class NoninteractiveMath implements OnInit, OnChanges {
         // target entity's images in the translatable content which needs
         // to be fetched from the server.
         if (
-          this.contextService.getImageSaveDestination() ===
-          AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE && (
-            this.imageLocalStorageService.isInStorage(
-              mathExpressionContent.svg_filename))) {
-          this.imageUrl = this.svgSanitizerService.getTrustedSvgResourceUrl(
-            this.imageLocalStorageService.getRawImageData(
-              mathExpressionContent.svg_filename));
+          this.pageContextService.getImageSaveDestination() ===
+            AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE &&
+          this.imageLocalStorageService.isInStorage(
+            mathExpressionContent.svg_filename
+          )
+        ) {
+          const imageData = this.imageLocalStorageService.getRawImageData(
+            mathExpressionContent.svg_filename
+          );
+          if (imageData) {
+            this.imageUrl =
+              this.svgSanitizerService.getTrustedSvgResourceUrl(imageData);
+          }
         } else {
-          this.imageUrl = this.assetsBackendApiService.getImageUrlForPreview(
-            this.contextService.getEntityType(),
-            this.contextService.getEntityId(),
-            mathExpressionContent.svg_filename);
+          const entityType = this.pageContextService.getEntityType();
+          if (entityType) {
+            this.imageUrl = this.assetsBackendApiService.getImageUrlForPreview(
+              entityType,
+              this.pageContextService.getEntityId(),
+              mathExpressionContent.svg_filename
+            );
+          }
         }
       } catch (e) {
-        const additionalInfo = (
-          '\nEntity type: ' + this.contextService.getEntityType() +
-          '\nEntity ID: ' + this.contextService.getEntityId() +
-          '\nFilepath: ' + mathExpressionContent.svg_filename);
-        e.message += additionalInfo;
+        const additionalInfo =
+          '\nEntity type: ' +
+          this.pageContextService.getEntityType() +
+          '\nEntity ID: ' +
+          this.pageContextService.getEntityId() +
+          '\nFilepath: ' +
+          mathExpressionContent.svg_filename;
+        if (e instanceof Error) {
+          e.message += additionalInfo;
+        }
         throw e;
       }
     }
@@ -155,8 +181,3 @@ export class NoninteractiveMath implements OnInit, OnChanges {
     }
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaNoninteractiveMath', downgradeComponent({
-    component: NoninteractiveMath
-  }) as angular.IDirectiveFactory);

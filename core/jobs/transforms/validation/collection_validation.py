@@ -16,27 +16,38 @@
 
 """Beam DoFns and PTransforms to provide validation of collection models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core.domain import collection_domain
-from core.domain import rights_domain
+from core.domain import collection_domain, rights_domain
 from core.jobs import job_utils
 from core.jobs.decorators import validation_decorators
 from core.jobs.transforms.validation import base_validation
+from core.jobs.types import model_property
 from core.platform import models
 
-(collection_models,) = models.Registry.import_models([models.NAMES.collection])
+from typing import Iterator, List, Optional, Tuple, Type, Union
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import collection_models
+
+(collection_models,) = models.Registry.import_models([models.Names.COLLECTION])
 
 
 @validation_decorators.AuditsExisting(
-    collection_models.CollectionSnapshotMetadataModel)
+    collection_models.CollectionSnapshotMetadataModel
+)
 class ValidateCollectionSnapshotMetadataModel(
-        base_validation.BaseValidateCommitCmdsSchema):
-    """Overrides _get_change_domain_class for CollectionSnapshotMetadataModel.
-    """
+    base_validation.BaseValidateCommitCmdsSchema[
+        collection_models.CollectionSnapshotMetadataModel
+    ]
+):
+    """Overrides _get_change_domain_class for CollectionSnapshotMetadataModel."""
 
-    def _get_change_domain_class(self, input_model): # pylint: disable=unused-argument
+    def _get_change_domain_class(
+        self,
+        input_model: collection_models.CollectionSnapshotMetadataModel,  # pylint: disable=unused-argument
+    ) -> Type[collection_domain.CollectionChange]:
         """Returns a change domain class.
 
         Args:
@@ -50,7 +61,21 @@ class ValidateCollectionSnapshotMetadataModel(
 
 
 @validation_decorators.RelationshipsOf(collection_models.CollectionSummaryModel)
-def collection_summary_model_relationships(model):
+def collection_summary_model_relationships(
+    model: Type[collection_models.CollectionSummaryModel],
+) -> Iterator[
+    Tuple[
+        model_property.PropertyType,
+        List[
+            Type[
+                Union[
+                    collection_models.CollectionModel,
+                    collection_models.CollectionRightsModel,
+                ]
+            ]
+        ],
+    ]
+]:
     """Yields how the properties of the model relates to the ID of others."""
 
     yield model.id, [collection_models.CollectionModel]
@@ -58,14 +83,21 @@ def collection_summary_model_relationships(model):
 
 
 @validation_decorators.AuditsExisting(
-    collection_models.CollectionRightsSnapshotMetadataModel)
+    collection_models.CollectionRightsSnapshotMetadataModel
+)
 class ValidateCollectionRightsSnapshotMetadataModel(
-        base_validation.BaseValidateCommitCmdsSchema):
+    base_validation.BaseValidateCommitCmdsSchema[
+        collection_models.CollectionRightsSnapshotMetadataModel
+    ]
+):
     """Overrides _get_change_domain_class for
     CollectionRightsSnapshotMetadataModel.
     """
 
-    def _get_change_domain_class(self, input_model): # pylint: disable=unused-argument
+    def _get_change_domain_class(
+        self,
+        input_model: collection_models.CollectionRightsSnapshotMetadataModel,  # pylint: disable=unused-argument
+    ) -> Type[rights_domain.CollectionRightsChange]:
         """Returns a change domain class.
 
         Args:
@@ -79,12 +111,27 @@ class ValidateCollectionRightsSnapshotMetadataModel(
 
 
 @validation_decorators.AuditsExisting(
-    collection_models.CollectionCommitLogEntryModel)
+    collection_models.CollectionCommitLogEntryModel
+)
 class ValidateCollectionCommitLogEntryModel(
-        base_validation.BaseValidateCommitCmdsSchema):
+    base_validation.BaseValidateCommitCmdsSchema[
+        collection_models.CollectionCommitLogEntryModel
+    ]
+):
     """Overrides _get_change_domain_class for CollectionCommitLogEntryModel."""
 
-    def _get_change_domain_class(self, input_model): # pylint: disable=unused-argument
+    # Here we use MyPy ignore because the signature of this method doesn't
+    # match with super class's _get_change_domain_class() method.
+    def _get_change_domain_class(  # type: ignore[override]
+        self, input_model: collection_models.CollectionCommitLogEntryModel
+    ) -> Optional[
+        Type[
+            Union[
+                rights_domain.CollectionRightsChange,
+                collection_domain.CollectionChange,
+            ]
+        ]
+    ]:
         """Returns a change domain class.
 
         Args:

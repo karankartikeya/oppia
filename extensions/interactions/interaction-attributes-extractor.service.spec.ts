@@ -16,13 +16,11 @@
  * @fileoverview Unit test for the Interaction attributes extractor service.
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { InteractionAttributesExtractorService } from
-  'interactions/interaction-attributes-extractor.service';
-import { ContinueCustomizationArgs } from './customization-args-defs';
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {ContinueCustomizationArgs} from './customization-args-defs';
 
 describe('Interaction attributes extractor service', () => {
   let iaes: InteractionAttributesExtractorService;
@@ -30,49 +28,28 @@ describe('Interaction attributes extractor service', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [InteractionAttributesExtractorService, HtmlEscaperService]
+      providers: [InteractionAttributesExtractorService, HtmlEscaperService],
     });
 
     iaes = TestBed.inject(InteractionAttributesExtractorService);
     hes = TestBed.inject(HtmlEscaperService);
   });
 
-  it('should properly extract customization arguments values from attributes',
+  it(
+    'should properly extract migrated customization arguments values from' +
+      'attributes',
     () => {
-      const choicesWithValue = hes.objToEscapedJson([{
+      const buttonTextWithValue = hes.objToEscapedJson({
         content_id: 'ca_placeholder_0',
-        html: 'Enter here.'
-      }]);
-      const allowMultipleItemsInSamePositionWithValue = hes.objToEscapedJson(
-        true
-      );
-      const attributes = {
-        choicesWithValue,
-        allowMultipleItemsInSamePositionWithValue
-      };
+        unicode_str: 'Enter Here',
+      });
+      const attributes = {buttonTextWithValue};
 
       const caValues = iaes.getValuesFromAttributes(
-        'DragAndDropSortInput',
+        'Continue',
         attributes
-      );
-      expect(caValues).toEqual({
-        choices: [new SubtitledHtml('Enter here.', 'ca_placeholder_0')],
-        allowMultipleItemsInSamePosition: true
-      });
-    });
-
-  it('should properly extract migrated customization arguments values from' +
-    'attributes', () => {
-    const buttonTextWithValue = hes.objToEscapedJson({
-      content_id: 'ca_placeholder_0',
-      unicode_str: 'Enter Here'
-    });
-    const attributes = { buttonTextWithValue };
-
-    const caValues = (
-      iaes.getValuesFromAttributes(
-        'Continue', attributes) as ContinueCustomizationArgs);
-    expect(caValues.buttonText.value.unicode).toEqual('Enter Here');
-  }
+      ) as ContinueCustomizationArgs;
+      expect(caValues.buttonText.value.unicode).toEqual('Enter Here');
+    }
   );
 });

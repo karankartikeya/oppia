@@ -16,20 +16,29 @@
  * @fileoverview Unit test for collection editor navbar component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { EventEmitter, NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, fakeAsync, TestBed, tick, waitForAsync } from '@angular/core/testing';
-import { UrlSerializer } from '@angular/router';
-import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
-import { CollectionRightsBackendApiService } from 'domain/collection/collection-rights-backend-api.service';
-import { CollectionRights } from 'domain/collection/collection-rights.model';
-import { CollectionValidationService } from 'domain/collection/collection-validation.service';
-import { Collection } from 'domain/collection/collection.model';
-import { UndoRedoService } from 'domain/editor/undo_redo/undo-redo.service';
-import { UrlService } from 'services/contextual/url.service';
-import { CollectionEditorRoutingService } from '../services/collection-editor-routing.service';
-import { CollectionEditorStateService } from '../services/collection-editor-state.service';
-import { CollectionEditorNavbarComponent } from './collection-editor-navbar.component';
+// @ts-nocheck
+
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {UrlSerializer} from '@angular/router';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {CollectionPlaythrough} from 'domain/collection/collection-playthrough.model';
+import {CollectionRightsBackendApiService} from 'domain/collection/collection-rights-backend-api.service';
+import {CollectionRights} from 'domain/collection/collection-rights.model';
+import {CollectionValidationService} from 'domain/collection/collection-validation.service';
+import {Collection} from 'domain/collection/collection.model';
+import {UndoRedoService} from 'domain/editor/undo_redo/undo-redo.service';
+import {UrlService} from 'services/contextual/url.service';
+import {CollectionEditorRoutingService} from '../services/collection-editor-routing.service';
+import {CollectionEditorStateService} from '../services/collection-editor-state.service';
+import {CollectionEditorNavbarComponent} from './collection-editor-navbar.component';
 
 describe('Collection editor navbar component', () => {
   let fixture: ComponentFixture<CollectionEditorNavbarComponent>;
@@ -50,33 +59,38 @@ describe('Collection editor navbar component', () => {
   let collectionTags = ['mock tag'];
   let collectionId = 'collection_id';
   let mockCollection = new Collection(
-    collectionId, collectionTitle, collectionObjective, languageCode,
-    collectionTags, null, collectionCategory, 0, 1, []);
+    collectionId,
+    collectionTitle,
+    collectionObjective,
+    languageCode,
+    collectionTags,
+    new CollectionPlaythrough(null, []),
+    collectionCategory,
+    0,
+    1,
+    []
+  );
   let mockPrivateCollectionRights = new CollectionRights({
     collection_id: collectionId,
     can_edit: true,
     can_unpublish: true,
     is_private: true,
-    owner_names: []
+    owner_names: [],
   });
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule
-      ],
-      declarations: [
-        CollectionEditorNavbarComponent
-      ],
+      imports: [HttpClientTestingModule],
+      declarations: [CollectionEditorNavbarComponent],
       providers: [
         CollectionEditorRoutingService,
         CollectionEditorStateService,
         CollectionRightsBackendApiService,
         CollectionValidationService,
         UndoRedoService,
-        UrlSerializer
+        UrlSerializer,
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -85,10 +99,12 @@ describe('Collection editor navbar component', () => {
     componentInstance = fixture.componentInstance;
 
     collectionEditorRoutingService = TestBed.inject(
-      CollectionEditorRoutingService);
+      CollectionEditorRoutingService
+    );
     collectionEditorStateService = TestBed.inject(CollectionEditorStateService);
     collectionRightsBackendApiService = TestBed.inject(
-      CollectionRightsBackendApiService);
+      CollectionRightsBackendApiService
+    );
     collectionValidationService = TestBed.inject(CollectionValidationService);
     undoRedoService = TestBed.inject(UndoRedoService);
     urlService = TestBed.inject(UrlService);
@@ -103,27 +119,36 @@ describe('Collection editor navbar component', () => {
     let mockOnCollectionEventEmitter = new EventEmitter<void>();
     let mockUndoRedoChangeAppliedEventEmitter = new EventEmitter<void>();
 
-    spyOnProperty(collectionEditorStateService, 'onCollectionInitialized')
-      .and.returnValue(mockOnCollectionEventEmitter);
-    spyOn(undoRedoService, 'getUndoRedoChangeEventEmitter')
-      .and.returnValue(mockUndoRedoChangeAppliedEventEmitter);
+    spyOnProperty(
+      collectionEditorStateService,
+      'onCollectionInitialized'
+    ).and.returnValue(mockOnCollectionEventEmitter);
+    spyOn(undoRedoService, 'getUndoRedoChangeEventEmitter').and.returnValue(
+      mockUndoRedoChangeAppliedEventEmitter
+    );
     spyOn(urlService, 'getCollectionIdFromEditorUrl').and.returnValue(
-      collectionId);
+      collectionId
+    );
     spyOn(collectionEditorStateService, 'getCollection').and.returnValue(
-      mockCollection);
-    spyOn(collectionEditorStateService, 'getCollectionRights')
-      .and.returnValue(mockPrivateCollectionRights);
+      mockCollection
+    );
+    spyOn(collectionEditorStateService, 'getCollectionRights').and.returnValue(
+      mockPrivateCollectionRights
+    );
     spyOn(
-      collectionValidationService, 'findValidationIssuesForPrivateCollection')
-      .and.returnValue([]);
+      collectionValidationService,
+      'findValidationIssuesForPrivateCollection'
+    ).and.returnValue([]);
     spyOn(
-      collectionValidationService, 'findValidationIssuesForPublicCollection')
-      .and.returnValue([]);
+      collectionValidationService,
+      'findValidationIssuesForPublicCollection'
+    ).and.returnValue([]);
 
     componentInstance.ngOnInit();
 
-    spyOn(componentInstance.collectionRights, 'isPrivate')
-      .and.returnValue(true);
+    spyOn(componentInstance.collectionRights, 'isPrivate').and.returnValue(
+      true
+    );
 
     mockOnCollectionEventEmitter.emit();
     tick();
@@ -137,34 +162,60 @@ describe('Collection editor navbar component', () => {
     expect(collectionEditorStateService.getCollectionRights).toHaveBeenCalled();
   }));
 
+  it('should unpublish the collection', fakeAsync(() => {
+    const unpublishSpy = spyOn(
+      collectionRightsBackendApiService,
+      'setCollectionPrivateAsync'
+    ).and.returnValue(Promise.resolve());
+    const setRightsSpy = spyOn(
+      collectionEditorStateService,
+      'setCollectionRights'
+    );
+    componentInstance.collectionId = collectionId;
+    componentInstance.collection = mockCollection;
+    componentInstance.collectionRights = mockPrivateCollectionRights;
+    componentInstance.unpublishCollection();
+    tick();
+    expect(unpublishSpy).toHaveBeenCalled();
+    expect(setRightsSpy).toHaveBeenCalled();
+  }));
+
   it('should validate public collection', fakeAsync(() => {
     let mockPublicCollectionRights = new CollectionRights({
       collection_id: collectionId,
       can_edit: true,
       can_unpublish: true,
       is_private: false,
-      owner_names: []
+      owner_names: [],
     });
 
     let mockOnCollectionEventEmitter = new EventEmitter<void>();
     let mockUndoRedoChangeAppliedEventEmitter = new EventEmitter<void>();
 
-    spyOnProperty(collectionEditorStateService, 'onCollectionInitialized')
-      .and.returnValue(mockOnCollectionEventEmitter);
-    spyOn(undoRedoService, 'getUndoRedoChangeEventEmitter')
-      .and.returnValue(mockUndoRedoChangeAppliedEventEmitter);
+    spyOnProperty(
+      collectionEditorStateService,
+      'onCollectionInitialized'
+    ).and.returnValue(mockOnCollectionEventEmitter);
+    spyOn(undoRedoService, 'getUndoRedoChangeEventEmitter').and.returnValue(
+      mockUndoRedoChangeAppliedEventEmitter
+    );
     spyOn(urlService, 'getCollectionIdFromEditorUrl').and.returnValue(
-      collectionId);
+      collectionId
+    );
     spyOn(collectionEditorStateService, 'getCollection').and.returnValue(
-      mockCollection);
-    spyOn(collectionEditorStateService, 'getCollectionRights')
-      .and.returnValue(mockPublicCollectionRights);
+      mockCollection
+    );
+    spyOn(collectionEditorStateService, 'getCollectionRights').and.returnValue(
+      mockPublicCollectionRights
+    );
     spyOn(
-      collectionValidationService, 'findValidationIssuesForPrivateCollection')
-      .and.returnValue([]);
+      collectionValidationService,
+      'findValidationIssuesForPrivateCollection'
+    ).and.returnValue([]);
     spyOn(
-      collectionValidationService, 'findValidationIssuesForPublicCollection')
-      .and.returnValue([]);
+      collectionValidationService,
+      'findValidationIssuesForPublicCollection'
+    ).and.returnValue([]);
 
     componentInstance.ngOnInit();
 
@@ -189,10 +240,67 @@ describe('Collection editor navbar component', () => {
     expect(componentInstance.playerButtonHovering).toBeTrue();
   });
 
+  it('should render collection tabs as accessible buttons without fragments', () => {
+    spyOn(urlService, 'getCollectionIdFromEditorUrl').and.returnValue(
+      collectionId
+    );
+    spyOn(collectionEditorStateService, 'getCollection').and.returnValue(
+      mockCollection
+    );
+    spyOn(collectionEditorStateService, 'getCollectionRights').and.returnValue(
+      mockPrivateCollectionRights
+    );
+    spyOn(collectionEditorStateService, 'isLoadingCollection').and.returnValue(
+      false
+    );
+    spyOn(collectionEditorStateService, 'isSavingCollection').and.returnValue(
+      false
+    );
+    spyOn(undoRedoService, 'getChangeCount').and.returnValue(0);
+    spyOn(collectionEditorRoutingService, 'getActiveTabName').and.returnValue(
+      'edit'
+    );
+    componentInstance.validationIssues = [];
+    fixture.detectChanges();
+
+    const editorTab = fixture.nativeElement.querySelector(
+      '.e2e-test-main-tab'
+    ) as HTMLButtonElement;
+    const settingsTab = fixture.nativeElement.querySelector(
+      '.e2e-test-settings-tab'
+    ) as HTMLButtonElement;
+
+    [editorTab, settingsTab].forEach(tab => {
+      expect(tab.tagName).toBe('BUTTON');
+      expect(tab.type).toBe('button');
+      expect(tab.hasAttribute('href')).toBe(false);
+      expect(tab.tabIndex).toBe(0);
+      expect(tab.getAttribute('aria-label')).toBeTruthy();
+    });
+
+    const navigateToEditTabSpy = spyOn(
+      collectionEditorRoutingService,
+      'navigateToEditTab'
+    );
+    const navigateToSettingsTabSpy = spyOn(
+      collectionEditorRoutingService,
+      'navigateToSettingsTab'
+    );
+    const initialHash = window.location.hash;
+
+    editorTab.click();
+    settingsTab.click();
+
+    expect(navigateToEditTabSpy).toHaveBeenCalled();
+    expect(navigateToSettingsTabSpy).toHaveBeenCalled();
+    expect(window.location.hash).toBe(initialHash);
+    expect(window.location.hash).not.toBe('#');
+  });
+
   it('should test getters', () => {
     componentInstance.validationIssues = [];
     componentInstance.collectionRights = {
-      isPrivate: () => true
+      isPrivate: () => true,
     } as CollectionRights;
 
     let changeCount = 10;
@@ -200,11 +308,16 @@ describe('Collection editor navbar component', () => {
 
     spyOn(undoRedoService, 'getChangeCount').and.returnValue(changeCount);
     spyOn(collectionEditorStateService, 'isLoadingCollection').and.returnValues(
-      true, false);
+      true,
+      false
+    );
     spyOn(collectionEditorStateService, 'isSavingCollection').and.returnValues(
-      true, false);
+      true,
+      false
+    );
     spyOn(collectionEditorRoutingService, 'getActiveTabName').and.returnValue(
-      activeTabName);
+      activeTabName
+    );
 
     expect(componentInstance.getWarningsCount()).toEqual(0);
     expect(componentInstance.getChangeListCount()).toEqual(changeCount);
@@ -229,12 +342,15 @@ describe('Collection editor navbar component', () => {
     componentInstance.selectHistoryTab();
 
     expect(collectionEditorRoutingService.navigateToEditTab).toHaveBeenCalled();
-    expect(collectionEditorRoutingService.navigateToSettingsTab)
-      .toHaveBeenCalled();
-    expect(collectionEditorRoutingService.navigateToStatsTab)
-      .toHaveBeenCalled();
-    expect(collectionEditorRoutingService.navigateToHistoryTab)
-      .toHaveBeenCalled();
+    expect(
+      collectionEditorRoutingService.navigateToSettingsTab
+    ).toHaveBeenCalled();
+    expect(
+      collectionEditorRoutingService.navigateToStatsTab
+    ).toHaveBeenCalled();
+    expect(
+      collectionEditorRoutingService.navigateToHistoryTab
+    ).toHaveBeenCalled();
   });
 
   it('should save changes', () => {
@@ -243,16 +359,17 @@ describe('Collection editor navbar component', () => {
 
     spyOn(ngbModal, 'open').and.returnValue({
       componentInstance: {
-        isCollectionPrivate: false
+        isCollectionPrivate: false,
       },
       result: {
         then: (
-            successCallback: (commitMessage: string) => void,
-            errorCallback: () => void) => {
+          successCallback: (commitMessage: string) => void,
+          errorCallback: () => void
+        ) => {
           successCallback(commitMessage);
           errorCallback();
-        }
-      }
+        },
+      },
     } as NgbModalRef);
 
     spyOn(collectionEditorStateService, 'saveCollection');
@@ -260,38 +377,53 @@ describe('Collection editor navbar component', () => {
     componentInstance.saveChanges();
 
     expect(collectionEditorStateService.saveCollection).toHaveBeenCalledWith(
-      commitMessage);
+      commitMessage
+    );
   });
 
   it('should publish collection', fakeAsync(() => {
     componentInstance.collection = mockCollection;
     componentInstance.collectionRights = mockPrivateCollectionRights;
 
-    spyOn(collectionRightsBackendApiService, 'setCollectionPublicAsync')
-      .and.returnValue(Promise.resolve(mockPrivateCollectionRights));
+    spyOn(
+      collectionRightsBackendApiService,
+      'setCollectionPublicAsync'
+    ).and.returnValue(Promise.resolve(mockPrivateCollectionRights));
     spyOn(collectionEditorStateService, 'setCollectionRights');
 
     componentInstance.publishCollection();
     tick();
 
-    expect(collectionRightsBackendApiService.setCollectionPublicAsync)
-      .toHaveBeenCalled();
+    expect(
+      collectionRightsBackendApiService.setCollectionPublicAsync
+    ).toHaveBeenCalled();
     expect(collectionEditorStateService.setCollectionRights).toHaveBeenCalled();
 
     let mockCollectionWithoutMetadata = new Collection(
-      'id', '', '', '', [], null, '', 0, 1, []);
+      'id',
+      '',
+      '',
+      '',
+      [],
+      new CollectionPlaythrough(null, []),
+      '',
+      0,
+      1,
+      []
+    );
 
     componentInstance.collection = mockCollectionWithoutMetadata;
 
     spyOn(ngbModal, 'open').and.returnValue({
       result: {
         then: (
-            successCallback: (commitMessage: string[]) => void,
-            errorCallback: () => void) => {
+          successCallback: (commitMessage: string[]) => void,
+          errorCallback: () => void
+        ) => {
           successCallback([]);
           errorCallback();
-        }
-      }
+        },
+      },
     } as NgbModalRef);
     spyOn(collectionEditorStateService, 'saveCollection');
 

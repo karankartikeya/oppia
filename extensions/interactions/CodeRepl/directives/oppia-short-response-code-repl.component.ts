@@ -20,29 +20,35 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {Answer} from './oppia-response-code-repl.component';
 
 @Component({
   selector: 'oppia-short-response-code-repl',
   templateUrl: './code-repl-short-response.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class ShortResponseCodeRepl implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input('answer') answerWithValue!: string;
-  answer!: string;
-  constructor(private htmlEscaperService: HtmlEscaperService) { }
+  @Input() answer!: string;
+  escapedAnswer!: Answer;
+  errorFocusLabel!: string;
+  constructor(
+    private htmlEscaperService: HtmlEscaperService,
+    private focusManagerService: FocusManagerService
+  ) {}
 
   ngOnInit(): void {
-    this.answer = this.htmlEscaperService.escapedJsonToObj(
-      this.answerWithValue) as string;
+    this.escapedAnswer = this.htmlEscaperService.escapedJsonToObj(
+      this.answer
+    ) as Answer;
+    if (this.escapedAnswer.error) {
+      this.errorFocusLabel = this.focusManagerService.generateFocusLabel();
+      this.focusManagerService.setFocus(this.errorFocusLabel);
+    }
   }
 }
-angular.module('oppia').directive(
-  'oppiaShortResponseCodeRepl', downgradeComponent({
-    component: ShortResponseCodeRepl
-  }) as angular.IDirectiveFactory);

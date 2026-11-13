@@ -16,31 +16,56 @@
  * @fileoverview Root component for error page.
  */
 
-// This error page is used for status codes 400, 401 and 500.
+import {Component} from '@angular/core';
+import {ActivatedRoute} from '@angular/router';
+import {TranslateService} from '@ngx-translate/core';
+import {AppConstants} from 'app.constants';
 
-import { Component } from '@angular/core';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { PageTitleService } from 'services/page-title.service';
+import {BaseRootComponent, MetaTagData} from 'pages/base-root.component';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {PageHeadService} from 'services/page-head.service';
 
 @Component({
   selector: 'oppia-error-page-root',
-  templateUrl: './error-page-root.component.html'
+  templateUrl: './error-page-root.component.html',
 })
-export class ErrorPageRootComponent {
-  statusCode: string;
+export class ErrorPageRootComponent extends BaseRootComponent {
+  title: string = AppConstants.PAGES_REGISTERED_WITH_FRONTEND.ERROR.TITLE;
+  meta: MetaTagData[] = AppConstants.PAGES_REGISTERED_WITH_FRONTEND.ERROR
+    .META as unknown as Readonly<MetaTagData>[];
+
+  statusCode: string | null = null;
+  validStatusCodes: string[] = ['400', '401', '404', '500'];
+  windowRef: WindowRef;
+  activatedRoute: ActivatedRoute;
 
   constructor(
-    private pageTitleService: PageTitleService,
-    private windowRef: WindowRef
-  ) {}
+    pageHeadService: PageHeadService,
+    translateService: TranslateService,
+    windowRef: WindowRef,
+    activatedRoute: ActivatedRoute
+  ) {
+    super(pageHeadService, translateService);
+    this.windowRef = windowRef;
+    this.activatedRoute = activatedRoute;
+  }
 
   ngOnInit(): void {
-    let bodyTag = (
-      this.windowRef.nativeWindow.document.getElementsByTagName('body'));
-    // Read status code from errorCode attribute on body tag.
-    this.statusCode = bodyTag[0].getAttribute('errorCode') ?
-      bodyTag[0].getAttribute('errorCode') : '404';
-    // Update the default page title.
-    this.pageTitleService.setDocumentTitle(`Error ${this.statusCode} | Oppia`);
+    this.statusCode = this.activatedRoute.snapshot.paramMap.get('status_code');
+    if (this.statusCode === null) {
+      const bodyTag =
+        this.windowRef.nativeWindow.document.getElementsByTagName('body');
+      this.statusCode = bodyTag[0].getAttribute('errorCode');
+    }
+
+    if (!this.validStatusCodes.includes(String(this.statusCode))) {
+      this.statusCode = '404';
+    }
+
+    super.ngOnInit();
+  }
+
+  get titleInterpolationParams(): Object {
+    return {statusCode: this.statusCode};
   }
 }

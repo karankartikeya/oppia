@@ -16,13 +16,11 @@
 
 """Provides file storage functionality from Google Cloud Storage."""
 
-from __future__ import absolute_import  # pylint: disable=import-only-modules
-from __future__ import unicode_literals  # pylint: disable=import-only-modules
+from __future__ import annotations
 
 import functools
 
 from google.cloud import storage
-
 from typing import List, Optional, Union
 
 
@@ -80,10 +78,10 @@ def get(bucket_name: str, filepath: str) -> bytes:
 
 
 def commit(
-        bucket_name: str,
-        filepath: str,
-        raw_bytes: Union[bytes, str],
-        mimetype: Optional[str]
+    bucket_name: str,
+    filepath: str,
+    raw_bytes: Union[bytes, str],
+    mimetype: Optional[str],
 ) -> None:
     """Commits raw_bytes to the relevant file in the entity's assets folder.
 
@@ -113,7 +111,7 @@ def delete(bucket_name: str, filepath: str) -> None:
 
 
 def copy(
-        bucket_name: str, source_assets_path: str, dest_assets_path: str
+    bucket_name: str, source_assets_path: str, dest_assets_path: str
 ) -> None:
     """Copies images from source_path.
 
@@ -123,8 +121,16 @@ def copy(
             folder.
         dest_assets_path: str. The path to the relevant file within the entity's
             assets folder.
+
+    Raises:
+        ValueError. Source asset does not exist at the given path.
     """
     src_blob = _get_bucket(bucket_name).get_blob(source_assets_path)
+    if src_blob is None:
+        raise ValueError(
+            'Source asset does not exist at %s.' % source_assets_path,
+            source_assets_path,
+        )
     _get_bucket(bucket_name).copy_blob(
         src_blob, _get_bucket(bucket_name), new_name=dest_assets_path
     )
@@ -142,4 +148,5 @@ def listdir(bucket_name: str, dir_name: str) -> List[storage.blob.Blob]:
         list(Blob). A list of blobs.
     """
     return list(
-        _get_client().list_blobs(_get_bucket(bucket_name), prefix=dir_name))
+        _get_client().list_blobs(_get_bucket(bucket_name), prefix=dir_name)
+    )

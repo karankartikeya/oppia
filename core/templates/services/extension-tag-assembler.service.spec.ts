@@ -16,62 +16,81 @@
  * @fileoverview Unit tests for ExtensionTagAssemblerService.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { ExtensionTagAssemblerService } from
-  './extension-tag-assembler.service';
-import { CamelCaseToHyphensPipe } from
-  'filters/string-utility-filters/camel-case-to-hyphens.pipe';
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
+import {TestBed} from '@angular/core/testing';
+import {ExtensionTagAssemblerService} from './extension-tag-assembler.service';
+import {CamelCaseToHyphensPipe} from 'filters/string-utility-filters/camel-case-to-hyphens.pipe';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
 
 describe('Extension Tag Assembler Service', () => {
   let etas: ExtensionTagAssemblerService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [
-        CamelCaseToHyphensPipe
-      ]
+      providers: [CamelCaseToHyphensPipe],
     });
     etas = TestBed.inject(ExtensionTagAssemblerService);
   });
 
   it('should not format element without customization', () => {
-    const element = $('<p>');
+    const element = document.createElement('p');
     const interactionCustomizationArgs = {};
     const expectedElement = '<p></p>';
 
-    expect(etas.formatCustomizationArgAttrs(
-      element, interactionCustomizationArgs).get(0).outerHTML).toEqual(
-      expectedElement);
+    expect(
+      etas.formatCustomizationArgAttrs(element, interactionCustomizationArgs)
+        .outerHTML
+    ).toEqual(expectedElement);
   });
 
   it('should format element with customization', () => {
-    const element = $('<p>');
+    const element = document.createElement('p');
     const interactionCustomizationArgs = {
-      choices: {value: 'sampleChoice'}
+      choices: {value: 'sampleChoice'},
     };
-    const expectedElement = '<p ' +
-      'choices-with-value="&amp;quot;sampleChoice&amp;quot;"' +
-      '></p>';
+    const expectedElement =
+      '<p ' + 'choices-with-value="&amp;quot;sampleChoice&amp;quot;"' + '></p>';
 
-    expect(etas.formatCustomizationArgAttrs(
-      element, interactionCustomizationArgs).get(0).outerHTML).toEqual(
-      expectedElement);
+    expect(
+      etas.formatCustomizationArgAttrs(element, interactionCustomizationArgs)
+        .outerHTML
+    ).toEqual(expectedElement);
   });
 
   it('should format element with complex customization', () => {
-    const element = $('<p>');
+    const element = document.createElement('p');
     const interactionCustomizationArgs = {
-      test: {value: {
-        attr: [new SubtitledHtml('html', 'ca_id')]
-      }}
+      test: {
+        value: {
+          attr: [new SubtitledHtml('html', 'ca_id')],
+        },
+      },
     };
-    const expectedElement = '<p test-with-value="{&amp;quot;attr&amp;quot;:' +
+    const expectedElement =
+      '<p test-with-value="{&amp;quot;attr&amp;quot;:' +
       '[{&amp;quot;html&amp;quot;:&amp;quot;html&amp;quot;,&amp;quot;' +
       'content_id&amp;quot;:&amp;quot;ca_id&amp;quot;}]}"></p>';
 
-    expect(etas.formatCustomizationArgAttrs(
-      element, interactionCustomizationArgs).get(0).outerHTML).toEqual(
-      expectedElement);
+    expect(
+      etas.formatCustomizationArgAttrs(element, interactionCustomizationArgs)
+        .outerHTML
+    ).toEqual(expectedElement);
+  });
+
+  it('should format element with multiple customizations', () => {
+    const element = document.createElement('p');
+    const interactionCustomizationArgs = {
+      choices: {value: 'sampleChoice'},
+      test: {value: 'sampleValue'},
+    };
+    const expectedElement =
+      '<p ' +
+      'choices-with-value="&amp;quot;sampleChoice&amp;quot;" ' +
+      'test-with-value="&amp;quot;sampleValue&amp;quot;"' +
+      '></p>';
+
+    expect(
+      etas.formatCustomizationArgAttrs(element, interactionCustomizationArgs)
+        .outerHTML
+    ).toEqual(expectedElement);
   });
 });

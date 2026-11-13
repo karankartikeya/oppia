@@ -16,8 +16,7 @@
  * @fileoverview Service that manages admin data.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
 import {
   AdminPageData,
@@ -25,17 +24,15 @@ import {
 } from 'domain/admin/admin-backend-api.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class AdminDataService {
   // This property is initialized using private methods
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   dataPromise!: Promise<AdminPageData>;
 
-  constructor(
-    private adminBackendApiService: AdminBackendApiService
-  ) {}
+  constructor(private adminBackendApiService: AdminBackendApiService) {}
 
   async _getDataAsync(): Promise<AdminPageData> {
     if (this.dataPromise) {
@@ -51,7 +48,3 @@ export class AdminDataService {
     return this._getDataAsync();
   }
 }
-
-angular.module('oppia').factory(
-  'AdminDataService',
-  downgradeInjectable(AdminDataService));

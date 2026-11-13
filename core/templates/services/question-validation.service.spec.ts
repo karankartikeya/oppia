@@ -16,26 +16,49 @@
  * @fileoverview Unit tests for QuestionValidationService.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { StateEditorService } from 'components/state-editor/state-editor-properties-services/state-editor.service';
-import { QuestionObjectFactory } from 'domain/question/QuestionObjectFactory';
-import { MisconceptionObjectFactory } from 'domain/skill/MisconceptionObjectFactory';
-import { QuestionValidationService } from './question-validation.service';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {TestBed, waitForAsync} from '@angular/core/testing';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {QuestionBackendDict, Question} from 'domain/question/question.model';
+import {
+  Misconception,
+  MisconceptionSkillMap,
+} from 'domain/skill/misconception.model';
+import {ResponsesService} from 'pages/exploration-editor-page/editor-tab/services/responses.service';
+import {QuestionValidationService} from './question-validation.service';
+import {AnswerGroup} from 'domain/exploration/answer-group.model';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {Rule} from 'domain/exploration/rule.model';
 
 describe('Question Validation Service', () => {
-  let misconceptionObjectFactory: MisconceptionObjectFactory;
-  let mockMisconceptionObject;
-  let mockQuestionDict;
-  let questionObjectFactory: QuestionObjectFactory;
+  let mockMisconceptionObject: MisconceptionSkillMap;
+  let mockQuestionDict: QuestionBackendDict;
   let qvs: QuestionValidationService;
-  let ses;
+  let rs: ResponsesService;
+  let ses: StateEditorService;
+  let shouldHideDefaultAnswerGroupSpy: jasmine.Spy;
+  let goodDefaultOutcome: Outcome;
+  let createAnswerGroupByRules: (rules: Rule[]) => AnswerGroup;
+
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [StateEditorService, ResponsesService],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  }));
 
   beforeEach(() => {
-    misconceptionObjectFactory = TestBed.inject(MisconceptionObjectFactory);
     qvs = TestBed.inject(QuestionValidationService);
+    rs = TestBed.inject(ResponsesService);
     ses = TestBed.inject(StateEditorService);
-    questionObjectFactory = TestBed.inject(QuestionObjectFactory);
+    spyOn(qvs, 'getInteractionValidationErrorMessage').and.returnValue(null);
     spyOn(ses, 'isCurrentSolutionValid').and.returnValue(true);
+    shouldHideDefaultAnswerGroupSpy = spyOn(rs, 'shouldHideDefaultAnswerGroup');
+    shouldHideDefaultAnswerGroupSpy.and.returnValue(false);
+    createAnswerGroupByRules = rules =>
+      AnswerGroup.createNew(rules, goodDefaultOutcome, [], null);
   });
 
   beforeEach(() => {
@@ -44,112 +67,102 @@ describe('Question Validation Service', () => {
       question_state_data: {
         content: {
           html: 'Question 1',
-          content_id: 'content_1'
+          content_id: 'content_1',
         },
         interaction: {
-          answer_groups: [{
-            outcome: {
-              dest: 'outcome 1',
-              feedback: {
-                content_id: 'content_5',
-                html: ''
+          answer_groups: [
+            {
+              outcome: {
+                dest: 'outcome 1',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'content_5',
+                  html: '',
+                },
+                labelled_as_correct: true,
+                param_changes: [],
+                refresher_exploration_id: null,
               },
-              labelled_as_correct: true,
-              param_changes: [],
-              refresher_exploration_id: null
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 10},
+                },
+              ],
+              tagged_skill_misconception_id: null,
             },
-            rule_specs: [{
-              rule_type: 'Equals',
-              inputs: {x: 10}
-            }],
-            tagged_skill_misconception_id: null
-          }, {
-            outcome: {
-              dest: 'outcome 1',
-              feedback: {
-                content_id: 'content_5',
-                html: ''
+            {
+              outcome: {
+                dest: 'outcome 1',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'content_5',
+                  html: '',
+                },
+                labelled_as_correct: false,
+                param_changes: [],
+                refresher_exploration_id: null,
               },
-              labelled_as_correct: false,
-              param_changes: [],
-              refresher_exploration_id: null
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 10},
+                },
+              ],
+              tagged_skill_misconception_id: 'abc-1',
             },
-            rule_specs: [{
-              rule_type: 'Equals',
-              inputs: {x: 10}
-            }],
-            tagged_skill_misconception_id: 'abc-1'
-          }],
+          ],
           confirmed_unclassified_answers: [],
           customization_args: {
             placeholder: {
               value: {
                 content_id: 'ca_placeholder_0',
-                unicode_str: ''
-              }
+                unicode_str: '',
+              },
             },
-            rows: { value: 1 }
+            rows: {value: 1},
           },
           default_outcome: {
             dest: null,
+            dest_if_really_stuck: null,
             feedback: {
               html: 'Correct Answer',
-              content_id: 'content_2'
+              content_id: 'content_2',
             },
             param_changes: [],
-            labelled_as_correct: false
+            labelled_as_correct: false,
           },
           hints: [
             {
               hint_content: {
                 html: 'Hint 1',
-                content_id: 'content_3'
-              }
-            }
+                content_id: 'content_3',
+              },
+            },
           ],
           solution: {
             correct_answer: 'This is the correct answer',
             answer_is_exclusive: false,
             explanation: {
               html: 'Solution explanation',
-              content_id: 'content_4'
-            }
+              content_id: 'content_4',
+            },
           },
-          id: 'TextInput'
+          id: 'TextInput',
         },
         param_changes: [],
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content_1: {},
-            content_2: {},
-            content_3: {},
-            content_4: {},
-            content_5: {}
-          }
-        },
-        written_translations: {
-          translations_mapping: {
-            content_1: {},
-            content_2: {},
-            content_3: {},
-            content_4: {},
-            content_5: {}
-          }
-        },
-        solicit_answer_details: false
+        solicit_answer_details: false,
       },
       language_code: 'en',
       version: 1,
       linked_skill_ids: ['abc'],
-      inapplicable_skill_misconception_ids: ['abc-2']
-    };
+      inapplicable_skill_misconception_ids: ['abc-2'],
+    } as unknown as QuestionBackendDict;
     mockMisconceptionObject = {
       abc: [
-        misconceptionObjectFactory.create(
-          '1', 'misc1', 'notes1', 'feedback1', true),
-        misconceptionObjectFactory.create(
-          '2', 'misc2', 'notes2', 'feedback1', false)
-      ]
+        Misconception.create(1, 'misc1', 'notes1', 'feedback1', true),
+        Misconception.create(2, 'misc2', 'notes2', 'feedback1', false),
+      ],
     };
   });
 
@@ -158,8 +171,10 @@ describe('Question Validation Service', () => {
     interaction.answer_groups[0].outcome.labelled_as_correct = false;
     expect(
       qvs.isQuestionValid(
-        questionObjectFactory.createFromBackendDict(mockQuestionDict),
-        mockMisconceptionObject)).toBeFalse();
+        Question.createFromBackendDict(mockQuestionDict),
+        mockMisconceptionObject
+      )
+    ).toBeFalse();
   });
 
   it('should return false if misconceptions are not addressed', () => {
@@ -167,21 +182,290 @@ describe('Question Validation Service', () => {
     interaction.answer_groups[1].tagged_skill_misconception_id = null;
     expect(
       qvs.isQuestionValid(
-        questionObjectFactory.createFromBackendDict(mockQuestionDict),
-        mockMisconceptionObject)).toBeFalse();
+        Question.createFromBackendDict(mockQuestionDict),
+        mockMisconceptionObject
+      )
+    ).toBeFalse();
   });
 
   it('should return false if solution is invalid', () => {
-    ses.isCurrentSolutionValid.and.returnValue(false);
+    ses.isCurrentSolutionValid = () => false;
     expect(
       qvs.isQuestionValid(
-        questionObjectFactory.createFromBackendDict(mockQuestionDict),
-        mockMisconceptionObject)).toBeFalse();
+        Question.createFromBackendDict(mockQuestionDict),
+        mockMisconceptionObject
+      )
+    ).toBeFalse();
+  });
+
+  it('should return an error message if interaction has errors', () => {
+    const originalSpy = qvs.getInteractionValidationErrorMessage as jasmine.Spy;
+    originalSpy.and.callThrough();
+    const question = Question.createFromBackendDict(mockQuestionDict);
+    goodDefaultOutcome = Outcome.createFromBackendDict({
+      dest: null,
+      dest_if_really_stuck: null,
+      feedback: {
+        html: 'good',
+        content_id: null,
+      },
+      labelled_as_correct: false,
+      param_changes: [],
+      refresher_exploration_id: null,
+      missing_prerequisite_skill_id: null,
+    });
+    let answerGroups = [
+      createAnswerGroupByRules([
+        Rule.createFromBackendDict(
+          {
+            rule_type: 'Equals',
+            inputs: {
+              x: {
+                contentId: 'rule_input_4',
+                normalizedStrSet: ['xyz'],
+              },
+            },
+          },
+          'TextInput'
+        ),
+      ]),
+      createAnswerGroupByRules([
+        Rule.createFromBackendDict(
+          {
+            rule_type: 'Equals',
+            inputs: {
+              x: {
+                contentId: 'rule_input',
+                normalizedStrSet: ['xyz'],
+              },
+            },
+          },
+          'TextInput'
+        ),
+      ]),
+    ];
+    question._stateData.interaction.answerGroups = answerGroups;
+
+    const errorMessage = qvs.getInteractionValidationErrorMessage(question);
+    expect(qvs.isQuestionValid(question, mockMisconceptionObject)).toBeFalse();
+    expect(errorMessage).toBe(
+      'Learner answer 1 from Oppia response 2 will never be matched' +
+        " because it is preceded by a 'Equals' answer" +
+        ' with a matching input'
+    );
+
+    originalSpy.and.returnValue(null);
   });
 
   it('should return true if validation is successful', () => {
-    let question = questionObjectFactory.createFromBackendDict(
-      mockQuestionDict);
+    let question = Question.createFromBackendDict(mockQuestionDict);
     expect(qvs.isQuestionValid(question, mockMisconceptionObject)).toBeTrue();
+  });
+
+  it('should return false if question is not valid', () => {
+    expect(qvs.isQuestionValid(undefined, mockMisconceptionObject)).toBeFalse();
+  });
+
+  describe('getValidationErrorMessage()', () => {
+    it('should return null when there are no errors', () => {
+      const question = Question.createFromBackendDict(mockQuestionDict);
+      expect(qvs.getValidationErrorMessage(question)).toBeNull();
+    });
+
+    it('should return error message if no feedback for default outcome', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      // This throws "Object is possibly 'null'.". We need to suppress this
+      // error because the object is initialized in the beforeEach().
+      // @ts-ignore
+      interaction.default_outcome.feedback.html = '';
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        "Please enter feedback for the '[All other answers]' outcome."
+      );
+    });
+
+    it(
+      'should return null if no feedback for default outcome but default ' +
+        'answer group is hidden',
+      () => {
+        shouldHideDefaultAnswerGroupSpy.and.returnValue(true);
+        const interaction = mockQuestionDict.question_state_data.interaction;
+        // This throws "Object is possibly 'null'.". We need to suppress this
+        // error because the object is initialized in the beforeEach().
+        // @ts-ignore
+        interaction.default_outcome.feedback.html = '';
+        const question = Question.createFromBackendDict(mockQuestionDict);
+
+        expect(qvs.getValidationErrorMessage(question)).toBeNull();
+      }
+    );
+
+    it('should return error message if no answer is marked correct', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      interaction.answer_groups[0].outcome.labelled_as_correct = false;
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'At least one answer should be marked correct'
+      );
+    });
+
+    it('should return error message if no solution', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      interaction.solution = null;
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'A solution must be specified'
+      );
+    });
+
+    it('should return error message if no hint', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      interaction.hints = [];
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'At least 1 hint should be specified'
+      );
+    });
+
+    it('should return error message if no interaction', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      interaction.id = null;
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'An interaction must be specified'
+      );
+    });
+
+    it('should return error message if no question content', () => {
+      const questionContent = mockQuestionDict.question_state_data.content;
+      questionContent.html = '';
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'Please enter a question.'
+      );
+    });
+
+    it(
+      'should return error message if correct feedback matches the ' +
+        'default outcome feedback',
+      () => {
+        const interaction = mockQuestionDict.question_state_data.interaction;
+        interaction.answer_groups[0].outcome.feedback.html = 'ok';
+        if (interaction.default_outcome === null) {
+          throw new Error('Expected default outcome to be initialized.');
+        }
+        interaction.default_outcome.feedback.html = 'ok';
+        const question = Question.createFromBackendDict(mockQuestionDict);
+
+        expect(qvs.getValidationErrorMessage(question)).toEqual(
+          'Feedback for correct and incorrect answers must be different.'
+        );
+      }
+    );
+
+    it(
+      'should return null if correct and incorrect feedback are ' + 'different',
+      () => {
+        const interaction = mockQuestionDict.question_state_data.interaction;
+        interaction.answer_groups[0].outcome.feedback.html =
+          'Correct answer feedback';
+        if (interaction.default_outcome === null) {
+          throw new Error('Expected default outcome to be initialized.');
+        }
+        interaction.default_outcome.feedback.html = 'Try again';
+        const question = Question.createFromBackendDict(mockQuestionDict);
+
+        expect(qvs.getValidationErrorMessage(question)).toBeNull();
+      }
+    );
+
+    it(
+      'should treat feedback differing only in whitespace as ' + 'duplicate',
+      () => {
+        const interaction = mockQuestionDict.question_state_data.interaction;
+        interaction.answer_groups[0].outcome.feedback.html = 'ok';
+        if (interaction.default_outcome === null) {
+          throw new Error('Expected default outcome to be initialized.');
+        }
+        interaction.default_outcome.feedback.html = ' ok ';
+        const question = Question.createFromBackendDict(mockQuestionDict);
+
+        expect(qvs.getValidationErrorMessage(question)).toEqual(
+          'Feedback for correct and incorrect answers must be different.'
+        );
+      }
+    );
+
+    it('should treat feedback differing only in case as duplicate', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      interaction.answer_groups[0].outcome.feedback.html = 'OK';
+      if (interaction.default_outcome === null) {
+        throw new Error('Expected default outcome to be initialized.');
+      }
+      interaction.default_outcome.feedback.html = '<p>ok</p>';
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'Feedback for correct and incorrect answers must be different.'
+      );
+    });
+
+    it(
+      'should return error message if correct feedback matches an ' +
+        'incorrect answer group feedback',
+      () => {
+        const interaction = mockQuestionDict.question_state_data.interaction;
+        interaction.answer_groups[0].outcome.feedback.html = 'Same feedback';
+        interaction.answer_groups[1].outcome.feedback.html = 'Same feedback';
+
+        if (interaction.default_outcome === null) {
+          throw new Error('Expected default outcome to be initialized.');
+        }
+        interaction.default_outcome.feedback.html = 'Different feedback';
+
+        const question = Question.createFromBackendDict(mockQuestionDict);
+
+        expect(qvs.getValidationErrorMessage(question)).toEqual(
+          'Feedback for correct and incorrect answers must be different.'
+        );
+      }
+    );
+
+    it(
+      'should return null if two incorrect outcomes have the same ' +
+        'feedback',
+      () => {
+        const interaction = mockQuestionDict.question_state_data.interaction;
+        interaction.answer_groups[0].outcome.feedback.html = 'Well done';
+        interaction.answer_groups[1].outcome.feedback.html = 'Try again';
+        if (interaction.default_outcome === null) {
+          throw new Error('Expected default outcome to be initialized.');
+        }
+        interaction.default_outcome.feedback.html = 'Try again';
+        const question = Question.createFromBackendDict(mockQuestionDict);
+
+        expect(qvs.getValidationErrorMessage(question)).toBeNull();
+      }
+    );
+
+    it('should treat feedback with paragraph wrappers as duplicate', () => {
+      const interaction = mockQuestionDict.question_state_data.interaction;
+      interaction.answer_groups[0].outcome.feedback.html = '<p>ok</p>';
+      if (interaction.default_outcome === null) {
+        throw new Error('Expected default outcome to be initialized.');
+      }
+      interaction.default_outcome.feedback.html = '<p> ok </p>';
+      const question = Question.createFromBackendDict(mockQuestionDict);
+
+      expect(qvs.getValidationErrorMessage(question)).toEqual(
+        'Feedback for correct and incorrect answers must be different.'
+      );
+    });
   });
 });

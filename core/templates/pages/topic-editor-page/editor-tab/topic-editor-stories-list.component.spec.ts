@@ -1,4 +1,4 @@
-// Copyright 2021 The Oppia Authors. All Rights Reserved.
+// Copyright 2022 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,164 +16,293 @@
  * @fileoverview Unit tests for the stories list viewer.
  */
 
-import { StorySummary } from 'domain/story/story-summary.model';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+// @ts-nocheck
+
+import {CdkDragDrop} from '@angular/cdk/drag-drop';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {UndoRedoService} from 'domain/editor/undo_redo/undo-redo.service';
+import {StorySummary} from 'domain/story/story-summary.model';
+import {TopicUpdateService} from 'domain/topic/topic-update.service';
+import {TopicEditorStoriesListComponent} from './topic-editor-stories-list.component';
+import {Topic} from 'domain/topic/topic-object.model';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {PlatformFeatureService} from '../../../services/platform-feature.service';
+
+class MockPlatformFeatureService {
+  status = {
+    SerialChapterLaunchCurriculumAdminView: {
+      isEnabled: false,
+    },
+  };
+}
 
 describe('topicEditorStoriesList', () => {
-  let ctrl = null;
-  let $rootScope = null;
-  let $scope = null;
-  let $q = null;
-  let $uibModal = null;
-  let $window = null;
-  let storySummaries = null;
-  let topicUpdateService = null;
-  let undoRedoService = null;
+  let component: TopicEditorStoriesListComponent;
+  let fixture: ComponentFixture<TopicEditorStoriesListComponent>;
+  let storySummaries: StorySummary[];
+  let mockPlatformFeatureService = new MockPlatformFeatureService();
+  let topicUpdateService: TopicUpdateService;
+  let undoRedoService: UndoRedoService;
+  let ngbModal: NgbModal;
+  let modalRef: {
+    componentInstance: Record<string, string>;
+    result: Promise<void>;
+  };
+  let windowRef: WindowRef;
 
-  importAllAngularServices();
-  beforeEach(angular.mock.module('oppia'));
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    topicUpdateService = $injector.get('TopicUpdateService');
-    undoRedoService = $injector.get('UndoRedoService');
-    $window = $injector.get('$window');
-    $uibModal = $injector.get('$uibModal');
-    $q = $injector.get('$q');
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
-    ctrl = $componentController('topicEditorStoriesList', {
-      $scope: $scope
-    }, {
-      getTopic: () => {}
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      declarations: [TopicEditorStoriesListComponent],
+      imports: [HttpClientTestingModule],
+      providers: [
+        {
+          provide: PlatformFeatureService,
+          useValue: mockPlatformFeatureService,
+        },
+      ],
     });
-
-    storySummaries = [StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    }), StorySummary.createFromBackendDict({
-      id: 'storyId2',
-      title: 'Story Title2',
-      node_titles: ['node1', 'node2', 'node3'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    })];
   }));
 
-  it('should initialise component when list of stories is displayed', () => {
-    ctrl.$onInit();
+  beforeEach(() => {
+    fixture = TestBed.createComponent(TopicEditorStoriesListComponent);
+    component = fixture.componentInstance;
+    windowRef = TestBed.inject(WindowRef);
+    topicUpdateService = TestBed.inject(TopicUpdateService);
+    undoRedoService = TestBed.inject(UndoRedoService);
+    ngbModal = TestBed.inject(NgbModal);
+    modalRef = {
+      componentInstance: {},
+      result: Promise.resolve(),
+    };
 
-    expect($scope.STORY_TABLE_COLUMN_HEADINGS).toEqual([
-      'title', 'node_count', 'publication_status']);
+    storySummaries = [
+      StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+        total_chapters_count: 3,
+        published_chapters_count: 2,
+        overdue_chapters_count: 0,
+        upcoming_chapters_count: 0,
+      }),
+      StorySummary.createFromBackendDict({
+        id: 'storyId2',
+        title: 'Story Title2',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+        total_chapters_count: 3,
+        published_chapters_count: 3,
+        overdue_chapters_count: 3,
+        upcoming_chapters_count: 0,
+      }),
+    ];
   });
 
-  it('should set fromIndex when user starts moving a story in the list', () => {
-    $scope.fromIndex = 0;
+  it('should get status of Serial Chapter Launch Feature flag', () => {
+    mockPlatformFeatureService.status.SerialChapterLaunchCurriculumAdminView.isEnabled =
+      false;
+    expect(component.isSerialChapterLaunchFeatureEnabled()).toEqual(false);
 
-    $scope.onMoveStoryStart(2);
-
-    expect($scope.fromIndex).toBe(2);
+    mockPlatformFeatureService.status.SerialChapterLaunchCurriculumAdminView.isEnabled =
+      true;
+    expect(component.isSerialChapterLaunchFeatureEnabled()).toEqual(true);
   });
 
-  it('should move story to new location when user stops dragging', () => {
-    spyOn(topicUpdateService, 'rearrangeCanonicalStory');
-    $scope.fromIndex = 1;
-    ctrl.storySummaries = storySummaries;
+  it('should change list order properly', () => {
+    spyOn(topicUpdateService, 'rearrangeCanonicalStory').and.stub();
 
-    $scope.onMoveStoryFinish(0);
+    component.storySummaries = [
+      StorySummary.createFromBackendDict({
+        id: 'id1',
+        title: '',
+        node_titles: [],
+        thumbnail_filename: '',
+        thumbnail_bg_color: '',
+        description: '',
+        story_is_published: false,
+        completed_node_titles: [],
+        url_fragment: '',
+        all_node_dicts: [],
+      }),
+      StorySummary.createFromBackendDict({
+        id: 'id2',
+        title: '',
+        node_titles: [],
+        thumbnail_filename: '',
+        thumbnail_bg_color: '',
+        description: '',
+        story_is_published: false,
+        completed_node_titles: [],
+        url_fragment: '',
+        all_node_dicts: [],
+      }),
+      StorySummary.createFromBackendDict({
+        id: 'id3',
+        title: '',
+        node_titles: [],
+        thumbnail_filename: '',
+        thumbnail_bg_color: '',
+        description: '',
+        story_is_published: false,
+        completed_node_titles: [],
+        url_fragment: '',
+        all_node_dicts: [],
+      }),
+    ];
+    component.topic = new Topic(
+      '',
+      '',
+      '',
+      '',
+      '',
+      'en',
+      [],
+      [],
+      [],
+      1,
+      1,
+      [],
+      '',
+      '',
+      {},
+      false,
+      '',
+      '',
+      []
+    );
+    const dropEvent: CdkDragDrop<StorySummary[]> = {
+      previousIndex: 1,
+      currentIndex: 2,
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      item: null!,
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      container: null!,
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      previousContainer: null!,
+      isPointerOverContainer: false,
+      distance: {x: 0, y: 0},
+    };
+    component.drop(dropEvent);
 
-    expect($scope.toIndex).toBe(0);
     expect(topicUpdateService.rearrangeCanonicalStory).toHaveBeenCalled();
-    expect(ctrl.storySummaries[0].getId()).toBe('storyId2');
-    expect(ctrl.storySummaries[1].getId()).toBe('storyId');
   });
 
-  it('should not rearrage when user does not change position of the ' +
-  'story', () => {
-    spyOn(topicUpdateService, 'rearrangeCanonicalStory');
-    $scope.fromIndex = 0;
-    ctrl.storySummaries = storySummaries;
+  it('should initialise component when list of stories is displayed', () => {
+    mockPlatformFeatureService.status.SerialChapterLaunchCurriculumAdminView.isEnabled =
+      false;
+    component.ngOnInit();
+    expect(component.STORY_TABLE_COLUMN_HEADINGS).toEqual([
+      'title',
+      'node_count',
+      'publication_status',
+    ]);
 
-    $scope.onMoveStoryFinish(0);
-
-    expect($scope.toIndex).toBe(0);
-    expect(topicUpdateService.rearrangeCanonicalStory).not.toHaveBeenCalled();
-    expect(ctrl.storySummaries[1].getId()).toBe('storyId2');
-    expect(ctrl.storySummaries[0].getId()).toBe('storyId');
+    mockPlatformFeatureService.status.SerialChapterLaunchCurriculumAdminView.isEnabled =
+      true;
+    component.ngOnInit();
+    expect(component.STORY_TABLE_COLUMN_HEADINGS).toEqual([
+      'title',
+      'publication_status',
+      'node_count',
+      'notifications',
+    ]);
   });
 
-  it('should delete story when user deletes story', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve()
-    });
+  it('should delete story when user deletes story', fakeAsync(() => {
+    spyOn(ngbModal, 'open').and.returnValue(modalRef);
     spyOn(topicUpdateService, 'removeCanonicalStory');
-    ctrl.storySummaries = storySummaries;
+    component.storySummaries = storySummaries;
 
-    expect(ctrl.storySummaries.length).toBe(2);
+    expect(component.storySummaries.length).toBe(2);
 
-    $scope.deleteCanonicalStory('storyId');
-    $scope.$apply();
+    component.deleteCanonicalStory('storyId');
+    tick();
 
-    expect($uibModal.open).toHaveBeenCalled();
+    expect(ngbModal.open).toHaveBeenCalled();
     expect(topicUpdateService.removeCanonicalStory).toHaveBeenCalled();
-    expect(ctrl.storySummaries.length).toBe(1);
-    expect(ctrl.storySummaries[0].getId()).toBe('storyId2');
-  });
+    expect(component.storySummaries.length).toBe(1);
+    expect(component.storySummaries[0].getId()).toBe('storyId2');
+  }));
 
   it('should close modal when user click cancel button', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject()
-    });
+    modalRef.result = Promise.reject();
+    spyOn(ngbModal, 'open').and.returnValue(modalRef);
+    component.deleteCanonicalStory('storyId');
 
-    $scope.deleteCanonicalStory('storyId');
-    $scope.$apply();
-
-    expect($uibModal.open).toHaveBeenCalled();
+    expect(ngbModal.open).toHaveBeenCalled();
   });
 
   it('should open story editor when user clicks a story', () => {
-    spyOn($window, 'open');
+    spyOn(windowRef.nativeWindow, 'open');
     spyOn(undoRedoService, 'getChangeCount').and.returnValue(0);
 
-    $scope.openStoryEditor('storyId');
+    component.openStoryEditor('storyId');
 
-    expect($window.open).toHaveBeenCalled();
+    expect(windowRef.nativeWindow.open).toHaveBeenCalled();
   });
 
-  it('should open save changes modal when user tries to open story editor' +
-  ' without saving changes', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve()
-    });
-    spyOn(undoRedoService, 'getChangeCount').and.returnValue(1);
+  it(
+    'should open save changes modal when user tries to open story editor' +
+      ' without saving changes',
+    () => {
+      modalRef.componentInstance = {body: 'xyz'};
+      const modalSpy = spyOn(ngbModal, 'open').and.returnValue(modalRef);
+      spyOn(undoRedoService, 'getChangeCount').and.returnValue(1);
 
-    $scope.openStoryEditor('storyId');
-    $scope.$apply();
+      component.openStoryEditor('storyId');
 
-    expect($uibModal.open).toHaveBeenCalled();
+      expect(modalSpy).toHaveBeenCalled();
+    }
+  );
+
+  it(
+    'should close save changes modal when closes the saves changes' + ' modal',
+    () => {
+      modalRef.componentInstance = {body: 'xyz'};
+      modalRef.result = Promise.reject();
+      const modalSpy = spyOn(ngbModal, 'open').and.returnValue(modalRef);
+      spyOn(undoRedoService, 'getChangeCount').and.returnValue(1);
+
+      component.openStoryEditor('storyId');
+
+      expect(modalSpy).toHaveBeenCalled();
+    }
+  );
+
+  it('should return if some chapters are not published', () => {
+    expect(component.areChaptersAwaitingPublication(storySummaries[0])).toBe(
+      true
+    );
+    expect(component.areChaptersAwaitingPublication(storySummaries[1])).toBe(
+      false
+    );
   });
 
-  it('should close save changes modal when closes the saves changes' +
-  ' modal', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject()
-    });
-    spyOn(undoRedoService, 'getChangeCount').and.returnValue(1);
-
-    $scope.openStoryEditor('storyId');
-    $scope.$apply();
-
-    expect($uibModal.open).toHaveBeenCalled();
+  it('should return if chapter notifications are empty', () => {
+    expect(component.isChapterNotificationsEmpty(storySummaries[0])).toBe(true);
+    expect(component.isChapterNotificationsEmpty(storySummaries[1])).toBe(
+      false
+    );
   });
 });

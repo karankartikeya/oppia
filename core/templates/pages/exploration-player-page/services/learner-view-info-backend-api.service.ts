@@ -15,36 +15,44 @@
  * @fileoverview Backend api service for fetching the learner data;
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { AppConstants } from 'app.constants';
-import { LearnerExplorationSummaryBackendDict } from 'domain/summary/learner-exploration-summary.model';
+import {HttpClient} from '@angular/common/http';
+import {Injectable} from '@angular/core';
+import {AppConstants} from 'app.constants';
+import {LearnerExplorationSummaryBackendDict} from 'domain/summary/learner-exploration-summary.model';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
 
 interface LearnerViewBackendDict {
-  'summaries': LearnerExplorationSummaryBackendDict[];
+  summaries: LearnerExplorationSummaryBackendDict[];
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class LearnerViewInfoBackendApiService {
   constructor(
-        private http: HttpClient
+    private http: HttpClient,
+    private i18nLanguageCodeService: I18nLanguageCodeService
   ) {}
 
   async fetchLearnerInfoAsync(
-      stringifiedExpIds: string,
-      includePrivateExplorations: string): Promise<LearnerViewBackendDict> {
-    return this.http.get<LearnerViewBackendDict>(
-      AppConstants.EXPLORATION_SUMMARY_DATA_URL_TEMPLATE, {
-        params: {
-          stringified_exp_ids: stringifiedExpIds,
-          include_private_explorations: includePrivateExplorations
-        }}).toPromise();
+    stringifiedExpIds: string,
+    includePrivateExplorations: string
+  ): Promise<LearnerViewBackendDict> {
+    return this.http
+      .get<LearnerViewBackendDict>(
+        AppConstants.EXPLORATION_SUMMARY_DATA_URL_TEMPLATE,
+        {
+          params: {
+            stringified_exp_ids: stringifiedExpIds,
+            include_private_explorations: includePrivateExplorations,
+            // The lesson information card shows this metadata alongside the
+            // lesson itself, so it is displayed in the learner's site
+            // language.
+            display_in_language_code:
+              this.i18nLanguageCodeService.getCurrentI18nLanguageCode(),
+          },
+        }
+      )
+      .toPromise();
   }
 }
-
-angular.module('oppia').factory(
-  'LearnerViewInfoBackendApiService',
-  downgradeInjectable(LearnerViewInfoBackendApiService));

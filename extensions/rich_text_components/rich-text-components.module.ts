@@ -15,29 +15,40 @@
 /**
  * @fileoverview Module for the rich text extension components.
  */
-import 'core-js/es7/reflect';
 import 'zone.js';
 
-import { CommonModule } from '@angular/common';
-import { NgModule } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { YouTubePlayerModule } from '@angular/youtube-player';
-import { NgbAccordionModule, NgbModalModule, NgbNavModule, NgbTooltipModule } from '@ng-bootstrap/ng-bootstrap';
-import { NoninteractiveCollapsible } from './Collapsible/directives/oppia-noninteractive-collapsible.component';
-import { DynamicContentModule } from 'components/angular-html-bind/dynamic-content.module';
-import { NoninteractiveImage } from './Image/directives/oppia-noninteractive-image.component';
-import { NoninteractiveLink } from './Link/directives/oppia-noninteractive-link.component';
-import { NoninteractiveMath } from './Math/directives/oppia-noninteractive-math.component';
-import { NoninteractiveTabs } from './Tabs/directives/oppia-noninteractive-tabs.component';
-import { NoninteractiveVideo } from './Video/directives/oppia-noninteractive-video.component';
-import { NoninteractiveSkillreview } from './Skillreview/directives/oppia-noninteractive-skillreview.component';
-import { OppiaNoninteractiveSkillreviewConceptCardModalComponent } from './Skillreview/directives/oppia-noninteractive-skillreview-concept-card-modal.component';
-import { ConceptCardComponent } from 'components/concept-card/concept-card.directive';
-import { PortalModule } from '@angular/cdk/portal';
+import {CommonModule} from '@angular/common';
+import {NgModule} from '@angular/core';
+import {MatButtonModule} from '@angular/material/button';
+import {YouTubePlayerModule} from '@angular/youtube-player';
+import {
+  NgbAccordionModule,
+  NgbModalModule,
+  NgbNavModule,
+  NgbTooltipModule,
+} from '@ng-bootstrap/ng-bootstrap';
+import {NoninteractiveCollapsible} from './Collapsible/directives/oppia-noninteractive-collapsible.component';
+import {DynamicContentModule} from 'components/interaction-display/dynamic-content.module';
+import {NoninteractiveImage} from './Image/directives/oppia-noninteractive-image.component';
+import {NoninteractiveLink} from './Link/directives/oppia-noninteractive-link.component';
+import {NoninteractiveMath} from './Math/directives/oppia-noninteractive-math.component';
+import {NoninteractiveTabs} from './Tabs/directives/oppia-noninteractive-tabs.component';
+import {NoninteractiveVideo} from './Video/directives/oppia-noninteractive-video.component';
+import {NoninteractiveSkillreview} from './Skillreview/directives/oppia-noninteractive-skillreview.component';
+import {OppiaNoninteractiveSkillreviewConceptCardModalComponent} from './Skillreview/directives/oppia-noninteractive-skillreview-concept-card-modal.component';
+import {ConceptCardComponent} from 'components/concept-card/concept-card.component';
+import {PortalModule} from '@angular/cdk/portal';
+import {
+  OppiaRteTextNodeDirective,
+  RteOutputDisplayComponent,
+} from './rte-output-display.component';
 
+import {CommonElementsModule} from 'components/common-layout-directives/common-elements/common-elements.module';
+import {NoninteractiveWorkedexample} from './Workedexample/directives/oppia-noninteractive-workedexample.component';
 
 @NgModule({
   imports: [
+    CommonElementsModule,
     CommonModule,
     DynamicContentModule,
     MatButtonModule,
@@ -46,7 +57,7 @@ import { PortalModule } from '@angular/cdk/portal';
     NgbNavModule,
     NgbTooltipModule,
     PortalModule,
-    YouTubePlayerModule
+    YouTubePlayerModule,
   ],
   declarations: [
     ConceptCardComponent,
@@ -57,7 +68,10 @@ import { PortalModule } from '@angular/cdk/portal';
     NoninteractiveSkillreview,
     NoninteractiveTabs,
     NoninteractiveVideo,
-    OppiaNoninteractiveSkillreviewConceptCardModalComponent
+    NoninteractiveWorkedexample,
+    OppiaNoninteractiveSkillreviewConceptCardModalComponent,
+    RteOutputDisplayComponent,
+    OppiaRteTextNodeDirective,
   ],
   entryComponents: [
     NoninteractiveCollapsible,
@@ -67,7 +81,9 @@ import { PortalModule } from '@angular/cdk/portal';
     NoninteractiveSkillreview,
     NoninteractiveTabs,
     NoninteractiveVideo,
-    OppiaNoninteractiveSkillreviewConceptCardModalComponent
+    NoninteractiveWorkedexample,
+    OppiaNoninteractiveSkillreviewConceptCardModalComponent,
+    RteOutputDisplayComponent,
   ],
   exports: [
     ConceptCardComponent,
@@ -78,8 +94,10 @@ import { PortalModule } from '@angular/cdk/portal';
     NoninteractiveSkillreview,
     NoninteractiveTabs,
     NoninteractiveVideo,
-    OppiaNoninteractiveSkillreviewConceptCardModalComponent
+    NoninteractiveWorkedexample,
+    OppiaNoninteractiveSkillreviewConceptCardModalComponent,
+    RteOutputDisplayComponent,
+    OppiaRteTextNodeDirective,
   ],
 })
-
-export class RichTextComponentsModule { }
+export class RichTextComponentsModule {}

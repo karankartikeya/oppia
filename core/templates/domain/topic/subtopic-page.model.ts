@@ -20,14 +20,14 @@
 import cloneDeep from 'lodash/cloneDeep';
 import {
   SubtopicPageContentsBackendDict,
-  SubtopicPageContents
+  SubtopicPageContents,
 } from 'domain/topic/subtopic-page-contents.model';
 
 export interface SubtopicPageBackendDict {
-  'id': string;
-  'topic_id': string;
-  'page_contents': SubtopicPageContentsBackendDict;
-  'language_code': string;
+  id: string;
+  topic_id: string;
+  page_contents: SubtopicPageContentsBackendDict;
+  language_code: string;
 }
 
 export class SubtopicPage {
@@ -35,10 +35,9 @@ export class SubtopicPage {
     private id: string,
     private topicId: string,
     private pageContents: SubtopicPageContents,
-    private languageCode: string,
+    private languageCode: string
   ) {}
 
-  // Returns the id of the subtopic page.
   getId(): string {
     return this.id;
   }
@@ -47,12 +46,10 @@ export class SubtopicPage {
     this.id = id;
   }
 
-  // Returns the topic id that the subtopic page is linked to.
   getTopicId(): string {
     return this.topicId;
   }
 
-  // Returns the page data for the subtopic page.
   getPageContents(): SubtopicPageContents {
     return this.pageContents;
   }
@@ -75,12 +72,15 @@ export class SubtopicPage {
   }
 
   static createFromBackendDict(
-      subtopicPageBackendDict: SubtopicPageBackendDict): SubtopicPage {
+    subtopicPageBackendDict: SubtopicPageBackendDict
+  ): SubtopicPage {
     return new SubtopicPage(
-      subtopicPageBackendDict.id, subtopicPageBackendDict.topic_id,
+      subtopicPageBackendDict.id,
+      subtopicPageBackendDict.topic_id,
       SubtopicPageContents.createFromBackendDict(
-        subtopicPageBackendDict.page_contents),
-      subtopicPageBackendDict.language_code,
+        subtopicPageBackendDict.page_contents
+      ),
+      subtopicPageBackendDict.language_code
     );
   }
 
@@ -91,13 +91,9 @@ export class SubtopicPage {
   static createDefault(topicId: string, subtopicId: number): SubtopicPage {
     return new SubtopicPage(
       this.getSubtopicPageId(topicId, subtopicId),
-      topicId, SubtopicPageContents.createDefault(),
-      'en');
-  }
-
-  // Create an interstitial subtopic page that would be displayed in the
-  // editor until the actual subtopic page is fetched from the backend.
-  static createInterstitialSubtopicPage(): SubtopicPage {
-    return new SubtopicPage(null, null, null, 'en');
+      topicId,
+      SubtopicPageContents.createDefault(),
+      'en'
+    );
   }
 }

@@ -16,16 +16,22 @@
  * @fileoverview Unit tests for TopicManagerRoleEditorModalComponent.
  */
 
-import { ComponentFixture, fakeAsync, TestBed, async, tick } from '@angular/core/testing';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { FormsModule } from '@angular/forms';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { MaterialModule } from 'modules/material.module';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  waitForAsync,
+  tick,
+} from '@angular/core/testing';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {FormsModule} from '@angular/forms';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {MaterialModule} from 'modules/material.module';
 
-import { AdminBackendApiService } from 'domain/admin/admin-backend-api.service';
-import { AlertsService } from 'services/alerts.service';
+import {AdminBackendApiService} from 'domain/admin/admin-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
 
-import { TopicManagerRoleEditorModalComponent } from './topic-manager-role-editor-modal.component';
+import {TopicManagerRoleEditorModalComponent} from './topic-manager-role-editor-modal.component';
 
 describe('TopicManagerRoleEditorModalComponent', () => {
   let component: TopicManagerRoleEditorModalComponent;
@@ -34,26 +40,18 @@ describe('TopicManagerRoleEditorModalComponent', () => {
   let adminBackendApiService: AdminBackendApiService;
   let alertsService: AlertsService;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        FormsModule,
-        MaterialModule,
-        HttpClientTestingModule
-      ],
+      imports: [FormsModule, MaterialModule, HttpClientTestingModule],
       declarations: [TopicManagerRoleEditorModalComponent],
-      providers: [
-        NgbActiveModal,
-        AdminBackendApiService,
-        AlertsService
-      ]
+      providers: [NgbActiveModal, AdminBackendApiService, AlertsService],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(TopicManagerRoleEditorModalComponent);
     component = fixture.componentInstance;
-    ngbActiveModal = TestBed.get(NgbActiveModal);
+    ngbActiveModal = TestBed.inject(NgbActiveModal);
     adminBackendApiService = TestBed.inject(AdminBackendApiService);
     alertsService = TestBed.inject(AlertsService);
     component.managedTopicIds = ['topic123', 'topic456', 'topic789'];
@@ -61,7 +59,7 @@ describe('TopicManagerRoleEditorModalComponent', () => {
       topic000: 'Topic 000',
       topic123: 'Topic 123',
       topic456: 'Topic 456',
-      topic789: 'Topic 789'
+      topic789: 'Topic 789',
     };
     fixture.detectChanges();
   });
@@ -81,7 +79,9 @@ describe('TopicManagerRoleEditorModalComponent', () => {
 
     it('should make request to add topic', fakeAsync(() => {
       spyOn(
-        adminBackendApiService, 'assignManagerToTopicAsync').and.resolveTo();
+        adminBackendApiService,
+        'assignManagerToTopicAsync'
+      ).and.resolveTo();
       component.newTopicId = 'topic000';
 
       component.addTopic();
@@ -89,14 +89,16 @@ describe('TopicManagerRoleEditorModalComponent', () => {
       tick();
 
       expect(
-        adminBackendApiService.assignManagerToTopicAsync).toHaveBeenCalled();
+        adminBackendApiService.assignManagerToTopicAsync
+      ).toHaveBeenCalled();
     }));
 
     it('should alert warning if request fails', fakeAsync(() => {
       spyOn(
-        adminBackendApiService, 'assignManagerToTopicAsync').and.returnValue(
-        Promise.reject());
-      spyOn(alertsService, 'addWarning').and.returnValue();
+        adminBackendApiService,
+        'assignManagerToTopicAsync'
+      ).and.returnValue(Promise.reject());
+      spyOn(alertsService, 'addWarning').and.callThrough();
 
       component.newTopicId = 'topic000';
 
@@ -104,6 +106,14 @@ describe('TopicManagerRoleEditorModalComponent', () => {
       tick();
 
       expect(alertsService.addWarning).toHaveBeenCalled();
+    }));
+
+    it('should throw error if no more topic left', fakeAsync(() => {
+      component.newTopicId = null;
+
+      expect(() => {
+        component.addTopic();
+      }).toThrowError('Expected newTopicId to be non-null.');
     }));
   });
 
@@ -115,22 +125,24 @@ describe('TopicManagerRoleEditorModalComponent', () => {
     it('should make request to remove topic', fakeAsync(() => {
       spyOn(
         adminBackendApiService,
-        'deassignManagerFromTopicAsync').and.resolveTo();
+        'deassignManagerFromTopicAsync'
+      ).and.resolveTo();
 
       component.removeTopicId('topic123');
       expect(component.topicIdInUpdate).toEqual('topic123');
       tick();
 
       expect(
-        adminBackendApiService
-          .deassignManagerFromTopicAsync).toHaveBeenCalled();
+        adminBackendApiService.deassignManagerFromTopicAsync
+      ).toHaveBeenCalled();
     }));
 
     it('should alert warning if request fails', fakeAsync(() => {
       spyOn(
         adminBackendApiService,
-        'deassignManagerFromTopicAsync').and.returnValue(Promise.reject());
-      spyOn(alertsService, 'addWarning').and.returnValue();
+        'deassignManagerFromTopicAsync'
+      ).and.returnValue(Promise.reject());
+      spyOn(alertsService, 'addWarning').and.callThrough();
 
       component.removeTopicId('topic123');
       tick();
@@ -140,7 +152,7 @@ describe('TopicManagerRoleEditorModalComponent', () => {
   });
 
   it('should close with correct managed topic ids', () => {
-    const modalCloseSpy = spyOn(ngbActiveModal, 'close').and.returnValue();
+    const modalCloseSpy = spyOn(ngbActiveModal, 'close').and.callThrough();
     component.managedTopicIds = ['topic000'];
 
     component.close();

@@ -19,37 +19,31 @@
 // Every editor directive should implement an alwaysEditable option. There
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-
-export interface PositionOfTerm {
-  readonly name: 'string';
-  readonly humanReadableName: 'string';
-}
+import {Component, EventEmitter, Input, OnInit, Output} from '@angular/core';
+import {AppConstants} from 'app.constants';
 
 @Component({
   selector: 'position-of-terms-editor',
   templateUrl: './position-of-terms-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class PositionOfTermsEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   @Input() value!: string;
-  localValue!: PositionOfTerm;
   @Output() valueChanged = new EventEmitter();
   alwaysEditable = true;
   positionOfTerms = AppConstants.POSITION_OF_TERMS_MAPPING;
-  constructor() { }
+  localValue!: {name: string; humanReadableName: string};
+  constructor() {}
 
   ngOnInit(): void {
-    this.localValue = this.positionOfTerms[2] as unknown as PositionOfTerm;
+    this.localValue = this.positionOfTerms[2];
     for (let i = 0; i < this.positionOfTerms.length; i++) {
       if (this.positionOfTerms[i].name === this.value) {
-        this.localValue = this.positionOfTerms[i] as unknown as PositionOfTerm;
+        this.localValue = this.positionOfTerms[i];
       }
     }
     if (this.value === null || this.value === undefined) {
@@ -57,18 +51,15 @@ export class PositionOfTermsEditorComponent implements OnInit {
       this.valueChanged.emit(this.value);
     }
   }
+
   onChangePosition(name: string): void {
     this.value = name;
     this.valueChanged.emit(this.value);
     for (let i = 0; i < this.positionOfTerms.length; i++) {
       if (this.positionOfTerms[i].name === this.value) {
-        this.localValue = this.positionOfTerms[i] as unknown as PositionOfTerm;
+        this.localValue = this.positionOfTerms[i];
         break;
       }
     }
   }
 }
-
-angular.module('oppia').directive('positionOfTermsEditor', downgradeComponent({
-  component: PositionOfTermsEditorComponent
-}));

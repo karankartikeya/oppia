@@ -17,21 +17,21 @@
  * functions on $window to be mocked in unit tests.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import constants from 'assets/constants';
+import {AppConstants} from 'app.constants';
+import {ClassroomDomainConstants} from 'domain/classroom/classroom-domain.constants';
 
-import { WindowRef } from 'services/contextual/window-ref.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 // This makes the UrlParamsType like a dict whose keys and values both are
 // string.
 export interface UrlParamsType {
-  [param: string]: string
+  [param: string]: string;
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class UrlService {
   constructor(private windowRef: WindowRef) {}
@@ -63,8 +63,9 @@ export class UrlService {
   getUrlParams(): UrlParamsType {
     let params: UrlParamsType = {};
     this.getCurrentQueryString().replace(
-      /[?&]+([^=&]+)=([^&]*)/gi, function(m, key, value) {
-        return params[decodeURIComponent(key)] = decodeURIComponent(value);
+      /[?&]+([^=&]+)=([^&]*)/gi,
+      function (m, key, value) {
+        return (params[decodeURIComponent(key)] = decodeURIComponent(value));
       }
     );
     return params;
@@ -111,13 +112,18 @@ export class UrlService {
     let pathname = this.getPathname();
     if (pathname.startsWith('/learn')) {
       return decodeURIComponent(pathname.split('/')[3]);
-    } else if (pathname.startsWith('/explore')) {
+    } else if (
+      pathname.startsWith('/explore') ||
+      pathname.startsWith('/lesson')
+    ) {
       // The following section is for getting the URL fragment from the
       // exploration player.
       if (
         this.getUrlParams().hasOwnProperty('topic_url_fragment') &&
         this.getUrlParams().topic_url_fragment.match(
-          constants.VALID_URL_FRAGMENT_REGEX)) {
+          AppConstants.VALID_URL_FRAGMENT_REGEX
+        )
+      ) {
         return this.getUrlParams().topic_url_fragment;
       }
     }
@@ -128,18 +134,18 @@ export class UrlService {
     let pathname = this.getPathname();
     // The following segment is for getting the fragment from the new learner
     // pages.
-    if (
-      pathname.startsWith('/learn') &&
-      pathname.match(/\/story\/|\/review-test\//g)) {
+    if (pathname.startsWith('/learn') && pathname.match(/\/story\//g)) {
       return decodeURIComponent(pathname.split('/')[5]);
     }
     // The following section is for getting the URL fragment from the
     // exploration player.
-    if (pathname.startsWith('/explore')) {
+    if (pathname.startsWith('/explore') || pathname.startsWith('/lesson')) {
       if (
         this.getUrlParams().hasOwnProperty('story_url_fragment') &&
         this.getUrlParams().story_url_fragment.match(
-          constants.VALID_URL_FRAGMENT_REGEX)) {
+          AppConstants.VALID_URL_FRAGMENT_REGEX
+        )
+      ) {
         return this.getUrlParams().story_url_fragment;
       }
     }
@@ -150,7 +156,7 @@ export class UrlService {
 
   getSubtopicUrlFragmentFromLearnerUrl(): string {
     let pathname = this.getPathname();
-    if (pathname.startsWith('/learn') && pathname.includes('/revision')) {
+    if (pathname.startsWith('/learn') && pathname.includes('/studyguide')) {
       return decodeURIComponent(pathname.split('/')[5]);
     }
     throw new Error('Invalid URL for subtopic');
@@ -160,17 +166,78 @@ export class UrlService {
     let pathname = this.getPathname();
     if (pathname.startsWith('/learn')) {
       return decodeURIComponent(pathname.split('/')[2]);
-    } else if (pathname.startsWith('/explore')) {
+    } else if (
+      pathname.startsWith('/explore') ||
+      pathname.startsWith('/lesson')
+    ) {
       // The following section is for getting the URL fragment from the
       // exploration player.
       if (
         this.getUrlParams().hasOwnProperty('classroom_url_fragment') &&
         this.getUrlParams().classroom_url_fragment.match(
-          constants.VALID_URL_FRAGMENT_REGEX)) {
+          AppConstants.VALID_URL_FRAGMENT_REGEX
+        )
+      ) {
         return this.getUrlParams().classroom_url_fragment;
       }
     }
     throw new Error('Invalid URL for classroom');
+  }
+
+  /**
+   * This function is used to construct the classroom URL for learner pages.
+   * @return {string} The classroom URL.
+   */
+  getLearnerClassroomUrl(): string {
+    const classroomFragment = this.getClassroomUrlFragmentFromLearnerUrl();
+    return classroomFragment ? `/learn/${classroomFragment}` : '/learn';
+  }
+
+  /**
+   * This function is used to construct the story URL for learner pages.
+   * @return {string} The story URL.
+   */
+  getLearnerTopicStoryUrl(): string {
+    const classroomFragment = this.getClassroomUrlFragmentFromLearnerUrl();
+    const topicFragment = this.getTopicUrlFragmentFromLearnerUrl();
+
+    return classroomFragment && topicFragment
+      ? this.getLearnerTopicUrl(
+          classroomFragment,
+          topicFragment,
+          ClassroomDomainConstants.TOPIC_VIEWER_STORY_URL_TEMPLATE
+        )
+      : '/learn';
+  }
+
+  /**
+   * This function is used to construct the study guide URL for learner pages.
+   * @return {string} The study guide URL.
+   */
+  getLearnerTopicStudyGuideUrl(): string {
+    const classroomFragment = this.getClassroomUrlFragmentFromLearnerUrl();
+    const topicFragment = this.getTopicUrlFragmentFromLearnerUrl();
+
+    return classroomFragment && topicFragment
+      ? this.getLearnerTopicUrl(
+          classroomFragment,
+          topicFragment,
+          ClassroomDomainConstants.TOPIC_VIEWER_STUDYGUIDE_URL_TEMPLATE
+        )
+      : '#';
+  }
+
+  private getLearnerTopicUrl(
+    classroomUrlFragment: string,
+    topicUrlFragment: string,
+    urlTemplate: string
+  ): string {
+    return urlTemplate
+      .replace(
+        '<classroom_url_fragment>',
+        encodeURIComponent(classroomUrlFragment)
+      )
+      .replace('<topic_url_fragment>', encodeURIComponent(topicUrlFragment));
   }
 
   /**
@@ -187,6 +254,31 @@ export class UrlService {
     throw new Error('Invalid URL for practice session');
   }
 
+  /**
+   * This function returns the node ID from the lesson practice URL.
+   * @return {string} the node ID.
+   */
+  getNodeIdFromPracticeUrl(): string {
+    const pathname = this.getPathname();
+    const match = pathname.match(/\/practice\/(\d+)/);
+    if (match) {
+      return decodeURIComponent(match[1]);
+    }
+    return '';
+  }
+
+  /**
+   * This function returns the arc ID from the end-of-arc URL.
+   * @return {string} the arc ID.
+   */
+  getArcIdFromUrl(): string {
+    const pathname = this.getPathname();
+    const match = pathname.match(/\/test\/arc\/(\d+)/);
+    if (match) {
+      return decodeURIComponent(match[1]);
+    }
+    return '';
+  }
 
   /**
    * This function is used to find the classroom URL fragment from the learner's
@@ -211,7 +303,7 @@ export class UrlService {
   getSubtopicIdFromUrl(): string {
     let pathname = this.getPathname();
     let argumentsArray = pathname.split('/');
-    if (pathname.match(/\/revision/g) && argumentsArray.length === 6) {
+    if (pathname.match(/\/studyguide/g) && argumentsArray.length === 6) {
       return decodeURIComponent(argumentsArray[5]);
     }
     throw new Error('Invalid URL for subtopic');
@@ -224,8 +316,7 @@ export class UrlService {
    */
   getStoryIdFromUrl(): string {
     let pathname = this.getPathname();
-    var matchedPath = pathname.match(
-      /\/(story_editor|review-test)\/(\w|-){12}/g);
+    var matchedPath = pathname.match(/\/story_editor\/(\w|-){12}/g);
     if (matchedPath) {
       return matchedPath[0].split('/')[2];
     }
@@ -274,6 +365,36 @@ export class UrlService {
   }
 
   /**
+   * This function is used to find the blog post url fragment from the url.
+   * @return {string} the blog post url fragment.
+   * @throws Will throw an error if the blog post url is invalid.
+   */
+  getBlogPostUrlFromUrl(): string {
+    let pathname = this.getPathname();
+    let argumentsArray = pathname.split('/');
+    if (pathname.startsWith('/blog') && argumentsArray.length === 3) {
+      return decodeURIComponent(pathname.split('/')[2]);
+    } else {
+      throw new Error('Invalid Blog Post Url.');
+    }
+  }
+
+  /**
+   * This function is used to find the blog author username from the url.
+   * @return {string} the blog author username fragment.
+   * @throws Will throw an error if the url is invalid.
+   */
+  getBlogAuthorUsernameFromUrl(): string {
+    let pathname = this.getPathname();
+    let argumentsArray = pathname.split('/');
+    if (pathname.startsWith('/blog/author') && argumentsArray.length === 4) {
+      return decodeURIComponent(pathname.split('/')[3]);
+    } else {
+      throw new Error('Invalid Blog Author Profile Page Url.');
+    }
+  }
+
+  /**
    * This function is used to find the query values as a list.
    * @param {string} fieldName - the name of the field.
    * @return {string[]} the list of query field values.
@@ -282,13 +403,12 @@ export class UrlService {
     let fieldValues = [];
     if (this.getCurrentQueryString().indexOf('?') > -1) {
       // Each queryItem return one field-value pair in the url.
-      let queryItems = this.getCurrentQueryString().slice(
-        this.getCurrentQueryString().indexOf('?') + 1).split('&');
+      let queryItems = this.getCurrentQueryString()
+        .slice(this.getCurrentQueryString().indexOf('?') + 1)
+        .split('&');
       for (let i = 0; i < queryItems.length; i++) {
-        let currentFieldName = decodeURIComponent(
-          queryItems[i].split('=')[0]);
-        let currentFieldValue = decodeURIComponent(
-          queryItems[i].split('=')[1]);
+        let currentFieldName = decodeURIComponent(queryItems[i].split('=')[0]);
+        let currentFieldValue = decodeURIComponent(queryItems[i].split('=')[1]);
         if (currentFieldName === fieldName) {
           fieldValues.push(currentFieldValue);
         }
@@ -308,8 +428,13 @@ export class UrlService {
   addField(url: string, fieldName: string, fieldValue: string): string {
     let encodedFieldValue = encodeURIComponent(fieldValue);
     let encodedFieldName = encodeURIComponent(fieldName);
-    return url + (url.indexOf('?') !== -1 ? '&' : '?') + encodedFieldName +
-        '=' + encodedFieldValue;
+    return (
+      url +
+      (url.indexOf('?') !== -1 ? '&' : '?') +
+      encodedFieldName +
+      '=' +
+      encodedFieldValue
+    );
   }
 
   /**
@@ -404,7 +529,13 @@ export class UrlService {
     }
     return null;
   }
-}
 
-angular.module('oppia').factory(
-  'UrlService', downgradeInjectable(UrlService));
+  getPidFromUrl(): string | null {
+    let urlParams: UrlParamsType = this.getUrlParams();
+    if (urlParams.hasOwnProperty('pid')) {
+      let pid = urlParams.pid;
+      return String(pid);
+    }
+    return null;
+  }
+}

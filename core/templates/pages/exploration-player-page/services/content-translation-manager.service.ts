@@ -16,59 +16,76 @@
  * @fileoverview Service to manage the content translations displayed.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { EventEmitter, Injectable } from '@angular/core';
+import {EventEmitter, Injectable} from '@angular/core';
 import cloneDeep from 'lodash/cloneDeep';
-import isObject from 'lodash/isObject';
 
-import { BaseTranslatableObject, InteractionRuleInputs } from
-  'interactions/rule-input-defs';
-import { PlayerTranscriptService } from
-  'pages/exploration-player-page/services/player-transcript.service';
-import { StateCard } from 'domain/state_card/state-card.model';
-import { WrittenTranslation } from
-  'domain/exploration/WrittenTranslationObjectFactory';
-import { SubtitledHtml } from
-  'domain/exploration/subtitled-html.model';
-import { Schema } from 'services/schema-default-value.service';
-import { SchemaConstants } from
-  'components/forms/schema-based-editors/schema.constants';
-import { InteractionSpecsConstants, InteractionSpecsKey } from 'pages/interaction-specs.constants';
-import { WrittenTranslations } from
-  'domain/exploration/WrittenTranslationsObjectFactory';
-import { SubtitledUnicode } from
-  'domain/exploration/SubtitledUnicodeObjectFactory';
-import { ExtensionTagAssemblerService } from
-  'services/extension-tag-assembler.service';
-import { InteractionCustomizationArgs } from 'interactions/customization-args-defs';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {ExtensionTagAssemblerService} from 'services/extension-tag-assembler.service';
+import {EntityTranslation} from 'domain/translation/entity-translation.model';
+import {InteractionCustomizationArgs} from 'interactions/customization-args-defs';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {PageContextService} from 'services/page-context.service';
+import {ImagePreloaderService} from './image-preloader.service';
+import {ContentTranslationLanguageService} from '../services/content-translation-language.service';
+import {AudioPreloaderService} from '../services/audio-preloader.service';
+import {VoiceoverBackendApiService} from 'domain/voiceover/voiceover-backend-api.service';
+import {VoiceoverPlayerService} from '../services/voiceover-player.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {EntityVoiceoversService} from 'services/entity-voiceovers.services';
+import {PlayerPositionService} from '../services/player-position.service';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {AutomaticVoiceoverHighlightService} from 'services/automatic-voiceover-highlight-service';
+
+import {ConceptCardBackendApiService} from 'domain/skill/concept-card-backend-api.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ContentTranslationManagerService {
   // This is initialized using the class initialization method.
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   private explorationLanguageCode!: string;
-  private onStateCardContentUpdateEmitter: EventEmitter<void> = (
-    new EventEmitter());
+  private onStateCardContentUpdateEmitter: EventEmitter<void> =
+    new EventEmitter();
+  private onLanguageChangeEmitter: EventEmitter<string> = new EventEmitter();
+
   // The 'originalTranscript' is a copy of the transcript in the exploration
   // language in it's initial state.
   private originalTranscript: StateCard[] = [];
 
   constructor(
     private playerTranscriptService: PlayerTranscriptService,
-    private extensionTagAssemblerService: ExtensionTagAssemblerService
+    private extensionTagAssemblerService: ExtensionTagAssemblerService,
+    private entityTranslationsService: EntityTranslationsService,
+    private pageContextService: PageContextService,
+    private imagePreloaderService: ImagePreloaderService,
+    private entityVoiceoversService: EntityVoiceoversService,
+    private voiceoverPlayerService: VoiceoverPlayerService,
+    private automaticVoiceoverHighlightService: AutomaticVoiceoverHighlightService,
+    private playerPositionService: PlayerPositionService,
+    private stateEditorService: StateEditorService,
+    private contentTranslationLanguageService: ContentTranslationLanguageService,
+    private audioPreloaderService: AudioPreloaderService,
+    private voiceoverBackendApiService: VoiceoverBackendApiService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
+    private conceptCardBackendApiService: ConceptCardBackendApiService
   ) {}
 
   setOriginalTranscript(explorationLanguageCode: string): void {
     this.explorationLanguageCode = explorationLanguageCode;
     this.originalTranscript = cloneDeep(
-      this.playerTranscriptService.transcript);
+      this.playerTranscriptService.transcript
+    );
   }
 
   get onStateCardContentUpdate(): EventEmitter<void> {
     return this.onStateCardContentUpdateEmitter;
+  }
+
+  get onLanguageChange(): EventEmitter<string> {
+    return this.onLanguageChangeEmitter;
   }
 
   /**
@@ -83,232 +100,147 @@ export class ContentTranslationManagerService {
    * @param {string} languageCode The language code to display translations for.
    */
   displayTranslations(languageCode: string): void {
-    const cards = this.playerTranscriptService.transcript;
-
+    this.preloadConceptCards(languageCode);
     if (languageCode === this.explorationLanguageCode) {
-      this.playerTranscriptService.restoreImmutably(this.originalTranscript);
+      this.playerTranscriptService.restoreImmutably(
+        cloneDeep(this.originalTranscript)
+      );
+      this.onStateCardContentUpdateEmitter.emit();
     } else {
-      cards.forEach(
-        card => this._displayTranslationsForCard(card, languageCode));
-    }
+      this.entityTranslationsService
+        .getEntityTranslationsAsync(languageCode)
+        .then(entityTranslations => {
+          if (
+            !this.pageContextService.isInExplorationEditorPage() &&
+            this.playerTranscriptService.getCard(0)
+          ) {
+            this.imagePreloaderService.restartImagePreloader(
+              this.playerTranscriptService.getCard(0).getStateName()
+            );
+          }
 
-    this.onStateCardContentUpdateEmitter.emit();
+          const cards = this.playerTranscriptService.transcript;
+          cards.forEach(card =>
+            this._displayTranslationsForCard(card, entityTranslations)
+          );
+          this.onStateCardContentUpdateEmitter.emit();
+        });
+    }
   }
 
-  getTranslatedHtml(
-      writtenTranslations: WrittenTranslations,
-      languageCode: string,
-      content: SubtitledHtml
-  ): string {
-    if (!content.contentId) {
-      throw new Error('Content ID does not exist');
-    }
-    const writtenTranslation = writtenTranslations.translationsMapping[
-      content.contentId][languageCode];
-    if (!writtenTranslation) {
-      return content.html;
-    }
-    const translationText = writtenTranslation.getTranslation();
-
-    // The isString() check is needed for the TypeScript compiler to narrow the
-    // type down from string|string[] to string. See "Using type predicates" at
-    // https://www.typescriptlang.org/docs/handbook/2/narrowing.html
-    // for more information.
-    if (this._isString(translationText) &&
-        this._isValidStringTranslation(writtenTranslation)) {
-      return translationText;
-    }
-
-    return content.html;
-  }
-
-  _swapContent(
-      writtenTranslations: WrittenTranslations,
-      languageCode: string,
-      content: SubtitledHtml|SubtitledUnicode
+  _displayTranslationsForCard(
+    card: StateCard,
+    entityTranslations: EntityTranslation
   ): void {
-    if (!content.contentId) {
-      throw new Error('Content ID does not exist');
+    card.swapContentsWithTranslation(entityTranslations);
+    if (card.getInteractionId()) {
+      // DOMParser().parseFromString() creates a HTML document from
+      // the HTML string and it's body contains our required element
+      // as a childnode.
+      const element = new DOMParser().parseFromString(
+        card.getInteractionHtml(),
+        'text/html'
+      ).body.childNodes[0] as HTMLElement;
+      this.extensionTagAssemblerService.formatCustomizationArgAttrs(
+        element,
+        card.getInteractionCustomizationArgs() as InteractionCustomizationArgs
+      );
+      card.setInteractionHtml(element.outerHTML);
     }
-    const writtenTranslation: WrittenTranslation | null = (
-      writtenTranslations.translationsMapping[content.contentId][languageCode]);
+  }
 
+  changeCurrentContentLanguage(newLanguageCode: string): void {
+    this.entityVoiceoversService.setLanguageCode(newLanguageCode);
+
+    this.entityVoiceoversService.fetchEntityVoiceovers().then(() => {
+      this.voiceoverPlayerService.setLanguageAccentCodesDescriptions(
+        newLanguageCode,
+        this.entityVoiceoversService.getLanguageAccentCodes()
+      );
+      this.automaticVoiceoverHighlightService.setAutomatedVoiceoversAudioOffsets(
+        this.entityVoiceoversService.getActiveEntityVoiceovers()
+          ?.automatedVoiceoversAudioOffsetsMsecs || {}
+      );
+      this.automaticVoiceoverHighlightService.getSentencesToHighlightForTimeRanges();
+    });
+    this.contentTranslationLanguageService.setCurrentContentLanguageCode(
+      newLanguageCode
+    );
+    this.displayTranslations(newLanguageCode);
+    this.preloadConceptCards(newLanguageCode);
+  }
+
+  initLessonTranslations(): void {
+    const newLanguageCode =
+      this.i18nLanguageCodeService.getCurrentI18nLanguageCode();
+    let selectedLanguageCode =
+      this.contentTranslationLanguageService.getCurrentContentLanguageCode();
+
+    const languageOptions =
+      this.contentTranslationLanguageService.getLanguageOptionsForDropdown();
+
+    for (let option of languageOptions) {
+      if (option.value === newLanguageCode) {
+        this.contentTranslationLanguageService.setCurrentContentLanguageCode(
+          option.value
+        );
+        selectedLanguageCode = option.value;
+        break;
+      }
+    }
+
+    if (this.audioPreloaderService.exploration !== undefined) {
+      this.voiceoverBackendApiService
+        .fetchVoiceoverAdminDataAsync()
+        .then(response => {
+          this.voiceoverPlayerService.languageAccentMasterList =
+            response.languageAccentMasterList;
+          this.voiceoverPlayerService.languageCodesMapping =
+            response.languageCodesMapping;
+
+          this.voiceoverPlayerService.setLanguageAccentCodesDescriptions(
+            selectedLanguageCode,
+            this.entityVoiceoversService.getLanguageAccentCodes()
+          );
+
+          this.audioPreloaderService.kickOffAudioPreloader(
+            this.getCurrentStateName()
+          );
+        });
+      this.preloadConceptCards(selectedLanguageCode);
+    }
+  }
+
+  preloadConceptCards(languageCode: string): void {
+    // This check is required because in unit tests, audioPreloaderService.exploration
+    // or its states property may be undefined.
     if (
-      !writtenTranslation ||
-      !this._isValidStringTranslation(writtenTranslation)
+      !this.audioPreloaderService.exploration ||
+      !this.audioPreloaderService.exploration.states
     ) {
       return;
     }
-
-    let valueName = '';
-    // Note: The content can only be of type SubtitledHtml|SubtitledUnicode.
-    if (content instanceof SubtitledHtml) {
-      valueName = '_html';
-    } else if (content instanceof SubtitledUnicode) {
-      valueName = '_unicode';
+    const skillIds: string[] = [];
+    const stateObjects =
+      this.audioPreloaderService.exploration.states.getStateObjects();
+    for (const stateName in stateObjects) {
+      const linkedSkillId = stateObjects[stateName].linkedSkillId;
+      if (linkedSkillId && !skillIds.includes(linkedSkillId)) {
+        skillIds.push(linkedSkillId);
+      }
     }
-
-    Object.defineProperty(content, valueName, {
-      value: writtenTranslation.translation
-    });
-  }
-
-  _displayTranslationsForCard(card: StateCard, languageCode: string): void {
-    const writtenTranslations = card.writtenTranslations;
-
-    const contentTranslation = writtenTranslations.translationsMapping[
-      card.contentId][languageCode];
-    const contentTranslationText = (
-      contentTranslation && contentTranslation.getTranslation());
-
-    // The isString() check is needed for the TypeScript compiler to narrow the
-    // type down from string|string[] to string. See "Using type predicates" at
-    // https://www.typescriptlang.org/docs/handbook/2/narrowing.html
-    // for more information.
-    if (this._isString(contentTranslationText) &&
-        this._isValidStringTranslation(contentTranslation)) {
-      card.contentHtml = contentTranslationText;
-    }
-
-    card.getHints().forEach(hint => this._swapContent(
-      writtenTranslations, languageCode, hint.hintContent));
-
-    const solution = card.getSolution();
-    if (solution !== null) {
-      this._swapContent(
-        writtenTranslations, languageCode, solution.explanation);
-    }
-
-    const defaultOutcome = card.getInteraction().defaultOutcome;
-    if (defaultOutcome) {
-      this._swapContent(
-        writtenTranslations,
-        languageCode,
-        defaultOutcome.feedback);
-    }
-
-    const answerGroups = card.getInteraction().answerGroups;
-    answerGroups.forEach(answerGroup => {
-      this._swapContent(
-        writtenTranslations, languageCode, answerGroup.outcome.feedback);
-    });
-
-    if (card.getInteraction().id) {
-      this._swapContentInCustomizationArgs(card, languageCode);
-      this._swapContentInRules(card, languageCode);
-    }
-  }
-
-  _swapContentInCustomizationArgs(card: StateCard, languageCode: string): void {
-    const interactionId = card.getInteractionId();
-    const caValues = card.getInteraction().customizationArgs;
-    const writtenTranslations = card.writtenTranslations;
-
-    let traverseSchemaAndSwapTranslatableContent = (
-        value: Object | Object[],
-        schema: Schema
-    ): void => {
-      const schemaIsSubtitledHtml = (
-        schema.type === SchemaConstants.SCHEMA_TYPE_CUSTOM &&
-        schema.obj_type === SchemaConstants.SCHEMA_OBJ_TYPE_SUBTITLED_HTML);
-      const schemaIsSubtitledUnicode = (
-        schema.type === SchemaConstants.SCHEMA_TYPE_CUSTOM &&
-        schema.obj_type === SchemaConstants.SCHEMA_OBJ_TYPE_SUBTITLED_UNICODE
+    if (skillIds.length > 0) {
+      this.conceptCardBackendApiService.loadConceptCardsAsync(
+        skillIds,
+        languageCode
       );
-
-      if (schemaIsSubtitledHtml || schemaIsSubtitledUnicode) {
-        this._swapContent(
-          writtenTranslations, languageCode,
-          <SubtitledHtml|SubtitledUnicode>value);
-      } else if (schema.type === SchemaConstants.SCHEMA_KEY_LIST) {
-        (<Object[]> value).forEach(
-          item => traverseSchemaAndSwapTranslatableContent(
-            item, <Schema> schema.items));
-      } else if (schema.type === SchemaConstants.SCHEMA_TYPE_DICT) {
-        schema.properties.forEach(property => {
-          const name = <keyof typeof value> property.name;
-          traverseSchemaAndSwapTranslatableContent(
-            value[name],
-            property.schema);
-        });
-      }
-    };
-
-    const caSpecs = InteractionSpecsConstants.INTERACTION_SPECS[
-      <InteractionSpecsKey>interactionId
-    ].customization_arg_specs;
-    for (const caSpec of caSpecs) {
-      const name = <keyof InteractionCustomizationArgs>caSpec.name;
-      if (caValues.hasOwnProperty(name)) {
-        const attr = <{value: Object}> caValues[name];
-        traverseSchemaAndSwapTranslatableContent(
-          attr.value, <Schema>caSpec.schema);
-      }
     }
-
-    const element = $(card.getInteractionHtml());
-    this.extensionTagAssemblerService.formatCustomizationArgAttrs(
-      element, caValues);
-    card.setInteractionHtml(element.get(0).outerHTML);
   }
 
-  _swapContentInRules(card: StateCard, languageCode: string): void {
-    const writtenTranslations = card.writtenTranslations;
-    const CONTENT_ID_KEY = 'contentId';
-
-    const answerGroups = card.getInteraction().answerGroups;
-    answerGroups.forEach(answerGroup => {
-      answerGroup.rules.forEach(rule => {
-        for (var key in rule.inputs) {
-          let ruleInputValue = rule.inputs[key];
-          if (this._isTranslatableObject(ruleInputValue)) {
-            const writtenTranslation = writtenTranslations.translationsMapping[
-              <string>ruleInputValue.contentId
-            ][languageCode];
-            // There must be at least one translation.
-            if (
-              !writtenTranslation ||
-              writtenTranslation.translation.length === 0
-            ) {
-              continue;
-            }
-
-            let ruleInputValueKeys = Object.keys(ruleInputValue);
-
-            // Remove the 'contentId' key.
-            let contentIdIndex = ruleInputValueKeys.indexOf(CONTENT_ID_KEY);
-            ruleInputValueKeys.splice(contentIdIndex, 1);
-
-            // Retrieve the value corresponding to the other key.
-            let nonContentIdKey = (
-              <keyof BaseTranslatableObject>ruleInputValueKeys[0]);
-            ruleInputValue[nonContentIdKey] = (
-              <string>writtenTranslation.translation);
-          }
-        }
-      });
-    });
-  }
-
-  _isTranslatableObject(
-      ruleInputValue: InteractionRuleInputs):
-      ruleInputValue is BaseTranslatableObject {
-    return isObject(ruleInputValue) && 'contentId' in ruleInputValue;
-  }
-
-  _isString(translation: string|string[]): translation is string {
-    return (typeof translation === 'string');
-  }
-
-  _isValidStringTranslation(writtenTranslation: WrittenTranslation): boolean {
-    return (
-      writtenTranslation !== undefined &&
-      this._isString(writtenTranslation.translation) &&
-      writtenTranslation.translation !== '' &&
-      writtenTranslation.needsUpdate === false);
+  getCurrentStateName(): string {
+    if (this.pageContextService.isInExplorationPlayerPage()) {
+      return this.playerPositionService.getCurrentStateName();
+    }
+    return this.stateEditorService.getActiveStateName() as string;
   }
 }
-
-angular.module('oppia').factory(
-  'ContentTranslationManagerService',
-  downgradeInjectable(ContentTranslationManagerService));

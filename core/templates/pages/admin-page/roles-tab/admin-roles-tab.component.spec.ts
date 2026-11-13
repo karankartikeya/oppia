@@ -16,21 +16,31 @@
  * @fileoverview Tests for Admin roles tab component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {FormsModule} from '@angular/forms';
 
-import { AdminBackendApiService, AdminPageData } from 'domain/admin/admin-backend-api.service';
-import { CreatorTopicSummary } from 'domain/topic/creator-topic-summary.model';
-import { AdminDataService } from '../services/admin-data.service';
-import { AdminRolesTabComponent} from './admin-roles-tab.component';
-import { AlertsService } from 'services/alerts.service';
+import {
+  AdminBackendApiService,
+  AdminPageData,
+  UserRolesBackendResponse,
+} from 'domain/admin/admin-backend-api.service';
+import {CreatorTopicSummary} from 'domain/topic/creator-topic-summary.model';
+import {AdminDataService} from '../services/admin-data.service';
+import {AdminRolesTabComponent} from './admin-roles-tab.component';
+import {AlertsService} from 'services/alerts.service';
 
-import { TopicManagerRoleEditorModalComponent } from './topic-manager-role-editor-modal.component';
+import {TopicManagerRoleEditorModalComponent} from './topic-manager-role-editor-modal.component';
+import {TranslationCoordinatorRoleEditorModalComponent} from './translation-coordinator-role-editor-modal.component';
 
-describe('Admin roles tab component ', function() {
+describe('Admin roles tab component ', function () {
   let component: AdminRolesTabComponent;
   let fixture: ComponentFixture<AdminRolesTabComponent>;
 
@@ -57,52 +67,44 @@ describe('Admin roles tab component ', function() {
     thumbnail_filename: 'image.svg',
     thumbnail_bg_color: '#C6DCDA',
     is_published: false,
-    can_edit_topic: true
+    can_edit_topic: true,
+    can_edit_question: true,
+    total_upcoming_chapters_count: 1,
+    total_overdue_chapters_count: 1,
+    total_chapter_counts_for_each_story: [5, 4],
+    published_chapter_counts_for_each_story: [3, 4],
   };
 
-  const sampleTopicSummary: CreatorTopicSummary = (
+  const sampleTopicSummary: CreatorTopicSummary =
     CreatorTopicSummary.createFromBackendDict(
-      sampleCreatorTopicSummaryBackendDict));
+      sampleCreatorTopicSummaryBackendDict
+    );
 
   const adminPageData: AdminPageData = {
     demoExplorationIds: ['expId'],
-    demoExplorations: [
-      [
-        '0',
-        'welcome.yaml'
-      ]
-    ],
-    demoCollections: [
-      ['collectionId']
-    ],
+    demoExplorations: [['0', 'welcome.yaml']],
+    demoCollections: [['collectionId']],
     updatableRoles: ['MODERATOR'],
     roleToActions: {
-      Admin: ['Accept any suggestion', 'Access creator dashboard']
+      Admin: ['Accept any suggestion', 'Access creator dashboard'],
     },
-    configProperties: {},
     viewableRoles: ['MODERATOR', 'TOPIC_MANAGER'],
     humanReadableRoles: {
-      FULL_USER: 'full user'
+      FULL_USER: 'full user',
     },
-    topicSummaries: [
-      sampleTopicSummary
-    ],
-    featureFlags: []
+    topicSummaries: [sampleTopicSummary],
+    platformParameters: [],
+    skillList: [],
+    storyList: [],
+    classroomList: [],
   };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-        FormsModule
-      ],
+      imports: [HttpClientTestingModule, FormsModule],
       declarations: [AdminRolesTabComponent],
-      providers: [
-        AdminBackendApiService,
-        AdminDataService,
-        AlertsService
-      ],
-      schemas: [NO_ERRORS_SCHEMA]
+      providers: [AdminBackendApiService, AdminDataService, AlertsService],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AdminRolesTabComponent);
@@ -115,26 +117,24 @@ describe('Admin roles tab component ', function() {
     alertsService = TestBed.inject(AlertsService);
   });
 
-  it('should retrieve data from the backend and ' +
-     'set properties when initialized', fakeAsync(() => {
-    spyOn(adminDataService, 'getDataAsync').and.returnValue(
-      Promise.resolve(adminPageData));
+  it(
+    'should retrieve data from the backend and ' +
+      'set properties when initialized',
+    fakeAsync(() => {
+      spyOn(adminDataService, 'getDataAsync').and.returnValue(
+        Promise.resolve(adminPageData)
+      );
 
-    // Prechecks.
-    expect(component.UPDATABLE_ROLES).toEqual(null);
-    expect(component.roleToActions).toEqual(null);
-    expect(component.VIEWABLE_ROLES).toEqual(null);
-    expect(component.topicSummaries).toEqual(null);
+      component.ngOnInit();
+      tick();
+      fixture.detectChanges();
 
-    component.ngOnInit();
-    tick();
-    fixture.detectChanges();
-
-    expect(component.UPDATABLE_ROLES).toEqual(adminPageData.updatableRoles);
-    expect(component.roleToActions).toEqual(adminPageData.roleToActions);
-    expect(component.VIEWABLE_ROLES).toEqual(adminPageData.viewableRoles);
-    expect(component.topicSummaries).toEqual(adminPageData.topicSummaries);
-  }));
+      expect(component.UPDATABLE_ROLES).toEqual(adminPageData.updatableRoles);
+      expect(component.roleToActions).toEqual(adminPageData.roleToActions);
+      expect(component.VIEWABLE_ROLES).toEqual(adminPageData.viewableRoles);
+      expect(component.topicSummaries).toEqual(adminPageData.topicSummaries);
+    })
+  );
 
   it('should flush the value to properties on calling clearEditor', () => {
     component.userRoles = ['MODERATOR'];
@@ -144,78 +144,105 @@ describe('Admin roles tab component ', function() {
     component.clearEditor();
 
     expect(component.userRoles).toEqual([]);
-    expect(component.roleCurrentlyBeingUpdatedInBackend).toEqual(null);
+    expect(component.roleCurrentlyBeingUpdatedInBackend).toBeNull();
     expect(component.userIsBanned).toEqual(false);
   });
 
-  describe('on startEditing', function() {
-    beforeEach(function() {
-      spyOn(adminBackendApiService, 'viewUsersRoleAsync')
-        .and.returnValue(Promise.resolve({
-          roles: ['TOPIC_MANAGER'],
-          managed_topic_ids: ['topic_id_1'],
-          banned: false
-        }));
+  describe('on startEditing', function () {
+    let successPromise: Promise<UserRolesBackendResponse>;
+
+    beforeEach(function () {
+      successPromise = Promise.resolve({
+        roles: ['TOPIC_MANAGER'],
+        managed_topic_ids: ['topic_id_1'],
+        banned: false,
+        coordinated_language_ids: [],
+      });
     });
 
     it('should enable roleIsCurrentlyBeingEdited', fakeAsync(() => {
-      expect(component.roleIsCurrentlyBeingEdited).toBeFalse();
+      spyOn(adminBackendApiService, 'viewUsersRoleAsync').and.returnValue(
+        successPromise
+      );
+      expect(component.roleIsCurrentlyBeingEdited).toBe(false);
 
       component.startEditing();
       tick();
 
-      expect(component.roleIsCurrentlyBeingEdited).toBeTrue();
+      expect(component.roleIsCurrentlyBeingEdited).toBe(true);
     }));
 
     it('should fetch user roles and intialize properties', fakeAsync(() => {
+      spyOn(adminBackendApiService, 'viewUsersRoleAsync').and.returnValue(
+        successPromise
+      );
+
       // Prechecks.
-      expect(component.rolesFetched).toBeFalse();
+      expect(component.rolesFetched).toBe(false);
       expect(component.userRoles).toEqual([]);
       expect(component.managedTopicIds).toEqual([]);
-      expect(component.userIsBanned).toBeFalse();
+      expect(component.userIsBanned).toBe(false);
 
       component.startEditing();
       tick();
 
-      expect(component.rolesFetched).toBeTrue();
+      expect(component.rolesFetched).toBe(true);
       expect(component.userRoles).toEqual(['TOPIC_MANAGER']);
       expect(component.managedTopicIds).toEqual(['topic_id_1']);
-      expect(component.userIsBanned).toBeFalse();
+      expect(component.userIsBanned).toBe(false);
+    }));
+
+    it('should set status when viewUsersRoleAsync fails', fakeAsync(() => {
+      spyOn(adminBackendApiService, 'viewUsersRoleAsync').and.returnValue(
+        Promise.reject('Error')
+      );
+      spyOn(component.setStatusMessage, 'emit');
+      expect(component.roleIsCurrentlyBeingEdited).toBe(false);
+
+      component.startEditing();
+      tick();
+
+      // As the promise is rejected with error, we do not expect it to be marked
+      // as being edited and the status message is shown with the error.
+      expect(component.roleIsCurrentlyBeingEdited).toBe(false);
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith('Error');
     }));
   });
 
-  describe('on calling markUserBanned', function() {
-    it('should enable bannedStatusChangeInProgress until user is banned',
-      fakeAsync(() => {
-        spyOn(adminBackendApiService, 'markUserBannedAsync')
-          .and.returnValue(Promise.resolve());
+  describe('on calling markUserBanned', function () {
+    it('should enable bannedStatusChangeInProgress until user is banned', fakeAsync(() => {
+      spyOn(adminBackendApiService, 'markUserBannedAsync').and.returnValue(
+        Promise.resolve()
+      );
 
-        expect(component.bannedStatusChangeInProgress).toBeFalse();
+      expect(component.bannedStatusChangeInProgress).toBe(false);
 
-        component.markUserBanned();
-        expect(component.bannedStatusChangeInProgress).toBeTrue();
+      component.markUserBanned();
+      expect(component.bannedStatusChangeInProgress).toBe(true);
 
-        tick();
+      tick();
 
-        expect(component.bannedStatusChangeInProgress).toBeFalse();
-      }));
+      expect(component.bannedStatusChangeInProgress).toBe(false);
+    }));
 
     it('should set userIsBanned to true', fakeAsync(() => {
-      spyOn(adminBackendApiService, 'markUserBannedAsync')
-        .and.returnValue(Promise.resolve());
+      spyOn(adminBackendApiService, 'markUserBannedAsync').and.returnValue(
+        Promise.resolve()
+      );
 
-      expect(component.userIsBanned).toBeFalse();
+      expect(component.userIsBanned).toBe(false);
 
       component.markUserBanned();
       tick();
 
-      expect(component.userIsBanned).toBeTrue();
+      expect(component.userIsBanned).toBe(true);
     }));
 
     it('should set alert warning on failed request', fakeAsync(() => {
       spyOn(alertsService, 'addWarning');
-      spyOn(adminBackendApiService, 'markUserBannedAsync')
-        .and.returnValue(Promise.reject('Failed!'));
+      spyOn(adminBackendApiService, 'markUserBannedAsync').and.returnValue(
+        Promise.reject('Failed!')
+      );
 
       component.markUserBanned();
       tick();
@@ -224,23 +251,23 @@ describe('Admin roles tab component ', function() {
     }));
   });
 
-  describe('on calling unmarkUserBanned', function() {
-    beforeEach(function() {
-      spyOn(adminBackendApiService, 'unmarkUserBannedAsync')
-        .and.returnValue(Promise.resolve());
+  describe('on calling unmarkUserBanned', function () {
+    beforeEach(function () {
+      spyOn(adminBackendApiService, 'unmarkUserBannedAsync').and.returnValue(
+        Promise.resolve()
+      );
     });
 
-    it('should enable bannedStatusChangeInProgress until user is unbanned',
-      fakeAsync(() => {
-        expect(component.bannedStatusChangeInProgress).toBeFalse();
+    it('should enable bannedStatusChangeInProgress until user is unbanned', fakeAsync(() => {
+      expect(component.bannedStatusChangeInProgress).toBe(false);
 
-        component.unmarkUserBanned();
-        expect(component.bannedStatusChangeInProgress).toBeTrue();
+      component.unmarkUserBanned();
+      expect(component.bannedStatusChangeInProgress).toBe(true);
 
-        tick();
+      tick();
 
-        expect(component.bannedStatusChangeInProgress).toBeFalse();
-      }));
+      expect(component.bannedStatusChangeInProgress).toBe(false);
+    }));
 
     it('should set userIsBanned to false', fakeAsync(() => {
       component.userIsBanned = true;
@@ -248,54 +275,68 @@ describe('Admin roles tab component ', function() {
       component.unmarkUserBanned();
       tick();
 
-      expect(component.userIsBanned).toBeFalse();
+      expect(component.userIsBanned).toBe(false);
     }));
   });
 
-  describe('on calling removeRole', function() {
-    beforeEach(function() {
-      spyOn(adminBackendApiService, 'removeUserRoleAsync')
-        .and.returnValue(Promise.resolve());
+  describe('on calling removeRole', function () {
+    beforeEach(function () {
+      spyOn(adminBackendApiService, 'removeUserRoleAsync').and.returnValue(
+        Promise.resolve()
+      );
     });
 
-    it('should remove the given role',
+    it('should remove the given role', fakeAsync(() => {
+      component.userRoles = ['MODERATOR', 'TOPIC_MANAGER'];
+
+      component.removeRole('MODERATOR');
+      tick();
+
+      expect(component.userRoles).toEqual(['TOPIC_MANAGER']);
+    }));
+
+    it('should flush managedTopicIds while removing topic manager role', fakeAsync(() => {
+      component.userRoles = ['MODERATOR', 'TOPIC_MANAGER'];
+      component.managedTopicIds = ['topic_1', 'topic_2'];
+
+      component.removeRole('TOPIC_MANAGER');
+      tick();
+
+      expect(component.userRoles).toEqual(['MODERATOR']);
+      expect(component.managedTopicIds).toEqual([]);
+    }));
+
+    it(
+      'should flush coordinated_language_ids while removing' +
+        ' translation coordinator role',
       fakeAsync(() => {
-        component.userRoles = ['MODERATOR', 'TOPIC_MANAGER'];
+        component.userRoles = ['MODERATOR', 'TRANSLATION_COORDINATOR'];
+        component.coordinatedLanguageIds = ['en', 'hi'];
 
-        component.removeRole('MODERATOR');
-        tick();
-
-        expect(component.userRoles).toEqual(['TOPIC_MANAGER']);
-      }));
-
-    it('should flush managedTopicIds while removing topic manager role',
-      fakeAsync(() => {
-        component.userRoles = ['MODERATOR', 'TOPIC_MANAGER'];
-        component.managedTopicIds = ['topic_1', 'topic_2'];
-
-        component.removeRole('TOPIC_MANAGER');
+        component.removeRole('TRANSLATION_COORDINATOR');
         tick();
 
         expect(component.userRoles).toEqual(['MODERATOR']);
-        expect(component.managedTopicIds).toEqual([]);
-      }));
+        expect(component.coordinatedLanguageIds).toEqual([]);
+      })
+    );
   });
 
-  describe('on calling addNewRole', function() {
-    beforeEach(function() {
-      spyOn(adminBackendApiService, 'addUserRoleAsync')
-        .and.returnValue(Promise.resolve());
+  describe('on calling addNewRole', function () {
+    beforeEach(function () {
+      spyOn(adminBackendApiService, 'addUserRoleAsync').and.returnValue(
+        Promise.resolve()
+      );
     });
 
-    it('should add the given role',
-      fakeAsync(() => {
-        component.userRoles = ['TOPIC_MANAGER'];
+    it('should add the given role', fakeAsync(() => {
+      component.userRoles = ['TOPIC_MANAGER'];
 
-        component.addNewRole('MODERATOR');
-        tick();
+      component.addNewRole('MODERATOR');
+      tick();
 
-        expect(component.userRoles).toEqual(['TOPIC_MANAGER', 'MODERATOR']);
-      }));
+      expect(component.userRoles).toEqual(['TOPIC_MANAGER', 'MODERATOR']);
+    }));
 
     it('should open topic manager modal on adding topic manager role', () => {
       spyOn(component, 'openTopicManagerRoleEditor').and.returnValue();
@@ -304,28 +345,45 @@ describe('Admin roles tab component ', function() {
 
       expect(component.openTopicManagerRoleEditor).toHaveBeenCalled();
     });
+
+    it(
+      'should open translation coordinator modal on adding' +
+        ' translation coordinator role',
+      () => {
+        spyOn(
+          component,
+          'openTranslationCoordinatorRoleEditor'
+        ).and.returnValue();
+
+        component.addNewRole('TRANSLATION_COORDINATOR');
+
+        expect(
+          component.openTranslationCoordinatorRoleEditor
+        ).toHaveBeenCalled();
+      }
+    );
   });
 
-  describe('on calling openTopicManagerRoleEditor', function() {
-    let modalSpy = null;
+  describe('on calling openTopicManagerRoleEditor', function () {
     let ngbModal: NgbModal;
 
     class MockNgbModalRef {
-      componentInstance: {};
+      componentInstance!: {};
     }
 
-    beforeEach(function() {
+    beforeEach(function () {
       ngbModal = TestBed.inject(NgbModal);
       component.topicSummaries = [sampleTopicSummary];
-      modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
-        return <NgbModalRef>({
-          componentInstance: MockNgbModalRef,
-          result: Promise.resolve(['topic_id_1'])
-        });
-      });
     });
 
     it('should open the TopicManagerRoleEditorModal', fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
+        return {
+          componentInstance: MockNgbModalRef,
+          result: Promise.resolve(['topic_id_1']),
+        } as NgbModalRef;
+      });
+
       component.userRoles = ['MODERATOR'];
       component.managedTopicIds = [];
 
@@ -333,27 +391,99 @@ describe('Admin roles tab component ', function() {
       tick();
 
       expect(modalSpy).toHaveBeenCalledWith(
-        TopicManagerRoleEditorModalComponent);
+        TopicManagerRoleEditorModalComponent
+      );
       expect(component.managedTopicIds).toEqual(['topic_id_1']);
       expect(component.userRoles).toEqual(['MODERATOR', 'TOPIC_MANAGER']);
     }));
 
-    it('should not readd topic manager role if user is already a manager',
-      fakeAsync(() => {
-        component.userRoles = ['MODERATOR', 'TOPIC_MANAGER'];
-        component.managedTopicIds = [];
+    it('should not read topic manager role if user is already a manager', fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
+        return {
+          componentInstance: MockNgbModalRef,
+          result: Promise.resolve(['topic_id_1']),
+        } as NgbModalRef;
+      });
 
-        component.openTopicManagerRoleEditor();
+      component.userRoles = ['MODERATOR', 'TOPIC_MANAGER'];
+      component.managedTopicIds = [];
+
+      component.openTopicManagerRoleEditor();
+      tick();
+
+      expect(modalSpy).toHaveBeenCalledWith(
+        TopicManagerRoleEditorModalComponent
+      );
+      expect(component.managedTopicIds).toEqual(['topic_id_1']);
+      expect(component.userRoles).toEqual(['MODERATOR', 'TOPIC_MANAGER']);
+    }));
+  });
+
+  describe('on calling openTranslationCoordinatorRoleEditor', function () {
+    let ngbModal: NgbModal;
+
+    class MockNgbModalRef {
+      componentInstance!: {};
+    }
+
+    beforeEach(function () {
+      ngbModal = TestBed.inject(NgbModal);
+    });
+
+    it('should open the TranslationCoordinatorRoleEditor', fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
+        return {
+          componentInstance: MockNgbModalRef,
+          result: Promise.resolve(['en']),
+        } as NgbModalRef;
+      });
+
+      component.userRoles = ['MODERATOR'];
+      component.coordinatedLanguageIds = [];
+
+      component.openTranslationCoordinatorRoleEditor();
+      tick();
+
+      expect(modalSpy).toHaveBeenCalledWith(
+        TranslationCoordinatorRoleEditorModalComponent
+      );
+      expect(component.coordinatedLanguageIds).toEqual(['en']);
+      expect(component.userRoles).toEqual([
+        'MODERATOR',
+        'TRANSLATION_COORDINATOR',
+      ]);
+    }));
+
+    it(
+      'should not read translation coordinator role if user is already a' +
+        ' coordinator',
+      fakeAsync(() => {
+        let modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
+          return {
+            componentInstance: MockNgbModalRef,
+            result: Promise.resolve(['en']),
+          } as NgbModalRef;
+        });
+
+        component.userRoles = ['MODERATOR', 'TRANSLATION_COORDINATOR'];
+        component.coordinatedLanguageIds = [];
+
+        component.openTranslationCoordinatorRoleEditor();
         tick();
 
         expect(modalSpy).toHaveBeenCalledWith(
-          TopicManagerRoleEditorModalComponent);
-        expect(component.managedTopicIds).toEqual(['topic_id_1']);
-        expect(component.userRoles).toEqual(['MODERATOR', 'TOPIC_MANAGER']);
-      }));
+          TranslationCoordinatorRoleEditorModalComponent
+        );
+        expect(component.coordinatedLanguageIds).toEqual(['en']);
+        expect(component.userRoles).toEqual([
+          'MODERATOR',
+          'TRANSLATION_COORDINATOR',
+        ]);
+      })
+    );
   });
 
-  describe('on calling showNewRoleSelector', function() {
+  describe('on calling showNewRoleSelector', function () {
     it('should enable roleSelectorIsShown', () => {
       component.roleSelectorIsShown = false;
       component.userRoles = ['FULL_USER', 'MODERATOR'];
@@ -361,7 +491,7 @@ describe('Admin roles tab component ', function() {
 
       component.showNewRoleSelector();
 
-      expect(component.roleSelectorIsShown).toBeTrue();
+      expect(component.roleSelectorIsShown).toBe(true);
     });
 
     it('should set correct value for possibleRolesToAdd', () => {

@@ -16,21 +16,28 @@
  * @fileoverview Unit tests for stats reporting service.
  */
 
-import { discardPeriodicTasks, fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import {
+  discardPeriodicTasks,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
 
-import { AggregatedStats, StatsReportingBackendApiService } from 'domain/exploration/stats-reporting-backend-api.service';
-import { ContextService } from 'services/context.service';
-import { UrlService } from 'services/contextual/url.service';
-import { MessengerService } from 'services/messenger.service';
-import { PlaythroughService } from 'services/playthrough.service';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
-import { StatsReportingService } from './stats-reporting.service';
-import { Stopwatch } from 'domain/utilities/stopwatch.model';
-
+import {
+  AggregatedStats,
+  StatsReportingBackendApiService,
+} from '../../../domain/exploration/stats-reporting-backend-api.service';
+import {PageContextService} from '../../../services/page-context.service';
+import {UrlService} from '../../../services/contextual/url.service';
+import {MessengerService} from '../../../services/messenger.service';
+import {PlaythroughService} from '../../../services/playthrough.service';
+import {SiteAnalyticsService} from '../../../services/site-analytics.service';
+import {StatsReportingService} from './stats-reporting.service';
+import {Stopwatch} from '../../../domain/utilities/stopwatch.model';
 
 describe('Stats reporting service ', () => {
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
   let messengerService: MessengerService;
   let playthroughService: PlaythroughService;
   let siteAnalyticsService: SiteAnalyticsService;
@@ -46,13 +53,14 @@ describe('Stats reporting service ', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
+      imports: [HttpClientTestingModule],
     });
 
-    contextService = TestBed.inject(ContextService);
+    pageContextService = TestBed.inject(PageContextService);
     statsReportingService = TestBed.inject(StatsReportingService);
     statsReportingBackendApiService = TestBed.inject(
-      StatsReportingBackendApiService);
+      StatsReportingBackendApiService
+    );
     messengerService = TestBed.inject(MessengerService);
     siteAnalyticsService = TestBed.inject(SiteAnalyticsService);
     playthroughService = TestBed.inject(PlaythroughService);
@@ -60,66 +68,86 @@ describe('Stats reporting service ', () => {
   });
 
   beforeEach(() => {
-    spyOn(messengerService, 'sendMessage').and.returnValue(null);
-    spyOn(siteAnalyticsService, 'registerNewCard').and.returnValue(null);
-    spyOn(siteAnalyticsService, 'registerStartExploration')
-      .and.returnValue(null);
-    spyOn(siteAnalyticsService, 'registerFinishExploration')
-      .and.returnValue(null);
-    spyOn(siteAnalyticsService, 'registerCuratedLessonCompleted')
-      .and.returnValue(null);
-    spyOn(playthroughService, 'recordExplorationStartAction')
-      .and.returnValue(null);
-    spyOn(playthroughService, 'recordExplorationQuitAction')
-      .and.returnValue(null);
-    spyOn(playthroughService, 'storePlaythrough')
-      .and.returnValue(null);
-    spyOn(contextService, 'isInExplorationEditorPage').and.returnValue(true);
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
-    spyOn(urlService, 'getUrlParams')
-      .and.returnValue({classroom_url_fragment: 'classroom'});
+    spyOn(messengerService, 'sendMessage').and.callThrough();
+    spyOn(siteAnalyticsService, 'registerNewCard').and.callThrough();
+    spyOn(siteAnalyticsService, 'registerStartExploration').and.callThrough();
+    spyOn(siteAnalyticsService, 'registerFinishExploration').and.callThrough();
+    spyOn(
+      siteAnalyticsService,
+      'registerCuratedLessonCompleted'
+    ).and.callThrough();
+    spyOn(siteAnalyticsService, 'registerAnswerSubmitted').and.callThrough();
+    spyOn(playthroughService, 'recordExplorationStartAction').and.callThrough();
+    spyOn(playthroughService, 'recordExplorationQuitAction').and.callThrough();
+    spyOn(playthroughService, 'storePlaythrough').and.callThrough();
+    spyOn(pageContextService, 'isInExplorationEditorPage').and.returnValue(
+      true
+    );
+    spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
     statsReportingService.stateStopwatch = Stopwatch.create();
   });
 
   it('should create default aggregated stats when initialized', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let defaultValues: AggregatedStats = {
       num_starts: 0,
       num_completions: 0,
       num_actual_starts: 0,
-      state_stats_mapping: {}
+      state_stats_mapping: {},
     };
 
     expect(statsReportingService.aggregatedStats).toEqual(defaultValues);
   });
 
-  it('should set session properties when calling ' +
-    '\'initSession\'', fakeAsync(() => {
-    // Prechecks.
-    expect(statsReportingService.explorationId).toEqual(null);
-    expect(statsReportingService.explorationTitle).toEqual(null);
-    expect(statsReportingService.explorationVersion)
-      .toEqual(null);
-    expect(statsReportingService.sessionId).toEqual(null);
-    expect(statsReportingService.optionalCollectionId).toEqual(null);
+  it(
+    'should set session properties when calling ' + "'initSession'",
+    fakeAsync(() => {
+      spyOn(urlService, 'getUrlParams').and.returnValue({
+        classroom_url_fragment: 'classroom',
+      });
+      // Prechecks.
+      expect(statsReportingService.explorationId).toBeUndefined();
+      expect(statsReportingService.explorationTitle).toBeUndefined();
+      expect(statsReportingService.explorationVersion).toBeUndefined();
+      expect(statsReportingService.sessionId).toBeUndefined();
+      expect(statsReportingService.optionalCollectionId).toBeUndefined();
+      statsReportingService.initSession(
+        explorationId,
+        explorationTitle,
+        explorationVersion,
+        sessionId,
+        collectionId
+      );
+      tick(300001);
+      discardPeriodicTasks();
 
-    statsReportingService.initSession(
-      explorationId, explorationTitle, explorationVersion,
-      sessionId, collectionId);
-    tick(300001);
-    discardPeriodicTasks();
+      expect(statsReportingService.explorationId).toEqual(explorationId);
+      expect(statsReportingService.explorationTitle).toEqual(explorationTitle);
+      expect(statsReportingService.explorationVersion).toEqual(
+        explorationVersion
+      );
+      expect(statsReportingService.sessionId).toEqual(sessionId);
+      expect(statsReportingService.optionalCollectionId).toEqual(collectionId);
+    })
+  );
 
-    expect(statsReportingService.explorationId).toEqual(explorationId);
-    expect(statsReportingService.explorationTitle).toEqual(explorationTitle);
-    expect(statsReportingService.explorationVersion)
-      .toEqual(explorationVersion);
-    expect(statsReportingService.sessionId).toEqual(sessionId);
-    expect(statsReportingService.optionalCollectionId).toEqual(collectionId);
-  }));
-
-  it('should record exploration\'s stats when it is about to start', () => {
+  it("should record exploration's stats when it is about to start", () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordExplorationStartedSpy = spyOn(
-      statsReportingBackendApiService, 'recordExpStartedAsync')
-      .and.returnValue(Promise.resolve({}));
+      statsReportingBackendApiService,
+      'recordExpStartedAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(
+      statsReportingBackendApiService,
+      'recordStateHitAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(statsReportingBackendApiService, 'postsStatsAsync').and.returnValue(
+      Promise.resolve({})
+    );
 
     let sampleStats = {
       total_answers_count: 1,
@@ -127,44 +155,81 @@ describe('Stats reporting service ', () => {
       total_hit_count: 1,
       first_hit_count: 1,
       num_times_solution_viewed: 1,
-      num_completions: 1
+      num_completions: 1,
     };
-    statsReportingService.aggregatedStats.state_stats_mapping.firstState = (
-      sampleStats);
+    statsReportingService.aggregatedStats.state_stats_mapping.firstState =
+      sampleStats;
 
     expect(statsReportingService.explorationStarted).toBe(false);
+
     statsReportingService.recordExplorationStarted('firstState', {});
 
     expect(statsReportingService.explorationStarted).toBe(true);
     expect(recordExplorationStartedSpy).toHaveBeenCalled();
+    expect(statsReportingBackendApiService.postsStatsAsync).toHaveBeenCalled();
   });
 
-  it('should not again record exploration\'s stats when ' +
-    'it is about to start and already recorded', () => {
-    let recordExplorationStartedSpy = spyOn(
-      statsReportingBackendApiService, 'recordExpStartedAsync')
-      .and.returnValue(Promise.resolve({}));
-    statsReportingService.explorationStarted = true;
-    statsReportingService.recordExplorationStarted('firstState', {});
+  it(
+    "should not again record exploration's stats when " +
+      'it is about to start and already recorded',
+    () => {
+      spyOn(urlService, 'getUrlParams').and.returnValue({
+        classroom_url_fragment: 'classroom',
+      });
+      let recordExplorationStartedSpy = spyOn(
+        statsReportingBackendApiService,
+        'recordExpStartedAsync'
+      ).and.returnValue(Promise.resolve({}));
+      statsReportingService.explorationStarted = true;
 
-    expect(recordExplorationStartedSpy).not.toHaveBeenCalled();
-  });
+      statsReportingService.recordExplorationStarted('firstState', {});
 
-  it('should not send request to backend when an exploration ' +
-    'it is about to start and already recorded', () => {
-    let postStatsSpy = spyOn(statsReportingBackendApiService, 'postsStatsAsync')
-      .and.returnValue(Promise.resolve({}));
-    statsReportingService.explorationIsComplete = true;
-    statsReportingService.recordExplorationStarted('firstState', {});
+      expect(recordExplorationStartedSpy).not.toHaveBeenCalled();
+    }
+  );
 
-    expect(postStatsSpy).not.toHaveBeenCalled();
-  });
+  it(
+    'should not send request to backend when an exploration ' +
+      'it is about to start and already recorded',
+    () => {
+      spyOn(urlService, 'getUrlParams').and.returnValue({
+        classroom_url_fragment: 'classroom',
+      });
+      let postStatsSpy = spyOn(
+        statsReportingBackendApiService,
+        'postsStatsAsync'
+      ).and.returnValue(Promise.resolve({}));
+      spyOn(
+        statsReportingBackendApiService,
+        'recordExpStartedAsync'
+      ).and.returnValue(Promise.resolve({}));
+      spyOn(
+        statsReportingBackendApiService,
+        'recordStateHitAsync'
+      ).and.returnValue(Promise.resolve({}));
+      statsReportingService.explorationIsComplete = true;
 
-  it('should record exploration\'s stats when it is actually started', () => {
+      statsReportingService.recordExplorationStarted('firstState', {});
+
+      expect(postStatsSpy).not.toHaveBeenCalled();
+      expect(
+        statsReportingBackendApiService.recordExpStartedAsync
+      ).toHaveBeenCalled();
+      expect(
+        statsReportingBackendApiService.recordStateHitAsync
+      ).toHaveBeenCalled();
+    }
+  );
+
+  it("should record exploration's stats when it is actually started", () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordExplorationActuallyStartedSpy = spyOn(
-      statsReportingBackendApiService, 'recordExplorationActuallyStartedAsync')
-      .and.returnValue(Promise.resolve({}));
-    expect(statsReportingService.currentStateName).toBe(null);
+      statsReportingBackendApiService,
+      'recordExplorationActuallyStartedAsync'
+    ).and.returnValue(Promise.resolve({}));
+    expect(statsReportingService.currentStateName).toBeUndefined();
     expect(statsReportingService.explorationActuallyStarted).toBe(false);
 
     statsReportingService.recordExplorationActuallyStarted('firstState');
@@ -174,112 +239,301 @@ describe('Stats reporting service ', () => {
     expect(recordExplorationActuallyStartedSpy).toHaveBeenCalled();
   });
 
-  it('should not again record exploration\'s stats when ' +
-    'it is actually started and already recorded', () => {
-    let recordExplorationActuallyStartedSpy = spyOn(
-      statsReportingBackendApiService, 'recordExplorationActuallyStartedAsync')
-      .and.returnValue(Promise.resolve({}));
-    statsReportingService.explorationActuallyStarted = true;
-    statsReportingService.recordExplorationActuallyStarted('firstState');
+  it(
+    "should not again record exploration's stats when " +
+      'it is actually started and already recorded',
+    () => {
+      spyOn(urlService, 'getUrlParams').and.returnValue({
+        classroom_url_fragment: 'classroom',
+      });
+      let recordExplorationActuallyStartedSpy = spyOn(
+        statsReportingBackendApiService,
+        'recordExplorationActuallyStartedAsync'
+      ).and.returnValue(Promise.resolve({}));
+      statsReportingService.explorationActuallyStarted = true;
 
-    expect(recordExplorationActuallyStartedSpy).not.toHaveBeenCalled();
-  });
+      statsReportingService.recordExplorationActuallyStarted('firstState');
+
+      expect(recordExplorationActuallyStartedSpy).not.toHaveBeenCalled();
+    }
+  );
 
   it('should record stats status of solution', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordSolutionHitSpy = spyOn(
-      statsReportingBackendApiService, 'recordSolutionHitAsync')
-      .and.returnValue(Promise.resolve({}));
+      statsReportingBackendApiService,
+      'recordSolutionHitAsync'
+    ).and.returnValue(Promise.resolve({}));
+
     statsReportingService.recordSolutionHit('firstState');
 
     expect(recordSolutionHitSpy).toHaveBeenCalled();
   });
 
   it('should record stats when refresher exploration is opened', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordLeaveForRefresherExpSpy = spyOn(
-      statsReportingBackendApiService, 'recordLeaveForRefresherExpAsync')
-      .and.returnValue(Promise.resolve({}));
-    expect(statsReportingService.nextExpId).toBe(null);
+      statsReportingBackendApiService,
+      'recordLeaveForRefresherExpAsync'
+    ).and.returnValue(Promise.resolve({}));
+    expect(statsReportingService.nextExpId).toBeUndefined();
+
     statsReportingService.recordLeaveForRefresherExp(
-      'firstState', 'refresherExp');
+      'firstState',
+      'refresherExp'
+    );
 
     expect(statsReportingService.nextExpId).toBe('refresherExp');
     expect(recordLeaveForRefresherExpSpy).toHaveBeenCalled();
   });
 
-  it('should record stats when state is changed', () => {
+  it('should record stats for community exp when state is changed', () => {
     let recordStateHitSpy = spyOn(
-      statsReportingBackendApiService, 'recordStateHitAsync')
-      .and.returnValue(Promise.resolve({}));
+      statsReportingBackendApiService,
+      'recordStateHitAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(urlService, 'getUrlParams').and.returnValue({});
+
     expect(statsReportingService.statesVisited.size).toBe(0);
     // First transition.
     statsReportingService.recordStateTransition(
-      'firstState', 'secondState', 'answer', {}, true);
+      'firstState',
+      'secondState',
+      'answer',
+      {},
+      true,
+      '1',
+      '2',
+      'en'
+    );
 
     // Second transition.
     statsReportingService.recordStateTransition(
-      'secondState', 'thirdState', 'answer', {}, true);
+      'secondState',
+      'thirdState',
+      'answer',
+      {},
+      true,
+      '1',
+      '2',
+      'en'
+    );
 
     // Third transition.
     statsReportingService.recordStateTransition(
-      'thirdState', 'fourthState', 'answer', {}, true);
+      'thirdState',
+      'fourthState',
+      'answer',
+      {},
+      true,
+      '1',
+      '2',
+      'en'
+    );
+
+    expect(recordStateHitSpy).toHaveBeenCalled();
+    expect(statsReportingService.statesVisited.size).toBe(3);
+  });
+
+  it('should record stats for curated exp when state is changed', () => {
+    let recordStateHitSpy = spyOn(
+      statsReportingBackendApiService,
+      'recordStateHitAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
+
+    expect(statsReportingService.statesVisited.size).toBe(0);
+    // First transition.
+    statsReportingService.recordStateTransition(
+      'firstState',
+      'secondState',
+      'answer',
+      {},
+      true,
+      '1',
+      '2',
+      'en'
+    );
+
+    // Second transition.
+    statsReportingService.recordStateTransition(
+      'secondState',
+      'thirdState',
+      'answer',
+      {},
+      true,
+      '1',
+      '2',
+      'en'
+    );
+
+    // Third transition.
+    statsReportingService.recordStateTransition(
+      'thirdState',
+      'fourthState',
+      'answer',
+      {},
+      true,
+      '1',
+      '2',
+      'en'
+    );
 
     expect(recordStateHitSpy).toHaveBeenCalled();
     expect(statsReportingService.statesVisited.size).toBe(3);
   });
 
   it('should record stats when a card in exploration is finished', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordStateCompletedSpy = spyOn(
-      statsReportingBackendApiService, 'recordStateCompletedAsync')
-      .and.returnValue(Promise.resolve({}));
-    expect(statsReportingService.currentStateName).toBe(null);
+      statsReportingBackendApiService,
+      'recordStateCompletedAsync'
+    ).and.returnValue(Promise.resolve({}));
+    expect(statsReportingService.currentStateName).toBeUndefined();
+
     statsReportingService.recordStateCompleted('firstState');
 
     expect(recordStateCompletedSpy).toHaveBeenCalled();
     expect(statsReportingService.currentStateName).toBe('firstState');
   });
 
-  it('should record stats when an exploration is finished', () => {
+  it('should record stats for classroom lesson when finished', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordExplorationCompletedSpy = spyOn(
-      statsReportingBackendApiService, 'recordExplorationCompletedAsync')
-      .and.returnValue(Promise.resolve({}));
+      statsReportingBackendApiService,
+      'recordExplorationCompletedAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(statsReportingBackendApiService, 'postsStatsAsync').and.returnValue(
+      Promise.resolve({})
+    );
     expect(statsReportingService.explorationIsComplete).toBe(false);
-    statsReportingService.recordExplorationCompleted('firstState', {});
 
+    statsReportingService.recordExplorationCompleted(
+      'firstState',
+      {},
+      '1',
+      '2',
+      'en'
+    );
+
+    expect(
+      siteAnalyticsService.registerCuratedLessonCompleted
+    ).toHaveBeenCalled();
     expect(recordExplorationCompletedSpy).toHaveBeenCalled();
     expect(statsReportingService.explorationIsComplete).toBe(true);
+    expect(statsReportingBackendApiService.postsStatsAsync).toHaveBeenCalled();
+  });
+
+  it('should record stats for community lesson when finished', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({});
+    let recordExplorationCompletedSpy = spyOn(
+      statsReportingBackendApiService,
+      'recordExplorationCompletedAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(statsReportingBackendApiService, 'postsStatsAsync').and.returnValue(
+      Promise.resolve({})
+    );
+    spyOn(siteAnalyticsService, 'registerCommunityLessonCompleted');
+    expect(statsReportingService.explorationIsComplete).toBe(false);
+
+    statsReportingService.recordExplorationCompleted(
+      'firstState',
+      {},
+      '1',
+      '2',
+      'en'
+    );
+
+    expect(
+      siteAnalyticsService.registerCommunityLessonCompleted
+    ).toHaveBeenCalled();
+    expect(recordExplorationCompletedSpy).toHaveBeenCalled();
+    expect(statsReportingService.explorationIsComplete).toBe(true);
+    expect(statsReportingBackendApiService.postsStatsAsync).toHaveBeenCalled();
   });
 
   it('should record stats when a leave event is triggered', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordMaybeLeaveEventSpy = spyOn(
-      statsReportingBackendApiService, 'recordMaybeLeaveEventAsync')
-      .and.returnValue(Promise.resolve({}));
+      statsReportingBackendApiService,
+      'recordMaybeLeaveEventAsync'
+    ).and.returnValue(Promise.resolve({}));
+    spyOn(statsReportingBackendApiService, 'postsStatsAsync').and.returnValue(
+      Promise.resolve({})
+    );
+
     statsReportingService.recordMaybeLeaveEvent('firstState', {});
 
     expect(recordMaybeLeaveEventSpy).toHaveBeenCalled();
+    expect(statsReportingBackendApiService.postsStatsAsync).toHaveBeenCalled();
   });
 
   it('should record stats when an answer submit button is clicked', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordAnswerSubmitActionSpy = spyOn(
-      playthroughService, 'recordAnswerSubmitAction')
-      .and.returnValue(null);
+      playthroughService,
+      'recordAnswerSubmitAction'
+    ).and.callThrough();
+
     statsReportingService.recordAnswerSubmitAction(
-      'oldState', 'newState', 'expId', 'answer', 'feedback');
+      'oldState',
+      'newState',
+      'expId',
+      'answer',
+      'feedback'
+    );
 
     expect(recordAnswerSubmitActionSpy).toHaveBeenCalled();
   });
 
   it('should record stats when an answer is actually submitted', () => {
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
     let recordAnswerSubmittedSpy = spyOn(
-      statsReportingBackendApiService, 'recordAnswerSubmittedAsync')
-      .and.returnValue(Promise.resolve({}));
+      statsReportingBackendApiService,
+      'recordAnswerSubmittedAsync'
+    ).and.returnValue(Promise.resolve({}));
+
     statsReportingService.recordAnswerSubmitted(
-      'firstState', {}, 'answer', 0, 0, 'category', true);
+      'firstState',
+      {},
+      'answer',
+      explorationId,
+      true,
+      0,
+      0,
+      'category',
+      true
+    );
 
     expect(recordAnswerSubmittedSpy).toHaveBeenCalled();
+    expect(siteAnalyticsService.registerAnswerSubmitted).toHaveBeenCalledWith(
+      explorationId,
+      true
+    );
   });
 
   it('should set topic name', () => {
-    expect(statsReportingService.topicName).toBe(null);
+    spyOn(urlService, 'getUrlParams').and.returnValue({
+      classroom_url_fragment: 'classroom',
+    });
+    expect(statsReportingService.topicName).toBeUndefined();
+
     statsReportingService.setTopicName('newTopic');
 
     expect(statsReportingService.topicName).toBe('newTopic');

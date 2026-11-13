@@ -13,252 +13,238 @@
 // limitations under the License.
 
 /**
- * @fileoverview Controller for the questions editor directive.
+ * @fileoverview Component for the questions editor tab.
  */
 
-require(
-  'components/common-layout-directives/common-elements/' +
-  'confirm-or-cancel-modal.controller.ts');
-require('components/state-editor/state-editor.component.ts');
+import {
+  Component,
+  ChangeDetectorRef,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+} from '@angular/core';
+import cloneDeep from 'lodash/cloneDeep';
+import {Subscription} from 'rxjs';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {StateInteractionIdService} from 'components/state-editor/state-editor-properties-services/state-interaction-id.service';
+import type {MisconceptionSkillMap} from 'domain/skill/misconception.model';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {Question} from 'domain/question/question.model';
+import {QuestionUpdateService} from 'domain/question/question-update.service';
+import type {Solution} from 'domain/exploration/solution.model';
+import type {Hint} from 'domain/exploration/hint-object.model';
+import type {AnswerGroup} from 'domain/exploration/answer-group.model';
+import type {State} from 'domain/state/state.model';
+import type {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {SolutionValidityService} from 'pages/exploration-editor-page/editor-tab/services/solution-validity.service';
+import {EditabilityService} from 'services/editability.service';
+import type {InteractionData} from 'interactions/customization-args-defs';
+import {LoaderService} from 'services/loader.service';
+import {GenerateContentIdService} from 'services/generate-content-id.service';
 
-require('domain/question/question-update.service.ts');
-require(
-  'pages/exploration-editor-page/editor-tab/services/' +
-  'solution-validity.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-editor.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-interaction-id.service');
-require('pages/topic-editor-page/services/topic-editor-state.service.ts');
-require('domain/utilities/url-interpolation.service.ts');
-require('services/editability.service.ts');
+@Component({
+  selector: 'oppia-question-editor',
+  templateUrl: './question-editor.component.html',
+  styleUrls: ['./question-editor.component.css'],
+})
+export class QuestionEditorComponent implements OnInit, OnDestroy {
+  @Output() questionChange = new EventEmitter<void>();
+  // These properties below are initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() userCanEditQuestion!: boolean;
+  @Input() misconceptionsBySkill!: MisconceptionSkillMap;
+  @Input() question!: Question;
+  @Input() questionId!: string;
+  @Input() questionStateData!: State;
+  interactionIsShown!: boolean;
+  oppiaBlackImgUrl!: string;
+  stateEditorIsInitialized!: boolean;
+  nextContentIdIndexMemento!: number;
+  nextContentIdIndexDisplayedValue!: number;
 
-require('pages/interaction-specs.constants.ajs.ts');
+  componentSubscriptions = new Subscription();
 
-import { Subscription } from 'rxjs';
+  constructor(
+    private changeDetectionRef: ChangeDetectorRef,
+    private editabilityService: EditabilityService,
+    private generateContentIdService: GenerateContentIdService,
+    private loaderService: LoaderService,
+    private questionUpdateService: QuestionUpdateService,
+    private solutionValidityService: SolutionValidityService,
+    private stateEditorService: StateEditorService,
+    private stateInteractionIdService: StateInteractionIdService,
+    private urlInterpolationService: UrlInterpolationService
+  ) {}
 
-angular.module('oppia').component('questionEditor', {
-  bindings: {
-    getQuestionId: '&questionId',
-    getMisconceptionsBySkill: '&misconceptionsBySkill',
-    canEditQuestion: '&',
-    question: '=',
-    questionStateData: '=',
-    questionChanged: '='
-  },
-  template: require('./question-editor.component.html'),
-  controllerAs: '$ctrl',
-  controller: [
-    '$uibModal', 'EditabilityService', 'LoaderService',
-    'QuestionUpdateService', 'SolutionValidityService',
-    'StateEditorService', 'StateInteractionIdService',
-    'UrlInterpolationService',
-    function(
-        $uibModal, EditabilityService, LoaderService,
-        QuestionUpdateService, SolutionValidityService,
-        StateEditorService, StateInteractionIdService,
-        UrlInterpolationService) {
-      var ctrl = this;
-      ctrl.directiveSubscriptions = new Subscription();
-      ctrl.getStateContentPlaceholder = function() {
-        return 'Type your question here.';
-      };
+  saveInteractionAnswerGroups(newAnswerGroups: AnswerGroup[]): void {
+    this._updateQuestion(() => {
+      this.stateEditorService.setInteractionAnswerGroups(
+        cloneDeep(newAnswerGroups)
+      );
+    });
+  }
 
-      ctrl.getStateContentSaveButtonPlaceholder = function() {
-        return 'Save Question';
-      };
+  saveInteractionDefaultOutcome(newOutcome: Outcome): void {
+    this._updateQuestion(() => {
+      this.stateEditorService.setInteractionDefaultOutcome(
+        cloneDeep(newOutcome)
+      );
+    });
+  }
 
-      ctrl.navigateToState = function() {
-        return;
-      };
+  saveInteractionData(displayedValue: InteractionData): void {
+    this._updateQuestion(() => {
+      this.stateEditorService.setInteractionId(
+        cloneDeep(displayedValue.interactionId)
+      );
+      this.stateEditorService.setInteractionCustomizationArgs(
+        cloneDeep(displayedValue.customizationArgs)
+      );
+    });
+  }
 
-      ctrl.addState = function() {
-        return;
-      };
+  saveNextContentIdIndex(): void {
+    this.questionUpdateService.setQuestionNextContentIdIndex(
+      this.question,
+      this.nextContentIdIndexDisplayedValue
+    );
+    this.nextContentIdIndexMemento = this.nextContentIdIndexDisplayedValue;
+  }
 
-      ctrl.recomputeGraph = function() {
-        return;
-      };
+  saveSolution(displayedValue: Solution): void {
+    this._updateQuestion(() => {
+      this.stateEditorService.setInteractionSolution(cloneDeep(displayedValue));
+    });
 
-      ctrl.refreshWarnings = function() {
-        return;
-      };
+    this.changeDetectionRef.detectChanges();
+  }
 
-      var _init = function() {
-        StateEditorService.setStateNames([]);
-        StateEditorService.setCorrectnessFeedbackEnabled(true);
-        StateEditorService.setInQuestionMode(true);
-        StateEditorService.setInapplicableSkillMisconceptionIds(
-          ctrl.question.getInapplicableSkillMisconceptionIds());
-        SolutionValidityService.init(['question']);
-        var stateData = ctrl.questionStateData;
-        stateData.interaction.defaultOutcome.setDestination(null);
-        if (stateData) {
-          StateEditorService.onStateEditorInitialized.emit(stateData);
+  saveHints(displayedValue: Hint[]): void {
+    this._updateQuestion(() => {
+      this.stateEditorService.setInteractionHints(cloneDeep(displayedValue));
+    });
+  }
 
-          if (stateData.content.html || stateData.interaction.id) {
-            ctrl.interactionIsShown = true;
-          }
+  saveInapplicableSkillMisconceptionIds(displayedValue: string[]): void {
+    this.stateEditorService.setInapplicableSkillMisconceptionIds(
+      cloneDeep(displayedValue)
+    );
+    this.questionUpdateService.setQuestionInapplicableSkillMisconceptionIds(
+      this.question,
+      displayedValue
+    );
+  }
 
-          LoaderService.hideLoadingScreen();
-        }
-        ctrl.stateEditorInitialized = true;
-      };
+  getStateContentPlaceholder(): string {
+    return 'Type your question here.';
+  }
 
-      var _updateQuestion = function(updateFunction) {
-        if (ctrl.questionChanged) {
-          ctrl.questionChanged();
-        }
-        QuestionUpdateService.setQuestionStateData(
-          ctrl.question, updateFunction);
-      };
+  getStateContentSaveButtonPlaceholder(): string {
+    return 'Save Question';
+  }
 
-      ctrl.saveStateContent = function(displayedValue) {
-        // Show the interaction when the text content is saved, even if no
-        // content is entered.
-        _updateQuestion(function() {
-          var stateData = ctrl.question.getStateData();
-          stateData.content = angular.copy(displayedValue);
-          ctrl.interactionIsShown = true;
-        });
-      };
+  _updateQuestion(updateFunction: () => void): void {
+    this.questionChange.emit();
+    this.questionUpdateService.setQuestionStateData(
+      this.question,
+      updateFunction
+    );
+  }
 
-      ctrl.saveInteractionId = function(displayedValue) {
-        _updateQuestion(function() {
-          StateEditorService.setInteractionId(angular.copy(displayedValue));
-        });
-      };
+  saveStateContent(displayedValue: SubtitledHtml): void {
+    // Show the interaction when the text content is saved, even if no
+    // content is entered.
+    this._updateQuestion(() => {
+      const stateData = this.question.getStateData();
+      stateData.content = cloneDeep(displayedValue);
+      this.interactionIsShown = true;
+    });
+  }
 
-      ctrl.saveInteractionAnswerGroups = function(newAnswerGroups) {
-        _updateQuestion(function() {
-          StateEditorService.setInteractionAnswerGroups(
-            angular.copy(newAnswerGroups));
-        });
-      };
-
-      ctrl.saveInteractionDefaultOutcome = function(newOutcome) {
-        _updateQuestion(function() {
-          StateEditorService.setInteractionDefaultOutcome(
-            angular.copy(newOutcome));
-        });
-      };
-
-      ctrl.saveInteractionCustomizationArgs = function(displayedValue) {
-        _updateQuestion(function() {
-          StateEditorService.setInteractionCustomizationArgs(
-            angular.copy(displayedValue));
-        });
-      };
-
-      ctrl.saveNextContentIdIndex = function(displayedValue) {
-        _updateQuestion(function() {
-          var stateData = ctrl.question.getStateData();
-          stateData.nextContentIdIndex = angular.copy(displayedValue);
-        });
-      };
-
-      ctrl.saveSolution = function(displayedValue) {
-        _updateQuestion(function() {
-          StateEditorService.setInteractionSolution(
-            angular.copy(displayedValue));
-        });
-      };
-
-      ctrl.saveHints = function(displayedValue) {
-        _updateQuestion(function() {
-          StateEditorService.setInteractionHints(
-            angular.copy(displayedValue));
-        });
-      };
-
-      ctrl.saveInapplicableSkillMisconceptionIds = function(
-          displayedValue) {
-        StateEditorService.setInapplicableSkillMisconceptionIds(
-          angular.copy(displayedValue));
-        QuestionUpdateService.setQuestionInapplicableSkillMisconceptionIds(
-          ctrl.question, displayedValue);
-      };
-
-      ctrl.showMarkAllAudioAsNeedingUpdateModalIfRequired = function(
-          contentIds) {
-        var state = ctrl.question.getStateData();
-        var recordedVoiceovers = state.recordedVoiceovers;
-        var writtenTranslations = state.writtenTranslations;
-        var updateQuestion = _updateQuestion;
-
-        const shouldPrompt = contentIds.some(
-          contentId =>
-            recordedVoiceovers.hasUnflaggedVoiceovers(contentId));
-        if (shouldPrompt) {
-          $uibModal.open({
-            templateUrl: UrlInterpolationService.getDirectiveTemplateUrl(
-              '/components/forms/forms-templates/mark-all-audio-and-' +
-              'translations-as-needing-update-modal.directive.html'),
-            backdrop: 'static',
-            controller: 'ConfirmOrCancelModalController'
-          }).result.then(function() {
-            updateQuestion(function() {
-              contentIds.forEach(contentId => {
-                if (recordedVoiceovers.hasUnflaggedVoiceovers(contentId)) {
-                  recordedVoiceovers.markAllVoiceoversAsNeedingUpdate(
-                    contentId);
-                }
-                if (
-                  writtenTranslations.hasUnflaggedWrittenTranslations(
-                    contentId)
-                ) {
-                  writtenTranslations.markAllTranslationsAsNeedingUpdate(
-                    contentId);
-                }
-              });
-            });
-          }, function() {
-            // This callback is triggered when the Cancel button is
-            // clicked. No further action is needed.
-          });
-        }
-      };
-
-      ctrl.$onInit = function() {
-        ctrl.directiveSubscriptions.add(
-          StateEditorService.onStateEditorDirectiveInitialized.subscribe(
-            () => _init()
-          )
-        );
-        ctrl.directiveSubscriptions.add(
-          StateEditorService.onInteractionEditorInitialized.subscribe(
-            () => _init()
-          )
-        );
-        ctrl.directiveSubscriptions.add(
-          StateInteractionIdService.onInteractionIdChanged.subscribe(
-            () => _init()
-          )
-        );
-
-        if (ctrl.canEditQuestion()) {
-          EditabilityService.markEditable();
-        } else {
-          EditabilityService.markNotEditable();
-        }
-        StateEditorService.setActiveStateName('question');
-        StateEditorService.setMisconceptionsBySkill(
-          ctrl.getMisconceptionsBySkill());
-        ctrl.oppiaBlackImgUrl = UrlInterpolationService.getStaticImageUrl(
-          '/avatar/oppia_avatar_100px.svg');
-
-        ctrl.interactionIsShown = false;
-
-        ctrl.stateEditorInitialized = false;
-        // The _init function is written separately since it is also called
-        // in $scope.$on when some external events are triggered.
-        _init();
-      };
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
+  _init(): void {
+    this.stateEditorService.setStateNames([]);
+    this.stateEditorService.setInQuestionMode(true);
+    if (this.question) {
+      this.stateEditorService.setInapplicableSkillMisconceptionIds(
+        this.question.getInapplicableSkillMisconceptionIds()
+      );
     }
-  ]
-});
+    this.solutionValidityService.init(['question']);
+
+    this.generateContentIdService.init(
+      () => {
+        let indexToUse = this.nextContentIdIndexDisplayedValue;
+        this.nextContentIdIndexDisplayedValue += 1;
+        return indexToUse;
+      },
+      () => {
+        this.nextContentIdIndexDisplayedValue = this.nextContentIdIndexMemento;
+      }
+    );
+
+    const stateData = this.questionStateData;
+    const outcome = stateData.interaction.defaultOutcome;
+    if (outcome) {
+      outcome.setDestination(null);
+    }
+    if (stateData) {
+      this.stateEditorService.onStateEditorInitialized.emit(stateData);
+
+      if (stateData.content.html || stateData.interaction.id) {
+        this.interactionIsShown = true;
+      }
+
+      this.loaderService.hideLoadingScreen();
+    }
+    this.stateEditorIsInitialized = true;
+  }
+
+  ngOnInit(): void {
+    this.componentSubscriptions.add(
+      this.stateEditorService.onStateEditorDirectiveInitialized.subscribe(() =>
+        this._init()
+      )
+    );
+    this.componentSubscriptions.add(
+      this.stateEditorService.onInteractionEditorInitialized.subscribe(() =>
+        this._init()
+      )
+    );
+    this.componentSubscriptions.add(
+      this.stateInteractionIdService.onInteractionIdChanged.subscribe(() =>
+        this._init()
+      )
+    );
+
+    if (this.userCanEditQuestion) {
+      this.editabilityService.markEditable();
+    } else {
+      this.editabilityService.markNotEditable();
+    }
+    this.stateEditorService.setActiveStateName('question');
+    this.stateEditorService.setMisconceptionsBySkill(
+      this.misconceptionsBySkill
+    );
+    this.oppiaBlackImgUrl =
+      this.urlInterpolationService.getStaticCopyrightedImageUrl(
+        '/avatar/oppia_avatar_100px.svg'
+      );
+
+    this.interactionIsShown = false;
+    this.stateEditorIsInitialized = false;
+
+    this.nextContentIdIndexMemento = this.question.getNextContentIdIndex();
+    this.nextContentIdIndexDisplayedValue =
+      this.question.getNextContentIdIndex();
+
+    this._init();
+  }
+
+  ngOnDestroy(): void {
+    this.componentSubscriptions.unsubscribe();
+  }
+}

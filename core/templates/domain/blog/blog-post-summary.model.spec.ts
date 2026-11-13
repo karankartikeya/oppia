@@ -16,15 +16,16 @@
  * @fileoverview Unit tests for blog-post-summary-model.
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { BlogPostSummary } from 'domain/blog/blog-post-summary.model';
+import {BlogPostSummary} from 'domain/blog/blog-post-summary.model';
 
 describe('Blog post summary object factory', () => {
   let sampleSummary: BlogPostSummary;
   let sampleSummaryBackendObject = {
     id: 'sampleId',
     author_username: 'test_user',
+    displayed_author_name: 'test_user_name',
     title: 'Title',
     summary: 'Hello World',
     tags: ['news'],
@@ -32,27 +33,33 @@ describe('Blog post summary object factory', () => {
     url_fragment: 'title',
     last_updated: '3232323',
     published_on: '3232323',
+    profile_pic_url: 'sample_url',
   };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [BlogPostSummary]
+      providers: [BlogPostSummary],
     });
   });
 
-  it('should create correct BlogPostSummary object from' +
-    ' backend dict', () => {
-    sampleSummary = BlogPostSummary.createFromBackendDict(
-      sampleSummaryBackendObject);
+  it(
+    'should create correct BlogPostSummary object from' + ' backend dict',
+    () => {
+      sampleSummary = BlogPostSummary.createFromBackendDict(
+        sampleSummaryBackendObject
+      );
 
-    expect(sampleSummary.id).toEqual('sampleId');
-    expect(sampleSummary.authorUsername).toEqual('test_user');
-    expect(sampleSummary.title).toEqual('Title');
-    expect(sampleSummary.tags).toEqual(['news']);
-    expect(sampleSummary.summary).toEqual('Hello World');
-    expect(sampleSummary.urlFragment).toEqual('title');
-    expect(sampleSummary.lastUpdated).toEqual('3232323');
-    expect(sampleSummary.publishedOn).toEqual('3232323');
-    expect(sampleSummary.thumbnailFilename).toEqual('image.png');
-  });
+      expect(sampleSummary.id).toEqual('sampleId');
+      expect(sampleSummary.authorUsername).toEqual('test_user');
+      expect(sampleSummary.displayedAuthorName).toEqual('test_user_name');
+      expect(sampleSummary.title).toEqual('Title');
+      expect(sampleSummary.tags).toEqual(['news']);
+      expect(sampleSummary.summary).toEqual('Hello World');
+      expect(sampleSummary.urlFragment).toEqual('title');
+      expect(sampleSummary.lastUpdated).toEqual('3232323');
+      expect(sampleSummary.publishedOn).toEqual('3232323');
+      expect(sampleSummary.thumbnailFilename).toEqual('image.png');
+      expect(sampleSummary.authorProfilePicUrl).toEqual('sample_url');
+    }
+  );
 });

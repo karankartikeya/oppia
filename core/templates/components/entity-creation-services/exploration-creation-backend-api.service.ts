@@ -17,57 +17,75 @@
  * modal.
  */
 
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {HttpClient} from '@angular/common/http';
+import {Injectable} from '@angular/core';
 
 interface ExplorationCreationBackendDict {
-  'exploration_id': string
+  exploration_id: string;
 }
 
 export interface ExplorationCreationResponse {
-  explorationId: string
+  explorationId: string;
 }
 
 export interface NewExplorationData {
-  title: string
+  title: string;
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ExplorationCreationBackendApiService {
   constructor(private http: HttpClient) {}
 
   private _createExploration(
-      newExplorationData: NewExplorationData | {},
-      successCallback: (value: ExplorationCreationResponse) => void,
-      errorCallback: (reason: string) => void): void {
-    this.http.post<ExplorationCreationBackendDict>(
-      '/contributehandler/create_new', newExplorationData).toPromise()
-      .then(response => {
-        if (successCallback) {
-          successCallback({
-            explorationId: response.exploration_id
-          });
+    newExplorationData: NewExplorationData | {},
+    successCallback: (value: ExplorationCreationResponse) => void,
+    errorCallback: (reason: string) => void
+  ): void {
+    this.http
+      .post<ExplorationCreationBackendDict>(
+        '/contributehandler/create_new',
+        newExplorationData
+      )
+      .toPromise()
+      .then(
+        response => {
+          if (successCallback) {
+            successCallback({
+              explorationId: response.exploration_id,
+            });
+          }
+        },
+        errorResponse => {
+          if (errorCallback) {
+            errorCallback(errorResponse.error.error);
+          }
         }
-      }, errorResponse => {
-        if (errorCallback) {
-          errorCallback(errorResponse.error.error);
-        }
-      });
+      );
+  }
+
+  uploadExploration(yamlFile: string): Promise<ExplorationCreationResponse> {
+    let form = new FormData();
+    form.append('yaml_file', yamlFile);
+    form.append('payload', JSON.stringify({}));
+    return this.http
+      .post<ExplorationCreationBackendDict>('contributehandler/upload', form)
+      .toPromise()
+      .then(
+        data =>
+          Promise.resolve({
+            explorationId: data.exploration_id,
+          }),
+        response => Promise.reject(response)
+      );
   }
 
   async registerNewExplorationAsync(
-      newExplorationData: NewExplorationData | {}
+    newExplorationData: NewExplorationData | {}
   ): Promise<ExplorationCreationResponse> {
     return new Promise((resolve, reject) => {
       this._createExploration(newExplorationData, resolve, reject);
     });
   }
 }
-
-angular.module('oppia').factory(
-  'ExplorationCreationBackendApiService',
-  downgradeInjectable(ExplorationCreationBackendApiService)
-);

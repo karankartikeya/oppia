@@ -1,0 +1,86 @@
+// Copyright 2022 The Oppia Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @fileoverview Component for the questions tab.
+ */
+
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {Rubric} from 'domain/skill/rubric.model';
+import {Skill} from 'domain/skill/skill.model';
+import {SkillSummary} from 'domain/skill/skill-summary.model';
+import {Subscription} from 'rxjs';
+import {GroupedSkillSummaries} from 'components/question-directives/questions-list/questions-list.component';
+import {
+  CategorizedSkills,
+  TopicsAndSkillsDashboardBackendApiService,
+} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
+import {SkillEditorStateService} from '../services/skill-editor-state.service';
+
+@Component({
+  selector: 'oppia-questions-tab',
+  templateUrl: './skill-questions-tab.component.html',
+  styleUrls: ['./skill-questions-tab.component.css'],
+})
+export class SkillQuestionsTabComponent implements OnInit, OnDestroy {
+  // These properties below are initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  skill!: Skill;
+  groupedSkillSummaries!: GroupedSkillSummaries;
+  skillIdToRubricsObject: Record<string, Rubric[]> = {};
+  difficultyCount!: number;
+  skillsCategorizedByTopics: CategorizedSkills = {};
+  untriagedSkillSummaries: SkillSummary[] = [];
+
+  constructor(
+    private skillEditorStateService: SkillEditorStateService,
+    private topicsAndSkillsDashboardBackendApiService: TopicsAndSkillsDashboardBackendApiService
+  ) {}
+
+  directiveSubscriptions = new Subscription();
+  _init(): void {
+    this.skill = this.skillEditorStateService.getSkill();
+    // The service returns a structurally narrower 'current' array than the
+    // one expected by the questions list, so the cast is required to bind
+    // the value in the template.
+    this.groupedSkillSummaries =
+      this.skillEditorStateService.getGroupedSkillSummaries() as GroupedSkillSummaries;
+    this.skillIdToRubricsObject = {};
+    this.skillIdToRubricsObject[this.skill.getId()] = this.skill.getRubrics();
+    this.topicsAndSkillsDashboardBackendApiService
+      .fetchDashboardDataAsync()
+      .then(response => {
+        this.skillsCategorizedByTopics = response.categorizedSkillsDict;
+        this.untriagedSkillSummaries = response.untriagedSkillSummaries;
+      })
+      .catch(() => {
+        this.skillsCategorizedByTopics = {};
+        this.untriagedSkillSummaries = [];
+      });
+  }
+
+  ngOnInit(): void {
+    if (this.skillEditorStateService.getSkill() !== undefined) {
+      this._init();
+    }
+    this.directiveSubscriptions.add(
+      this.skillEditorStateService.onSkillChange.subscribe(() => this._init())
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

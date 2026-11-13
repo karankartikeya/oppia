@@ -16,11 +16,12 @@
  * @fileoverview Component for the item view of an opportunity.
  */
 
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, Input, Output, EventEmitter} from '@angular/core';
 
-import constants from 'assets/constants';
-import { ContributorDashboardConstants } from 'pages/contributor-dashboard-page/contributor-dashboard-page.constants';
+import {AppConstants} from 'app.constants';
+import {ContributorDashboardConstants} from 'pages/contributor-dashboard-page/contributor-dashboard-page.constants';
+import {Subscription} from 'rxjs';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
 
 export interface ExplorationOpportunity {
   id: string;
@@ -31,39 +32,94 @@ export interface ExplorationOpportunity {
   inReviewCount: number;
   totalCount: number;
   translationsCount: number;
+  heading?: string;
+  actionButtonTitle?: string;
+  translationWordCount?: number;
+  isPinned?: boolean;
+  topicName: string;
 }
 
 @Component({
   selector: 'oppia-opportunities-list-item',
   templateUrl: './opportunities-list-item.component.html',
-  styleUrls: []
+  styleUrls: ['./opportunities-list-item.component.css'],
 })
 export class OpportunitiesListItemComponent {
-  @Input() opportunity: ExplorationOpportunity;
-  @Output() clickActionButton: EventEmitter<string> = (
-    new EventEmitter());
-  @Input() labelRequired: boolean;
-  @Input() progressBarRequired: boolean;
-  @Input() opportunityHeadingTruncationLength: number;
-  @Input() opportunityType: string;
+  constructor(private windowDimensionsService: WindowDimensionsService) {}
+
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() opportunity!: ExplorationOpportunity;
+  @Input() opportunityHeadingTruncationLength!: number;
+  @Input() opportunityType!: string;
+  @Input() labelRequired: boolean = false;
+  @Input() progressBarRequired: boolean = false;
+  @Input() disableButtonOnComplete: boolean = true;
+  @Input() showOpportunityButton: boolean = true;
+  @Input() showPinUnpinButton: boolean = false;
+
+  labelText!: string;
+  progressBarLabel!: string;
+  labelStyle!: {'background-color': string};
+  progressPercentage!: string;
+  progressBarStyle!: {width: string};
+  translatedProgressStyle!: {width: string};
+  inReviewProgressStyle!: {width: string};
+  untranslatedProgressStyle!: {width: string};
+  targetNumQuestionsPerSkill: number = AppConstants.MAX_QUESTIONS_PER_SKILL;
+  cardsAvailable: number = 0;
+  onMobile!: boolean;
+  resizeSubscription!: Subscription;
+  mobileBreakpoint: number =
+    AppConstants.OPPORTUNITIES_LIST_ITEM_MOBILE_BREAKPOINT;
+
+  @Output() clickActionButton: EventEmitter<string> = new EventEmitter();
+
+  @Output() clickPinButton: EventEmitter<{
+    topic_name: string;
+    exploration_id: string;
+  }> = new EventEmitter();
+
+  @Output() clickUnpinButton: EventEmitter<{
+    topic_name: string;
+    exploration_id: string;
+  }> = new EventEmitter();
+
+  pinOpportunity(): void {
+    this.clickPinButton.emit({
+      topic_name: this.opportunity.topicName,
+      exploration_id: this.opportunity.id,
+    });
+  }
+
+  unpinOpportunity(): void {
+    this.clickUnpinButton.emit({
+      topic_name: this.opportunity.topicName,
+      exploration_id: this.opportunity.id,
+    });
+  }
 
   opportunityDataIsLoading: boolean = true;
-  labelText: string;
-  labelStyle: { 'background-color': string; };
-  progressPercentage: string;
-  progressBarStyle: { width: string; };
-  translatedProgressStyle: { width: string; };
-  inReviewProgressStyle: { width: string; };
-  untranslatedProgressStyle: { width: string; };
   correspondingOpportunityDeleted: boolean = false;
   translationProgressBar: boolean = false;
+  skillProgressBar: boolean = false;
   opportunityButtonDisabled: boolean = false;
 
   ngOnInit(): void {
+    this.onMobile =
+      this.windowDimensionsService.getWidth() <= this.mobileBreakpoint;
+    this.resizeSubscription = this.windowDimensionsService
+      .getResizeEvent()
+      .subscribe(event => {
+        this.onMobile =
+          this.windowDimensionsService.getWidth() <= this.mobileBreakpoint;
+      });
+
     if (this.opportunity && this.labelRequired) {
       this.labelText = this.opportunity.labelText;
       this.labelStyle = {
-        'background-color': this.opportunity.labelColor
+        'background-color': this.opportunity.labelColor,
       };
     }
 
@@ -71,46 +127,82 @@ export class OpportunitiesListItemComponent {
       this.opportunityHeadingTruncationLength = 40;
     }
     if (this.opportunity) {
-      if (this.opportunity.progressPercentage) {
-        this.progressPercentage = (
-          this.opportunity.progressPercentage + '%');
-        if (this.opportunityType === constants.OPPORTUNITY_TYPE_TRANSLATION) {
-          this.translationProgressBar = true;
-          const translatedPercentage = (
-            this.opportunity.translationsCount / this.opportunity.totalCount
-          ) * 100;
-          const inReviewTranslationsPercentage = (
-            this.opportunity.inReviewCount / this.opportunity.totalCount
-          ) * 100;
-          const untranslatedPercentage = (
-            100 - (translatedPercentage + inReviewTranslationsPercentage));
+      // We explicitly check for undefined and null instead of using a simple
+      // truthiness check (i.e., `if (this.opportunity.progressPercentage)`).
+      // This is because a progress percentage of 0 is falsy, which previously
+      // caused the progress bar to incorrectly fail to initialize or update
+      // for opportunities with 0% progress.
+      if (
+        this.opportunity.progressPercentage !== undefined &&
+        this.opportunity.progressPercentage !== null
+      ) {
+        this.progressPercentage = `${Math.floor(Number(this.opportunity.progressPercentage))}%`;
+        if (
+          this.opportunityType === AppConstants.OPPORTUNITY_TYPE_TRANSLATION ||
+          this.opportunityType === AppConstants.OPPORTUNITY_TYPE_SKILL
+        ) {
+          if (
+            this.opportunityType === AppConstants.OPPORTUNITY_TYPE_TRANSLATION
+          ) {
+            this.translationProgressBar = true;
+          } else if (
+            this.opportunityType === AppConstants.OPPORTUNITY_TYPE_SKILL
+          ) {
+            this.skillProgressBar = true;
+          }
+          const translatedPercentage = Math.min(
+            (this.opportunity.translationsCount / this.opportunity.totalCount) *
+              100,
+            100
+          );
+          const inReviewTranslationsPercentage = Math.min(
+            (this.opportunity.inReviewCount / this.opportunity.totalCount) *
+              100,
+            100 - translatedPercentage
+          );
+          const untranslatedPercentage = Math.max(
+            100 - (translatedPercentage + inReviewTranslationsPercentage),
+            0
+          );
 
-          this.translatedProgressStyle = { width: translatedPercentage + '%' };
+          this.cardsAvailable = Math.max(
+            this.opportunity.totalCount -
+              (this.opportunity.translationsCount +
+                this.opportunity.inReviewCount),
+            0
+          );
+
+          this.translatedProgressStyle = {width: translatedPercentage + '%'};
           this.untranslatedProgressStyle = {
-            width: untranslatedPercentage + '%'
+            width: untranslatedPercentage + '%',
           };
           this.inReviewProgressStyle = {
-            width: inReviewTranslationsPercentage + '%'
+            width: inReviewTranslationsPercentage + '%',
           };
-          this.opportunityButtonDisabled = (
+          this.opportunityButtonDisabled =
+            this.disableButtonOnComplete &&
             this.opportunity.translationsCount +
-            this.opportunity.inReviewCount === this.opportunity.totalCount);
+              this.opportunity.inReviewCount ===
+              this.opportunity.totalCount;
         } else {
-          this.progressBarStyle = { width: this.progressPercentage };
+          this.progressBarStyle = {width: this.progressPercentage};
         }
       }
       this.opportunityDataIsLoading = false;
-      if (this.opportunity.subheading ===
-          ContributorDashboardConstants
-            .CORRESPONDING_DELETED_OPPORTUNITY_TEXT) {
+      if (
+        this.opportunity.subheading ===
+        ContributorDashboardConstants.CORRESPONDING_DELETED_OPPORTUNITY_TEXT
+      ) {
         this.correspondingOpportunityDeleted = true;
       }
     } else {
       this.opportunityDataIsLoading = true;
     }
   }
-}
 
-angular.module('oppia').directive(
-  'oppiaOpportunitiesListItem', downgradeComponent(
-    { component: OpportunitiesListItemComponent }));
+  ngOnDestroy(): void {
+    if (this.resizeSubscription) {
+      this.resizeSubscription.unsubscribe();
+    }
+  }
+}

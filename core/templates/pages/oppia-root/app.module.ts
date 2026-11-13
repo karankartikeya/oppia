@@ -16,58 +16,44 @@
  * @fileoverview Module for the about page.
  */
 
-import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
-import { APP_INITIALIZER, ErrorHandler, NgModule } from '@angular/core';
-
+import {HttpClientModule, HTTP_INTERCEPTORS} from '@angular/common/http';
+import {APP_INITIALIZER, NgModule} from '@angular/core';
 
 // Modules.
-import { BrowserModule, HammerGestureConfig, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { AppRoutingModule } from './routing/app.routing.module';
+import {
+  BrowserModule,
+  HammerGestureConfig,
+  HAMMER_GESTURE_CONFIG,
+} from '@angular/platform-browser';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {AppRoutingModule} from './routing/app.routing.module';
 
 // Components.
-import { OppiaRootComponent } from './oppia-root.component';
+import {OppiaRootComponent} from './oppia-root.component';
 
 // Miscellaneous.
-import { platformFeatureInitFactory, PlatformFeatureService } from 'services/platform-feature.service';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { CookieModule } from 'ngx-cookie';
-import { ToastrModule } from 'ngx-toastr';
-import { AngularFireAuth, AngularFireAuthModule, USE_EMULATOR } from '@angular/fire/auth';
-import { AngularFireModule } from '@angular/fire';
-import { AuthService } from 'services/auth.service';
-import firebase from 'firebase/app';
+import {
+  platformFeatureInitFactory,
+  PlatformFeatureService,
+} from 'services/platform-feature.service';
+import {RequestInterceptor} from 'services/request-interceptor.service';
+import {SessionInfoHttpInterceptorService} from 'services/session-info-http-interceptor.service';
+import {CookieModule} from 'ngx-cookie';
+import {ToastrModule} from 'ngx-toastr';
+import {
+  AngularFireAuth,
+  AngularFireAuthModule,
+  USE_EMULATOR,
+} from '@angular/fire/auth';
+import {AngularFireModule} from '@angular/fire';
+import {AuthService} from 'services/auth.service';
+// This throws "TS2307". We need to
+// suppress this error because hammer come from hammerjs
+// dependency. We can't import it directly.
+// @ts-ignore
 import * as hammer from 'hammerjs';
-
-class FirebaseErrorFilterHandler extends ErrorHandler {
-  // AngularFire throws duplicate errors because it uses setTimeout() to manage
-  // promises internally. Errors thrown from those setTimeout() calls are not
-  // accessible to our code. Because of this, even though LoginPageComponent
-  // catches errors thrown by AngularFire, their duplicates are treated as
-  // "Unhandled Promise Rejections" and result in top-level error messages.
-  //
-  // To prevent these errors from interfering with end-to-end tests and from
-  // polluting the server, we ignore the following list of EXPECTED error codes.
-  private static readonly EXPECTED_ERROR_CODES = [
-    // Users pending deletion have their Firebase accounts disabled. When they
-    // try to sign in anyway, we redirect them to the /pending-account-deletion
-    // page.
-    'auth/user-disabled',
-    // In emulator mode we use signInWithEmailAndPassword() and, if that throws
-    // an 'auth/user-not-found' error, createUserWithEmailAndPassword() for
-    // convenience. In production mode we use signInWithRedirect(), which
-    // doesn't throw 'auth/user-not-found' because it handles both signing in
-    // and creating users in the same way.
-    'auth/user-not-found',
-  ];
-
-  handleError(error: firebase.auth.Error): void {
-    if (FirebaseErrorFilterHandler.EXPECTED_ERROR_CODES.includes(error.code)) {
-      return;
-    }
-    super.handleError(error);
-  }
-}
+import {AppErrorHandlerProvider} from './app-error-handler';
+import {I18nModule} from 'i18n/i18n.module';
 
 // Config for ToastrModule (helps in flashing messages and alerts).
 export const toastrConfig = {
@@ -76,26 +62,26 @@ export const toastrConfig = {
     error: 'toast-error',
     info: 'toast-info',
     success: 'toast-success',
-    warning: 'toast-warning'
+    warning: 'toast-warning',
   },
   positionClass: 'toast-bottom-right',
-  messageClass: 'toast-message protractor-test-toast-message',
+  messageClass: 'toast-message e2e-test-toast-message',
   progressBar: false,
   tapToDismiss: true,
-  titleClass: 'toast-title'
+  titleClass: 'toast-title',
 };
 
 export class MyHammerConfig extends HammerGestureConfig {
   overrides = {
-    swipe: { direction: hammer.DIRECTION_HORIZONTAL },
-    pinch: { enable: false },
-    rotate: { enable: false },
+    swipe: {direction: hammer.DIRECTION_HORIZONTAL},
+    pinch: {enable: false},
+    rotate: {enable: false},
   };
 
   options = {
     cssProps: {
-      userSelect: true
-    }
+      userSelect: true,
+    },
   };
 }
 
@@ -108,40 +94,39 @@ export class MyHammerConfig extends HammerGestureConfig {
     AngularFireModule.initializeApp(AuthService.firebaseConfig),
     AngularFireAuthModule,
     AppRoutingModule,
-    ToastrModule.forRoot(toastrConfig)
+    I18nModule,
+    ToastrModule.forRoot(toastrConfig),
   ],
-  declarations: [
-    OppiaRootComponent,
-  ],
-  entryComponents: [
-    OppiaRootComponent,
-  ],
+  declarations: [OppiaRootComponent],
+  entryComponents: [OppiaRootComponent],
   providers: [
     AngularFireAuth,
     {
       provide: HTTP_INTERCEPTORS,
       useClass: RequestInterceptor,
-      multi: true
+      multi: true,
+    },
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: SessionInfoHttpInterceptorService,
+      multi: true,
     },
     {
       provide: APP_INITIALIZER,
       useFactory: platformFeatureInitFactory,
       deps: [PlatformFeatureService],
-      multi: true
+      multi: true,
     },
     {
       provide: USE_EMULATOR,
-      useValue: AuthService.firebaseEmulatorConfig
+      useValue: AuthService.firebaseEmulatorConfig,
     },
-    {
-      provide: ErrorHandler,
-      useClass: FirebaseErrorFilterHandler,
-    },
+    AppErrorHandlerProvider,
     {
       provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
+      useClass: MyHammerConfig,
+    },
   ],
-  bootstrap: [OppiaRootComponent]
+  bootstrap: [OppiaRootComponent],
 })
 export class AppModule {}

@@ -13,91 +13,210 @@
 // limitations under the License.
 
 /**
- * @fileoverview Configuration for lighthouse-ci.
+ * @fileoverview Shared configuration and helpers for lighthouse-ci.
  */
 
-module.exports = {
-  numberOfRuns: 3,
-  puppeteerScript: 'puppeteer-login-script.js',
-  urlShards: {
-    1: [
-      'http://127.0.0.1:8181/',
-      'http://127.0.0.1:8181/about',
-      'http://127.0.0.1:8181/about-foundation',
-      'http://127.0.0.1:8181/admin',
-      'http://127.0.0.1:8181/blog-dashboard',
-      'http://127.0.0.1:8181/community-library',
-      'http://127.0.0.1:8181/contact',
-      'http://127.0.0.1:8181/contributor-dashboard',
-      'http://127.0.0.1:8181/creator-dashboard',
-      'http://127.0.0.1:8181/creator-guidelines',
-      'http://127.0.0.1:8181/delete-account',
-      'http://127.0.0.1:8181/donate',
-      'http://127.0.0.1:8181/emaildashboard',
-      'http://127.0.0.1:8181/get-started',
-      'http://127.0.0.1:8181/learner-dashboard',
-      'http://127.0.0.1:8181/license',
-      'http://127.0.0.1:8181/moderator',
-    ],
-    2: [
-      'http://127.0.0.1:8181/preferences',
-      'http://127.0.0.1:8181/privacy-policy',
-      'http://127.0.0.1:8181/profile/username1',
-      'http://127.0.0.1:8181/signup?return_url=%2F',
-      'http://127.0.0.1:8181/teach',
-      'http://127.0.0.1:8181/topics-and-skills-dashboard',
-      'http://127.0.0.1:8181/terms',
-      'http://127.0.0.1:8181/thanks',
-      'http://127.0.0.1:8181/volunteer',
-      `http://127.0.0.1:8181/create/${process.env.exploration_id}`,
-      `http://127.0.0.1:8181/collection_editor/create/${process.env.collection_id}`,
-      `http://127.0.0.1:8181/topic_editor/${process.env.topic_id}`,
-      `http://127.0.0.1:8181/skill_editor/${process.env.skill_id}`,
-      `http://127.0.0.1:8181/story_editor/${process.env.story_id}`
-    ]
-  },
-  basePerformanceAssertMatrix: {
-    'matchingUrlPattern': '.*',
-    'assertions': {
-      // Performance category.
-      'first-contentful-paint': [ 'warn', {'maxNumericValue': 1230000}],
-      'first-meaningful-paint': ['warn', {'maxNumericValue': 1280000}],
-      'first-cpu-idle': ['warn', {'maxNumericValue': 1460000}],
-      'speed-index': ['warn', {'maxNumericValue': 1230000}],
-      'interactive': ['warn', {'maxNumericValue': 1540000}],
-      'max-potential-fid': ['warn', {'maxNumericValue': 130000}],
-      'uses-responsive-images': ['error', {'minScore': 1}],
-      'uses-optimized-images': ['error', {'minScore': 1}],
-      'uses-rel-preconnect': ['error', {'minScore': 0.5}],
-      'efficient-animated-content': ['error',{'minScore': 1}],
-      'offscreen-images': ['error', {'minScore': 0.45}],
-      'time-to-first-byte': ['off', {}],
+const dotenv = require('dotenv');
+
+dotenv.config({path: './core/tests/puppeteer/.env'});
+const ALL_LIGHTHOUSE_URLS = process.env.ALL_LIGHTHOUSE_URLS.split(',');
+const LIGHTHOUSE_URLS_TO_RUN = process.env.LIGHTHOUSE_URLS_TO_RUN
+  ? process.env.LIGHTHOUSE_URLS_TO_RUN.split(',')
+  : ALL_LIGHTHOUSE_URLS;
+
+const basePerformanceAssertions = {
+  'errors-in-console': ['error', {minScore: 1}],
+  'uses-optimized-images': ['error', {minScore: 1}],
+  'modern-image-formats': ['error', {maxLength: 0, strategy: 'pessimistic'}],
+  'uses-passive-event-listeners': ['error', {minScore: 1}],
+  deprecations: ['error', {minScore: 1}],
+  redirects: ['error', {minScore: 1}],
+  'uses-responsive-images': ['error', {minScore: 0.8}],
+  charset: ['error', {minScore: 1}],
+  viewport: ['error', {minScore: 1}],
+  'font-size': ['error', {minScore: 0}],
+  'image-size-responsive': ['error', {minScore: 0}],
+  'third-party-cookies': ['error', {minScore: 1}],
+  'inspector-issues': ['error', {minScore: 1}],
+  'redirects-http': ['error', {minScore: 1}],
+};
+
+// The performance thresholds every page is expected to meet by default. These
+// reflect the Core Web Vitals "good" thresholds (FCP 1.8s, LCP 2.5s, CLS 0.1)
+// together with Lighthouse's good cutoffs for speed index and total blocking
+// time. Pages that cannot yet meet the baseline specify pagePerfThresholds
+// overrides; each override is a known failure case to be removed as the page
+// improves.
+const IDEAL_BASELINE_THRESHOLDS = {
+  fcp: 1800,
+  speedIndex: 3400,
+  lcp: 2500,
+  tbt: 200,
+  cls: 0.1,
+};
+
+/**
+ * Builds the catch-all assert matrix entry for non-performance audits.
+ *
+ * Performance metrics are intentionally not included here. LHCI evaluates every
+ * matching assertMatrix entry for a given URL (see buildAssertMatrix), so any
+ * catch-all performance threshold would also bind to every listed page and
+ * defeat per-page overrides. The uniform ideal baseline is instead applied
+ * inside buildPageAssertions, and per-page thresholds replace it for pages that
+ * cannot yet meet it.
+ *
+ * @returns {Object} The catch-all assert matrix entry.
+ */
+function buildAuditCatchAll() {
+  return {
+    matchingUrlPattern: '.*',
+    assertions: {
+      'uses-rel-preconnect': ['error', {minScore: 0.5}],
+      'efficient-animated-content': ['error', {minScore: 1}],
+      'server-response-time': ['off', {}],
       // Best practices category.
-      'appcache-manifest': ['error', {'minScore': 1}],
-      'errors-in-console': ['error', {'minScore': 1}],
-      'no-document-write': ['error', {'minScore': 1}],
-      'external-anchors-use-rel-noopener': ['error', {'minScore': 1}],
-      'geolocation-on-start': ['error', {'minScore': 1}],
-      'doctype': ['error', {'minScore': 1}],
-      'no-vulnerable-libraries': ['off', {'minScore': 1}],
-      'js-libraries': ['error', {'minScore': 1}],
-      'notification-on-start': ['error', {'minScore': 1}],
-      'password-inputs-can-be-pasted-into': ['error', {'minScore': 1}],
-      'image-aspect-ratio': ['error', {'minScore': 1}],
+      'no-document-write': ['error', {minScore: 1}],
+      'geolocation-on-start': ['error', {minScore: 1}],
+      doctype: ['error', {minScore: 1}],
+      'notification-on-start': ['error', {minScore: 1}],
+      'paste-preventing-inputs': ['error', {minScore: 1}],
+      'image-aspect-ratio': ['error', {minScore: 0}],
       'is-on-https': ['off', {}],
       'uses-http2': ['off', {}],
-    }
-  },
-  basePerformanceAssertions: {
-    'uses-webp-images': [
-      'error', {'maxLength': 0, 'strategy': 'pessimistic'}
+    },
+  };
+}
+
+/**
+ * Builds the assertion object for a single page, merging base performance
+ * assertions with page-specific overrides and performance thresholds.
+ *
+ * Every page is held to IDEAL_BASELINE_THRESHOLDS by default. A page that
+ * cannot yet meet the ideal baseline specifies pagePerfThresholds, which
+ * replace the ideal values for that page and represent a known failure case
+ * to be fixed.
+ *
+ * @param {Object} overrides - Page-specific audit overrides.
+ * @param {number} accessibilityMinScore - Minimum accessibility score.
+ * @param {Object|null} pagePerfThresholds - Per-page performance metric
+ *   thresholds (fcp, speedIndex, lcp, tbt, cls). When provided, these replace
+ *   IDEAL_BASELINE_THRESHOLDS for this page at error level.
+ * @returns {Object} The merged assertion object.
+ */
+function buildPageAssertions(
+  overrides = {},
+  accessibilityMinScore = 1,
+  pagePerfThresholds = null
+) {
+  const perfThresholds = pagePerfThresholds || IDEAL_BASELINE_THRESHOLDS;
+  const perfAssertions = {
+    'first-contentful-paint': ['error', {maxNumericValue: perfThresholds.fcp}],
+    'speed-index': ['error', {maxNumericValue: perfThresholds.speedIndex}],
+    'largest-contentful-paint': [
+      'error',
+      {maxNumericValue: perfThresholds.lcp},
     ],
-    'uses-passive-event-listeners': ['error', {'minScore': 1}],
-    'uses-rel-preload': ['error', {'minScore': 1}],
-    'deprecations': ['error', {'minScore': 1}],
-    'redirects': ['error', {'minScore': 1}]
-  },
-  baseAccessibilityAssertions: {
-    'categories:accessibility': ['error', {'minScore': 1}]
+    'total-blocking-time': ['error', {maxNumericValue: perfThresholds.tbt}],
+    'cumulative-layout-shift': ['error', {maxNumericValue: perfThresholds.cls}],
+  };
+  return {
+    ...basePerformanceAssertions,
+    ...perfAssertions,
+    'categories:accessibility': ['error', {minScore: accessibilityMinScore}],
+    'categories:seo': ['error', {minScore: 0.7}],
+    ...overrides,
+  };
+}
+
+/**
+ * Builds a matchingUrlPattern that matches every URL that is not already
+ * claimed by one of the given page patterns.
+ *
+ * The ideal-default entry must not also bind to pages that have their own
+ * entry: LHCI evaluates every matching assertMatrix entry for a URL (see
+ * getAllAssertionResults in node_modules/@lhci/utils/src/assertions.js), so if
+ * it matched a page that carries a looser override, the ideal thresholds would
+ * win and silently defeat that override. The exclusion is a negative lookahead
+ * over the page patterns; each is wrapped in a non-capturing group so that any
+ * alternation within a page pattern stays scoped. The leading `.*` lets an
+ * unanchored page pattern match at any position, mirroring how LHCI matches
+ * (`new RegExp(pattern).test(finalUrl)`).
+ *
+ * @param {Array} pageConfigs - Array of objects, each with a
+ *   matchingUrlPattern {string}.
+ * @returns {string} A regex matching every URL not claimed by a page entry.
+ */
+function buildUnclaimedUrlPattern(pageConfigs) {
+  if (!pageConfigs.length) {
+    return '.*';
   }
+  const claimedPatterns = pageConfigs
+    .map(({matchingUrlPattern}) => `(?:${matchingUrlPattern})`)
+    .join('|');
+  return `^(?!.*(?:${claimedPatterns})).*$`;
+}
+
+/**
+ * Builds the full assert matrix by prepending the audit catch-all entry, then
+ * the ideal-default entry for unclaimed URLs, and then one entry per page.
+ *
+ * @param {Array} pageConfigs - Array of objects, each with:
+ *   - matchingUrlPattern {string}: Regex pattern for the URL.
+ *   - overrides {Object}: (optional) Page-specific audit overrides.
+ *   - accessibilityMinScore {number}: (optional) Min accessibility score.
+ *   - pagePerfThresholds {Object}: (optional) Per-page performance thresholds
+ *     with keys fcp, speedIndex, lcp, tbt, cls. Replaces
+ *     IDEAL_BASELINE_THRESHOLDS at error level for this specific page.
+ * @returns {Array} The full LHCI assert matrix.
+ */
+function buildAssertMatrix(pageConfigs) {
+  // LHCI evaluates every matching assertMatrix entry for a given URL; there is
+  // no first-match-wins behavior (see getAllAssertionResults in
+  // node_modules/@lhci/utils/src/assertions.js, which iterates all entries per
+  // URL group). The audit catch-all '.*' entry supplies the shared non-perf
+  // audits to every URL, and each page entry applies the ideal performance
+  // baseline, or a tighter/looser per-page override. Ordering is cosmetic.
+  //
+  // The ideal-default entry holds any URL not claimed by a page entry to the
+  // same full assertion set (base audits, the ideal performance baseline,
+  // accessibility and seo) that a page entry without overrides receives. It
+  // excludes every page URL so it cannot bind an ideal threshold to a page that
+  // legitimately carries a looser override; consequently a page whose override
+  // is later removed still falls back to ideal through its own entry.
+  return [
+    buildAuditCatchAll(),
+    {
+      matchingUrlPattern: buildUnclaimedUrlPattern(pageConfigs),
+      assertions: buildPageAssertions(),
+    },
+    ...pageConfigs.map(
+      ({
+        matchingUrlPattern,
+        overrides,
+        accessibilityMinScore,
+        pagePerfThresholds,
+      }) => ({
+        matchingUrlPattern,
+        assertions: buildPageAssertions(
+          overrides,
+          accessibilityMinScore,
+          pagePerfThresholds
+        ),
+      })
+    ),
+  ];
+}
+
+module.exports = {
+  buildPageAssertions,
+  buildAssertMatrix,
+  numberOfRuns: 3,
+  puppeteerScript: 'puppeteer-login-script.js',
+  // CI-stability flags for the Chrome instance managed by the puppeteerScript.
+  // These match the flags already used by Karma in core/tests/karma.conf.ts.
+  puppeteerLaunchOptions: {
+    args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+  },
+  urls: LIGHTHOUSE_URLS_TO_RUN,
+  basePerformanceAssertions,
 };

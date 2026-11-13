@@ -16,77 +16,42 @@
  * @fileoverview Module for the blog-admin page.
  */
 
-import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
-import { APP_INITIALIZER, DoBootstrap, NgModule } from '@angular/core';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { MatCardModule } from '@angular/material/card';
-import { BrowserModule, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { downgradeComponent, downgradeModule } from '@angular/upgrade/static';
-
-import { OppiaAngularRootComponent } from 'components/oppia-angular-root.component';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { BlogAdminNavbarComponent } from 'pages/blog-admin-page/navbar/blog-admin-navbar.component';
-import { RolesAndActionsVisualizerComponent } from 'pages/admin-page/roles-tab/roles-and-actions-visualizer.component';
-import { BlogAdminPageComponent } from 'pages/blog-admin-page/blog-admin-page.component';
-import { platformFeatureInitFactory, PlatformFeatureService } from 'services/platform-feature.service';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { ToastrModule } from 'ngx-toastr';
-import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
-import { MyHammerConfig, toastrConfig } from 'pages/oppia-root/app.module';
-
-declare var angular: ng.IAngularStatic;
+import {NgModule} from '@angular/core';
+import {FormsModule, ReactiveFormsModule} from '@angular/forms';
+import {MatCardModule} from '@angular/material/card';
+import {RouterModule} from '@angular/router';
+import {CommonModule} from '@angular/common';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {BlogAdminNavbarComponent} from 'pages/blog-admin-page/navbar/blog-admin-navbar.component';
+import {ToastrModule} from 'ngx-toastr';
+import {toastrConfig} from 'pages/oppia-root/app.module';
+import {AdminBlogAdminCommonModule} from 'pages/admin-page/admin-blog-admin-common.module';
+import {BlogAdminPageComponent} from './blog-admin-page.component';
+import {BlogAdminPageRootComponent} from './blog-admin-page-root.component';
+import {BlogAdminAuthGuard} from './blog-admin-auth.guard';
 
 @NgModule({
   imports: [
-    BrowserModule,
     FormsModule,
-    HttpClientModule,
-    // TODO(#13443): Remove hybrid router module provider once all pages are
-    // migrated to angular router.
-    HybridRouterModuleProvider.provide(),
     MatCardModule,
+    CommonModule,
     ReactiveFormsModule,
     SharedComponentsModule,
-    ToastrModule.forRoot(toastrConfig)
+    AdminBlogAdminCommonModule,
+    ToastrModule.forRoot(toastrConfig),
+    RouterModule.forChild([
+      {
+        path: '',
+        component: BlogAdminPageRootComponent,
+        canActivate: [BlogAdminAuthGuard],
+      },
+    ]),
   ],
   declarations: [
     BlogAdminNavbarComponent,
     BlogAdminPageComponent,
-    RolesAndActionsVisualizerComponent
+    BlogAdminPageRootComponent,
   ],
-  entryComponents: [
-    BlogAdminNavbarComponent,
-    BlogAdminPageComponent,
-    RolesAndActionsVisualizerComponent
-  ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: RequestInterceptor,
-      multi: true,
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: platformFeatureInitFactory,
-      deps: [PlatformFeatureService],
-      multi: true,
-    },
-    {
-      provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
-  ],
+  entryComponents: [BlogAdminNavbarComponent, BlogAdminPageComponent],
 })
-class BlogAdminPageModule implements DoBootstrap {
-  ngDoBootstrap() {}
-}
-
-angular.module('oppia').requires.push(downgradeModule(extraProviders => {
-  const platformRef = platformBrowserDynamic(extraProviders);
-  return platformRef.bootstrapModule(BlogAdminPageModule);
-}));
-
-angular.module('oppia').directive('oppiaAngularRoot', downgradeComponent({
-  component: OppiaAngularRootComponent,
-}));
+export class BlogAdminPageModule {}

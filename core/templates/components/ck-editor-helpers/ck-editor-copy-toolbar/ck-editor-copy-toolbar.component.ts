@@ -16,41 +16,40 @@
  * @fileoverview Ck editor copy toolbar component.
  */
 
-import { Component, Inject } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, Inject} from '@angular/core';
+import {DOCUMENT} from '@angular/common';
 
-import { CkEditorCopyContentService } from
-  'components/ck-editor-helpers/ck-editor-copy-content.service';
-
+import {CkEditorCopyContentService} from 'components/ck-editor-helpers/ck-editor-copy-content.service';
 
 @Component({
   selector: 'ck-editor-copy-toolbar',
-  templateUrl: './ck-editor-copy-toolbar.component.html'
+  templateUrl: './ck-editor-copy-toolbar.component.html',
+  styleUrls: ['./ck-editor-copy-toolbar.component.css'],
 })
 export class CkEditorCopyToolbarComponent {
   constructor(
-      private ckEditorCopyContentService: CkEditorCopyContentService,
-      @Inject(DOCUMENT) private document: Document
+    public ckEditorCopyContentService: CkEditorCopyContentService,
+    @Inject(DOCUMENT) private document: Document
   ) {
     ckEditorCopyContentService.copyModeActive = false;
   }
 
   toggleToolActive(): void {
     this.ckEditorCopyContentService.toggleCopyMode();
+    let element = this.document.querySelectorAll(
+      '.oppia-rte-editor'
+    ) as NodeListOf<HTMLElement>;
 
     if (this.ckEditorCopyContentService.copyModeActive) {
       this.document.body.style.cursor = 'copy';
-      this.document.querySelectorAll('.oppia-rte-editor')
-        .forEach((editor: HTMLElement) => {
-          editor.focus();
-        });
+      element.forEach(editor => {
+        editor.focus();
+      });
     } else {
       this.document.body.style.cursor = '';
-      this.document.querySelectorAll('.oppia-rte-editor')
-        .forEach((editor: HTMLElement) => {
-          editor.blur();
-        });
+      element.forEach(editor => {
+        editor.blur();
+      });
     }
   }
 
@@ -58,7 +57,3 @@ export class CkEditorCopyToolbarComponent {
     this.document.body.style.cursor = '';
   }
 }
-
-angular.module('oppia').directive(
-  'ckEditorCopyToolbar',
-  downgradeComponent({component: CkEditorCopyToolbarComponent}));

@@ -16,43 +16,53 @@
  * @fileoverview Controller for the skill-selector component.
  */
 
-import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ShortSkillSummary } from 'core/templates/domain/skill/short-skill-summary.model';
-import { SkillSummary } from 'core/templates/domain/skill/skill-summary.model';
-import { CategorizedSkills } from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
-import { FilterForMatchingSubstringPipe } from 'filters/string-utility-filters/filter-for-matching-substring.pipe';
+import {Component, OnInit, Input, Output, EventEmitter} from '@angular/core';
+import {ShortSkillSummary} from 'core/templates/domain/skill/short-skill-summary.model';
+import {SkillSummary} from 'core/templates/domain/skill/skill-summary.model';
+import {CategorizedSkills} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
+import {FilterForMatchingSubstringPipe} from 'filters/string-utility-filters/filter-for-matching-substring.pipe';
 import cloneDeep from 'lodash/cloneDeep';
-import { GroupedSkillSummaries } from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {GroupedSkillSummaries} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {UserService} from 'services/user.service';
 
 interface SubTopicFilterDict {
-  [topicName: string]: { subTopicName: string; checked: boolean }[]
+  [topicName: string]: {subTopicName: string; checked: boolean}[];
 }
 
 @Component({
   selector: 'oppia-skill-selector',
   templateUrl: './skill-selector.component.html',
+  styleUrls: ['./skill-selector.component.css'],
 })
 export class SkillSelectorComponent implements OnInit {
   // If countOfSkillsToPrioritize > 0, then sortedSkillSummaries should
   // have the initial 'countOfSkillsToPrioritize' entries of skills with
   // the same priority.
-  @Input() sortedSkillSummaries: GroupedSkillSummaries;
-  @Input() selectedSkillId: string;
-  @Input() countOfSkillsToPrioritize: number;
-  @Input() categorizedSkills: CategorizedSkills;
-  @Input() untriagedSkillSummaries: SkillSummary[];
-  @Input() allowSkillsFromOtherTopics: boolean;
+
+  // Some properties below are initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() sortedSkillSummaries!: GroupedSkillSummaries;
+  @Input() selectedSkillId!: string;
+  @Input() countOfSkillsToPrioritize: number = 0;
+  @Input() categorizedSkills!: CategorizedSkills;
+  @Input() untriagedSkillSummaries!: SkillSummary[];
+  @Input() allowSkillsFromOtherTopics!: boolean;
+  @Input() skillIdsToExclude: Set<string> = new Set();
   @Output() selectedSkillIdChange: EventEmitter<string> = new EventEmitter();
-  currCategorizedSkills: CategorizedSkills = null;
-  selectedSkill: string = null;
+  currCategorizedSkills!: CategorizedSkills;
+  selectedSkill!: string;
   skillFilterText: string = '';
-  topicFilterList: { topicName: string ; checked: boolean }[] = [];
+  topicFilterList: {topicName: string; checked: boolean}[] = [];
+  visibleTopicFilterList: {topicName: string; checked: boolean}[] = [];
   subTopicFilterDict: SubTopicFilterDict = {};
+  visibleSubTopicFilterDict: SubTopicFilterDict = {};
   initialSubTopicFilterDict: SubTopicFilterDict = {};
+  userCanEditSkills: boolean = false;
 
   constructor(
-    private filterForMatchingSubstringPipe: FilterForMatchingSubstringPipe
+    private filterForMatchingSubstringPipe: FilterForMatchingSubstringPipe,
+    private userService: UserService
   ) {}
 
   ngOnInit(): void {
@@ -60,7 +70,7 @@ export class SkillSelectorComponent implements OnInit {
     for (let topicName in this.currCategorizedSkills) {
       let topicNameDict = {
         topicName: topicName,
-        checked: false
+        checked: false,
       };
       this.topicFilterList.push(topicNameDict);
       let subTopics = this.currCategorizedSkills[topicName];
@@ -68,21 +78,39 @@ export class SkillSelectorComponent implements OnInit {
       for (let subTopic in subTopics) {
         let subTopicNameDict = {
           subTopicName: subTopic,
-          checked: false
+          checked: false,
         };
         this.subTopicFilterDict[topicName].push(subTopicNameDict);
       }
     }
     this.initialSubTopicFilterDict = cloneDeep(this.subTopicFilterDict);
+    this.updateVisibleFilterLists();
+
+    this.userService
+      .canUserAccessTopicsAndSkillsDashboard()
+      .then(canUserAccessTopicsAndSkillsDashboard => {
+        this.userCanEditSkills = canUserAccessTopicsAndSkillsDashboard;
+      });
   }
 
-  checkIfEmpty(skills: Object[]): boolean {
-    return skills.length === 0;
+  checkIfEmpty(skills: ShortSkillSummary[]): boolean {
+    // This method now depends on the search query (skillFilterText).
+    // If a skill matches the search query, it will be displayed.
+    // Otherwise, it will be hidden.
+    return (
+      this.searchInSubtopicSkills(skills, this.skillFilterText).length === 0
+    );
   }
 
   checkTopicIsNotEmpty(topicName: string): boolean {
-    for (let key in this.currCategorizedSkills[topicName]) {
-      if (Object.keys(this.currCategorizedSkills[topicName][key]).length) {
+    // This method now depends on the search query (skillFilterText).
+    // If a topic has at least one skill that matches the search query,
+    // it will be displayed. Otherwise, it will be hidden.
+    for (let subtopicName in this.currCategorizedSkills[topicName]) {
+      let skills = this.currCategorizedSkills[topicName][subtopicName];
+      if (
+        this.searchInSubtopicSkills(skills, this.skillFilterText).length > 0
+      ) {
         return true;
       }
     }
@@ -103,7 +131,7 @@ export class SkillSelectorComponent implements OnInit {
       for (var i = 0; i < subTopics.length; i++) {
         if (subTopics[i].checked) {
           if (!updatedSkillsDict.hasOwnProperty(topicName)) {
-            updatedSkillsDict[topicName] = { uncategorized: [] };
+            updatedSkillsDict[topicName] = {uncategorized: []};
           }
           let tempCategorizedSkills: CategorizedSkills = this.categorizedSkills;
           let subTopicName: string = subTopics[i].subTopicName;
@@ -135,6 +163,7 @@ export class SkillSelectorComponent implements OnInit {
     } else {
       this.currCategorizedSkills = cloneDeep(updatedSkillsDict);
     }
+    this.updateVisibleFilterLists();
   }
 
   // The following function is called when the topic filter changes.
@@ -146,8 +175,9 @@ export class SkillSelectorComponent implements OnInit {
     for (var i = 0; i < this.topicFilterList.length; i++) {
       if (this.topicFilterList[i].checked) {
         let topicName = this.topicFilterList[i].topicName;
-        updatedSubTopicFilterList[topicName] = (
-          cloneDeep(this.initialSubTopicFilterDict[topicName]));
+        updatedSubTopicFilterList[topicName] = cloneDeep(
+          this.initialSubTopicFilterDict[topicName]
+        );
         isAnyTopicChecked = true;
       }
     }
@@ -156,37 +186,82 @@ export class SkillSelectorComponent implements OnInit {
       // display subtopics from all the topics in the subtopic filter.
       for (let topic in this.initialSubTopicFilterDict) {
         if (!this.subTopicFilterDict.hasOwnProperty(topic)) {
-          this.subTopicFilterDict[topic] = (
-            cloneDeep(this.initialSubTopicFilterDict[topic]));
+          this.subTopicFilterDict[topic] = cloneDeep(
+            this.initialSubTopicFilterDict[topic]
+          );
         }
       }
     } else {
-      this.subTopicFilterDict =
-         cloneDeep(updatedSubTopicFilterList);
+      this.subTopicFilterDict = cloneDeep(updatedSubTopicFilterList);
     }
     // After we update the subtopic filter list, we need to update
     // the main skills list.
     this.updateSkillsListOnSubtopicFilterChange();
   }
 
-  searchInSubtopicSkills(input: ShortSkillSummary[], searchText: string):
-  ShortSkillSummary[] {
+  updateVisibleFilterLists(): void {
+    if (this.skillFilterText.trim() === '') {
+      this.visibleTopicFilterList = this.topicFilterList;
+      this.visibleSubTopicFilterDict = this.subTopicFilterDict;
+      return;
+    }
+
+    let matchingSubtopics = new Map<string, Set<string>>();
+    for (let topicName in this.categorizedSkills) {
+      let matchingNames = new Set<string>();
+      for (let subtopicName in this.categorizedSkills[topicName]) {
+        let skills = this.categorizedSkills[topicName][subtopicName];
+        if (this.searchInSubtopicSkills(skills, this.skillFilterText).length) {
+          matchingNames.add(subtopicName);
+        }
+      }
+      if (matchingNames.size) {
+        matchingSubtopics.set(topicName, matchingNames);
+      }
+    }
+
+    this.visibleTopicFilterList = this.topicFilterList.filter(
+      topic => topic.checked || matchingSubtopics.has(topic.topicName)
+    );
+    this.visibleSubTopicFilterDict = {};
+    for (let topicName in this.subTopicFilterDict) {
+      const matchingNames =
+        matchingSubtopics.get(topicName) || new Set<string>();
+      const visibleSubtopics = this.subTopicFilterDict[topicName].filter(
+        subtopic => subtopic.checked || matchingNames.has(subtopic.subTopicName)
+      );
+      if (visibleSubtopics.length) {
+        this.visibleSubTopicFilterDict[topicName] = visibleSubtopics;
+      }
+    }
+  }
+
+  searchInSubtopicSkills(
+    input: ShortSkillSummary[],
+    searchText: string
+  ): ShortSkillSummary[] {
     let skills: string[] = input.map(val => {
       return val.getDescription();
     });
-    let filteredSkills = this.filterForMatchingSubstringPipe
-      .transform(skills, searchText);
+    let filteredSkills = this.filterForMatchingSubstringPipe.transform(
+      skills,
+      searchText.trim()
+    );
     return input.filter(val => {
       return filteredSkills.includes(val.description);
     });
   }
 
   searchInUntriagedSkillSummaries(searchText: string): SkillSummary[] {
-    let skills: string[] = this.untriagedSkillSummaries.map(val => {
-      return val.description;
-    });
-    let filteredSkills = this.filterForMatchingSubstringPipe
-      .transform(skills, searchText);
+    let skills: string[] = this.untriagedSkillSummaries
+      .filter(val => !this.skillIdsToExclude.has(val.id))
+      .map(val => {
+        return val.description;
+      });
+    let filteredSkills = this.filterForMatchingSubstringPipe.transform(
+      skills,
+      searchText.trim()
+    );
     return this.untriagedSkillSummaries.filter(val => {
       return filteredSkills.includes(val.description);
     });
@@ -205,9 +280,3 @@ export class SkillSelectorComponent implements OnInit {
     this.updateSkillsListOnTopicFilterChange();
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaSkillSelector', downgradeComponent(
-    { component: SkillSelectorComponent }
-  )
-);

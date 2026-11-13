@@ -16,74 +16,134 @@
  * @fileoverview Unit tests for Score Ring Component.
  */
 
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA, SimpleChanges} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {ScoreRingComponent} from './score-ring.component';
 
 describe('Score Ring Component', () => {
-  let ctrl = null;
-  let $scope = null;
-  let $rootScope = null;
-  let COLORS_FOR_PASS_FAIL_MODE = null;
+  let fixture: ComponentFixture<ScoreRingComponent>;
+  let component: ScoreRingComponent;
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [ScoreRingComponent, MockTranslatePipe],
+      providers: [],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  });
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
-    COLORS_FOR_PASS_FAIL_MODE = $injector.get('COLORS_FOR_PASS_FAIL_MODE');
-
-    ctrl = $componentController('scoreRing', {
-      $scope: $scope
-    }, {
-      getScore: () => 1
-    });
-  }));
+  beforeEach(() => {
+    fixture = TestBed.createComponent(ScoreRingComponent);
+    component = fixture.componentInstance;
+    component.score = 35;
+  });
 
   it('should set component properties on initialization', () => {
-    spyOn(document, 'querySelector').and.returnValue({
-      // This throws "Argument of type '{ r: { baseVal: { value: number; };
-      // }; style: { strokeDasharray: string; strokeDashoffset: string; }; }'
-      // is not assignable to parameter of type 'Element'.". We need to
-      // suppress this error because we need these values for testing the file.
-      // @ts-expect-error
-      r: {
-        baseVal: {
-          value: 125
-        }
+    component.score = 35;
+    component.scoreRingElement = {
+      nativeElement: {
+        r: {
+          // This throws "Type '{ value: number; }' is missing the following
+          // properties from type 'SVGLength': unitType, valueAsString,
+          // valueInSpecifiedUnits, convertToSpecifiedUnits, and 12 more.".
+          // We need to suppress this error because only this value is
+          // needed for testing and providing a value for every single property
+          // is unnecessary.
+          // @ts-expect-error
+          baseVal: {
+            value: 125,
+          },
+        },
+        // This throws "Type
+        // '{ strokeDasharray: string; strokeDashoffset: string; }' is missing
+        // the following properties from type 'CSSStyleDeclaration':
+        // accentColor, alignContent, alignItems, alignSelf, and 447 more.".
+        // We need to suppress this error because only these values are
+        // needed for testing and providing a value for every single property is
+        // unnecessary.
+        // @ts-expect-error
+        style: {
+          strokeDasharray: '',
+          strokeDashoffset: '',
+        },
       },
-      style: {
-        strokeDasharray: '',
-        strokeDashoffset: ''
-      }
-    });
+    };
 
-    ctrl.$onInit();
-    $scope.$apply();
+    component.ngAfterViewInit();
 
-    expect(document.querySelector).toHaveBeenCalledWith('.score-ring-circle');
+    expect(component.circle.r.baseVal.value).toBe(125);
   });
 
   it('should get score ring color', () => {
-    ctrl.testIsPassed = () => true;
+    component.score = 35;
 
-    expect(ctrl.getScoreRingColor())
-      .toBe(COLORS_FOR_PASS_FAIL_MODE.PASSED_COLOR);
-
-    ctrl.testIsPassed = () => false;
-
-    expect(ctrl.getScoreRingColor())
-      .toBe(COLORS_FOR_PASS_FAIL_MODE.FAILED_COLOR);
+    expect(component.getScoreRingColor()).toEqual(
+      component.SCORE_COLORS.PASSED_COLOR
+    );
   });
 
   it('should get score outer ring color', () => {
-    ctrl.testIsPassed = () => true;
+    component.score = 35;
 
-    expect(ctrl.getScoreOuterRingColor())
-      .toBe(COLORS_FOR_PASS_FAIL_MODE.PASSED_COLOR_OUTER);
-
-    ctrl.testIsPassed = () => false;
-
-    expect(ctrl.getScoreOuterRingColor())
-      .toBe(COLORS_FOR_PASS_FAIL_MODE.FAILED_COLOR_OUTER);
+    expect(component.getScoreOuterRingColor()).toEqual(
+      component.SCORE_COLORS.PASSED_COLOR_OUTER
+    );
   });
+
+  it('should set the new score if it changes', fakeAsync(() => {
+    let changes: SimpleChanges = {
+      score: {
+        currentValue: 75,
+        previousValue: 35,
+        firstChange: true,
+        isFirstChange: () => true,
+      },
+    };
+    component.scoreRingElement = {
+      nativeElement: {
+        r: {
+          // This throws "Type '{ value: number; }' is missing the following
+          // properties from type 'SVGLength': unitType, valueAsString,
+          // valueInSpecifiedUnits, convertToSpecifiedUnits, and 12 more.".
+          // We need to suppress this error because only this value is
+          // needed for testing and providing a value for every single property
+          // is unnecessary.
+          // @ts-expect-error
+          baseVal: {
+            value: 125,
+          },
+        },
+        // This throws "Type
+        // '{ strokeDasharray: string; strokeDashoffset: string; }' is missing
+        // the following properties from type 'CSSStyleDeclaration':
+        // accentColor, alignContent, alignItems, alignSelf, and 447 more.".
+        // We need to suppress this error because only these values are
+        // needed for testing and providing a value for every single property is
+        // unnecessary.
+        // @ts-expect-error
+        style: {
+          strokeDasharray: '',
+          strokeDashoffset: '',
+        },
+      },
+    };
+
+    expect(component.score).toEqual(35);
+
+    component.ngAfterViewInit();
+    component.ngOnChanges(changes);
+    tick(2000);
+
+    expect(
+      Math.round(parseFloat(component.circle.style.strokeDashoffset))
+    ).toEqual(196);
+  }));
 });

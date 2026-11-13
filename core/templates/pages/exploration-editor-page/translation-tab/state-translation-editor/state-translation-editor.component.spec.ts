@@ -16,465 +16,437 @@
  * @fileoverview Unit tests for stateTranslationEditor.
  */
 
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { StateEditorService } from
-  // eslint-disable-next-line max-len
-  'components/state-editor/state-editor-properties-services/state-editor.service';
-import { StateWrittenTranslationsService } from
-  // eslint-disable-next-line max-len
-  'components/state-editor/state-editor-properties-services/state-written-translations.service';
-import { StateRecordedVoiceoversService } from
-  // eslint-disable-next-line max-len
-  'components/state-editor/state-editor-properties-services/state-recorded-voiceovers.service';
-import { WrittenTranslationObjectFactory } from
-  'domain/exploration/WrittenTranslationObjectFactory';
-import { StateObjectFactory } from 'domain/state/StateObjectFactory';
-import { StateEditorRefreshService } from
-  'pages/exploration-editor-page/services/state-editor-refresh.service';
-import { ReadOnlyExplorationBackendApiService } from
-  'domain/exploration/read-only-exploration-backend-api.service';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {State} from 'domain/state/state.model';
+import {ExplorationStatesService} from 'pages/exploration-editor-page/services/exploration-states.service';
+import {EditabilityService} from 'services/editability.service';
+import {ExternalSaveService} from 'services/external-save.service';
+import {ExternalRteSaveService} from 'services/external-rte-save.service';
+import {TranslationLanguageService} from '../services/translation-language.service';
+import {TranslationTabActiveContentIdService} from '../services/translation-tab-active-content-id.service';
+import {StateTranslationEditorComponent} from './state-translation-editor.component';
+import {MarkAudioAsNeedingUpdateModalComponent} from 'components/forms/forms-templates/mark-audio-as-needing-update-modal.component';
+import {RecordedVoiceovers} from 'domain/exploration/recorded-voiceovers.model';
+import {ChangeListService} from 'pages/exploration-editor-page/services/change-list.service';
+import {TranslatedContent} from 'domain/exploration/translated-content.model';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {EntityTranslation} from 'domain/translation/entity-translation.model';
+import {TranslationStatusService} from '../services/translation-status.service';
+import {PageContextService} from 'services/page-context.service';
+import {EntityVoiceoversService} from 'services/entity-voiceovers.services';
+import {EntityVoiceovers} from 'domain/voiceover/entity-voiceovers.model';
+import {Voiceover} from 'domain/exploration/voiceover.model';
 
-// TODO(#7222): Remove the following block of unnnecessary imports once
-// the code corresponding to the spec is upgraded to Angular 8.
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-// ^^^ This block is to be removed.
+class MockNgbModalRef {
+  result: Promise<void> = Promise.resolve();
+}
 
-describe('State Translation Editor Component', function() {
-  var ctrl = null;
-  var $q = null;
-  var $rootScope = null;
-  var $scope = null;
-  var $uibModal = null;
-  var editabilityService = null;
-  var explorationStatesService = null;
-  var stateEditorService = null;
-  var stateObjectFactory = null;
-  var stateWrittenTranslationsService = null;
-  var translationLanguageService = null;
-  var translationTabActiveContentIdService = null;
-  var writtenTranslationObjectFactory = null;
+class MockNgbModal {
+  open() {
+    return new MockNgbModalRef();
+  }
+}
 
-  var mockExternalSaveEventEmitter = null;
+describe('State Translation Editor Component', () => {
+  let component: StateTranslationEditorComponent;
+  let fixture: ComponentFixture<StateTranslationEditorComponent>;
+  let ngbModal: NgbModal;
+  let editabilityService: EditabilityService;
+  let entityTranslationsService: EntityTranslationsService;
+  let entityVoiceoversService: EntityVoiceoversService;
+  let changeListService: ChangeListService;
+  let explorationStatesService: ExplorationStatesService;
+  let translationLanguageService: TranslationLanguageService;
+  let externalSaveService: ExternalSaveService;
+  let externalRteSaveService: ExternalRteSaveService;
+  let translationTabActiveContentIdService: TranslationTabActiveContentIdService;
+  let translationStatusService: TranslationStatusService;
+  let state: State;
+  let pageContextService: PageContextService;
 
-  var mockActiveContentIdChangedEventEmitter = new EventEmitter();
-  var mockActiveLanguageChangedEventEmitter = new EventEmitter();
+  let mockActiveLanguageChangedEventEmitter = new EventEmitter<void>();
+  let mockActiveLanguageIdChangedEventEmitter = new EventEmitter<string>();
 
-  var stateName = 'State1';
-  var state = {
-    classifier_model_id: '1',
-    content: {
-      content_id: 'content1',
-      html: 'This is a html text'
-    },
-    interaction: {
-      answer_groups: [{
-        outcome: {
-          dest: 'outcome 1',
-          feedback: {
-            content_id: 'content2',
-            html: ''
-          },
-          labelled_as_correct: true,
-          param_changes: [],
-          refresher_exploration_id: null
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [
+        StateTranslationEditorComponent,
+        MarkAudioAsNeedingUpdateModalComponent,
+      ],
+      providers: [
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
         },
-        rule_specs: [],
-        tagged_skill_misconception_id: ''
-      }, {
-        outcome: {
-          dest: 'outcome 2',
-          feedback: {
-            content_id: 'content3',
-            html: ''
-          },
-          labelled_as_correct: true,
-          param_changes: [],
-          refresher_exploration_id: null
-        },
-        rule_specs: [],
-        tagged_skill_misconception_id: ''
-      }],
-      confirmed_unclassified_answers: null,
-      customization_args: {},
-      hints: [],
-      id: null,
-      solution: {
-        answer_is_exclusive: false,
-        correct_answer: 'This is the correct answer',
-        explanation: {
-          content_id: 'content1',
-          html: 'This is a html text'
-        }
-      }
-    },
-    linked_skill_id: null,
-    param_changes: [],
-    recorded_voiceovers: {
-      voiceovers_mapping: {
-        content_1: {
-          en: {
-            needs_update: false,
-          },
-          es: {
-            needs_update: true,
-          }
-        }
-      }
-    },
-    solicit_answer_details: true,
-    written_translations: {
-      translations_mapping: {}
-    },
-  };
-  var stateObj = null;
-  var ctrl = null;
-
-  beforeEach(angular.mock.module('oppia'));
-
-  importAllAngularServices();
-
-  beforeEach(function() {
-    stateEditorService = TestBed.get(StateEditorService);
-    stateObjectFactory = TestBed.get(StateObjectFactory);
-    stateWrittenTranslationsService = TestBed.get(
-      StateWrittenTranslationsService);
-    writtenTranslationObjectFactory = TestBed.get(
-      WrittenTranslationObjectFactory);
-  });
-
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    mockExternalSaveEventEmitter = new EventEmitter();
-    $provide.value('ExternalSaveService', {
-      onExternalSave: mockExternalSaveEventEmitter
-    });
-    $provide.value(
-      'StateEditorRefreshService', TestBed.get(StateEditorRefreshService));
-    $provide.value('StateRecordedVoiceoversService', TestBed.get(
-      StateRecordedVoiceoversService));
-    $provide.value(
-      'StateWrittenTranslationsService', stateWrittenTranslationsService);
-    $provide.value(
-      'ReadOnlyExplorationBackendApiService',
-      TestBed.get(ReadOnlyExplorationBackendApiService));
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
-  describe('when has written translation', function() {
-    beforeEach(angular.mock.inject(function($injector, $componentController) {
-      $q = $injector.get('$q');
-      $rootScope = $injector.get('$rootScope');
-      $uibModal = $injector.get('$uibModal');
-      editabilityService = $injector.get('EditabilityService');
-      explorationStatesService = $injector.get('ExplorationStatesService');
-      translationLanguageService = $injector.get('TranslationLanguageService');
-      translationTabActiveContentIdService = $injector.get(
-        'TranslationTabActiveContentIdService');
+  beforeEach(() => {
+    fixture = TestBed.createComponent(StateTranslationEditorComponent);
+    component = fixture.componentInstance;
 
-      spyOn(stateEditorService, 'getActiveStateName').and.returnValue(
-        stateName);
-      spyOn(editabilityService, 'isEditable').and.returnValue(true);
-      stateObj = stateObjectFactory.createFromBackendDict(stateName, state);
-      spyOn(explorationStatesService, 'getState').and.returnValue(stateObj);
-      spyOn(explorationStatesService, 'saveWrittenTranslation').and.callFake(
-        () => {});
+    ngbModal = TestBed.inject(NgbModal);
+    changeListService = TestBed.inject(ChangeListService);
+    entityTranslationsService = TestBed.inject(EntityTranslationsService);
+    entityVoiceoversService = TestBed.inject(EntityVoiceoversService);
+    translationLanguageService = TestBed.inject(TranslationLanguageService);
+    externalSaveService = TestBed.inject(ExternalSaveService);
+    externalRteSaveService = TestBed.inject(ExternalRteSaveService);
+    translationTabActiveContentIdService = TestBed.inject(
+      TranslationTabActiveContentIdService
+    );
+    editabilityService = TestBed.inject(EditabilityService);
+    explorationStatesService = TestBed.inject(ExplorationStatesService);
+    translationStatusService = TestBed.inject(TranslationStatusService);
+    pageContextService = TestBed.inject(PageContextService);
 
-      spyOn(
-        translationLanguageService, 'getActiveLanguageDirection').and.stub();
-      spyOnProperty(
-        translationLanguageService, 'onActiveLanguageChanged').and.returnValue(
-        mockActiveLanguageChangedEventEmitter);
-      spyOnProperty(
-        translationTabActiveContentIdService,
-        'onActiveContentIdChanged').and.returnValue(
-        mockActiveLanguageChangedEventEmitter);
+    state = State.createDefaultState('', 'content1', 'default_outcome');
+    state.content.html = 'This is a html text1';
+    spyOn(explorationStatesService, 'getState').and.returnValue(state);
 
-      stateWrittenTranslationsService.init(stateName, {
-        hasWrittenTranslation: () => true,
-        getWrittenTranslation: () => (
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a html',
-            needs_update: true
-          })
-        ),
-        updateWrittenTranslation: () => {}
+    spyOn(pageContextService, 'getExplorationId').and.returnValue('exp1');
+    spyOn(pageContextService, 'getExplorationVersion').and.returnValue(5);
+    spyOn(
+      translationTabActiveContentIdService,
+      'getActiveContentId'
+    ).and.returnValue('content1');
+    // SpyOn(editabilityService, 'isEditable').and.returnValue(true);
+    spyOn(
+      translationLanguageService,
+      'getActiveLanguageDirection'
+    ).and.returnValue('left');
+    spyOnProperty(
+      translationLanguageService,
+      'onActiveLanguageChanged'
+    ).and.returnValue(mockActiveLanguageChangedEventEmitter);
+    spyOn(translationLanguageService, 'getActiveLanguageCode').and.returnValue(
+      'hi'
+    );
+    spyOnProperty(
+      translationTabActiveContentIdService,
+      'onActiveContentIdChanged'
+    ).and.returnValue(mockActiveLanguageIdChangedEventEmitter);
+    entityTranslationsService.languageCodeToLatestEntityTranslations = {
+      hi: EntityTranslation.createFromBackendDict({
+        entity_id: 'id',
+        entity_type: 'type',
+        entity_version: 5,
+        language_code: 'hi',
+        translations: {
+          content1: {
+            content_value: 'This is a html text1 in hindi',
+            needs_update: false,
+            content_format: 'html',
+          },
+          content2: {
+            content_value: 'This is a html text2 in hindi',
+            needs_update: false,
+            content_format: 'html',
+          },
+          content3: {
+            content_value: 'This is a html text3 in hindi',
+            needs_update: false,
+            content_format: 'html',
+          },
+        },
+      }),
+    };
+
+    component.ngOnInit();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    component.ngOnDestroy();
+    fixture.destroy();
+  });
+
+  it('should get the active translation as html', () => {
+    component.activeWrittenTranslation = TranslatedContent.createNew('html');
+    component.activeWrittenTranslation.translation = 'Test translation';
+
+    expect(component.getActiveTranslationAsHtml()).toBe('Test translation');
+  });
+
+  it('should return an empty string when the active translation is not html', () => {
+    component.activeWrittenTranslation = null;
+    expect(component.getActiveTranslationAsHtml()).toBe('');
+
+    component.activeWrittenTranslation =
+      TranslatedContent.createFromBackendDict({
+        content_value: ['first', 'second'],
+        content_format: 'set_of_unicode_string',
+        needs_update: false,
       });
 
-      $scope = $rootScope.$new();
-      ctrl = $componentController('stateTranslationEditor', {
-        $scope: $scope,
-        StateEditorService: stateEditorService,
-        StateWrittenTranslationsService: stateWrittenTranslationsService,
-        WrittenTranslationObjectFactory: writtenTranslationObjectFactory
-      });
-      ctrl.$onInit();
-    }));
+    expect(component.getActiveTranslationAsHtml()).toBe('');
+  });
 
-    afterEach(() => {
-      ctrl.$onDestroy();
+  describe('on clicking save button', () => {
+    it('should open model asking whether voiceover needs update', () => {
+      let manualVoiceover1 = new Voiceover('a.mp3', 1000, false, 10.0);
+
+      let entityVoiceovers = new EntityVoiceovers(
+        'exp_id',
+        'exploration',
+        5,
+        'hi-IN',
+        {
+          content_0: {
+            manual: manualVoiceover1,
+          },
+        },
+        {}
+      );
+
+      entityVoiceoversService.init('exp_id', 'exploration', 5, 'hi');
+      entityVoiceoversService.setLanguageCode('hi');
+      entityVoiceoversService.setActiveLanguageAccentCode('hi-IN');
+      entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+
+      spyOn(ngbModal, 'open').and.callThrough();
+
+      component.onSaveTranslationButtonClicked();
+
+      expect(ngbModal.open).toHaveBeenCalledWith(
+        MarkAudioAsNeedingUpdateModalComponent,
+        {
+          backdrop: 'static',
+        }
+      );
     });
 
-    it('should initialize $scope properties after controller is initialized',
-      function() {
-        expect($scope.translationEditorIsOpen).toBe(false);
-        expect($scope.activeWrittenTranslation).toEqual(
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a html',
-            needs_update: true
-          }));
+    it('should not open the modal if voiceover already needs update', () => {
+      (
+        state as unknown as {recordedVoiceovers: RecordedVoiceovers}
+      ).recordedVoiceovers = RecordedVoiceovers.createFromBackendDict({
+        voiceovers_mapping: {
+          content1: {
+            hi: {
+              filename: 'filename1.mp3',
+              file_size_bytes: 100,
+              needs_update: true,
+              duration_secs: 10,
+            },
+          },
+        },
       });
+      spyOn(ngbModal, 'open');
 
-    it('should not update state\'s recorded voiceovers after broadcasting' +
-      ' externalSave when written translation doesn\'t need udpdate',
-    function() {
-      $scope.openTranslationEditor();
-      expect($scope.translationEditorIsOpen).toBe(true);
-      stateWrittenTranslationsService.displayed = {
-        hasWrittenTranslation: () => true,
-        getWrittenTranslation: () => (
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a second html',
-            needs_update: true
-          })
+      component.onSaveTranslationButtonClicked();
+
+      expect(ngbModal.open).not.toHaveBeenCalled();
+    });
+
+    it('should accept NO on voiceover needs update modal', () => {
+      let manualVoiceover1 = new Voiceover('a.mp3', 1000, false, 10.0);
+
+      let entityVoiceovers = new EntityVoiceovers(
+        'exp_id',
+        'exploration',
+        5,
+        'hi-IN',
+        {
+          content_0: {
+            manual: manualVoiceover1,
+          },
+        },
+        {}
+      );
+
+      entityVoiceoversService.init('exp_id', 'exploration', 5, 'hi');
+      entityVoiceoversService.setLanguageCode('hi');
+      entityVoiceoversService.setActiveLanguageAccentCode('hi-IN');
+      entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+
+      const mockNgbModalRef = new MockNgbModalRef();
+      mockNgbModalRef.result = Promise.reject();
+      spyOn(ngbModal, 'open').and.returnValue(mockNgbModalRef as NgbModalRef);
+
+      component.onSaveTranslationButtonClicked();
+
+      expect(ngbModal.open).toHaveBeenCalledWith(
+        MarkAudioAsNeedingUpdateModalComponent,
+        {backdrop: 'static'}
+      );
+    });
+
+    it('should add editTranslation changes to draft change list', () => {
+      spyOn(changeListService, 'editTranslation');
+      (
+        translationLanguageService.getActiveLanguageCode as jasmine.Spy
+      ).and.returnValue('fr');
+      component.activeWrittenTranslation = TranslatedContent.createNew('html');
+      component.activeWrittenTranslation.translation = 'Test translation';
+      component.onSaveTranslationButtonClicked();
+      expect(changeListService.editTranslation).toHaveBeenCalled();
+    });
+
+    it('should remove translation if edited translation is blank', () => {
+      spyOn(changeListService, 'editTranslation');
+      expect(
+        entityTranslationsService.languageCodeToLatestEntityTranslations.hi.translationMapping.hasOwnProperty(
+          'content1'
         )
-      };
-      spyOn(translationTabActiveContentIdService, 'getActiveContentId').and
-        .returnValue('content_1');
-      spyOn(translationLanguageService, 'getActiveLanguageCode').and
-        .returnValue('es');
-      spyOn($uibModal, 'open');
+      ).toBeTruthy();
 
-      mockExternalSaveEventEmitter.emit();
+      component.activeWrittenTranslation = TranslatedContent.createNew('html');
+      component.activeWrittenTranslation.translation = '';
+      component.onSaveTranslationButtonClicked();
 
-      expect($uibModal.open).not.toHaveBeenCalled();
-    });
-
-    it('should update state\'s recorded voiceovers after broadcasting' +
-      ' externalSave event when closing modal', function() {
-      $scope.openTranslationEditor();
-      expect($scope.translationEditorIsOpen).toBe(true);
-      stateWrittenTranslationsService.displayed = {
-        hasWrittenTranslation: () => true,
-        getWrittenTranslation: () => (
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a second html',
-            needs_update: true
-          })
+      expect(changeListService.editTranslation).toHaveBeenCalled();
+      expect(
+        entityTranslationsService.languageCodeToLatestEntityTranslations.hi.translationMapping.hasOwnProperty(
+          'content1'
         )
-      };
-      spyOn(translationTabActiveContentIdService, 'getActiveContentId').and
-        .returnValue('content_1');
-      spyOn(translationLanguageService, 'getActiveLanguageCode').and
-        .returnValue('en');
-      spyOn($uibModal, 'open').and.returnValue({
-        result: $q.resolve()
-      });
-
-      expect(
-        stateObj.recordedVoiceovers.getBindableVoiceovers('content_1')
-          .en.needsUpdate).toBe(false);
-
-      mockExternalSaveEventEmitter.emit();
-      $scope.$apply();
-
-      expect(
-        stateObj.recordedVoiceovers.getBindableVoiceovers('content_1')
-          .en.needsUpdate).toBe(true);
+      ).toBeFalsy();
     });
 
-    it('should update state\'s recorded voiceovers after broadcasting' +
-    ' externalSave event when dismissing modal', function() {
-      $scope.openTranslationEditor();
-      expect($scope.translationEditorIsOpen).toBe(true);
-      stateWrittenTranslationsService.displayed = {
-        hasWrittenTranslation: () => true,
-        getWrittenTranslation: () => (
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a second html',
-            needs_update: true
-          })
-        )
-      };
-      spyOn(translationTabActiveContentIdService, 'getActiveContentId').and
-        .returnValue('content_1');
-      spyOn(translationLanguageService, 'getActiveLanguageCode').and
-        .returnValue('en');
-      spyOn($uibModal, 'open').and.returnValue({
-        result: $q.reject()
-      });
-
-      expect(
-        stateObj.recordedVoiceovers.getBindableVoiceovers('content_1')
-          .en.needsUpdate).toBe(false);
-
-      mockExternalSaveEventEmitter.emit();
-      $scope.$apply();
-
-      expect(
-        stateObj.recordedVoiceovers.getBindableVoiceovers('content_1')
-          .en.needsUpdate).toBe(false);
+    it('should refresh the translation status', () => {
+      spyOn(translationStatusService, 'refresh');
+      component.onSaveTranslationButtonClicked();
+      expect(translationStatusService.refresh).toHaveBeenCalled();
     });
 
-    it('should update written translation html when clicking on save' +
-      ' translation button', function() {
-      spyOn(
-        stateWrittenTranslationsService.displayed,
-        'updateWrittenTranslation').and.callThrough();
-      $scope.onSaveTranslationButtonClicked();
-
-      expect(
-        stateWrittenTranslationsService.displayed.updateWrittenTranslation)
-        .toHaveBeenCalled();
-    });
-
-    it('should cancel edit and restore values', function() {
-      stateWrittenTranslationsService.displayed = {
-        hasWrittenTranslation: () => true,
-        getWrittenTranslation: () => (
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a second html',
-            needs_update: true
-          })
-        )
-      };
-      $scope.cancelEdit();
-
-      expect(
-        stateWrittenTranslationsService.displayed.getWrittenTranslation()
-          .getTranslation()
-      ).toBe('This is a html');
-    });
-
-    it('should init editor when changing active content id language',
-      function() {
-        mockActiveContentIdChangedEventEmitter.emit('html');
-        expect($scope.translationEditorIsOpen).toBe(false);
-        expect($scope.activeWrittenTranslation).toEqual(
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a html',
-            needs_update: true
-          }));
-      });
-
-    it('should init editor when changing active language', function() {
-      mockActiveLanguageChangedEventEmitter.emit();
-      expect($scope.translationEditorIsOpen).toBe(false);
-      expect($scope.activeWrittenTranslation).toEqual(
-        writtenTranslationObjectFactory.createFromBackendDict({
-          data_format: 'html',
-          translation: 'This is a html',
-          needs_update: true
-        }));
+    it('should emit onExternalRteSave before saving translation', () => {
+      spyOn(externalRteSaveService.onExternalRteSave, 'emit');
+      component.onSaveTranslationButtonClicked();
+      expect(externalRteSaveService.onExternalRteSave.emit).toHaveBeenCalled();
     });
   });
 
-  describe('when hasn\'t written translation', function() {
-    beforeEach(angular.mock.inject(function($injector, $componentController) {
-      $q = $injector.get('$q');
-      $rootScope = $injector.get('$rootScope');
-      $uibModal = $injector.get('$uibModal');
-      editabilityService = $injector.get('EditabilityService');
-      explorationStatesService = $injector.get('ExplorationStatesService');
-      translationTabActiveContentIdService = $injector.get(
-        'TranslationTabActiveContentIdService');
-      translationLanguageService = $injector.get('TranslationLanguageService');
-      spyOn(
-        translationLanguageService, 'getActiveLanguageDirection').and.stub();
-      spyOn(stateEditorService, 'getActiveStateName').and.returnValue(
-        stateName);
-      spyOn(editabilityService, 'isEditable').and.returnValue(true);
-      stateObj = stateObjectFactory.createFromBackendDict(stateName, state);
-      spyOn(explorationStatesService, 'getState').and.returnValue(stateObj);
-      spyOn(explorationStatesService, 'saveWrittenTranslation').and.callFake(
-        () => {});
-      spyOn(
-        translationTabActiveContentIdService, 'getActiveDataFormat'
-      ).and.returnValue('html');
-
-      stateWrittenTranslationsService.init(stateName, {
-        hasWrittenTranslation: () => false,
-        getWrittenTranslation: () => (
-          writtenTranslationObjectFactory.createFromBackendDict({
-            data_format: 'html',
-            translation: 'This is a html',
-            needs_update: true
-          })
-        ),
-        addWrittenTranslation: () => {}
+  describe('on opening translation editor', () => {
+    describe('when translation is editable', () => {
+      beforeEach(() => {
+        spyOn(editabilityService, 'isEditable').and.returnValue(true);
       });
 
-      $scope = $rootScope.$new();
-      ctrl = $componentController('stateTranslationEditor', {
-        $scope: $scope,
-        StateEditorService: stateEditorService,
-        StateWrittenTranslationsService: stateWrittenTranslationsService,
-        WrittenTranslationObjectFactory: writtenTranslationObjectFactory
-      });
-      ctrl.$onInit();
-    }));
-
-    afterEach(() => {
-      ctrl.$onDestroy();
-    });
-
-    it('should initialize $scope properties after controller is initialized',
-      function() {
-        expect($scope.translationEditorIsOpen).toBe(false);
-        expect($scope.activeWrittenTranslation).toBe(null);
+      it('should set translationEditorIsOpen', () => {
+        component.translationEditorIsOpen = false;
+        component.openTranslationEditor();
+        expect(component.translationEditorIsOpen).toBe(true);
       });
 
-    it('should open translation editor when it is editable', function() {
-      $scope.openTranslationEditor();
-      expect($scope.translationEditorIsOpen).toBe(true);
-      expect($scope.activeWrittenTranslation).toEqual(
-        writtenTranslationObjectFactory.createNew('html', ''));
+      it('should intialize active translation if it does not exist', () => {
+        component.activeWrittenTranslation = null;
+        component.dataFormat = 'html';
+        component.openTranslationEditor();
+        expect(component.activeWrittenTranslation).toEqual(
+          TranslatedContent.createNew('html')
+        );
+      });
     });
 
-    it('should open translation editor when it is editable and with a ' +
-       'Translatable object as data format', function() {
-      $scope.dataFormat = 'set_of_unicode_string';
-      $scope.openTranslationEditor();
-      expect($scope.translationEditorIsOpen).toBe(true);
-      expect($scope.activeWrittenTranslation).toEqual(
-        writtenTranslationObjectFactory.createNew('set_of_unicode_string'));
+    describe('when translation is not editable', () => {
+      beforeEach(() => {
+        spyOn(editabilityService, 'isEditable').and.returnValue(false);
+      });
+
+      it('should not change translationEditorIsOpen', () => {
+        component.translationEditorIsOpen = false;
+        component.openTranslationEditor();
+        expect(component.translationEditorIsOpen).toBe(false);
+      });
+    });
+  });
+
+  describe('on closing translation editor', () => {
+    it('should set translationEditorIsOpen to false', () => {
+      component.translationEditorIsOpen = true;
+      component.cancelEdit();
+      expect(component.translationEditorIsOpen).toBe(false);
+    });
+  });
+
+  describe('on clicking mark as needs update', () => {
+    it('should set needsUpdate to true', () => {
+      component.activeWrittenTranslation = TranslatedContent.createNew('html');
+      component.activeWrittenTranslation.needsUpdate = false;
+      component.markAsNeedingUpdate();
+      expect(component.activeWrittenTranslation.needsUpdate).toBe(true);
     });
 
-    it('should mark translation as needing update', function() {
-      spyOn(
-        explorationStatesService, 'markWrittenTranslationAsNeedingUpdate');
-      $scope.activeWrittenTranslation = (
-        writtenTranslationObjectFactory.createNew('set_of_unicode_string'));
-      expect($scope.activeWrittenTranslation.needsUpdate).toBeFalse();
-
-      $scope.markAsNeedingUpdate();
-
-      expect(
-        explorationStatesService.markWrittenTranslationAsNeedingUpdate
-      ).toHaveBeenCalled();
-      expect($scope.activeWrittenTranslation.needsUpdate).toBeTrue();
+    it('should add changes to draft change list', () => {
+      spyOn(changeListService, 'editTranslation');
+      component.markAsNeedingUpdate();
+      expect(changeListService.editTranslation).toHaveBeenCalled();
     });
 
-    it('should add written translation html when clicking on save' +
-      ' translation button', function() {
-      $scope.openTranslationEditor();
-      spyOn(
-        stateWrittenTranslationsService.displayed,
-        'addWrittenTranslation').and.callThrough();
-      spyOn(translationTabActiveContentIdService, 'getActiveContentId').and
-        .returnValue('content_1');
-      spyOn(translationLanguageService, 'getActiveLanguageCode').and
-        .returnValue('es');
-      $scope.onSaveTranslationButtonClicked();
-
-      expect(
-        stateWrittenTranslationsService.displayed.addWrittenTranslation)
-        .toHaveBeenCalled();
+    it('should refresh translation status', () => {
+      spyOn(translationStatusService, 'refresh');
+      component.markAsNeedingUpdate();
+      expect(translationStatusService.refresh).toHaveBeenCalled();
     });
+  });
+
+  it('should init editor on language change', () => {
+    spyOn(component, 'initEditor');
+
+    translationLanguageService.onActiveLanguageChanged.emit();
+    fixture.detectChanges();
+
+    expect(component.initEditor).toHaveBeenCalled();
+  });
+
+  it(
+    'should init editor and update data ' +
+      'format on active content id change',
+    () => {
+      component.dataFormat = 'html';
+      spyOn(component, 'initEditor');
+
+      translationTabActiveContentIdService.onActiveContentIdChanged.emit(
+        'unicode'
+      );
+      fixture.detectChanges();
+
+      expect(component.dataFormat).toEqual('unicode');
+      expect(component.initEditor).toHaveBeenCalled();
+    }
+  );
+
+  it('should create new active translation if needed when initializing editor', () => {
+    entityTranslationsService.languageCodeToLatestEntityTranslations = {};
+    component.dataFormat = 'html';
+    component.initEditor();
+    expect(component.activeWrittenTranslation).toEqual(
+      TranslatedContent.createNew('html')
+    );
+  });
+
+  it('should save translation if translation editor is open', () => {
+    component.translationEditorIsOpen = true;
+    spyOn(component, 'saveTranslation');
+
+    externalSaveService.onExternalSave.emit();
+    fixture.detectChanges();
+
+    expect(component.saveTranslation).toHaveBeenCalled();
+  });
+
+  it('should not save translation if translation editor is open', () => {
+    component.translationEditorIsOpen = false;
+    spyOn(component, 'saveTranslation');
+
+    externalSaveService.onExternalSave.emit();
+    fixture.detectChanges();
+
+    expect(component.saveTranslation).not.toHaveBeenCalled();
+  });
+
+  it('should correctly identify RTL languages', () => {
+    component.languageCode = 'ar';
+    expect(component.isTranslationLanguageRTL()).toBe(true);
+  });
+
+  it('should correctly identify LTR languages', () => {
+    component.languageCode = 'en';
+    expect(component.isTranslationLanguageRTL()).toBe(false);
   });
 });

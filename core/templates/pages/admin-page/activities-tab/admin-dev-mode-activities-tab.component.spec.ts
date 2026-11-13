@@ -16,17 +16,25 @@
  * @fileoverview Unit tests for the admin dev mode activities tab component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { MaterialModule } from 'modules/material.module';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {FormsModule} from '@angular/forms';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {By} from '@angular/platform-browser';
+import {MaterialModule} from 'modules/material.module';
 
-import { AdminBackendApiService, AdminPageData } from 'domain/admin/admin-backend-api.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { AdminDataService } from '../services/admin-data.service';
-import { AdminTaskManagerService } from '../services/admin-task-manager.service';
-import { AdminDevModeActivitiesTabComponent } from './admin-dev-mode-activities-tab.component';
+import {
+  AdminBackendApiService,
+  AdminPageData,
+} from 'domain/admin/admin-backend-api.service';
+import {SkillSummary} from 'domain/skill/skill-summary.model';
+import {StoryContents} from 'domain/story/story-contents-object.model';
+import {Story} from 'domain/story/story.model';
+import {CreatorTopicSummary} from 'domain/topic/creator-topic-summary.model';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {AdminDataService} from '../services/admin-data.service';
+import {AdminTaskManagerService} from '../services/admin-task-manager.service';
+import {AdminDevModeActivitiesTabComponent} from './admin-dev-mode-activities-tab.component';
 
 describe('Admin dev mode activities tab', () => {
   let component: AdminDevModeActivitiesTabComponent;
@@ -35,50 +43,96 @@ describe('Admin dev mode activities tab', () => {
   let adminDataService: AdminDataService;
   let adminTaskManagerService: AdminTaskManagerService;
   let windowRef: WindowRef;
-  let adminDataObject = {
+  let topicSummary = new CreatorTopicSummary(
+    'topic_id',
+    'Topic Name',
+    1,
+    1,
+    1,
+    1,
+    0,
+    'en',
+    'description',
+    1,
+    0,
+    0,
+    0,
+    true,
+    true,
+    false,
+    null,
+    'thumbnail.svg',
+    '#C6DCDA',
+    'topic-name',
+    0,
+    0,
+    [1],
+    [1]
+  );
+  let skillSummary = new SkillSummary('skill_id', 'Skill 1', 'en', 1, 0, 0, 0);
+  let story = new Story(
+    'story_id',
+    'story_title',
+    'description',
+    '',
+    new StoryContents('node_1', [], 'node_2'),
+    'en',
+    1,
+    'topic_id',
+    '#C6DCDA',
+    'thumbnail.svg',
+    'story-title',
+    'meta'
+  );
+  let adminDataObject: AdminPageData = {
     demoExplorationIds: ['expId'],
-    demoExplorations: [
-      [
-        '0',
-        'welcome.yaml'
-      ]
+    demoExplorations: [['0', 'welcome.yaml']],
+    demoCollections: [['collectionId']],
+    updatableRoles: [],
+    roleToActions: {},
+    viewableRoles: [],
+    humanReadableRoles: {},
+    topicSummaries: [topicSummary],
+    platformParameters: [],
+    skillList: [skillSummary],
+    storyList: [story],
+    classroomList: [
+      {
+        classroomId: 'classroomId1',
+        name: 'math',
+      },
     ],
-    demoCollections: [
-      ['collectionId']
-    ],
-  } as AdminPageData;
+  };
   let mockConfirmResult: (val: boolean) => void;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [
         BrowserAnimationsModule,
         MaterialModule,
         FormsModule,
-        HttpClientTestingModule
+        HttpClientTestingModule,
       ],
-      declarations: [
-        AdminDevModeActivitiesTabComponent
-      ]
+      declarations: [AdminDevModeActivitiesTabComponent],
     }).compileComponents();
   }));
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     fixture = TestBed.createComponent(AdminDevModeActivitiesTabComponent);
     component = fixture.componentInstance;
-    adminBackendApiService = TestBed.get(AdminBackendApiService);
-    adminDataService = TestBed.get(AdminDataService);
-    adminTaskManagerService = TestBed.get(AdminTaskManagerService);
-    windowRef = TestBed.get(WindowRef);
+    adminBackendApiService = TestBed.inject(AdminBackendApiService);
+    adminDataService = TestBed.inject(AdminDataService);
+    adminTaskManagerService = TestBed.inject(AdminTaskManagerService);
+    windowRef = TestBed.inject(WindowRef);
 
     spyOn(adminDataService, 'getDataAsync').and.resolveTo(adminDataObject);
 
     let confirmResult = true;
     spyOnProperty(windowRef, 'nativeWindow').and.returnValue({
-      confirm: () => confirmResult
-    });
+      confirm: () => confirmResult,
+    } as Window);
 
-    mockConfirmResult = (val) => {
+    mockConfirmResult = val => {
       confirmResult = val;
     };
 
@@ -100,110 +154,134 @@ describe('Admin dev mode activities tab', () => {
   describe('.reloadExploration', () => {
     it('should not reload a specific exploration if task is running', () => {
       let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadExplorationAsync');
-      spyOn(
-        adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
+        adminBackendApiService,
+        'reloadExplorationAsync'
+      );
+      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
       expect(component.reloadExploration('expId')).toBeUndefined();
       expect(adminBackendSpy).not.toHaveBeenCalled();
     });
 
-    it('should not procees if user doesn\'t confirm', () => {
+    it("should not procees if user doesn't confirm", () => {
       mockConfirmResult(false);
 
       let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadExplorationAsync');
+        adminBackendApiService,
+        'reloadExplorationAsync'
+      );
 
       expect(component.reloadExploration('expId')).toBeUndefined();
       expect(adminBackendSpy).not.toHaveBeenCalled();
     });
 
-    it('should load explorations', async(() => {
+    it('should load explorations', waitForAsync(() => {
       const expId = component.demoExplorationIds[0];
 
-      spyOn(adminBackendApiService, 'reloadExplorationAsync')
-        .and.returnValue(Promise.resolve());
+      spyOn(adminBackendApiService, 'reloadExplorationAsync').and.returnValue(
+        Promise.resolve()
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
       spyOn(component.setStatusMessage, 'emit');
 
       mockConfirmResult(true);
       component.reloadExploration(expId);
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
-        expect(component.setStatusMessage.emit)
-          .toHaveBeenCalledWith('Data reloaded successfully.');
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Data reloaded successfully.'
+        );
       });
     }));
 
-    it('should not load explorations with wrong exploration ID', async(() => {
+    it('should not load explorations with wrong exploration ID', waitForAsync(() => {
       const expId = 'wrong-exp-id';
 
-      spyOn(adminBackendApiService, 'reloadExplorationAsync')
-        .and.returnValue(Promise.reject('Exploration not found.'));
+      spyOn(adminBackendApiService, 'reloadExplorationAsync').and.returnValue(
+        Promise.reject('Exploration not found.')
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
       spyOn(component.setStatusMessage, 'emit');
 
       mockConfirmResult(true);
       component.reloadExploration(expId);
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
-        expect(component.setStatusMessage.emit)
-          .toHaveBeenCalledWith('Server error: Exploration not found.');
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Server error: Exploration not found.'
+        );
       });
     }));
   });
 
   describe('.printResult', () => {
-    it('should print correct message when numTried' +
-      'is less the number of exploration', () => {
-      const numSucceeded = 0;
-      const numFailed = 0;
-      const numTried = 0;
+    it(
+      'should print correct message when numTried' +
+        'is less the number of exploration',
+      () => {
+        const numSucceeded = 0;
+        const numFailed = 0;
+        const numTried = 0;
 
-      spyOn(component.setStatusMessage, 'emit');
+        spyOn(component.setStatusMessage, 'emit');
 
-      component.printResult(numSucceeded, numFailed, numTried);
+        component.printResult(numSucceeded, numFailed, numTried);
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...0/1');
-    });
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...0/1'
+        );
+      }
+    );
 
-    it('should print correct message when numTried' +
-      'is not less than the number of exploration', () => {
-      const numSucceeded = 1;
-      const numFailed = 0;
-      const numTried = 1;
+    it(
+      'should print correct message when numTried' +
+        'is not less than the number of exploration',
+      () => {
+        const numSucceeded = 1;
+        const numFailed = 0;
+        const numTried = 1;
 
-      spyOn(component.setStatusMessage, 'emit');
+        spyOn(component.setStatusMessage, 'emit');
 
-      component.printResult(numSucceeded, numFailed, numTried);
+        component.printResult(numSucceeded, numFailed, numTried);
 
-      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-        'Reloaded 1 explorations: 1 succeeded, 0 failed.');
-    });
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Reloaded 1 explorations: 1 succeeded, 0 failed.'
+        );
+      }
+    );
   });
 
   describe('.reloadAllExplorations', () => {
-    it('should not reload all exploration if' +
-      'reloading all exploration is not possible', () => {
-      component.reloadingAllExplorationPossible = false;
-      let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadExplorationAsync');
+    it(
+      'should not reload all exploration if' +
+        'reloading all exploration is not possible',
+      () => {
+        component.reloadingAllExplorationPossible = false;
+        let adminBackendSpy = spyOn(
+          adminBackendApiService,
+          'reloadExplorationAsync'
+        );
 
-      component.reloadAllExplorations();
+        component.reloadAllExplorations();
 
-      expect(adminBackendSpy).not.toHaveBeenCalled();
-      expect(component.reloadAllExplorations()).toBeUndefined();
-    });
+        expect(adminBackendSpy).not.toHaveBeenCalled();
+        expect(component.reloadAllExplorations()).toBeUndefined();
+      }
+    );
 
     it('should not reload all exploration if any task is running', () => {
       let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadExplorationAsync');
+        adminBackendApiService,
+        'reloadExplorationAsync'
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
 
       component.reloadAllExplorations();
@@ -212,9 +290,11 @@ describe('Admin dev mode activities tab', () => {
       expect(adminBackendSpy).not.toHaveBeenCalled();
     });
 
-    it('should not reload all exploration without user\'s confirmation', () => {
+    it("should not reload all exploration without user's confirmation", () => {
       let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadExplorationAsync');
+        adminBackendApiService,
+        'reloadExplorationAsync'
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
 
       component.reloadingAllExplorationPossible = true;
@@ -226,235 +306,834 @@ describe('Admin dev mode activities tab', () => {
       expect(adminBackendSpy).not.toHaveBeenCalled();
     });
 
-    it('should reload all explorations', async(() => {
+    it('should reload all explorations', waitForAsync(() => {
       const demoExplorationIds = ['expId'];
       component.demoExplorationIds = demoExplorationIds;
       component.reloadingAllExplorationPossible = true;
 
-      spyOn(adminBackendApiService, 'reloadExplorationAsync')
-        .and.returnValue(Promise.resolve());
+      spyOn(adminBackendApiService, 'reloadExplorationAsync').and.returnValue(
+        Promise.resolve()
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
       spyOn(component.setStatusMessage, 'emit');
 
       mockConfirmResult(true);
       component.reloadAllExplorations();
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Reloaded 1 explorations: 1 succeeded, 0 failed.');
+          'Reloaded 1 explorations: 1 succeeded, 0 failed.'
+        );
       });
     }));
 
-    it('should not reload all exploration if exploration ID is wrong',
-      async(() => {
-        const demoExplorationIds = ['wrongId'];
-        component.demoExplorationIds = demoExplorationIds;
-        component.reloadingAllExplorationPossible = true;
+    it('should not reload all exploration if exploration ID is wrong', waitForAsync(() => {
+      const demoExplorationIds = ['wrongId'];
+      component.demoExplorationIds = demoExplorationIds;
+      component.reloadingAllExplorationPossible = true;
 
-        spyOn(adminBackendApiService, 'reloadExplorationAsync')
-          .and.returnValue(Promise.reject('Exploration not found.'));
-        spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
-        spyOn(component.setStatusMessage, 'emit');
+      spyOn(adminBackendApiService, 'reloadExplorationAsync').and.returnValue(
+        Promise.reject('Exploration not found.')
+      );
+      spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
+      spyOn(component.setStatusMessage, 'emit');
 
-        mockConfirmResult(true);
-        component.reloadAllExplorations();
+      mockConfirmResult(true);
+      component.reloadAllExplorations();
 
-        expect(component.setStatusMessage.emit)
-          .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
-        fixture.whenStable().then(() => {
-          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-            'Reloaded 1 explorations: 0 succeeded, 1 failed.');
-        });
-      }));
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Reloaded 1 explorations: 0 succeeded, 1 failed.'
+        );
+      });
+    }));
   });
 
   describe('.generateDummyExploration', () => {
-    it('should not generate dummy exploration if publish count is greater' +
-      'than generate count', () => {
-      let adminBackendSpy = spyOn(
-        adminBackendApiService, 'generateDummyExplorationsAsync');
+    it(
+      'should not generate dummy exploration if publish count is greater' +
+        'than generate count',
+      () => {
+        let adminBackendSpy = spyOn(
+          adminBackendApiService,
+          'generateDummyExplorationsAsync'
+        );
 
-      component.numDummyExpsToPublish = 2;
-      component.numDummyExpsToGenerate = 1;
+        component.numDummyExpsToPublish = 2;
+        component.numDummyExpsToGenerate = 1;
 
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.generateDummyExplorations();
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Publish count should be less than or equal to generate count'
+        );
+        expect(adminBackendSpy).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should generate dummy explorations', waitForAsync(() => {
+      component.numDummyExpsToPublish = 1;
+      component.numDummyExpsToGenerate = 2;
+
+      spyOn(
+        adminBackendApiService,
+        'generateDummyExplorationsAsync'
+      ).and.returnValue(Promise.resolve());
       spyOn(component.setStatusMessage, 'emit');
 
       component.generateDummyExplorations();
 
       expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-        'Publish count should be less than or equal to generate count');
-      expect(adminBackendSpy).not.toHaveBeenCalled();
-    });
-
-    it('should generate dummy explorations', async(() => {
-      component.numDummyExpsToPublish = 1;
-      component.numDummyExpsToGenerate = 2;
-
-      spyOn(adminBackendApiService, 'generateDummyExplorationsAsync')
-        .and.returnValue(Promise.resolve());
-      spyOn(component.setStatusMessage, 'emit');
-
-      component.generateDummyExplorations();
-
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Dummy explorations generated successfully.');
+          'Dummy explorations generated successfully.'
+        );
       });
     }));
 
-    it('should show error message when dummy explorations' +
-      'are not generated', async(() => {
-      component.numDummyExpsToPublish = 2;
-      component.numDummyExpsToGenerate = 2;
+    it(
+      'should show error message when dummy explorations' + 'are not generated',
+      waitForAsync(() => {
+        component.numDummyExpsToPublish = 2;
+        component.numDummyExpsToGenerate = 2;
 
-      spyOn(adminBackendApiService, 'generateDummyExplorationsAsync')
-        .and.returnValue(Promise.reject('Dummy explorations not generated.'));
+        spyOn(
+          adminBackendApiService,
+          'generateDummyExplorationsAsync'
+        ).and.returnValue(Promise.reject('Dummy explorations not generated.'));
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.generateDummyExplorations();
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...'
+        );
+
+        fixture.whenStable().then(() => {
+          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+            'Server error: Dummy explorations not generated.'
+          );
+        });
+      })
+    );
+  });
+
+  describe('.generateDummyTranslationOpportunities', () => {
+    it('should generate dummy translation opportunities', waitForAsync(() => {
+      component.numDummyTranslationOpportunitiesToGenerate = 2;
+
+      spyOn(
+        adminBackendApiService,
+        'generateDummyTranslationOpportunitiesAsync'
+      ).and.returnValue(Promise.resolve());
       spyOn(component.setStatusMessage, 'emit');
+      component.generateDummyTranslationOpportunities();
 
-      component.generateDummyExplorations();
-
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Server error: Dummy explorations not generated.');
+          'Dummy translation opportunities (explorations) generated successfully.'
+        );
       });
     }));
+
+    it('should show error message when dummy translation opportunities are not generated', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyTranslationOpportunitiesAsync'
+      ).and.returnValue(
+        Promise.reject('Dummy translation opportunities not generated.')
+      );
+      spyOn(component.setStatusMessage, 'emit');
+      component.generateDummyTranslationOpportunities();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Server error: Dummy translation opportunities not generated.'
+        );
+      });
+    }));
+  });
+
+  describe('.generateDummyBlogPost', () => {
+    it('should generate dummy blog post', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyBlogPostAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.generateNewBlogPost('Education');
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy Blog Post generated successfully.'
+        );
+      });
+    }));
+
+    it(
+      'should show error message if new dummy blog post ' + 'title is empty',
+      waitForAsync(() => {
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.generateNewBlogPost('');
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Internal error: blogPostTitle is empty'
+        );
+      })
+    );
+
+    it(
+      'should show error message if new dummy blog post ' + 'is not generated',
+      waitForAsync(() => {
+        spyOn(
+          adminBackendApiService,
+          'generateDummyBlogPostAsync'
+        ).and.returnValue(Promise.reject('Dummy Blog not generated.'));
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.generateNewBlogPost('Education');
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...'
+        );
+
+        fixture.whenStable().then(() => {
+          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+            'Server error: Dummy Blog not generated.'
+          );
+        });
+      })
+    );
   });
 
   describe('.loadNewStructuresData', () => {
-    it('should generate structures data', async(() => {
-      spyOn(adminBackendApiService, 'generateDummyNewStructuresDataAsync')
-        .and.returnValue(Promise.resolve());
+    it('should generate structures data', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyNewStructuresDataAsync'
+      ).and.returnValue(Promise.resolve());
       spyOn(component.setStatusMessage, 'emit');
       component.loadNewStructuresData();
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Dummy new structures data generated successfully.');
+          'Dummy new structures data generated successfully.'
+        );
       });
     }));
 
-    it('should show error message if new structues data' +
-      'is not generated', async(() => {
-      spyOn(adminBackendApiService, 'generateDummyNewStructuresDataAsync')
-        .and.returnValue(Promise.reject('New structures not generated.'));
-      spyOn(component.setStatusMessage, 'emit');
-      component.loadNewStructuresData();
+    it(
+      'should show error message if new structues data' + 'is not generated',
+      waitForAsync(() => {
+        spyOn(
+          adminBackendApiService,
+          'generateDummyNewStructuresDataAsync'
+        ).and.returnValue(Promise.reject('New structures not generated.'));
+        spyOn(component.setStatusMessage, 'emit');
+        component.loadNewStructuresData();
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...'
+        );
+
+        fixture.whenStable().then(() => {
+          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+            'Server error: New structures not generated.'
+          );
+        });
+      })
+    );
+  });
+
+  describe('.generateNewSkillData', () => {
+    it('should generate structures data', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyNewSkillDataAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+      component.generateNewSkillData();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Server error: New structures not generated.');
+          'Dummy new skill and questions generated successfully.'
+        );
+      });
+    }));
+
+    it(
+      'should show error message if new structues data' + 'is not generated',
+      waitForAsync(() => {
+        spyOn(
+          adminBackendApiService,
+          'generateDummyNewSkillDataAsync'
+        ).and.returnValue(Promise.reject('New skill data not generated.'));
+        spyOn(component.setStatusMessage, 'emit');
+        component.generateNewSkillData();
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...'
+        );
+
+        fixture.whenStable().then(() => {
+          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+            'Server error: New skill data not generated.'
+          );
+        });
+      })
+    );
+  });
+
+  describe('.generateNewClassroom', () => {
+    it('should generate classroom data', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyClassroomDataAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+      component.numDummyClassroomsToGenerate = 3;
+
+      component.generateNewClassroom();
+
+      expect(
+        adminBackendApiService.generateDummyClassroomDataAsync
+      ).toHaveBeenCalledWith(3);
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      // The status message changes after the completion of the asynchronous
+      // call, thus the whenStable method is used to detect the changes and
+      // validate accordingly.
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy new classroom generated successfully.'
+        );
+      });
+    }));
+
+    it('should show error message if new classroom data is not generated', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyClassroomDataAsync'
+      ).and.returnValue(Promise.reject('New classroom data not generated.'));
+      spyOn(component.setStatusMessage, 'emit');
+      component.generateNewClassroom();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      // The status message changes after the completion of the asynchronous
+      // call, thus the whenStable method is used to detect the changes and
+      // validate accordingly.
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Server error: New classroom data not generated.'
+        );
+      });
+    }));
+    it('should disable the generate button when count is non-positive', () => {
+      const generateButton = fixture.debugElement.query(
+        By.css('.load-dummy-math-classroom')
+      ).nativeElement as HTMLButtonElement;
+
+      component.numDummyClassroomsToGenerate = 0;
+      fixture.detectChanges();
+      expect(generateButton.disabled).toBeTrue();
+
+      component.numDummyClassroomsToGenerate = -1;
+      fixture.detectChanges();
+      expect(generateButton.disabled).toBeTrue();
+    });
+  });
+
+  describe('.generateNewDefaultClassrooms', () => {
+    it('should generate default classroom data', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyDefaultClassroomsAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+      component.numDummyDefaultClassroomsToGenerate = 3;
+
+      component.generateNewDefaultClassrooms();
+
+      expect(
+        adminBackendApiService.generateDummyDefaultClassroomsAsync
+      ).toHaveBeenCalledWith(3);
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy default classrooms generated successfully.'
+        );
+      });
+    }));
+
+    it('should show error message if default classroom data is not generated', waitForAsync(() => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyDefaultClassroomsAsync'
+      ).and.returnValue(
+        Promise.reject('Default classroom data not generated.')
+      );
+      spyOn(component.setStatusMessage, 'emit');
+      component.generateNewDefaultClassrooms();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Server error: Default classroom data not generated.'
+        );
+      });
+    }));
+    it('should disable the generate button when count is non-positive', () => {
+      const generateButton = fixture.debugElement.query(
+        By.css('.load-dummy-default-classroom')
+      ).nativeElement as HTMLButtonElement;
+
+      component.numDummyDefaultClassroomsToGenerate = 0;
+      fixture.detectChanges();
+      expect(generateButton.disabled).toBeTrue();
+
+      component.numDummyDefaultClassroomsToGenerate = -1;
+      fixture.detectChanges();
+      expect(generateButton.disabled).toBeTrue();
+    });
+  });
+
+  describe('.generateNewTopics', () => {
+    it('should generate topic data', waitForAsync(() => {
+      spyOn(adminBackendApiService, 'generateDummyTopicsAsync').and.returnValue(
+        Promise.resolve()
+      );
+      spyOn(component.setStatusMessage, 'emit');
+      component.numDummyTopicsToGenerate = 3;
+      component.selectedClassroomId = 'classroom1';
+
+      component.generateNewTopics();
+
+      expect(
+        adminBackendApiService.generateDummyTopicsAsync
+      ).toHaveBeenCalledWith(3, 'classroom1');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy new topics generated successfully.'
+        );
+      });
+    }));
+
+    it('should show error message if new topic data is not generated', waitForAsync(() => {
+      spyOn(adminBackendApiService, 'generateDummyTopicsAsync').and.returnValue(
+        Promise.reject('New topic data not generated.')
+      );
+      spyOn(component.setStatusMessage, 'emit');
+      component.generateNewTopics();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Server error: New topic data not generated.'
+        );
       });
     }));
   });
 
-  describe('.generateNewSkillData', () => {
-    it('should generate structures data', async(() => {
-      spyOn(adminBackendApiService, 'generateDummyNewSkillDataAsync')
-        .and.returnValue(Promise.resolve());
-      spyOn(component.setStatusMessage, 'emit');
-      component.generateNewSkillData();
+  describe('.generateDummyExploration', () => {
+    it(
+      'should not generate dummy exploration if publish count is greater' +
+        'than generate count',
+      () => {
+        let adminBackendSpy = spyOn(
+          adminBackendApiService,
+          'generateDummyExplorationsAsync'
+        );
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+        component.numDummyExpsToPublish = 2;
+        component.numDummyExpsToGenerate = 1;
+
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.generateDummyExplorations();
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Publish count should be less than or equal to generate count'
+        );
+        expect(adminBackendSpy).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should generate dummy explorations', waitForAsync(() => {
+      component.numDummyExpsToPublish = 1;
+      component.numDummyExpsToGenerate = 2;
+
+      spyOn(
+        adminBackendApiService,
+        'generateDummyExplorationsAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.generateDummyExplorations();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Dummy new skill and questions generated successfully.');
+          'Dummy explorations generated successfully.'
+        );
       });
     }));
 
-    it('should show error message if new structues data' +
-      'is not generated', async(() => {
-      spyOn(adminBackendApiService, 'generateDummyNewSkillDataAsync')
-        .and.returnValue(Promise.reject('New skill data not generated.'));
-      spyOn(component.setStatusMessage, 'emit');
-      component.generateNewSkillData();
+    it('should show error message when dummy explorations are not generated', waitForAsync(() => {
+      component.numDummyExpsToPublish = 2;
+      component.numDummyExpsToGenerate = 2;
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      spyOn(
+        adminBackendApiService,
+        'generateDummyExplorationsAsync'
+      ).and.returnValue(Promise.reject('Dummy explorations not generated.'));
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.generateDummyExplorations();
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Server error: New skill data not generated.');
+          'Server error: Dummy explorations not generated.'
+        );
       });
     }));
+  });
+
+  describe('.generateDummySuggestionQuestions', () => {
+    it('should generate dummy suggestion questions', async () => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummySuggestionQuestionsAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.numDummySuggestionQuesToGenerate = 2;
+
+      component.generateDummySuggestionQuestions('0');
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy suggestion questions generated successfully.'
+        );
+      });
+    });
+
+    it(
+      'should show error message when dummy suggestion questions' +
+        'are not generated',
+      async () => {
+        spyOn(
+          adminBackendApiService,
+          'generateDummySuggestionQuestionsAsync'
+        ).and.returnValue(
+          Promise.reject('Dummy suggestion questions not generated.')
+        );
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.numDummySuggestionQuesToGenerate = 2;
+
+        component.generateDummySuggestionQuestions('0');
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...'
+        );
+        fixture.whenStable().then(() => {
+          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+            'Server error: Dummy suggestion questions not generated.'
+          );
+        });
+      }
+    );
+  });
+
+  describe('.generateDummyStories', () => {
+    it('should generate dummy stories', async () => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyStoriesAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.numDummyStoriesToGenerate = 2;
+
+      component.generateDummyStories('0');
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy stories generated successfully.'
+        );
+      });
+    });
+
+    it('should show error message when dummy stories are not generated', async () => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyStoriesAsync'
+      ).and.returnValue(Promise.reject('Dummy stories not generated.'));
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.numDummyStoriesToGenerate = 2;
+
+      component.generateDummyStories('0');
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Server error: Dummy stories not generated.'
+        );
+      });
+    });
+  });
+
+  describe('.generateDummyChapters', () => {
+    it('should generate dummy chapters', async () => {
+      spyOn(
+        adminBackendApiService,
+        'generateDummyChaptersAsync'
+      ).and.returnValue(Promise.resolve());
+      spyOn(component.setStatusMessage, 'emit');
+
+      component.numDummyChaptersToGenerate = 2;
+
+      component.generateDummyChapters('0');
+
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
+      fixture.whenStable().then(() => {
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Dummy chapters generated successfully.'
+        );
+      });
+    });
+
+    it(
+      'should show error message when dummy chapters' + ' are not generated',
+      async () => {
+        spyOn(
+          adminBackendApiService,
+          'generateDummyChaptersAsync'
+        ).and.returnValue(Promise.reject('Dummy chapters not generated.'));
+        spyOn(component.setStatusMessage, 'emit');
+
+        component.numDummyChaptersToGenerate = 2;
+
+        component.generateDummyChapters('0');
+
+        expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+          'Processing...'
+        );
+        fixture.whenStable().then(() => {
+          expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+            'Server error: Dummy chapters not generated.'
+          );
+        });
+      }
+    );
+  });
+
+  describe('.onSkillSelectionChange', () => {
+    it('should set the selected option to the select value', () => {
+      const selectElement = document.createElement('select');
+      const optionElement = document.createElement('option');
+      optionElement.value = '2';
+      selectElement.appendChild(optionElement);
+      selectElement.value = '2';
+      const event = new Event('change');
+      Object.defineProperty(event, 'target', {value: selectElement});
+
+      component.onSkillSelectionChange(event);
+
+      expect(component.selectedOption).toBe('2');
+    });
+  });
+
+  describe('.onTopicSelectionChange', () => {
+    it('should set the selected topic to the select value', () => {
+      const selectElement = document.createElement('select');
+      const optionElement = document.createElement('option');
+      optionElement.value = '3';
+      selectElement.appendChild(optionElement);
+      selectElement.value = '3';
+      const event = new Event('change');
+      Object.defineProperty(event, 'target', {value: selectElement});
+
+      component.onTopicSelectionChange(event);
+
+      expect(component.selectedTopicForStory).toBe('3');
+    });
+  });
+
+  describe('.onStorySelectionChange', () => {
+    it('should set the selected story to the select value', () => {
+      const selectElement = document.createElement('select');
+      const optionElement = document.createElement('option');
+      optionElement.value = '4';
+      selectElement.appendChild(optionElement);
+      selectElement.value = '4';
+      const event = new Event('change');
+      Object.defineProperty(event, 'target', {value: selectElement});
+
+      component.onStorySelectionChange(event);
+
+      expect(component.selectedStoryForChapter).toBe('4');
+    });
+  });
+
+  describe('.onClassroomSelectionChange', () => {
+    it('should set the selected classroom to the select value', () => {
+      const selectElement = document.createElement('select');
+      const optionElement = document.createElement('option');
+      optionElement.value = '4';
+      selectElement.appendChild(optionElement);
+      selectElement.value = '4';
+      const event = new Event('change');
+      Object.defineProperty(event, 'target', {value: selectElement});
+
+      component.onClassroomSelectionChange(event);
+
+      expect(component.selectedClassroomId).toBe('4');
+    });
   });
 
   describe('.reloadCollection', () => {
     it('should not reload collection if a task is already running', () => {
       let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadCollectionAsync');
+        adminBackendApiService,
+        'reloadCollectionAsync'
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(true);
 
-      expect(component.reloadCollection(component.DEMO_COLLECTIONS[0][0]))
-        .toBeUndefined();
+      expect(
+        component.reloadCollection(component.DEMO_COLLECTIONS[0][0])
+      ).toBeUndefined();
       expect(adminBackendSpy).not.toHaveBeenCalled();
     });
 
-    it('should not reload collection without user\'s confirmation', () => {
+    it("should not reload collection without user's confirmation", () => {
       let adminBackendSpy = spyOn(
-        adminBackendApiService, 'reloadCollectionAsync');
+        adminBackendApiService,
+        'reloadCollectionAsync'
+      );
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
 
       mockConfirmResult(false);
       component.reloadCollection(component.DEMO_COLLECTIONS[0][0]);
 
-      expect(component.reloadCollection(component.DEMO_COLLECTIONS[0][0]))
-        .toBeUndefined();
+      expect(
+        component.reloadCollection(component.DEMO_COLLECTIONS[0][0])
+      ).toBeUndefined();
       expect(adminBackendSpy).not.toHaveBeenCalled();
     });
 
-    it('should reload collection', async(() => {
-      spyOn(adminBackendApiService, 'reloadCollectionAsync')
-        .and.returnValue(Promise.resolve());
+    it('should reload collection', waitForAsync(() => {
+      spyOn(adminBackendApiService, 'reloadCollectionAsync').and.returnValue(
+        Promise.resolve()
+      );
       spyOn(component.setStatusMessage, 'emit');
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
 
       mockConfirmResult(true);
       component.reloadCollection(component.DEMO_COLLECTIONS[0][0]);
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Data reloaded successfully.');
+          'Data reloaded successfully.'
+        );
       });
     }));
 
-    it('should show error message is collection is not reloaded', async(() => {
+    it('should show error message is collection is not reloaded', waitForAsync(() => {
       const wrongCollectionId = 'wrongCollectionId';
 
-      spyOn(adminBackendApiService, 'reloadCollectionAsync')
-        .and.returnValue(Promise.reject('Wrong collection ID.'));
+      spyOn(adminBackendApiService, 'reloadCollectionAsync').and.returnValue(
+        Promise.reject('Wrong collection ID.')
+      );
       spyOn(component.setStatusMessage, 'emit');
       spyOn(adminTaskManagerService, 'isTaskRunning').and.returnValue(false);
 
       mockConfirmResult(true);
       component.reloadCollection(wrongCollectionId);
 
-      expect(component.setStatusMessage.emit)
-        .toHaveBeenCalledWith('Processing...');
+      expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
+        'Processing...'
+      );
 
       fixture.whenStable().then(() => {
         expect(component.setStatusMessage.emit).toHaveBeenCalledWith(
-          'Server error: Wrong collection ID.');
+          'Server error: Wrong collection ID.'
+        );
       });
     }));
   });

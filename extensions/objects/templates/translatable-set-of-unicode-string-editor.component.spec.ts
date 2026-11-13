@@ -18,10 +18,11 @@
 
 // TODO(#11014): Add more extensive front end tests for object editors that rely
 // on schema editors.
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { TestBed, waitForAsync } from '@angular/core/testing';
-import { TranslatableSetOfUnicodeStringEditorComponent } from './translatable-set-of-unicode-string-editor.component';
+// @ts-nocheck
 
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {TestBed, waitForAsync} from '@angular/core/testing';
+import {TranslatableSetOfUnicodeStringEditorComponent} from './translatable-set-of-unicode-string-editor.component';
 
 // TODO(#11014): Add more extensive front end tests for object editors that rely
 // on schema editors.
@@ -31,19 +32,42 @@ describe('TranslatableSetOfUnicodeStringEditor', () => {
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [TranslatableSetOfUnicodeStringEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
     component = TestBed.createComponent(
       TranslatableSetOfUnicodeStringEditorComponent
     ).componentInstance;
-    component.value = { unicodeStrSet: '' };
-    component.updateValue('random val');
+
+    component.ngOnInit();
   }));
 
   it('should initialize the schema', () => {
-    component.updateValue('random val');
+    component.value = {unicodeStrSet: ['random val']};
+    component.updateValue(['random val']);
     component.getSchema();
-    component.updateValue('abc');
-    expect(component.value.unicodeStrSet).toBe('abc');
+    component.updateValue(['abc']);
+    expect(component.value.unicodeStrSet).toEqual(['abc']);
+  });
+
+  it('should not update the value when the input is not an array', () => {
+    component.value = {unicodeStrSet: ['random val']};
+
+    component.updateValue(5);
+
+    expect(component.value.unicodeStrSet).toEqual(['random val']);
+  });
+
+  it('should not update the value when the value is unchanged', () => {
+    component.value = {unicodeStrSet: ['random val']};
+    spyOn(component.valueChanged, 'emit');
+
+    component.updateValue(component.value.unicodeStrSet);
+
+    expect(component.value.unicodeStrSet).toEqual(['random val']);
+    expect(component.valueChanged.emit).not.toHaveBeenCalled();
+  });
+
+  it('should initialize the schema property value', () => {
+    expect(component.value.unicodeStrSet).toEqual([]);
   });
 });

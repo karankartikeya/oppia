@@ -16,18 +16,22 @@
  * @fileoverview Unit tests for number with units editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { NumberWithUnitsEditorComponent } from './number-with-units-editor.component';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {NumberConversionService} from 'services/number-conversion.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {NumberWithUnitsEditorComponent} from './number-with-units-editor.component';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
 
 describe('NumberWithUnitsEditorComponent', () => {
   let component: NumberWithUnitsEditorComponent;
   let fixture: ComponentFixture<NumberWithUnitsEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [NumberWithUnitsEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      declarations: [MockTranslatePipe, NumberWithUnitsEditorComponent],
+      providers: [NumberConversionService, I18nLanguageCodeService],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -41,38 +45,45 @@ describe('NumberWithUnitsEditorComponent', () => {
         isNegative: false,
         wholeNumber: 0,
         numerator: 0,
-        denominator: 1
+        denominator: 1,
       },
       units: [
         {
           unit: 'm',
-          exponent: 1
-        }
-      ]
+          exponent: 1,
+        },
+      ],
     };
   });
 
-  it('should initialise component when \'Number with units\' interaction is' +
-  ' selected', () => {
-    spyOn(component.valueChanged, 'emit');
+  it(
+    "should initialise component when 'Number with units' interaction is" +
+      ' selected',
+    () => {
+      spyOn(component.valueChanged, 'emit');
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.numberWithUnitsString).toBe('23 m');
-    expect(component.valueChanged.emit).toHaveBeenCalledWith(component.value);
-  });
+      expect(component.numberWithUnitsString).toBe('23 m');
+      expect(component.valueChanged.emit).toHaveBeenCalledWith(component.value);
+    }
+  );
 
-  it('should not set \'numberWithUnitsString\' value if use has not input any' +
-  'value', () => {
-    spyOn(component.valueChanged, 'emit');
-    component.value = null;
+  it(
+    "should not set 'numberWithUnitsString' value if use has not input any" +
+      'value',
+    () => {
+      spyOn(component.valueChanged, 'emit');
+      component.value = null;
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.numberWithUnitsString).toBeUndefined();
-    expect(component.valueChanged.emit).not
-      .toHaveBeenCalledWith(component.value);
-  });
+      expect(component.numberWithUnitsString).toBeUndefined();
+      expect(component.valueChanged.emit).not.toHaveBeenCalledWith(
+        component.value
+      );
+    }
+  );
 
   it('should update value when the user types in the text input field', () => {
     spyOn(component.valueChanged, 'emit');
@@ -84,27 +95,40 @@ describe('NumberWithUnitsEditorComponent', () => {
         isNegative: false,
         wholeNumber: 0,
         numerator: 0,
-        denominator: 1
+        denominator: 1,
       },
       units: [
         {
           unit: 'm',
-          exponent: 1
-        }
-      ]
+          exponent: 1,
+        },
+      ],
     });
 
     component.updateValue('24kg');
 
     expect(component.value?.real).toBe(24);
     expect(component.value?.units[0].unit).toBe('kg');
-    expect(component.errorMessage).toBe('');
+    expect(component.errorMessageI18nKey).toBe('');
     expect(component.valueChanged.emit).toHaveBeenCalledWith(component.value);
   });
 
   it('should display error message when user enters incorrect units', () => {
     component.updateValue('23 kf');
 
-    expect(component.errorMessage).toBe('Unit "kf" not found.');
+    expect(component.errorMessageI18nKey).toBe('Unit "kf" not found.');
+  });
+
+  it('should correctly parse number with comma as decimal separator', () => {
+    const i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
+    i18nLanguageCodeService.setI18nLanguageCode('pt-br');
+    spyOn(component.valueChanged, 'emit');
+
+    component.updateValue('1,5 kg');
+
+    expect(component.value?.real).toBe(1.5);
+    expect(component.value?.units[0].unit).toBe('kg');
+    expect(component.errorMessageI18nKey).toBe('');
+    expect(component.valueChanged.emit).toHaveBeenCalledWith(component.value);
   });
 });

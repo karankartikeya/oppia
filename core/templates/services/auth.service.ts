@@ -16,20 +16,19 @@
  * @fileoverview Service for managing the authorizations of logged-in users.
  */
 
-import { Injectable, Optional } from '@angular/core';
-import { FirebaseOptions } from '@angular/fire';
-import { AngularFireAuth } from '@angular/fire/auth';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable, Optional} from '@angular/core';
+import {FirebaseOptions} from '@angular/fire';
+import {AngularFireAuth} from '@angular/fire/auth';
 import firebase from 'firebase/app';
 import 'firebase/auth';
-import { md5 } from 'hash-wasm';
+import {md5} from 'hash-wasm';
 
-import { AppConstants } from 'app.constants';
-import { AuthBackendApiService } from 'services/auth-backend-api.service';
+import {AppConstants} from 'app.constants';
+import {AuthBackendApiService} from 'services/auth-backend-api.service';
+import {SignInEventService} from 'services/sign-in-event.service';
 
 abstract class AuthServiceImpl {
-  abstract getRedirectResultAsync():
-   Promise<firebase.auth.UserCredential | null>;
+  abstract getRedirectResultAsync(): Promise<firebase.auth.UserCredential | null>;
   abstract signInWithRedirectAsync(): Promise<void>;
   abstract signOutAsync(): Promise<void>;
 }
@@ -55,8 +54,7 @@ class DevAuthServiceImpl extends AuthServiceImpl {
     super();
   }
 
-  async signInWithRedirectAsync(): Promise<void> {
-  }
+  async signInWithRedirectAsync(): Promise<void> {}
 
   async getRedirectResultAsync(): Promise<firebase.auth.UserCredential | null> {
     return null;
@@ -94,15 +92,17 @@ class ProdAuthServiceImpl extends AuthServiceImpl {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class AuthService {
   private authServiceImpl: AuthServiceImpl;
   creds!: firebase.auth.UserCredential;
 
   constructor(
-      @Optional() private angularFireAuth: AngularFireAuth | null,
-      private authBackendApiService: AuthBackendApiService) {
+    @Optional() private angularFireAuth: AngularFireAuth | null,
+    private authBackendApiService: AuthBackendApiService,
+    private signInEventService: SignInEventService
+  ) {
     if (!this.angularFireAuth) {
       this.authServiceImpl = new NullAuthServiceImpl();
     } else if (AuthService.firebaseEmulatorIsEnabled) {
@@ -128,8 +128,9 @@ export class AuthService {
   }
 
   static get firebaseEmulatorConfig(): readonly [string, number] | undefined {
-    return AuthService.firebaseEmulatorIsEnabled ?
-      ['localhost', 9099] : undefined;
+    return AuthService.firebaseEmulatorIsEnabled
+      ? ['localhost', 9099]
+      : undefined;
   }
 
   async handleRedirectResultAsync(): Promise<boolean> {
@@ -161,14 +162,22 @@ export class AuthService {
     try {
       if (this.angularFireAuth !== null) {
         this.creds = await this.angularFireAuth.signInWithEmailAndPassword(
-          email, password);
+          email,
+          password
+        );
       }
+      // We use unknown type because we are unsure of the type of error
+      // that was thrown. Since the catch block cannot identify the
+      // specific type of error, we are unable to further optimise the
+      // code by introducing more types of errors.
     } catch (err: unknown) {
       if ((err as firebase.auth.Error).code === 'auth/user-not-found') {
         if (this.angularFireAuth !== null) {
           this.creds =
-           await this.angularFireAuth.createUserWithEmailAndPassword(
-             email, password);
+            await this.angularFireAuth.createUserWithEmailAndPassword(
+              email,
+              password
+            );
         }
       } else {
         throw err;
@@ -177,6 +186,7 @@ export class AuthService {
     if (this.creds?.user !== null) {
       const idToken = await this.creds.user.getIdToken();
       await this.authBackendApiService.beginSessionAsync(idToken);
+      this.signInEventService.onUserSignIn.emit();
     }
   }
 
@@ -189,6 +199,3 @@ export class AuthService {
     await this.authBackendApiService.endSessionAsync();
   }
 }
-
-angular.module('oppia').factory(
-  'AuthService', downgradeInjectable(AuthService));

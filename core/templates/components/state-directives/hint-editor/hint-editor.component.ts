@@ -16,92 +16,118 @@
  * @fileoverview Component for the hint editor.
  */
 
-require(
-  'components/forms/schema-based-editors/schema-based-editor.directive.ts');
-require('directives/angular-html-bind.directive.ts');
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {FormControl, FormGroup} from '@angular/forms';
+import {Subscription} from 'rxjs';
+import cloneDeep from 'lodash/cloneDeep';
+import {PageContextService} from 'services/page-context.service';
+import {EditabilityService} from 'services/editability.service';
+import {ExternalSaveService} from 'services/external-save.service';
+import {Hint} from 'domain/exploration/hint-object.model';
+import {ExplorationEditorPageConstants} from 'pages/exploration-editor-page/exploration-editor-page.constants';
+import {
+  CALCULATION_TYPE_CHARACTER,
+  HtmlLengthService,
+} from 'services/html-length.service';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
-require('domain/utilities/url-interpolation.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-property.service.ts');
-require('services/context.service.ts');
-require('services/editability.service.ts');
-require('services/external-save.service.ts');
+interface HintFormSchema {
+  type: 'html';
+  ui_config: object;
+}
 
-import { Subscription } from 'rxjs';
+@Component({
+  selector: 'oppia-hint-editor',
+  templateUrl: './hint-editor.component.html',
+  styleUrls: ['./hint-editor.component.css'],
+})
+export class HintEditorComponent implements OnInit, OnDestroy {
+  @Output() saveHint = new EventEmitter<void>();
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() hint!: Hint;
+  @Input() indexPlusOne!: number;
+  hintEditorIsOpen!: boolean;
+  hintMemento!: Hint;
+  editHintForm!: FormGroup;
+  HINT_FORM_SCHEMA!: HintFormSchema;
+  isEditable: boolean = false;
+  directiveSubscriptions = new Subscription();
 
-angular.module('oppia').component('hintEditor', {
-  bindings: {
-    hint: '=',
-    getIndexPlusOne: '&indexPlusOne',
-    getOnSaveFn: '&onSave',
-    showMarkAllAudioAsNeedingUpdateModalIfRequired: '='
-  },
-  template: require(
-    'components/state-directives/hint-editor/hint-editor.component.html'),
-  controllerAs: '$ctrl',
-  controller: [
-    'ContextService', 'EditabilityService',
-    'ExternalSaveService', 'StateHintsService',
-    function(
-        ContextService, EditabilityService,
-        ExternalSaveService, StateHintsService) {
-      var ctrl = this;
-      ctrl.directiveSubscriptions = new Subscription();
-      ctrl.openHintEditor = function() {
-        if (ctrl.isEditable) {
-          ctrl.hintMemento = angular.copy(ctrl.hint);
-          ctrl.hintEditorIsOpen = true;
-        }
-      };
+  constructor(
+    private pageContextService: PageContextService,
+    private editabilityService: EditabilityService,
+    private externalSaveService: ExternalSaveService,
+    private htmlLengthService: HtmlLengthService
+  ) {}
 
-      ctrl.saveThisHint = function() {
-        ctrl.hintEditorIsOpen = false;
-        var contentHasChanged = (
-          ctrl.hintMemento.hintContent.html !==
-          ctrl.hint.hintContent.html);
-        ctrl.hintMemento = null;
-        if (contentHasChanged) {
-          var hintContentId = ctrl.hint.hintContent.contentId;
-          ctrl.showMarkAllAudioAsNeedingUpdateModalIfRequired(
-            [hintContentId]);
-        }
-        ctrl.getOnSaveFn()();
-      };
+  getSchema(): HintFormSchema {
+    return this.HINT_FORM_SCHEMA;
+  }
 
-      ctrl.cancelThisHintEdit = function() {
-        ctrl.hint.hintContent =
-          angular.copy(ctrl.hintMemento.hintContent);
-        ctrl.hintMemento = null;
-        ctrl.hintEditorIsOpen = false;
-      };
+  updateHintContentHtml(value: SchemaDefaultValue): void {
+    this.hint.hintContent._html = typeof value === 'string' ? value : '';
+  }
 
-      ctrl.$onInit = function() {
-        ctrl.directiveSubscriptions.add(
-          ExternalSaveService.onExternalSave.subscribe(() => {
-            if (ctrl.hintEditorIsOpen &&
-                  ctrl.editHintForm.$valid) {
-              ctrl.saveThisHint();
-            }
-          }));
-        ctrl.isEditable = EditabilityService.isEditable();
-        ctrl.StateHintsService = StateHintsService;
-        ctrl.editHintForm = {};
-        ctrl.hintEditorIsOpen = false;
-
-        ctrl.HINT_FORM_SCHEMA = {
-          type: 'html',
-          ui_config: {
-            hide_complex_extensions: (
-              ContextService.getEntityType() === 'question')
-          }
-        };
-
-        ctrl.hintMemento = null;
-      };
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
+  openHintEditor(): void {
+    if (this.isEditable) {
+      this.hintMemento = cloneDeep(this.hint);
+      this.hintEditorIsOpen = true;
     }
-  ]
-});
+  }
+
+  isHintLengthExceeded(): boolean {
+    return Boolean(
+      this.htmlLengthService.computeHtmlLength(
+        this.hint.hintContent._html,
+        CALCULATION_TYPE_CHARACTER
+      ) > ExplorationEditorPageConstants.HINT_CHARACTER_LIMIT
+    );
+  }
+
+  saveThisHint(): void {
+    this.hintEditorIsOpen = false;
+    this.saveHint.emit();
+  }
+
+  cancelThisHintEdit(): void {
+    this.hint.hintContent = cloneDeep(this.hintMemento.hintContent);
+    this.hintEditorIsOpen = false;
+  }
+
+  ngOnInit(): void {
+    this.editHintForm = new FormGroup({
+      schemaBasedEditor: new FormControl(''),
+    });
+
+    this.directiveSubscriptions.add(
+      this.externalSaveService.onExternalSave.subscribe(() => {
+        if (this.hintEditorIsOpen && this.editHintForm.valid) {
+          this.saveThisHint();
+        }
+      })
+    );
+    this.isEditable = this.editabilityService.isEditable();
+    this.hintEditorIsOpen = false;
+    this.HINT_FORM_SCHEMA = {
+      type: 'html',
+      ui_config: {
+        rte_component_config_id: 'ALL_COMPONENTS',
+        hide_complex_extensions:
+          this.pageContextService.getEntityType() === 'question',
+      },
+    };
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

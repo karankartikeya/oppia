@@ -16,15 +16,134 @@
 
 """Classes for interpreting typed objects in Oppia."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import copy
 import json
 
-from core import python_utils
 from core import schema_utils
 from core.constants import constants
+
+from typing import Any, Dict, List, Optional, Union
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
+
+    from typing import TypedDict
+
+    class CheckedProofDict(TypedDict):
+        """Dictionary representing the CheckedProof object."""
+
+        assumptions_string: str
+        target_string: str
+        proof_string: str
+        correct: bool
+        error_category: str
+        error_code: str
+        error_message: str
+        error_line_number: str
+
+    class FractionDict(TypedDict):
+        """Dictionary representing the Fraction object."""
+
+        isNegative: bool
+        wholeNumber: int
+        numerator: int
+        denominator: int
+
+    class CodeEvaluationDict(TypedDict):
+        """Dictionary representing the CodeEvaluation object."""
+
+        code: str
+        output: str
+        evaluation: str
+        error: str
+
+    class MathExpressionContentDict(TypedDict):
+        """Dictionary representing the MathExpressionContent object."""
+
+        raw_latex: str
+        svg_filename: str
+
+    class MusicPhraseDict(TypedDict):
+        """Dictionary representing the MusicPhrase object."""
+
+        readableNoteName: str
+        noteDuration: Dict[str, int]
+
+    class UnitsDict(TypedDict):
+        """Dictionary representing the Units object."""
+
+        unit: str
+        exponent: int
+
+    class NumberWithUnitsDict(TypedDict):
+        """Dictionary representing the NumberWithUnits object."""
+
+        type: str
+        real: float
+        fraction: FractionDict
+        units: List[UnitsDict]
+
+    class TranslatableSetOfUnicodeStringDict(TypedDict):
+        """Dictionary representing the TranslatableSetOfUnicodeString object."""
+
+        contentId: Optional[str]
+        unicodeStrSet: List[str]
+
+    class TranslatableUnicodeStringDict(TypedDict):
+        """Dictionary representing the TranslatableUnicodeString object."""
+
+        contentId: Optional[str]
+        unicodeStr: str
+
+    class TranslatableHtmlDict(TypedDict):
+        """Dictionary representing the TranslatableHtml object."""
+
+        contentId: Optional[str]
+        html: str
+
+    class TranslatableSetOfNormalizedStringDict(TypedDict):
+        """Dictionary representing the TranslatableSetOfNormalizedString
+        object.
+        """
+
+        contentId: Optional[str]
+        normalizedStrSet: List[str]
+
+    TranslatableObjectDefaultValueTypes = Union[
+        None,
+        TranslatableSetOfUnicodeStringDict,
+        TranslatableUnicodeStringDict,
+        TranslatableHtmlDict,
+        TranslatableSetOfNormalizedStringDict,
+    ]
+
+    AllowedDefaultValueTypes = Union[
+        str,
+        None,
+        float,
+        List[str],
+        List[int],
+        List[float],
+        List[List[str]],
+        List[List[float]],
+        List[UnitsDict],
+        List[domain.GraphDict],
+        List[CodeEvaluationDict],
+        List[MusicPhraseDict],
+        MathExpressionContentDict,
+        FractionDict,
+        NumberWithUnitsDict,
+        domain.GraphDict,
+        TranslatableObjectDefaultValueTypes,
+    ]
+
+    # Here we use type Any because here we are defining type variable for schema
+    # dictionaries, and in schema dictionaries, values can be of any type like
+    # str, Dict, nested Dict and etc.
+    SchemaDictType = Dict[str, Any]
 
 
 class BaseObject:
@@ -40,14 +159,19 @@ class BaseObject:
     """
 
     # These values should be overridden in subclasses.
-    description = ''
-    edit_js_filename = None
+    description: str = ''
+    edit_js_filename: Optional[str] = None
     # This should be non-null if the object class is used when specifying a
     # rule.
-    default_value = None
+    default_value: AllowedDefaultValueTypes = None
 
+    # TODO(#16047): Here we use type Any because BaseObject class is not
+    # implemented according to the strict typing which forces us to use Any
+    # here so that MyPy does not throw errors for different types of values
+    # used in sub-classes. Once this BaseObject is refactored, we can
+    # remove type Any from here.
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: Any) -> Any:
         """Validates and normalizes a raw Python object.
 
         Args:
@@ -62,6 +186,22 @@ class BaseObject:
         """
         return schema_utils.normalize_against_schema(raw, cls.get_schema())
 
+    # Here we use type Any because get_schema() returns a schema dictionary and
+    # values in a schema dictionary can be of type str, List, Dict, nested Dict
+    # and other types too.
+    @classmethod
+    def get_schema(cls) -> Dict[str, Any]:
+        """This method should be implemented by subclasses.
+
+        Raises:
+            NotImplementedError. The method is not overwritten in a derived
+                class.
+        """
+        raise NotImplementedError(
+            'The get_schema() method is missing from the derived class. It '
+            'should be implemented in the derived class.'
+        )
+
 
 class Boolean(BaseObject):
     """Class for booleans."""
@@ -70,18 +210,16 @@ class Boolean(BaseObject):
     edit_js_filename = 'BooleanEditor'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'bool'
-        }
+        return {'type': 'bool'}
 
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: Optional[Union[str, bool]]) -> bool:
         """Validates and normalizes a raw Python object.
 
         Args:
@@ -94,7 +232,10 @@ class Boolean(BaseObject):
         if raw is None or raw == '':
             raw = False
 
-        return schema_utils.normalize_against_schema(raw, cls.get_schema())
+        normalized_value: bool = schema_utils.normalize_against_schema(
+            raw, cls.get_schema()
+        )
+        return normalized_value
 
 
 class Real(BaseObject):
@@ -104,15 +245,13 @@ class Real(BaseObject):
     default_value = 0.0
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'float'
-        }
+        return {'type': 'float'}
 
 
 class Int(BaseObject):
@@ -122,15 +261,13 @@ class Int(BaseObject):
     default_value = 0
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'int'
-        }
+        return {'type': 'int'}
 
 
 class UnicodeString(BaseObject):
@@ -140,7 +277,7 @@ class UnicodeString(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
@@ -157,7 +294,7 @@ class Html(BaseObject):
     description = 'An HTML string.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
@@ -175,7 +312,7 @@ class SubtitledUnicode(BaseObject):
     description = 'A dictionary with properties "content_id" and "unicode".'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -183,20 +320,18 @@ class SubtitledUnicode(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'content_id',
-                'schema': {
-                    # The default content id is none. However, it should be
-                    # populated before being saved (SubtitledUnicode in
-                    # state_domain has validation checks for this).
-                    'type': 'unicode_or_none'
-                }
-            }, {
-                'name': 'unicode_str',
-                'schema': {
-                    'type': 'unicode'
-                }
-            }]
+            'properties': [
+                {
+                    'name': 'content_id',
+                    'schema': {
+                        # The default content id is none. However, it should be
+                        # populated before being saved (SubtitledUnicode in
+                        # state_domain has validation checks for this).
+                        'type': 'unicode_or_none'
+                    },
+                },
+                {'name': 'unicode_str', 'schema': {'type': 'unicode'}},
+            ],
         }
 
 
@@ -207,7 +342,7 @@ class SubtitledHtml(BaseObject):
     description = 'A dictionary with properties "content_id" and "html".'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -215,20 +350,18 @@ class SubtitledHtml(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'content_id',
-                'schema': {
-                    # The default content id is none. However, it should be
-                    # populated before being saved (SubtitledHtml in
-                    # state_domain has validation checks for this).
-                    'type': 'unicode_or_none'
-                }
-            }, {
-                'name': 'html',
-                'schema': {
-                    'type': 'html'
-                }
-            }]
+            'properties': [
+                {
+                    'name': 'content_id',
+                    'schema': {
+                        # The default content id is none. However, it should be
+                        # populated before being saved (SubtitledHtml in
+                        # state_domain has validation checks for this).
+                        'type': 'unicode_or_none'
+                    },
+                },
+                {'name': 'html', 'schema': {'type': 'html'}},
+            ],
         }
 
 
@@ -239,7 +372,7 @@ class NonnegativeInt(BaseObject):
     default_value = 0
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -247,10 +380,7 @@ class NonnegativeInt(BaseObject):
         """
         return {
             'type': 'int',
-            'validators': [{
-                'id': 'is_at_least',
-                'min_value': 0
-            }]
+            'validators': [{'id': 'is_at_least', 'min_value': 0}],
         }
 
 
@@ -261,7 +391,7 @@ class PositiveInt(BaseObject):
     default_value = 1
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -269,10 +399,7 @@ class PositiveInt(BaseObject):
         """
         return {
             'type': 'int',
-            'validators': [{
-                'id': 'is_at_least',
-                'min_value': 1
-            }]
+            'validators': [{'id': 'is_at_least', 'min_value': 1}],
         }
 
 
@@ -285,7 +412,7 @@ class CodeString(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -299,7 +426,7 @@ class CodeString(BaseObject):
         }
 
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: str) -> str:
         """Validates and normalizes a raw Python object.
 
         Args:
@@ -308,11 +435,18 @@ class CodeString(BaseObject):
 
         Returns:
             unicode. The normalized object containing string in unicode format.
+
+        Raises:
+            TypeError. Unexpected tab characters in given python object 'raw'.
         """
         if '\t' in raw:
             raise TypeError(
-                'Unexpected tab characters in code string: %s' % raw)
-        return schema_utils.normalize_against_schema(raw, cls.get_schema())
+                'Unexpected tab characters in code string: %s' % raw
+            )
+        normalized_value: str = schema_utils.normalize_against_schema(
+            raw, cls.get_schema()
+        )
+        return normalized_value
 
 
 class CodeEvaluation(BaseObject):
@@ -321,7 +455,7 @@ class CodeEvaluation(BaseObject):
     description = 'Code and its evaluation results.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -329,19 +463,24 @@ class CodeEvaluation(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'code',
-                'schema': UnicodeString.get_schema(),
-            }, {
-                'name': 'output',
-                'schema': UnicodeString.get_schema(),
-            }, {
-                'name': 'evaluation',
-                'schema': UnicodeString.get_schema(),
-            }, {
-                'name': 'error',
-                'schema': UnicodeString.get_schema(),
-            }]
+            'properties': [
+                {
+                    'name': 'code',
+                    'schema': UnicodeString.get_schema(),
+                },
+                {
+                    'name': 'output',
+                    'schema': UnicodeString.get_schema(),
+                },
+                {
+                    'name': 'evaluation',
+                    'schema': UnicodeString.get_schema(),
+                },
+                {
+                    'name': 'error',
+                    'schema': UnicodeString.get_schema(),
+                },
+            ],
         }
 
 
@@ -349,19 +488,16 @@ class ListOfCodeEvaluation(BaseObject):
     """Class for lists of CodeEvaluations."""
 
     description = 'A list of code and its evaluation results.'
-    default_value = []
+    default_value: List[CodeEvaluationDict] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'list',
-            'items': CodeEvaluation.get_schema()
-        }
+        return {'type': 'list', 'items': CodeEvaluation.get_schema()}
 
 
 class CoordTwoDim(BaseObject):
@@ -371,7 +507,7 @@ class CoordTwoDim(BaseObject):
     default_value = [0.0, 0.0]
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -388,19 +524,16 @@ class ListOfCoordTwoDim(BaseObject):
     """Class for lists of CoordTwoDims."""
 
     description = 'A list of 2D coordinates.'
-    default_value = []
+    default_value: List[List[float]] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'list',
-            'items': CoordTwoDim.get_schema()
-        }
+        return {'type': 'list', 'items': CoordTwoDim.get_schema()}
 
 
 class ListOfUnicodeString(BaseObject):
@@ -409,26 +542,23 @@ class ListOfUnicodeString(BaseObject):
     description = 'A list.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'list',
-            'items': UnicodeString.get_schema()
-        }
+        return {'type': 'list', 'items': UnicodeString.get_schema()}
 
 
 class SetOfUnicodeString(BaseObject):
     """Class for sets of UnicodeStrings."""
 
     description = 'A set (a list with unique elements) of unicode strings.'
-    default_value = []
+    default_value: List[str] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -437,9 +567,7 @@ class SetOfUnicodeString(BaseObject):
         return {
             'type': 'list',
             'items': UnicodeString.get_schema(),
-            'validators': [{
-                'id': 'is_uniquified'
-            }]
+            'validators': [{'id': 'is_uniquified'}],
         }
 
 
@@ -450,7 +578,7 @@ class NormalizedString(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -458,9 +586,7 @@ class NormalizedString(BaseObject):
         """
         return {
             'type': 'unicode',
-            'post_normalizers': [{
-                'id': 'normalize_spaces'
-            }]
+            'post_normalizers': [{'id': 'normalize_spaces'}],
         }
 
 
@@ -468,11 +594,12 @@ class SetOfNormalizedString(BaseObject):
     """Class for sets of NormalizedStrings."""
 
     description = (
-        'A set (a list with unique elements) of whitespace-collapsed strings.')
-    default_value = []
+        'A set (a list with unique elements) of whitespace-collapsed strings.'
+    )
+    default_value: List[str] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -481,9 +608,7 @@ class SetOfNormalizedString(BaseObject):
         return {
             'type': 'list',
             'items': NormalizedString.get_schema(),
-            'validators': [{
-                'id': 'is_uniquified'
-            }]
+            'validators': [{'id': 'is_uniquified'}],
         }
 
 
@@ -491,13 +616,13 @@ class MathExpressionContent(BaseObject):
     """Math Expression Content class."""
 
     description = 'The Math Expression to be displayed.'
-    default_value = {
+    default_value: MathExpressionContentDict = {
         'raw_latex': '',
-        'svg_filename': ''
+        'svg_filename': '',
     }
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -505,19 +630,18 @@ class MathExpressionContent(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'raw_latex',
-                'description': 'Latex value',
-                'schema': {
-                    'type': 'unicode'
-                }
-            }, {
-                'name': 'svg_filename',
-                'description': 'SVG filename',
-                'schema': {
-                    'type': 'unicode'
-                }
-            }]
+            'properties': [
+                {
+                    'name': 'raw_latex',
+                    'description': 'Latex value',
+                    'schema': {'type': 'unicode'},
+                },
+                {
+                    'name': 'svg_filename',
+                    'description': 'SVG filename',
+                    'schema': {'type': 'unicode'},
+                },
+            ],
         }
 
 
@@ -527,7 +651,7 @@ class SanitizedUrl(BaseObject):
     description = 'An HTTP or HTTPS url.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -535,15 +659,9 @@ class SanitizedUrl(BaseObject):
         """
         return {
             'type': 'unicode',
-            'validators': [{
-                'id': 'is_nonempty'
-            }],
-            'ui_config': {
-                'placeholder': 'https://www.example.com'
-            },
-            'post_normalizers': [{
-                'id': 'sanitize_url'
-            }]
+            'validators': [{'id': 'is_nonempty'}],
+            'ui_config': {'placeholder': 'https://www.example.com'},
+            'post_normalizers': [{'id': 'sanitize_url'}],
         }
 
 
@@ -553,7 +671,7 @@ class SkillSelector(BaseObject):
     description = 'The skill summary for the concept card.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -561,9 +679,7 @@ class SkillSelector(BaseObject):
         """
         return {
             'type': 'unicode',
-            'ui_config': {
-                'placeholder': 'Search for skill'
-            }
+            'ui_config': {'placeholder': 'Search for skill'},
         }
 
 
@@ -572,22 +688,20 @@ class MusicPhrase(BaseObject):
 
     description = (
         'A musical phrase that contains zero or more notes, rests, '
-        'and time signature.')
-    default_value = []
+        'and time signature.'
+    )
+    default_value: List[MusicPhraseDict] = []
 
     # The maximum number of notes allowed in a music phrase.
     _MAX_NOTES_IN_PHRASE = 8
 
     _FRACTION_PART_SCHEMA = {
         'type': 'int',
-        'validators': [{
-            'id': 'is_at_least',
-            'min_value': 1
-        }]
+        'validators': [{'id': 'is_at_least', 'min_value': 1}],
     }
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -597,33 +711,52 @@ class MusicPhrase(BaseObject):
             'type': 'list',
             'items': {
                 'type': 'dict',
-                'properties': [{
-                    'name': 'readableNoteName',
-                    'schema': {
-                        'type': 'unicode',
-                        'choices': [
-                            'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5',
-                            'D5', 'E5', 'F5', 'G5', 'A5'
-                        ]
-                    }
-                }, {
-                    'name': 'noteDuration',
-                    'schema': {
-                        'type': 'dict',
-                        'properties': [{
-                            'name': 'num',
-                            'schema': cls._FRACTION_PART_SCHEMA
-                        }, {
-                            'name': 'den',
-                            'schema': cls._FRACTION_PART_SCHEMA
-                        }]
-                    }
-                }],
+                'properties': [
+                    {
+                        'name': 'readableNoteName',
+                        'schema': {
+                            'type': 'unicode',
+                            'choices': [
+                                'C4',
+                                'D4',
+                                'E4',
+                                'F4',
+                                'G4',
+                                'A4',
+                                'B4',
+                                'C5',
+                                'D5',
+                                'E5',
+                                'F5',
+                                'G5',
+                                'A5',
+                            ],
+                        },
+                    },
+                    {
+                        'name': 'noteDuration',
+                        'schema': {
+                            'type': 'dict',
+                            'properties': [
+                                {
+                                    'name': 'num',
+                                    'schema': cls._FRACTION_PART_SCHEMA,
+                                },
+                                {
+                                    'name': 'den',
+                                    'schema': cls._FRACTION_PART_SCHEMA,
+                                },
+                            ],
+                        },
+                    },
+                ],
             },
-            'validators': [{
-                'id': 'has_length_at_most',
-                'max_value': cls._MAX_NOTES_IN_PHRASE,
-            }]
+            'validators': [
+                {
+                    'id': 'has_length_at_most',
+                    'max_value': cls._MAX_NOTES_IN_PHRASE,
+                }
+            ],
         }
 
 
@@ -633,7 +766,7 @@ class ListOfTabs(BaseObject):
     description = 'Tab content that contains list of tabs.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -643,29 +776,26 @@ class ListOfTabs(BaseObject):
             'type': 'list',
             'items': {
                 'type': 'dict',
-                'properties': [{
-                    'name': 'title',
-                    'description': 'Tab title',
-                    'schema': {
-                        'type': 'unicode',
-                        'validators': [{
-                            'id': 'is_nonempty'
-                        }]
-                    }
-                }, {
-                    'name': 'content',
-                    'description': 'Tab content',
-                    'schema': {
-                        'type': 'html',
-                        'ui_config': {
-                            'hide_complex_extensions': True
-                        }
-                    }
-                }]
+                'properties': [
+                    {
+                        'name': 'title',
+                        'description': 'Tab title',
+                        'schema': {
+                            'type': 'unicode',
+                            'validators': [{'id': 'is_nonempty'}],
+                        },
+                    },
+                    {
+                        'name': 'content',
+                        'description': 'Tab content',
+                        'schema': {
+                            'type': 'html',
+                            'ui_config': {'hide_complex_extensions': True},
+                        },
+                    },
+                ],
             },
-            'ui_config': {
-                'add_element_text': 'Add new tab'
-            }
+            'ui_config': {'add_element_text': 'Add new tab'},
         }
 
 
@@ -678,7 +808,7 @@ class Filepath(BaseObject):
     description = 'A string that represents a filepath'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
@@ -695,7 +825,7 @@ class SvgFilename(BaseObject):
     description = 'A string representing the saved svg filename'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
@@ -710,7 +840,7 @@ class CheckedProof(BaseObject):
     description = 'A proof attempt and any errors it makes.'
 
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: CheckedProofDict) -> CheckedProofDict:
         """Validates and normalizes a raw Python object.
 
         Args:
@@ -736,64 +866,51 @@ class CheckedProof(BaseObject):
         """
         try:
             assert isinstance(raw, dict)
-            assert isinstance(
-                raw['assumptions_string'], python_utils.BASESTRING)
-            assert isinstance(raw['target_string'], python_utils.BASESTRING)
-            assert isinstance(raw['proof_string'], python_utils.BASESTRING)
+            assert isinstance(raw['assumptions_string'], str)
+            assert isinstance(raw['target_string'], str)
+            assert isinstance(raw['proof_string'], str)
             assert raw['correct'] in [True, False]
             if not raw['correct']:
-                assert isinstance(
-                    raw['error_category'], python_utils.BASESTRING)
-                assert isinstance(raw['error_code'], python_utils.BASESTRING)
-                assert isinstance(
-                    raw['error_message'], python_utils.BASESTRING)
+                assert isinstance(raw['error_category'], str)
+                assert isinstance(raw['error_code'], str)
+                assert isinstance(raw['error_message'], str)
                 assert isinstance(raw['error_line_number'], int)
             return copy.deepcopy(raw)
-        except Exception:
-            raise TypeError('Cannot convert to checked proof %s' % raw)
+        except Exception as e:
+            raise TypeError('Cannot convert to checked proof %s' % raw) from e
 
 
 class Graph(BaseObject):
     """A (mathematical) graph with edges and vertices."""
 
     description = 'A (mathematical) graph'
-    default_value = {
+    default_value: domain.GraphDict = {
         'edges': [],
         'isDirected': False,
         'isLabeled': False,
         'isWeighted': False,
-        'vertices': []
+        'vertices': [],
     }
 
     _VERTEX_SCHEMA = {
         'type': 'dict',
-        'properties': [{
-            'name': 'x',
-            'schema': Real.get_schema()
-        }, {
-            'name': 'y',
-            'schema': Real.get_schema()
-        }, {
-            'name': 'label',
-            'schema': UnicodeString.get_schema()
-        }]
+        'properties': [
+            {'name': 'x', 'schema': Real.get_schema()},
+            {'name': 'y', 'schema': Real.get_schema()},
+            {'name': 'label', 'schema': UnicodeString.get_schema()},
+        ],
     }
     _EDGE_SCHEMA = {
         'type': 'dict',
-        'properties': [{
-            'name': 'src',
-            'schema': Int.get_schema()
-        }, {
-            'name': 'dst',
-            'schema': Int.get_schema()
-        }, {
-            'name': 'weight',
-            'schema': Int.get_schema()
-        }]
+        'properties': [
+            {'name': 'src', 'schema': Int.get_schema()},
+            {'name': 'dst', 'schema': Int.get_schema()},
+            {'name': 'weight', 'schema': Int.get_schema()},
+        ],
     }
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -801,38 +918,28 @@ class Graph(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'vertices',
-                'schema': {
-                    'type': 'list',
-                    'items': cls._VERTEX_SCHEMA
-                }
-            }, {
-                'name': 'edges',
-                'schema': {
-                    'type': 'list',
-                    'items': cls._EDGE_SCHEMA
-                }
-            }, {
-                'name': 'isLabeled',
-                'schema': Boolean.get_schema()
-            }, {
-                'name': 'isDirected',
-                'schema': Boolean.get_schema()
-            }, {
-                'name': 'isWeighted',
-                'schema': Boolean.get_schema()
-            }]
+            'properties': [
+                {
+                    'name': 'vertices',
+                    'schema': {'type': 'list', 'items': cls._VERTEX_SCHEMA},
+                },
+                {
+                    'name': 'edges',
+                    'schema': {'type': 'list', 'items': cls._EDGE_SCHEMA},
+                },
+                {'name': 'isLabeled', 'schema': Boolean.get_schema()},
+                {'name': 'isDirected', 'schema': Boolean.get_schema()},
+                {'name': 'isWeighted', 'schema': Boolean.get_schema()},
+            ],
         }
 
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: domain.GraphDict) -> domain.GraphDict:
         """Validates and normalizes a raw Python object.
 
         Checks that there are no self-loops or multiple edges.
         Checks that unlabeled graphs have all labels empty.
         Checks that unweighted graphs have all weights set to 1.
-        TODO(czx): Think about support for multigraphs?
 
         Args:
             raw: *. A Python object to be validated against the schema,
@@ -858,16 +965,16 @@ class Graph(BaseObject):
 
             if raw['isDirected']:
                 edge_pairs = [
-                    (edge['src'], edge['dst']) for edge in raw['edges']]
+                    (edge['src'], edge['dst']) for edge in raw['edges']
+                ]
             else:
-                edge_pairs = (
-                    [(edge['src'], edge['dst']) for edge in raw['edges']] +
-                    [(edge['dst'], edge['src']) for edge in raw['edges']]
-                )
+                edge_pairs = [
+                    (edge['src'], edge['dst']) for edge in raw['edges']
+                ] + [(edge['dst'], edge['src']) for edge in raw['edges']]
             assert len(set(edge_pairs)) == len(edge_pairs)
 
-        except Exception:
-            raise TypeError('Cannot convert to graph %s' % raw)
+        except Exception as e:
+            raise TypeError('Cannot convert to graph %s' % raw) from e
 
         return raw
 
@@ -879,7 +986,7 @@ class GraphProperty(BaseObject):
     default_value = 'strongly_connected'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, Union[str, List[str]]]:
         """Returns the object schema.
 
         Returns:
@@ -888,8 +995,11 @@ class GraphProperty(BaseObject):
         return {
             'type': 'unicode',
             'choices': [
-                'strongly_connected', 'weakly_connected', 'acyclic', 'regular'
-            ]
+                'strongly_connected',
+                'weakly_connected',
+                'acyclic',
+                'regular',
+            ],
         }
 
 
@@ -897,19 +1007,16 @@ class ListOfGraph(BaseObject):
     """Class for lists of Graphs."""
 
     description = 'A list of graphs.'
-    default_value = []
+    default_value: List[domain.GraphDict] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'list',
-            'items': Graph.get_schema()
-        }
+        return {'type': 'list', 'items': Graph.get_schema()}
 
 
 class NormalizedRectangle2D(BaseObject):
@@ -917,10 +1024,11 @@ class NormalizedRectangle2D(BaseObject):
 
     description = (
         'A rectangle normalized so that the coordinates are within the range '
-        '[0,1].')
+        '[0,1].'
+    )
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -929,15 +1037,11 @@ class NormalizedRectangle2D(BaseObject):
         return {
             'type': 'list',
             'len': 2,
-            'items': {
-                'type': 'list',
-                'len': 2,
-                'items': Real.get_schema()
-            }
+            'items': {'type': 'list', 'len': 2, 'items': Real.get_schema()},
         }
 
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: List[List[float]]) -> List[List[float]]:
         """Returns the normalized coordinates of the rectangle.
 
         Args:
@@ -951,7 +1055,8 @@ class NormalizedRectangle2D(BaseObject):
         Raises:
             TypeError. Cannot convert to the NormalizedRectangle2D schema.
         """
-        def clamp(value):
+
+        def clamp(value: float) -> float:
             """Clamps a number to range [0, 1].
 
             Args:
@@ -970,8 +1075,10 @@ class NormalizedRectangle2D(BaseObject):
             raw[1][0] = clamp(raw[1][0])
             raw[1][1] = clamp(raw[1][1])
 
-        except Exception:
-            raise TypeError('Cannot convert to Normalized Rectangle %s' % raw)
+        except Exception as e:
+            raise TypeError(
+                'Cannot convert to Normalized Rectangle %s' % raw
+            ) from e
 
         return raw
 
@@ -986,7 +1093,7 @@ class ImageRegion(BaseObject):
     #   [[top-left-x, top-left-y], [bottom-right-x, bottom-right-y]].
     # Origin is top-left, increasing x is to the right, increasing y is down.
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -994,13 +1101,10 @@ class ImageRegion(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'regionType',
-                'schema': UnicodeString.get_schema()
-            }, {
-                'name': 'area',
-                'schema': NormalizedRectangle2D.get_schema()
-            }]
+            'properties': [
+                {'name': 'regionType', 'schema': UnicodeString.get_schema()},
+                {'name': 'area', 'schema': NormalizedRectangle2D.get_schema()},
+            ],
         }
 
 
@@ -1010,7 +1114,7 @@ class ImageWithRegions(BaseObject):
     description = 'An image overlaid with regions.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1018,25 +1122,28 @@ class ImageWithRegions(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'imagePath',
-                'schema': Filepath.get_schema()
-            }, {
-                'name': 'labeledRegions',
-                'schema': {
-                    'type': 'list',
-                    'items': {
-                        'type': 'dict',
-                        'properties': [{
-                            'name': 'label',
-                            'schema': UnicodeString.get_schema()
-                        }, {
-                            'name': 'region',
-                            'schema': ImageRegion.get_schema()
-                        }]
-                    }
-                }
-            }]
+            'properties': [
+                {'name': 'imagePath', 'schema': Filepath.get_schema()},
+                {
+                    'name': 'labeledRegions',
+                    'schema': {
+                        'type': 'list',
+                        'items': {
+                            'type': 'dict',
+                            'properties': [
+                                {
+                                    'name': 'label',
+                                    'schema': UnicodeString.get_schema(),
+                                },
+                                {
+                                    'name': 'region',
+                                    'schema': ImageRegion.get_schema(),
+                                },
+                            ],
+                        },
+                    },
+                },
+            ],
         }
 
 
@@ -1046,7 +1153,7 @@ class ClickOnImage(BaseObject):
     description = 'Position of a click and a list of regions clicked.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1054,20 +1161,23 @@ class ClickOnImage(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'clickPosition',
-                'schema': {
-                    'type': 'list',
-                    'items': Real.get_schema(),
-                    'len': 2
-                }
-            }, {
-                'name': 'clickedRegions',
-                'schema': {
-                    'type': 'list',
-                    'items': UnicodeString.get_schema()
-                }
-            }]
+            'properties': [
+                {
+                    'name': 'clickPosition',
+                    'schema': {
+                        'type': 'list',
+                        'items': Real.get_schema(),
+                        'len': 2,
+                    },
+                },
+                {
+                    'name': 'clickedRegions',
+                    'schema': {
+                        'type': 'list',
+                        'items': UnicodeString.get_schema(),
+                    },
+                },
+            ],
         }
 
 
@@ -1080,7 +1190,7 @@ class ParameterName(BaseObject):
     description = 'A string representing a parameter name.'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
@@ -1095,15 +1205,15 @@ class Fraction(BaseObject):
     """Fraction class."""
 
     description = 'A fraction type'
-    default_value = {
+    default_value: FractionDict = {
         'isNegative': False,
         'wholeNumber': 0,
         'numerator': 0,
-        'denominator': 1
+        'denominator': 1,
     }
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1111,21 +1221,12 @@ class Fraction(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'isNegative',
-                'schema': {
-                    'type': 'bool'
-                }
-            }, {
-                'name': 'wholeNumber',
-                'schema': NonnegativeInt.get_schema()
-            }, {
-                'name': 'numerator',
-                'schema': NonnegativeInt.get_schema()
-            }, {
-                'name': 'denominator',
-                'schema': PositiveInt.get_schema()
-            }]
+            'properties': [
+                {'name': 'isNegative', 'schema': {'type': 'bool'}},
+                {'name': 'wholeNumber', 'schema': NonnegativeInt.get_schema()},
+                {'name': 'numerator', 'schema': NonnegativeInt.get_schema()},
+                {'name': 'denominator', 'schema': PositiveInt.get_schema()},
+            ],
         }
 
 
@@ -1136,10 +1237,10 @@ class Units(BaseObject):
     # math.js is not available in the backend.
 
     description = 'A list of unit dict components.'
-    default_value = []
+    default_value: List[UnitsDict] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1149,18 +1250,11 @@ class Units(BaseObject):
             'type': 'list',
             'items': {
                 'type': 'dict',
-                'properties': [{
-                    'name': 'unit',
-                    'schema': {
-                        'type': 'unicode'
-                    }
-                }, {
-                    'name': 'exponent',
-                    'schema': {
-                        'type': 'int'
-                    }
-                }]
-            }
+                'properties': [
+                    {'name': 'unit', 'schema': {'type': 'unicode'}},
+                    {'name': 'exponent', 'schema': {'type': 'int'}},
+                ],
+            },
         }
 
 
@@ -1168,15 +1262,15 @@ class NumberWithUnits(BaseObject):
     """Number with units class."""
 
     description = 'A number with units expression.'
-    default_value = {
+    default_value: NumberWithUnitsDict = {
         'type': 'real',
         'real': 0.0,
         'fraction': Fraction.default_value,
-        'units': Units.default_value
+        'units': Units.default_value,
     }
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1184,23 +1278,12 @@ class NumberWithUnits(BaseObject):
         """
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'type',
-                'schema': {
-                    'type': 'unicode'
-                }
-            }, {
-                'name': 'real',
-                'schema': {
-                    'type': 'float'
-                }
-            }, {
-                'name': 'fraction',
-                'schema': Fraction.get_schema()
-            }, {
-                'name': 'units',
-                'schema': Units.get_schema()
-            }]
+            'properties': [
+                {'name': 'type', 'schema': {'type': 'unicode'}},
+                {'name': 'real', 'schema': {'type': 'float'}},
+                {'name': 'fraction', 'schema': Fraction.get_schema()},
+                {'name': 'units', 'schema': Units.get_schema()},
+            ],
         }
 
 
@@ -1210,12 +1293,13 @@ class DragAndDropPositiveInt(BaseObject):
     """
 
     description = (
-        'The rank(position) of a drag and drop item in the given list of sets' +
-        'of drag and drop items.')
+        'The rank(position) of a drag and drop item in the given list of sets'
+        'of drag and drop items.'
+    )
     default_value = 1
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1233,7 +1317,7 @@ class AlgebraicExpression(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1241,9 +1325,7 @@ class AlgebraicExpression(BaseObject):
         """
         return {
             'type': 'unicode',
-            'validators': [{
-                'id': 'is_valid_algebraic_expression'
-            }]
+            'validators': [{'id': 'is_valid_algebraic_expression'}],
         }
 
 
@@ -1257,16 +1339,13 @@ class OskCharacters(BaseObject):
     default_value = 'a'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
             dict. The object schema.
         """
-        return {
-            'type': 'unicode',
-            'choices': constants.VALID_CUSTOM_OSK_LETTERS
-        }
+        return {'type': 'unicode', 'choices': constants.VALID_ALLOWED_VARIABLES}
 
 
 class AlgebraicIdentifier(BaseObject):
@@ -1279,7 +1358,7 @@ class AlgebraicIdentifier(BaseObject):
     default_value = 'x'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1287,7 +1366,7 @@ class AlgebraicIdentifier(BaseObject):
         """
         return {
             'type': 'unicode',
-            'choices': constants.VALID_ALGEBRAIC_IDENTIFIERS
+            'choices': constants.VALID_ALGEBRAIC_IDENTIFIERS,
         }
 
 
@@ -1295,11 +1374,12 @@ class SetOfAlgebraicIdentifier(BaseObject):
     """Class for sets of AlgebraicIdentifiers."""
 
     description = (
-        'A set (a list with unique elements) of algebraic identifiers.')
-    default_value = []
+        'A set (a list with unique elements) of algebraic identifiers.'
+    )
+    default_value: List[str] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1308,9 +1388,7 @@ class SetOfAlgebraicIdentifier(BaseObject):
         return {
             'type': 'list',
             'items': AlgebraicIdentifier.get_schema(),
-            'validators': [{
-                'id': 'is_uniquified'
-            }]
+            'validators': [{'id': 'is_uniquified'}],
         }
 
 
@@ -1323,7 +1401,7 @@ class MathEquation(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1331,9 +1409,7 @@ class MathEquation(BaseObject):
         """
         return {
             'type': 'unicode',
-            'validators': [{
-                'id': 'is_valid_math_equation'
-            }]
+            'validators': [{'id': 'is_valid_math_equation'}],
         }
 
 
@@ -1346,7 +1422,7 @@ class NumericExpression(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1354,10 +1430,9 @@ class NumericExpression(BaseObject):
         """
         return {
             'type': 'unicode',
-            'validators': [{
-                'id': 'is_valid_math_expression',
-                'algebraic': False
-            }]
+            'validators': [
+                {'id': 'is_valid_math_expression', 'algebraic': False}
+            ],
         }
 
 
@@ -1367,11 +1442,12 @@ class PositionOfTerms(BaseObject):
     """
 
     description = (
-        'The position of terms relative to the equals sign in a math equation.')
+        'The position of terms relative to the equals sign in a math equation.'
+    )
     default_value = 'both'
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1379,7 +1455,7 @@ class PositionOfTerms(BaseObject):
         """
         return {
             'type': 'unicode',
-            'choices': ['lhs', 'rhs', 'both', 'irrelevant']
+            'choices': ['lhs', 'rhs', 'both', 'irrelevant'],
         }
 
 
@@ -1392,7 +1468,7 @@ class RatioExpression(BaseObject):
     default_value = [1, 1]
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1401,14 +1477,11 @@ class RatioExpression(BaseObject):
         return {
             'type': 'list',
             'items': PositiveInt.get_schema(),
-            'validators': [{
-                'id': 'has_length_at_least',
-                'min_value': 2
-            }]
+            'validators': [{'id': 'has_length_at_least', 'min_value': 2}],
         }
 
 
-class CustomOskLetters(BaseObject):
+class AllowedVariables(BaseObject):
     """Class for custom OSK letters. These are the letters that will be
     displayed to the learner for AlgebraicExpressionInput and MathEquationInput
     interactions when the on-screen keyboard is being used. This includes Latin
@@ -1418,11 +1491,12 @@ class CustomOskLetters(BaseObject):
     description = (
         'Shortcut variables that the learner can access in the '
         'on-screen keyboard. (The order of these variables will be reflected '
-        'in the learner\'s keyboard)')
-    default_value = []
+        'in the learner\'s keyboard)'
+    )
+    default_value: List[str] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1431,9 +1505,7 @@ class CustomOskLetters(BaseObject):
         return {
             'type': 'list',
             'items': OskCharacters.get_schema(),
-            'validators': [{
-                'id': 'is_uniquified'
-            }]
+            'validators': [{'id': 'is_uniquified'}],
         }
 
 
@@ -1443,7 +1515,7 @@ class TranslatableHtmlContentId(BaseObject):
     default_value = ''
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> Dict[str, str]:
         """Returns the object schema.
 
         Returns:
@@ -1455,10 +1527,10 @@ class TranslatableHtmlContentId(BaseObject):
 class SetOfTranslatableHtmlContentIds(BaseObject):
     """A Set of TranslatableHtml content ids."""
 
-    default_value = []
+    default_value: List[str] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1467,19 +1539,17 @@ class SetOfTranslatableHtmlContentIds(BaseObject):
         return {
             'type': 'list',
             'items': TranslatableHtmlContentId.get_schema(),
-            'validators': [{
-                'id': 'is_uniquified'
-            }]
+            'validators': [{'id': 'is_uniquified'}],
         }
 
 
 class ListOfSetsOfTranslatableHtmlContentIds(BaseObject):
     """List of sets of TranslatableHtml content ids."""
 
-    default_value = []
+    default_value: List[List[str]] = []
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the object schema.
 
         Returns:
@@ -1487,7 +1557,7 @@ class ListOfSetsOfTranslatableHtmlContentIds(BaseObject):
         """
         return {
             'type': 'list',
-            'items': SetOfTranslatableHtmlContentIds.get_schema()
+            'items': SetOfTranslatableHtmlContentIds.get_schema(),
         }
 
 
@@ -1502,16 +1572,18 @@ class BaseTranslatableObject(BaseObject):
 
     # The key name in the translatable object corresponding to the translatable
     # value. This field must be populated by subclasses.
-    _value_key_name = None
+    _value_key_name: Optional[str] = None
     # The schema of the translatable value. This field must be populated by
     # subclasses.
-    _value_schema = None
+    _value_schema: Optional[SchemaDictType] = None
     # The default value of the object. This field must be populated by
     # subclasses.
-    default_value = None
+    default_value: TranslatableObjectDefaultValueTypes = None
 
     @classmethod
-    def normalize_value(cls, value):
+    def normalize_value(
+        cls, value: Union[str, List[str]]
+    ) -> Union[str, List[str]]:
         """Normalizes the translatable value of the object.
 
         Args:
@@ -1520,36 +1592,52 @@ class BaseTranslatableObject(BaseObject):
 
         Returns:
             *. The normalized value.
+
+        Raises:
+            NotImplementedError. The _value_key_name or _value_schema
+                is not set.
         """
         if cls._value_key_name is None or cls._value_schema is None:
             raise NotImplementedError(
                 'The _value_key_name and _value_schema for this class must '
-                'both be set.')
-        return schema_utils.normalize_against_schema(value, cls._value_schema)
+                'both be set.'
+            )
+        normalized_value: Union[str, List[str]] = (
+            schema_utils.normalize_against_schema(value, cls._value_schema)
+        )
+        return normalized_value
 
     @classmethod
-    def get_schema(cls):
+    def get_schema(cls) -> SchemaDictType:
         """Returns the full object schema.
 
         Returns:
             dict. The object schema.
+
+        Raises:
+            NotImplementedError. The _value_key_name or _value_schema
+                is not set.
         """
         if cls._value_key_name is None or cls._value_schema is None:
             raise NotImplementedError(
                 'The _value_key_name and _value_schema for this class must '
-                'both be set.')
+                'both be set.'
+            )
         return {
             'type': 'dict',
-            'properties': [{
-                'name': 'contentId',
-                # The default content id is none. However, it should be
-                # populated before being saved. The normalize() method has
-                # validation checks for this.
-                'schema': {'type': 'unicode'}
-            }, {
-                'name': cls._value_key_name,
-                'schema': copy.deepcopy(cls._value_schema),
-            }]
+            'properties': [
+                {
+                    'name': 'contentId',
+                    # The default content id is none. However, it should be
+                    # populated before being saved. The normalize() method has
+                    # validation checks for this.
+                    'schema': {'type': 'unicode'},
+                },
+                {
+                    'name': cls._value_key_name,
+                    'schema': copy.deepcopy(cls._value_schema),
+                },
+            ],
         }
 
 
@@ -1558,7 +1646,7 @@ class TranslatableUnicodeString(BaseTranslatableObject):
 
     _value_key_name = 'unicodeStr'
     _value_schema = UnicodeString.get_schema()
-    default_value = {
+    default_value: TranslatableUnicodeStringDict = {
         'contentId': None,
         'unicodeStr': '',
     }
@@ -1569,7 +1657,7 @@ class TranslatableHtml(BaseTranslatableObject):
 
     _value_key_name = 'html'
     _value_schema = Html.get_schema()
-    default_value = {
+    default_value: TranslatableHtmlDict = {
         'contentId': None,
         'html': '',
     }
@@ -1580,7 +1668,7 @@ class TranslatableSetOfNormalizedString(BaseTranslatableObject):
 
     _value_key_name = 'normalizedStrSet'
     _value_schema = SetOfNormalizedString.get_schema()
-    default_value = {
+    default_value: TranslatableSetOfNormalizedStringDict = {
         'contentId': None,
         'normalizedStrSet': [],
     }
@@ -1591,7 +1679,7 @@ class TranslatableSetOfUnicodeString(BaseTranslatableObject):
 
     _value_key_name = 'unicodeStrSet'
     _value_schema = SetOfUnicodeString.get_schema()
-    default_value = {
+    default_value: TranslatableSetOfUnicodeStringDict = {
         'contentId': None,
         'unicodeStrSet': [],
     }
@@ -1600,8 +1688,10 @@ class TranslatableSetOfUnicodeString(BaseTranslatableObject):
 class JsonEncodedInString(BaseObject):
     """Converts stringified value to its actual data type."""
 
+    # Here we use type Any because the method 'normalize' can return any kind
+    # of python object based on the JSON string provided.
     @classmethod
-    def normalize(cls, raw):
+    def normalize(cls, raw: str) -> Any:
         """Validates and normalizes a raw Python object.
 
         Args:
@@ -1610,10 +1700,13 @@ class JsonEncodedInString(BaseObject):
         Returns:
             *. The normalized value of any type, it depends on the raw value
             which we want to load from json.
+
+        Raises:
+            Exception. Given arg is not of type str.
         """
-        if not isinstance(raw, python_utils.BASESTRING):
-            raise Exception('Expected string received %s of type %s' % (
-                raw, type(raw))
+        if not isinstance(raw, str):
+            raise Exception(
+                'Expected string received %s of type %s' % (raw, type(raw))
             )
 
         return json.loads(raw)

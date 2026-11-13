@@ -16,13 +16,16 @@
  * @fileoverview Component to get changes in human readable form.
  */
 
-import { Component, Input } from '@angular/core';
-import { LostChange } from 'domain/exploration/LostChangeObjectFactory';
+import {Component, Input} from '@angular/core';
+import {LostChange} from 'domain/exploration/lost-change.model';
 
 @Component({
   selector: 'oppia-changes-in-human-readable-form',
-  templateUrl: './changes-in-human-readable-form.component.html'
+  templateUrl: './changes-in-human-readable-form.component.html',
 })
 export class ChangesInHumanReadableFormComponent {
-  @Input() lostChanges: LostChange[];
+  // This property is initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() lostChanges!: LostChange[];
 }

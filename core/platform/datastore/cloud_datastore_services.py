@@ -16,25 +16,36 @@
 
 """Provides a seam for datastore services."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import contextlib
+import logging
 
+from core import utils
 from core.platform import models
 
 from google.cloud import ndb
-
 from typing import (
-    Any, ContextManager, Dict, List, Optional, Sequence, Tuple, TypeVar)
+    Any,
+    ContextManager,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 MYPY = False
-if MYPY: # pragma: no cover
-    from mypy_imports import base_models  # pylint: disable=unused-import
-    from mypy_imports import transaction_services
+if MYPY:  # pragma: no cover
+    from mypy_imports import base_models, transaction_services
 
 transaction_services = models.Registry.import_transaction_services()
 
+
+# TypeVar for the singleton metaclass to maintain type information.
+T = TypeVar('T')
 
 Cursor = ndb.Cursor
 Model = ndb.Model
@@ -52,14 +63,39 @@ JsonProperty = ndb.JsonProperty
 StringProperty = ndb.StringProperty
 TextProperty = ndb.TextProperty
 
-TYPE_MODEL_SUBCLASS = TypeVar('TYPE_MODEL_SUBCLASS', bound=Model) # pylint: disable=invalid-name
+TYPE_MODEL_SUBCLASS = TypeVar(  # pylint: disable=invalid-name
+    'TYPE_MODEL_SUBCLASS', bound=Model
+)
+MAX_GET_RETRIES = 3
 
-CLIENT = ndb.Client()
+
+class NdbClientSingleton(metaclass=utils.SingletonMeta):
+    """Singleton wrapper for the NDB client."""
+
+    def __init__(self) -> None:
+        """Initialize the NDB client."""
+        self._client: ndb.Client = ndb.Client()
+
+    def get_client(self) -> ndb.Client:
+        """Return the NDB client instance.
+
+        Returns:
+            ndb.Client. The NDB client instance.
+        """
+        return self._client
+
+
+def get_client() -> ndb.Client:
+    """Get or create the NDB client lazily.
+
+    Returns:
+        ndb.Client. The NDB client instance.
+    """
+    return NdbClientSingleton().get_client()
 
 
 def get_ndb_context(
-        namespace: Optional[str] = None,
-        global_cache: Optional[RedisCache] = None
+    namespace: Optional[str] = None, global_cache: Optional[RedisCache] = None
 ) -> ContextManager[ndb.context.Context]:
     """Get the context of the Cloud NDB. This context needs to be entered in
     order to do any Cloud NDB operations.
@@ -72,8 +108,9 @@ def get_ndb_context(
     # places we need a context but we are unsure if it exists.
     context = ndb.get_context(raise_context_error=False)
     return (
-        CLIENT.context(namespace=namespace, global_cache=global_cache)
-        if context is None else contextlib.nullcontext(enter_result=context)
+        get_client().context(namespace=namespace, global_cache=global_cache)
+        if context is None
+        else contextlib.nullcontext(enter_result=context)
     )
 
 
@@ -86,13 +123,22 @@ def get_multi(keys: List[Key]) -> List[Optional[TYPE_MODEL_SUBCLASS]]:
     Returns:
         list(datastore_services.Model | None). List whose items are either a
         Model instance or None if the corresponding key wasn't found.
+
+    Raises:
+        Exception. If ndb.get_multi fails for MAX_GET_RETRIES.
     """
-    return ndb.get_multi(keys)
+    for unused_i in range(0, MAX_GET_RETRIES):
+        try:
+            return ndb.get_multi(keys)
+        except Exception as e:
+            logging.exception('Exception raised: %s', e)
+            continue
+    raise Exception('get_multi failed after %s retries' % MAX_GET_RETRIES)
 
 
 def update_timestamps_multi(
-        entities: Sequence['base_models.BaseModel'],
-        update_last_updated_time: bool = True
+    entities: Sequence[base_models.BaseModel],
+    update_last_updated_time: bool = True,
 ) -> None:
     """Update the created_on and last_updated fields of all given entities.
 
@@ -104,7 +150,8 @@ def update_timestamps_multi(
     """
     for entity in entities:
         entity.update_timestamps(
-            update_last_updated_time=update_last_updated_time)
+            update_last_updated_time=update_last_updated_time
+        )
 
 
 def put_multi(entities: Sequence[Model]) -> List[str]:
@@ -146,7 +193,7 @@ def delete_multi(keys: Sequence[Key]) -> List[None]:
     return ndb.delete_multi(keys)
 
 
-# Here Any is used in the type annotation because it mimics the types defined in
+# Here we use type Any because it mimics the types defined in
 # the stubs for this library.
 def query_everything(**kwargs: Dict[str, Any]) -> Query:
     """Returns a query that targets every single entity in the datastore.
@@ -155,6 +202,13 @@ def query_everything(**kwargs: Dict[str, Any]) -> Query:
     everything in the datastore is almost always a bad idea, ESPECIALLY in
     production. Always prefer querying for specific models and combining them
     afterwards.
+
+    Args:
+        **kwargs: Dict[str, Any]. Variable keyword arguments passed to
+            ndb.Query.
+
+    Returns:
+        Query. A query targeting all entities.
     """
     return ndb.Query(**kwargs)
 
@@ -185,6 +239,24 @@ def any_of(*nodes: ndb.Node) -> ndb.Node:
     return ndb.OR(*nodes)
 
 
+def not_equal(prop: ndb.Property, value: Union[str, int, float]) -> ndb.Node:
+    """Returns a query node which represents the condition of the property not
+    being equal to the value.
+
+    See the guidance in the NDB 2.3.0 upgrade notes for why this is needed:
+    https://github.com/googleapis/python-ndb/wiki/Upgrade-Notes
+
+    Args:
+        prop: ndb.Property. The property to compare.
+        value: Union[str, int, float]. The value to compare it to.
+
+    Returns:
+        datastore_services.Node. A node representing "not equals" as a "greater
+        than" condition and a "less than" condition, combined by boolean OR.
+    """
+    return any_of(prop > value, prop < value)
+
+
 def make_cursor(urlsafe_cursor: Optional[str] = None) -> Cursor:
     """Makes an immutable cursor that points to a relative position in a query.
 
@@ -211,7 +283,7 @@ def make_cursor(urlsafe_cursor: Optional[str] = None) -> Cursor:
 
 
 def fetch_multiple_entities_by_ids_and_models(
-        ids_and_models: List[Tuple[str, List[str]]]
+    ids_and_models: List[Tuple[str, List[str]]],
 ) -> List[List[Optional[TYPE_MODEL_SUBCLASS]]]:
     """Fetches the entities from the datastore corresponding to the given ids
     and models.
@@ -232,20 +304,22 @@ def fetch_multiple_entities_by_ids_and_models(
     model_names = [model_name for (model_name, _) in ids_and_models]
     if len(model_names) != len(list(set(model_names))):
         raise Exception('Model names should not be duplicated in input list.')
-    for (model_name, entity_ids) in ids_and_models:
+    for model_name, entity_ids in ids_and_models:
         # Add the keys to the list of keys whose entities we have to fetch.
-        entity_keys = (
-            entity_keys +
-            [ndb.Key(model_name, entity_id) for entity_id in entity_ids])
+        entity_keys = entity_keys + [
+            ndb.Key(model_name, entity_id) for entity_id in entity_ids
+        ]
 
     all_models: List[Optional[TYPE_MODEL_SUBCLASS]] = ndb.get_multi(entity_keys)
     all_models_grouped_by_model_type: List[
-        List[Optional[TYPE_MODEL_SUBCLASS]]] = []
+        List[Optional[TYPE_MODEL_SUBCLASS]]
+    ] = []
 
     start_index = 0
-    for (_, entity_ids) in ids_and_models:
+    for _, entity_ids in ids_and_models:
         all_models_grouped_by_model_type.append(
-            all_models[start_index:start_index + len(entity_ids)])
+            all_models[start_index : start_index + len(entity_ids)]
+        )
         start_index = start_index + len(entity_ids)
 
     return all_models_grouped_by_model_type

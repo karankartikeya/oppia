@@ -16,25 +16,32 @@
  * @fileoverview Unit tests for the ExplorationObjectiveService.
  */
 
-// TODO(#7222): Remove the following block of unnnecessary imports once
-// the code corresponding to the spec is upgraded to Angular 8.
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-// ^^^ This block is to be removed.
+import {TestBed} from '@angular/core/testing';
+import {ExplorationObjectiveService} from './exploration-objective.service';
+import {ExplorationPropertyService} from './exploration-property.service';
+import {ExplorationRightsService} from './exploration-rights.service';
+import {ValidatorsService} from 'services/validators.service';
+import {NormalizeWhitespacePipe} from 'filters/string-utility-filters/normalize-whitespace.pipe';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
 
-require(
-  'pages/exploration-editor-page/services/exploration-objective.service.ts');
+describe('Exploration Objective Service', () => {
+  let eos: ExplorationObjectiveService;
 
-describe('Exploration Objective Service', function() {
-  let eos = null;
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [
+        ExplorationRightsService,
+        ValidatorsService,
+        NormalizeWhitespacePipe,
+        ExplorationPropertyService,
+      ],
+    });
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
+    eos = TestBed.inject(ExplorationObjectiveService);
+  });
 
-  beforeEach(angular.mock.inject(function($injector) {
-    eos = $injector.get('ExplorationObjectiveService');
-  }));
-
-  it('should test the child object properties', function() {
+  it('should test the child object properties', function () {
     expect(eos.propertyName).toBe('objective');
     let NotNormalize = '   Exploration         Objective Service     ';
     let Normalize = 'Exploration Objective Service';

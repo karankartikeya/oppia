@@ -16,42 +16,40 @@
  * @fileoverview Module for the collection editor page.
  */
 
-import { APP_INITIALIZER, NgModule, StaticProvider } from '@angular/core';
-import { BrowserModule, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HttpClientModule } from '@angular/common/http';
-import { HTTP_INTERCEPTORS } from '@angular/common/http';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { OppiaAngularRootComponent } from
-  'components/oppia-angular-root.component';
-
-import { CollectionHistoryTabComponent } from
-  'pages/collection-editor-page/history-tab/collection-history-tab.component';
-import { CollectionNodeEditorComponent } from './editor-tab/collection-node-editor.component';
-import { CollectionSettingsTabComponent } from 'pages/collection-editor-page/settings-tab/collection-settings-tab.component';
-import { CollectionStatisticsTabComponent } from 'pages/collection-editor-page/statistics-tab/collection-statistics-tab.component';
-import { platformFeatureInitFactory, PlatformFeatureService } from 'services/platform-feature.service';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { CollectionDetailsEditorComponent } from './settings-tab/collection-details-editor.component';
-import { CollectionPermissionsCardComponent } from './settings-tab/collection-permissions-card.component';
-import { CollectionEditorNavbarBreadcrumbComponent } from './navbar/collection-editor-navbar-breadcrumb.component';
-import { CollectionEditorNavbarComponent } from './navbar/collection-editor-navbar.component';
-import { CollectionNodeCreatorComponent } from './editor-tab/collection-node-creator.component';
-import { CollectionEditorTabComponent } from './editor-tab/collection-editor-tab.component';
-import { CollectionEditorSaveModalComponent } from './modals/collection-editor-save-modal.component';
-import { CollectionEditorPrePublishModalComponent } from './modals/collection-editor-pre-publish-modal.component';
-import { ToastrModule } from 'ngx-toastr';
-import { MyHammerConfig, toastrConfig } from 'pages/oppia-root/app.module';
-import { CollectionEditorPageComponent } from './collection-editor-page.component';
+import {RouterModule} from '@angular/router';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {CollectionHistoryTabComponent} from 'pages/collection-editor-page/history-tab/collection-history-tab.component';
+import {CollectionNodeEditorComponent} from './editor-tab/collection-node-editor.component';
+import {CollectionSettingsTabComponent} from 'pages/collection-editor-page/settings-tab/collection-settings-tab.component';
+import {CollectionStatisticsTabComponent} from 'pages/collection-editor-page/statistics-tab/collection-statistics-tab.component';
+import {CollectionDetailsEditorComponent} from './settings-tab/collection-details-editor.component';
+import {CollectionPermissionsCardComponent} from './settings-tab/collection-permissions-card.component';
+import {CollectionEditorNavbarBreadcrumbComponent} from './navbar/collection-editor-navbar-breadcrumb.component';
+import {CollectionEditorNavbarComponent} from './navbar/collection-editor-navbar.component';
+import {CollectionNodeCreatorComponent} from './editor-tab/collection-node-creator.component';
+import {CollectionEditorTabComponent} from './editor-tab/collection-editor-tab.component';
+import {CollectionEditorSaveModalComponent} from './modals/collection-editor-save-modal.component';
+import {CollectionEditorPrePublishModalComponent} from './modals/collection-editor-pre-publish-modal.component';
+import {ToastrModule} from 'ngx-toastr';
+import {FormsModule} from '@angular/forms';
+import {NgModule} from '@angular/core';
+import {CollectionEditorPageComponent} from './collection-editor-page.component';
+import {CollectionEditorPageAuthGuard} from './collection-editor-page-auth.guard';
+import {CollectionEditorPageRootComponent} from './collection-editor-page-root.component';
+import {toastrConfig} from 'pages/oppia-root/app.module';
 
 @NgModule({
   imports: [
-    BrowserModule,
-    BrowserAnimationsModule,
-    HttpClientModule,
     SharedComponentsModule,
-    ToastrModule.forRoot(toastrConfig)
+    FormsModule,
+    ToastrModule.forRoot(toastrConfig),
+    RouterModule.forChild([
+      {
+        path: '',
+        component: CollectionEditorPageRootComponent,
+        canActivate: [CollectionEditorPageAuthGuard],
+      },
+    ]),
   ],
   declarations: [
     CollectionNodeCreatorComponent,
@@ -66,7 +64,8 @@ import { CollectionEditorPageComponent } from './collection-editor-page.componen
     CollectionNodeEditorComponent,
     CollectionPermissionsCardComponent,
     CollectionSettingsTabComponent,
-    CollectionStatisticsTabComponent
+    CollectionStatisticsTabComponent,
+    CollectionEditorPageRootComponent,
   ],
   entryComponents: [
     CollectionNodeCreatorComponent,
@@ -82,46 +81,5 @@ import { CollectionEditorPageComponent } from './collection-editor-page.componen
     CollectionSettingsTabComponent,
     CollectionStatisticsTabComponent,
   ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: RequestInterceptor,
-      multi: true
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: platformFeatureInitFactory,
-      deps: [PlatformFeatureService],
-      multi: true
-    },
-    {
-      provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
-  ]
 })
-class CollectionEditorPageModule {
-  // Empty placeholder method to satisfy the `Compiler`.
-  ngDoBootstrap() {}
-}
-
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { downgradeModule } from '@angular/upgrade/static';
-
-const bootstrapFnAsync = async(extraProviders: StaticProvider[]) => {
-  const platformRef = platformBrowserDynamic(extraProviders);
-  return platformRef.bootstrapModule(CollectionEditorPageModule);
-};
-const downgradedModule = downgradeModule(bootstrapFnAsync);
-
-declare var angular: ng.IAngularStatic;
-
-angular.module('oppia').requires.push(downgradedModule);
-
-angular.module('oppia').directive(
-  // This directive is the downgraded version of the Angular component to
-  // bootstrap the Angular 8.
-  'oppiaAngularRoot',
-  downgradeComponent({
-    component: OppiaAngularRootComponent
-  }) as angular.IDirectiveFactory);
+export class CollectionEditorPageModule {}

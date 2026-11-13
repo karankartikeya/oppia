@@ -16,8 +16,7 @@
 
 """Models for managing Apache Beam jobs."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import enum
 import uuid
@@ -25,25 +24,36 @@ import uuid
 from core import utils
 from core.platform import models
 
-(base_models,) = models.Registry.import_models([models.NAMES.base_model])
+from typing import Dict, Final, Type
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import base_models, datastore_services
+
+(base_models,) = models.Registry.import_models([models.Names.BASE_MODEL])
 
 datastore_services = models.Registry.import_datastore_services()
 
-_MAX_ID_GENERATION_ATTEMPTS = 5
+_MAX_ID_GENERATION_ATTEMPTS: Final = 5
 
 
-def _get_new_model_id(model_class: base_models.BaseModel) -> str:
+def _get_new_model_id(model_class: Type[base_models.BaseModel]) -> str:
     """Generates an ID for a new model.
 
     Returns:
         str. The new ID.
+
+    Raises:
+        RuntimeError. The function failed to generate a new ID.
     """
     for _ in range(_MAX_ID_GENERATION_ATTEMPTS):
         new_id = utils.convert_to_hash(uuid.uuid4().hex, 22)
         if model_class.get(new_id, strict=False) is None:
             return new_id
-    raise RuntimeError('Failed to generate a unique ID after %d attempts' % (
-        _MAX_ID_GENERATION_ATTEMPTS))
+    raise RuntimeError(
+        'Failed to generate a unique ID after %d attempts'
+        % (_MAX_ID_GENERATION_ATTEMPTS)
+    )
 
 
 class BeamJobState(enum.Enum):
@@ -107,13 +117,16 @@ class BeamJobRunModel(base_models.BaseModel):
     # The ID of the dataflow job this model corresponds to. If the job is run
     # synchronously, then this value will be empty.
     # https://cloud.google.com/dataflow/docs/reference/rest/v1b3/projects.jobs#resource:-job
-    dataflow_job_id = (
-        datastore_services.StringProperty(required=False, indexed=True))
+    dataflow_job_id = datastore_services.StringProperty(
+        required=False, indexed=True
+    )
     # The name of the job class that implements the job's logic.
     job_name = datastore_services.StringProperty(required=True, indexed=True)
     # The state of the job at the time the model was last updated.
     latest_job_state = datastore_services.StringProperty(
-        required=True, indexed=True, choices=[
+        required=True,
+        indexed=True,
+        choices=[
             BeamJobState.RUNNING.value,
             BeamJobState.PENDING.value,
             BeamJobState.STOPPED.value,
@@ -125,10 +138,13 @@ class BeamJobRunModel(base_models.BaseModel):
             BeamJobState.DONE.value,
             BeamJobState.FAILED.value,
             BeamJobState.UNKNOWN.value,
-        ])
+        ],
+    )
 
+    # Here we use MyPy ignore because the signature of this method
+    # doesn't match with signature of super class's get_new_id() method.
     @classmethod
-    def get_new_id(cls) -> str:
+    def get_new_id(cls) -> str:  # type: ignore[override]
         """Generates an ID for a new BeamJobRunModel.
 
         Returns:
@@ -137,23 +153,37 @@ class BeamJobRunModel(base_models.BaseModel):
         return _get_new_model_id(cls)
 
     @staticmethod
-    def get_deletion_policy():
-        """Model doesn't contain any data directly corresponding to a user."""
+    def get_deletion_policy() -> base_models.DELETION_POLICY:
+        """Model doesn't contain any data directly corresponding to a user.
+
+        This model is marked as deleted after a period of time after its
+        creation. See MODEL_CLASSES_TO_MARK_AS_DELETED and
+        mark_outdated_models_as_deleted() in cron_services.py.
+
+        This model is being deleted because it has no significance without these
+        other models, but note that this is being done only for data consistency
+        and is not a requirement of the wipeout process.
+        """
         return base_models.DELETION_POLICY.NOT_APPLICABLE
 
     @staticmethod
-    def get_model_association_to_user():
+    def get_model_association_to_user() -> (
+        base_models.MODEL_ASSOCIATION_TO_USER
+    ):
         """Model doesn't contain user data."""
         return base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER
 
     @classmethod
-    def get_export_policy(cls):
+    def get_export_policy(cls) -> Dict[str, base_models.EXPORT_POLICY]:
         """Model doesn't contain any data directly corresponding to a user."""
-        return dict(super(BeamJobRunModel, cls).get_export_policy(), **{
-            'dataflow_job_id': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-            'job_name': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-            'latest_job_state': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-        })
+        return dict(
+            super(BeamJobRunModel, cls).get_export_policy(),
+            **{
+                'dataflow_job_id': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'job_name': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'latest_job_state': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+            },
+        )
 
 
 class BeamJobRunResultModel(base_models.BaseModel):
@@ -176,8 +206,10 @@ class BeamJobRunResultModel(base_models.BaseModel):
     # The error output generated by the corresponding Apache Beam job.
     stderr = datastore_services.TextProperty(required=False, indexed=False)
 
+    # Here we use MyPy ignore because the signature of this method
+    # doesn't match with signature of super class's get_new_id() method.
     @classmethod
-    def get_new_id(cls) -> str:
+    def get_new_id(cls) -> str:  # type: ignore[override]
         """Generates an ID for a new BeamJobRunResultModel.
 
         Returns:
@@ -186,20 +218,30 @@ class BeamJobRunResultModel(base_models.BaseModel):
         return _get_new_model_id(cls)
 
     @staticmethod
-    def get_deletion_policy():
-        """Model doesn't contain any data directly corresponding to a user."""
+    def get_deletion_policy() -> base_models.DELETION_POLICY:
+        """Model doesn't contain any data directly corresponding to a user.
+
+        This model is marked as deleted after a period of time after its
+        creation. See MODEL_CLASSES_TO_MARK_AS_DELETED and
+        mark_outdated_models_as_deleted() in cron_services.py.
+        """
         return base_models.DELETION_POLICY.NOT_APPLICABLE
 
     @staticmethod
-    def get_model_association_to_user():
+    def get_model_association_to_user() -> (
+        base_models.MODEL_ASSOCIATION_TO_USER
+    ):
         """Model doesn't contain user data."""
         return base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER
 
     @classmethod
-    def get_export_policy(cls):
+    def get_export_policy(cls) -> Dict[str, base_models.EXPORT_POLICY]:
         """Model doesn't contain any data directly corresponding to a user."""
-        return dict(super(BeamJobRunResultModel, cls).get_export_policy(), **{
-            'job_id': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-            'stdout': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-            'stderr': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-        })
+        return dict(
+            super(BeamJobRunResultModel, cls).get_export_policy(),
+            **{
+                'job_id': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'stdout': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'stderr': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+            },
+        )

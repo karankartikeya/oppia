@@ -14,35 +14,74 @@
 
 """Controllers for the subtopic viewer page."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core import feconf
-from core.controllers import acl_decorators
-from core.controllers import base
-from core.domain import subtopic_page_services
-from core.domain import topic_fetchers
+from core import feature_flag_list, feconf
+from core.constants import constants
+from core.controllers import acl_decorators, base
+from core.domain import (
+    feature_flag_services,
+    skill_fetchers,
+    study_guide_services,
+    subtopic_page_domain,
+    subtopic_page_services,
+    topic_fetchers,
+)
 
-
-class SubtopicViewerPage(base.BaseHandler):
-    """Renders the subtopic viewer page."""
-
-    @acl_decorators.can_access_subtopic_viewer_page
-    def get(self, *args):
-        """Handles GET requests."""
-
-        self.render_template('subtopic-viewer-page.mainpage.html')
+from typing import Dict, List, Optional, TypedDict
 
 
-class SubtopicPageDataHandler(base.BaseHandler):
+class SubtopicPageDataHandlerNormalizedRequestDict(TypedDict):
+    """Dict representation of SubtopicPageDataHandler's
+    normalized_request dictionary.
+    """
+
+    skill_ids: Optional[List[str]]
+
+
+class SubtopicPageDataHandler(
+    base.BaseHandler[
+        Dict[str, str], SubtopicPageDataHandlerNormalizedRequestDict
+    ]
+):
     """Manages the data that needs to be displayed to a learner on the
     subtopic page.
     """
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    URL_PATH_ARGS_SCHEMAS = {
+        'classroom_url_fragment': constants.SCHEMA_FOR_CLASSROOM_URL_FRAGMENTS,
+        'topic_url_fragment': constants.SCHEMA_FOR_TOPIC_URL_FRAGMENTS,
+        'subtopic_url_fragment': {
+            'schema': {
+                'type': 'basestring',
+                'validators': [
+                    {
+                        'id': 'is_regex_matched',
+                        'regex_pattern': constants.VALID_URL_FRAGMENT_REGEX,
+                    },
+                    {
+                        'id': 'has_length_at_most',
+                        'max_value': constants.MAX_CHARS_IN_SUBTOPIC_URL_FRAGMENT,
+                    },
+                ],
+            }
+        },
+    }
+    HANDLER_ARGS_SCHEMAS = {
+        'GET': {
+            'skill_ids': {
+                'schema': {
+                    'type': 'custom',
+                    'obj_type': 'JsonEncodedInString',
+                },
+                'default_value': None,
+            },
+        }
+    }
 
     @acl_decorators.can_access_subtopic_viewer_page
-    def get(self, topic_name, subtopic_id):
+    def get(self, topic_name: str, subtopic_id: int) -> None:
         """Handles GET requests.
 
         Args:
@@ -55,27 +94,67 @@ class SubtopicPageDataHandler(base.BaseHandler):
         subtopic_id = int(subtopic_id)
         topic = topic_fetchers.get_topic_by_name(topic_name)
         next_subtopic_dict = None
-        for index, subtopic in enumerate(topic.subtopics):
-            if subtopic.id == subtopic_id:
-                subtopic_title = subtopic.title
-                if index != len(topic.subtopics) - 1:
-                    next_subtopic_dict = topic.subtopics[index + 1].to_dict()
-                # Checking greater than 1 here, since otherwise the only
-                # subtopic page of the topic would always link to itself at the
-                # bottom of the subtopic page which isn't expected.
-                elif len(topic.subtopics) > 1:
-                    next_subtopic_dict = topic.subtopics[0].to_dict()
-                break
-        subtopic_page_contents = (
-            subtopic_page_services.get_subtopic_page_contents_by_id(
-                topic.id, subtopic_id))
-        subtopic_page_contents_dict = subtopic_page_contents.to_dict()
+        prev_subtopic_dict = None
+        index = topic.get_subtopic_index(subtopic_id)
+        subtopic_title = topic.subtopics[index].title
+        if index != len(topic.subtopics) - 1:
+            next_subtopic_dict = topic.subtopics[index + 1].to_dict()
+        # Checking greater than 1 here, since otherwise the only
+        # subtopic page of the topic would always link to itself at the
+        # bottom of the subtopic page which isn't expected.
+        elif len(topic.subtopics) > 1:
+            prev_subtopic_dict = topic.subtopics[index - 1].to_dict()
+        study_guide_sections_dicts_list = []
+        subtopic_page_contents_dict: (
+            subtopic_page_domain.SubtopicPageContentsDict
+        ) = {
+            'subtitled_html': {'content_id': '', 'html': ''},
+            'recorded_voiceovers': {'voiceovers_mapping': {}},
+            'written_translations': {'translations_mapping': {}},
+        }
 
-        self.values.update({
-            'topic_id': topic.id,
-            'topic_name': topic.name,
-            'page_contents': subtopic_page_contents_dict,
-            'subtopic_title': subtopic_title,
-            'next_subtopic_dict': next_subtopic_dict
-        })
+        assert self.normalized_request is not None
+        skill_ids = self.normalized_request.get('skill_ids')
+        if skill_ids is not None:
+            if not isinstance(skill_ids, list) or not all(
+                isinstance(skill_id, str) for skill_id in skill_ids
+            ):
+                raise self.InvalidInputException('Invalid skill IDs')
+            try:
+                skill_fetchers.get_multi_skills(skill_ids)
+            except Exception as e:
+                raise self.NotFoundException(e)
+
+        if feature_flag_services.is_feature_flag_enabled(
+            feature_flag_list.FeatureNames.SHOW_RESTRUCTURED_STUDY_GUIDES.value,
+            self.user_id,
+        ):
+            study_guide_sections = (
+                study_guide_services.get_study_guide_sections_by_id(
+                    topic.id, subtopic_id
+                )
+            )
+            for section in study_guide_sections:
+                study_guide_sections_dicts_list.append(section.to_dict())
+        else:
+            subtopic_page_contents = (
+                subtopic_page_services.get_subtopic_page_contents_by_id(
+                    topic.id, subtopic_id
+                )
+            )
+            subtopic_page_contents_dict = subtopic_page_contents.to_dict()
+
+        self.values.update(
+            {
+                'topic_id': topic.id,
+                'topic_name': topic.name,
+                'sections': study_guide_sections_dicts_list,
+                'page_contents': subtopic_page_contents_dict,
+                'subtopic_title': subtopic_title,
+                'current_subtopic_id': subtopic_id,
+                'next_subtopic_dict': next_subtopic_dict,
+                'prev_subtopic_dict': prev_subtopic_dict,
+                'skill_ids': skill_ids,
+            }
+        )
         self.render_json(self.values)

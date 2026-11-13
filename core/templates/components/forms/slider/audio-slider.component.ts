@@ -16,8 +16,7 @@
  * @fileoverview Wrapper over mat-slider for audio-bar.
  */
 
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, EventEmitter, Input, Output} from '@angular/core';
 
 @Component({
   selector: 'oppia-audio-slider',
@@ -30,30 +29,22 @@ import { downgradeComponent } from '@angular/upgrade/static';
     (change)="setDuration($event)"
     tick-interval="auto"
     [step]="1"
-    aria-label="audio-slider">
+    aria-label="audio-slider"
+  >
   </mat-slider>`,
-  styles: [`
-  .mat-accent /deep/ .mat-slider-track-fill,
-  .mat-accent /deep/ .mat-slider-thumb,
-  .mat-accent /deep/ .mat-slider-thumb-label {
-    background: #ff4081;
-  }`]
+  styleUrls: ['./audio-slider.component.css'],
 })
 export class AudioSliderComponent {
   // These properties are initialized using component interactions
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() value!: number;
   @Input() max!: number;
   @Input() thumbLabel = false;
-  @Output() valueChange = new EventEmitter<{ value: number }>();
-  constructor() { }
+  @Output() valueChange = new EventEmitter<{value: number}>();
+  constructor() {}
 
   setDuration(event: {value: number}): void {
     this.valueChange.emit(event);
   }
 }
-
-angular.module('oppia').directive('oppiaAudioSlider', downgradeComponent({
-  component: AudioSliderComponent
-}) as angular.IDirectiveFactory);

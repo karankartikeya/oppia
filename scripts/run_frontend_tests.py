@@ -14,26 +14,20 @@
 
 """This script runs unit tests for frontend JavaScript code (using Karma)."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import argparse
 import os
 import subprocess
 import sys
 
-from core import python_utils
+from scripts import common, git_changes_utils
 
-from . import build
-from . import check_frontend_test_coverage
-from . import common
-from . import install_third_party_libs
+from typing import Optional, Sequence, Set
 
-# These is a relative path from the oppia/ folder. They are relative because the
-# dtslint command prepends the current working directory to the path, even if
-# the given path is absolute.
-DTSLINT_TYPE_TESTS_DIR_RELATIVE_PATH = os.path.join('typings', 'tests')
-TYPESCRIPT_DIR_RELATIVE_PATH = os.path.join('node_modules', 'typescript', 'lib')
+from . import build, check_frontend_test_coverage
+
+MAX_ATTEMPTS = 2
 
 _PARSER = argparse.ArgumentParser(
     description="""
@@ -42,130 +36,282 @@ Run this script from the oppia root folder:
 The root folder MUST be named 'oppia'.
 Note: You can replace 'it' with 'fit' or 'describe' with 'fdescribe' to run
 a single test or test suite.
-""")
-
-_PARSER.add_argument(
-    '--dtslint_only',
-    help='optional; if specified, only runs dtslint type tests.',
-    action='store_true'
+"""
 )
-_PARSER.add_argument(
-    '--skip_install',
-    help='optional; if specified, skips installing dependencies',
-    action='store_true')
+
 _PARSER.add_argument(
     '--verbose',
     help='optional; if specified, enables the karma terminal and prints all the'
     ' logs.',
-    action='store_true')
+    action='store_true',
+)
 _PARSER.add_argument(
     '--run_minified_tests',
     help='optional; if specified, runs frontend karma tests on both minified '
     'and non-minified code',
-    action='store_true')
+    action='store_true',
+)
 _PARSER.add_argument(
     '--check_coverage',
-    help='option; if specified, checks frontend test coverage',
-    action='store_true'
+    help='optional; if specified, checks frontend test coverage',
+    action='store_true',
+)
+_PARSER.add_argument(
+    '--download_combined_frontend_spec_file',
+    help='optional; if specified, downloads the combined frontend file',
+    action='store_true',
+)
+_PARSER.add_argument(
+    '--run_on_changed_files_in_branch',
+    help='optional; if specified, runs the frontend karma tests on the '
+    'files that were changed in the current branch.',
+    action='store_true',
+)
+_PARSER.add_argument(
+    '--specs_to_run',
+    help='optional; if specified, runs the specified test specs. This '
+    'should be a comma-separated list of spec file paths.',
+)
+_PARSER.add_argument(
+    '--allow_no_spec',
+    help='optional; if specified, exits with status code 0 if no specs are '
+    'found to run.',
+    action='store_true',
 )
 
 
-def run_dtslint_type_tests():
-    """Runs the dtslint type tests in typings/tests."""
-    python_utils.PRINT('Running dtslint type tests.')
+def get_file_spec(file_path: str) -> str | None:
+    """Returns the spec file path for a given file path.
 
-    # Pass the local version of typescript. Otherwise, dtslint will download and
-    # install all versions of typescript.
-    cmd = ['./node_modules/dtslint/bin/index.js',
-           DTSLINT_TYPE_TESTS_DIR_RELATIVE_PATH,
-           '--localTs',
-           TYPESCRIPT_DIR_RELATIVE_PATH]
-    task = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    output_lines = []
-    # Reads and prints realtime output from the subprocess until it terminates.
-    while True:
-        line = task.stdout.readline()
-        # No more output from the subprocess, and the subprocess has ended.
-        if len(line) == 0 and task.poll() is not None:
-            break
-        if line:
-            python_utils.PRINT(line, end='')
-            output_lines.append(line)
-    python_utils.PRINT('Done!')
-    if task.returncode:
-        sys.exit('The dtslint (type tests) failed.')
+    Args:
+        file_path: str. The path of the file.
+
+    Returns:
+        str | None. The path of the spec file if it exists, otherwise None.
+        If the file is not a TypeScript or JavaScript file, None is returned.
+    """
+    normalized_file_path = file_path.replace('\\', '/')
+    if normalized_file_path.startswith(
+        'core/tests/puppeteer-acceptance-tests/'
+    ) or normalized_file_path.startswith(
+        'core/tests/playwright-acceptance-tests/'
+    ):
+        return None
+
+    if file_path.endswith(
+        ('.spec.ts', '.spec.js', 'Spec.js')
+    ) and os.path.exists(file_path):
+        return file_path
+
+    if file_path.endswith(('.ts', '.js')):
+        spec_file_path = '%s.spec%s' % (file_path[:-3], file_path[-3:])
+        if os.path.exists(spec_file_path):
+            return spec_file_path
+    return None
 
 
-def main(args=None):
+def main(args: Optional[Sequence[str]] = None) -> None:
     """Runs the frontend tests."""
     parsed_args = _PARSER.parse_args(args=args)
 
-    run_dtslint_type_tests()
-    if parsed_args.dtslint_only:
-        return
-
-    if not parsed_args.skip_install:
-        install_third_party_libs.main()
-
-    common.print_each_string_after_two_new_lines([
-        'View interactive frontend test coverage reports by navigating to',
-        '../karma_coverage_reports',
-        'on your filesystem.',
-        'Running test in development environment'])
+    common.setup_chrome_bin_env_variable()
+    # We need to create an empty hashes.json file for the build so that
+    # we don't get the error "assets/hashes.json file doesn't exist".
+    common.write_hashes_json_file({})
+    common.print_each_string_after_two_new_lines(
+        [
+            'View interactive frontend test coverage reports by navigating to',
+            '../karma_coverage_reports',
+            'on your filesystem.',
+            'Running test in development environment',
+        ]
+    )
 
     cmd = [
-            common.NODE_BIN_PATH, '--max-old-space-size=4096',
-            os.path.join(common.NODE_MODULES_PATH, 'karma', 'bin', 'karma'),
-            'start', os.path.join('core', 'tests', 'karma.conf.ts')]
+        common.NODE_BIN_PATH,
+        '--max-old-space-size=5120',
+        os.path.join(common.NODE_MODULES_PATH, '@angular', 'cli', 'bin', 'ng'),
+        'test',
+        '--karma-config=core/tests/karma.conf.ts',
+        '--watch=false',
+    ]
+
+    # The Angular CLI does not automatically instrument the codebase for
+    # code coverage during testing (unlike the old Webpack istanbul-instrumenter-loader).
+    # We must explicitly pass the --code-coverage flag to Angular CLI to generate the report.
+    if parsed_args.check_coverage:
+        cmd.append('--code-coverage')
+
+    specs_to_run: Set[str] = set()
+    if parsed_args.specs_to_run:
+        for spec in parsed_args.specs_to_run.split(','):
+            spec_file = get_file_spec(spec.strip())
+            if spec_file:
+                specs_to_run.add(spec_file)
+            elif not parsed_args.allow_no_spec:
+                raise ValueError('No spec file found for the file: %s' % spec)
+
+    if parsed_args.run_on_changed_files_in_branch:
+        remote = git_changes_utils.get_local_git_repository_remote_name()
+        if not remote:
+            sys.exit('Error: No remote repository found.')
+        refs = git_changes_utils.get_refs()
+        collected_files = git_changes_utils.get_changed_files(refs, remote)
+        for _, (_, acmrt_files) in collected_files.items():
+            if not acmrt_files:
+                continue
+
+            files_to_run = git_changes_utils.get_js_or_ts_files_from_diff(
+                acmrt_files
+            )
+            for file_path in files_to_run:
+                spec_file = get_file_spec(file_path)
+                if spec_file:
+                    specs_to_run.add(spec_file)
+        staged_files = git_changes_utils.get_staged_acmrt_files()
+        staged_files_to_run = git_changes_utils.get_js_or_ts_files_from_diff(
+            staged_files
+        )
+        for file_path in staged_files_to_run:
+            spec_file = get_file_spec(file_path)
+            if spec_file:
+                specs_to_run.add(spec_file)
+
+    if (
+        parsed_args.specs_to_run or parsed_args.run_on_changed_files_in_branch
+    ) and not specs_to_run:
+        print('No valid specs found to run.')
+        exit_code = 0 if parsed_args.allow_no_spec else 1
+        sys.exit(exit_code)
+
+    if specs_to_run:
+        print('Running the following specs:', specs_to_run)
+        for spec in sorted(specs_to_run):
+            # The Angular CLI's findTests() resolves --include patterns
+            # relative to dirname(main), which is core/templates/. Files
+            # under core/templates/ are found automatically (the prefix is
+            # stripped by findTests). Files outside that directory need a
+            # ../../ prefix to navigate back to the workspace root.
+            if spec.startswith('core/templates/'):
+                cmd.append('--include=%s' % spec)
+            else:
+                cmd.append('--include=../../%s' % spec)
+
     if parsed_args.run_minified_tests:
-        python_utils.PRINT('Running test in production environment')
+        print('Running test in production environment')
 
-        build.main(args=['--prod_env', '--minify_third_party_libs_only'])
+        # Skip the Angular ng build (--skip_ng_build) because karma tests
+        # use their own compilation pipeline and do not consume the Angular
+        # dist output. Omitting it saves ~10 minutes per invocation, keeping
+        # CI overhead on par with the previous minify-third-party-only approach.
+        build.main(args=['--prod_env', '--skip_ng_build'])
 
-        cmd.append('--prodEnv')
+        # --configuration=production requires a matching
+        # `configurations.production` block in angular.json's test target.
+        # That block performs a fileReplacements swap
+        # (environment.ts → environment.prod.ts), mirroring the build
+        # target's existing production config.
+        cmd.append('--configuration=production')
     else:
         build.main(args=[])
 
     if parsed_args.verbose:
-        cmd.append('--terminalEnabled')
+        os.environ['KARMA_TERMINAL_ENABLED'] = 'true'
 
-    task = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    output_lines = []
-    # Reads and prints realtime output from the subprocess until it terminates.
-    while True:
-        line = task.stdout.readline()
-        # No more output from the subprocess, and the subprocess has ended.
-        if len(line) == 0 and task.poll() is not None:
+    for attempt in range(MAX_ATTEMPTS):
+        print(f'Attempt {attempt + 1} of {MAX_ATTEMPTS}')
+        task = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        output_lines = []
+        # The value of `process.stdout` should not be None since we passed
+        # the `stdout=subprocess.PIPE` argument to `Popen`.
+        assert task.stdout is not None
+        # Prevents the wget command from running multiple times.
+        combined_spec_file_started_downloading = False
+        # This variable will be used to define the wget command to download
+        # the combined-test.spec.js file.
+        download_task = None
+        # Reads and prints realtime output from the subprocess until it
+        # terminates.
+        while True:
+            line = task.stdout.readline()
+            # No more output from the subprocess, and the subprocess has ended.
+            if len(line) == 0 and task.poll() is not None:
+                break
+            # Suppressing the karma web-server logs.
+            if line and not '[web-server]:' in line.decode('utf-8'):
+                # Standard output is in bytes, we need to decode
+                # the line to print it.
+                print(line.decode('utf-8'), end='')
+                output_lines.append(line)
+            # Download the combined-tests.js file from the web-server.
+            if (
+                'Executed' in line.decode('utf-8')
+                and not combined_spec_file_started_downloading
+                and parsed_args.download_combined_frontend_spec_file
+            ):
+                download_task = subprocess.Popen(
+                    [
+                        'wget',
+                        (
+                            'http://localhost:9876/base/core/templates/'
+                            'combined-tests.spec.js'
+                        ),
+                        '-P',
+                        os.path.join('../karma_coverage_reports'),
+                    ]
+                )
+                # Wait for the wget command to download the
+                # combined-tests.spec.js file to complete.
+                download_task.wait()
+                combined_spec_file_started_downloading = True
+        # Standard output is in bytes, we need to decode the line to print it.
+        concatenated_output = ''.join(
+            line.decode('utf-8') for line in output_lines
+        )
+        if download_task:
+            # The result of the download is printed at the end for
+            # easy access to it.
+            if download_task.returncode:
+                print('Failed to download the combined-tests.spec.js file.')
+            else:
+                print(
+                    'Downloaded the combined-tests.spec.js file and stored'
+                    'in ../karma_coverage_reports'
+                )
+        print('Done!')
+
+        if 'Trying to get the Angular injector' in concatenated_output:
+            print(
+                'If you run into the error "Trying to get the Angular '
+                'injector", please see https://github.com/oppia/oppia/wiki/'
+                'Frontend-unit-tests-guide#how-to-handle-common-errors'
+                ' for details on how to fix it.'
+            )
+
+        if 'Disconnected , because no message' in concatenated_output:
+            print(
+                'Detected chrome disconnected flake (#16607), so rerunning '
+                'if attempts allow.'
+            )
+        else:
             break
-        # Suppressing the karma web-server logs.
-        if line and not '[web-server]:' in line.decode('utf-8'):
-            # Standard output is in bytes, we need to decode
-            # the line to print it.
-            python_utils.PRINT(line.decode('utf-8'), end='')
-            output_lines.append(line)
-    # Standard output is in bytes, we need to decode the line to print it.
-    concatenated_output = ''.join(
-        line.decode('utf-8') for line in output_lines)
-
-    python_utils.PRINT('Done!')
-
-    if 'Trying to get the Angular injector' in concatenated_output:
-        python_utils.PRINT(
-            'If you run into the error "Trying to get the Angular injector",'
-            ' please see https://github.com/oppia/oppia/wiki/'
-            'Frontend-unit-tests-guide#how-to-handle-common-errors'
-            ' for details on how to fix it.')
 
     if parsed_args.check_coverage:
         if task.returncode:
             sys.exit(
                 'The frontend tests failed. Please fix it before running the'
-                ' test coverage check.')
+                ' test coverage check.'
+            )
         else:
-            check_frontend_test_coverage.main()
+            check_frontend_test_coverage_args = []
+            if len(specs_to_run) > 0:
+                check_frontend_test_coverage_args.append(
+                    '--files_to_check=%s' % ','.join(sorted(specs_to_run))
+                )
+            check_frontend_test_coverage.main(check_frontend_test_coverage_args)
     elif task.returncode:
         sys.exit(task.returncode)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     main()

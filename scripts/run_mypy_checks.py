@@ -16,458 +16,208 @@
 
 """MyPy test runner script."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
-
+from __future__ import annotations
 
 import argparse
 import os
-import site
+import re
 import subprocess
 import sys
 
-from core import python_utils
 from scripts import common
-from scripts import install_third_party_libs
+
+from typing import Final, List, Optional, Tuple
 
 # List of directories whose files won't be type-annotated ever.
-EXCLUDED_DIRECTORIES = [
+EXCLUDED_DIRECTORIES: Final = [
     'proto_files/',
     'scripts/linters/test_files/',
     'third_party/',
+    'venv/',
+    '.direnv/',
+    # The files in 'build_sources' and 'data' directories can be
+    # ignored while type checking, because these files are only
+    # used as resources for the tests.
+    'core/tests/build_sources/',
+    'core/tests/data/',
 ]
 
-# List of files who should be type-annotated but are not.
-NOT_FULLY_COVERED_FILES = [
-    'core/controllers/',
-    'core/domain/action_registry.py',
-    'core/domain/action_registry_test.py',
-    'core/domain/activity_jobs_one_off.py',
-    'core/domain/activity_jobs_one_off_test.py',
-    'core/domain/activity_services.py',
-    'core/domain/activity_services_test.py',
-    'core/domain/activity_validators.py',
-    'core/domain/activity_validators_test.py',
-    'core/domain/app_feedback_report_validators.py',
-    'core/domain/app_feedback_report_validators_test.py',
-    'core/domain/audit_validators.py',
-    'core/domain/audit_validators_test.py',
-    'core/domain/auth_domain.py',
-    'core/domain/auth_domain_test.py',
-    'core/domain/auth_jobs_one_off.py',
-    'core/domain/auth_jobs_one_off_test.py',
-    'core/domain/auth_services.py',
-    'core/domain/auth_services_test.py',
-    'core/domain/auth_validators.py',
-    'core/domain/auth_validators_test.py',
-    'core/domain/base_model_validators.py',
-    'core/domain/base_model_validators_test.py',
-    'core/domain/beam_job_validators.py',
-    'core/domain/beam_job_validators_test.py',
-    'core/domain/blog_domain.py',
-    'core/domain/blog_domain_test.py',
-    'core/domain/blog_services.py',
-    'core/domain/blog_services_test.py',
-    'core/domain/blog_validators.py',
-    'core/domain/blog_validators_test.py',
-    'core/domain/caching_domain.py',
-    'core/domain/caching_services.py',
-    'core/domain/caching_services_test.py',
-    'core/domain/calculation_registry.py',
-    'core/domain/calculation_registry_test.py',
-    'core/domain/change_domain.py',
-    'core/domain/classifier_domain.py',
-    'core/domain/classifier_domain_test.py',
-    'core/domain/classifier_services.py',
-    'core/domain/classifier_services_test.py',
-    'core/domain/classifier_validators.py',
-    'core/domain/classifier_validators_test.py',
-    'core/domain/classroom_domain.py',
-    'core/domain/classroom_services.py',
-    'core/domain/classroom_services_test.py',
-    'core/domain/collection_domain.py',
-    'core/domain/collection_domain_test.py',
-    'core/domain/collection_jobs_one_off.py',
-    'core/domain/collection_jobs_one_off_test.py',
-    'core/domain/collection_services.py',
-    'core/domain/collection_services_test.py',
-    'core/domain/collection_validators.py',
-    'core/domain/collection_validators_test.py',
-    'core/domain/config_domain.py',
-    'core/domain/config_domain_test.py',
-    'core/domain/config_services.py',
-    'core/domain/config_services_test.py',
-    'core/domain/config_validators.py',
-    'core/domain/config_validators_test.py',
-    'core/domain/cron_services.py',
-    'core/domain/customization_args_util.py',
-    'core/domain/customization_args_util_test.py',
-    'core/domain/draft_upgrade_services.py',
-    'core/domain/draft_upgrade_services_test.py',
-    'core/domain/email_jobs_one_off.py',
-    'core/domain/email_jobs_one_off_test.py',
-    'core/domain/email_manager.py',
-    'core/domain/email_manager_test.py',
-    'core/domain/email_services.py',
-    'core/domain/email_services_test.py',
-    'core/domain/email_subscription_services.py',
-    'core/domain/email_subscription_services_test.py',
-    'core/domain/email_validators.py',
-    'core/domain/email_validators_test.py',
-    'core/domain/event_services.py',
-    'core/domain/event_services_test.py',
-    'core/domain/exp_domain.py',
-    'core/domain/exp_domain_test.py',
-    'core/domain/exp_fetchers.py',
-    'core/domain/exp_fetchers_test.py',
-    'core/domain/exp_jobs_one_off.py',
-    'core/domain/exp_jobs_one_off_test.py',
-    'core/domain/exp_services.py',
-    'core/domain/exp_services_test.py',
-    'core/domain/exploration_validators.py',
-    'core/domain/exploration_validators_test.py',
-    'core/domain/expression_parser.py',
-    'core/domain/expression_parser_test.py',
-    'core/domain/feedback_domain.py',
-    'core/domain/feedback_domain_test.py',
-    'core/domain/feedback_jobs_one_off.py',
-    'core/domain/feedback_jobs_one_off_test.py',
-    'core/domain/feedback_services.py',
-    'core/domain/feedback_services_test.py',
-    'core/domain/feedback_validators.py',
-    'core/domain/feedback_validators_test.py',
-    'core/domain/fs_domain.py',
-    'core/domain/fs_domain_test.py',
-    'core/domain/fs_services.py',
-    'core/domain/fs_services_test.py',
-    'core/domain/html_cleaner.py',
-    'core/domain/html_cleaner_test.py',
-    'core/domain/html_validation_service.py',
-    'core/domain/html_validation_service_test.py',
-    'core/domain/image_services.py',
-    'core/domain/image_services_test.py',
-    'core/domain/image_validation_services.py',
-    'core/domain/image_validation_services_test.py',
-    'core/domain/improvements_domain.py',
-    'core/domain/improvements_domain_test.py',
-    'core/domain/improvements_services.py',
-    'core/domain/improvements_services_test.py',
-    'core/domain/improvements_validators.py',
-    'core/domain/improvements_validators_test.py',
-    'core/domain/interaction_jobs_one_off.py',
-    'core/domain/interaction_jobs_one_off_test.py',
-    'core/domain/interaction_registry.py',
-    'core/domain/interaction_registry_test.py',
-    'core/domain/job_validators.py',
-    'core/domain/job_validators_test.py',
-    'core/domain/learner_goals_services.py',
-    'core/domain/learner_goals_services_test.py',
-    'core/domain/learner_playlist_services.py',
-    'core/domain/learner_playlist_services_test.py',
-    'core/domain/learner_progress_domain.py',
-    'core/domain/learner_progress_domain_test.py',
-    'core/domain/learner_progress_services.py',
-    'core/domain/learner_progress_services_test.py',
-    'core/domain/moderator_services.py',
-    'core/domain/moderator_services_test.py',
-    'core/domain/object_registry.py',
-    'core/domain/object_registry_test.py',
-    'core/domain/opportunity_domain.py',
-    'core/domain/opportunity_domain_test.py',
-    'core/domain/opportunity_jobs_one_off.py',
-    'core/domain/opportunity_jobs_one_off_test.py',
-    'core/domain/opportunity_services.py',
-    'core/domain/opportunity_services_test.py',
-    'core/domain/opportunity_validators.py',
-    'core/domain/opportunity_validators_test.py',
-    'core/domain/param_domain.py',
-    'core/domain/param_domain_test.py',
-    'core/domain/platform_feature_services.py',
-    'core/domain/platform_feature_services_test.py',
-    'core/domain/platform_parameter_domain.py',
-    'core/domain/platform_parameter_domain_test.py',
-    'core/domain/platform_parameter_list.py',
-    'core/domain/platform_parameter_list_test.py',
-    'core/domain/platform_parameter_registry.py',
-    'core/domain/platform_parameter_registry_test.py',
-    'core/domain/playthrough_issue_registry.py',
-    'core/domain/playthrough_issue_registry_test.py',
-    'core/domain/prod_validation_jobs_one_off.py',
-    'core/domain/question_domain.py',
-    'core/domain/question_domain_test.py',
-    'core/domain/question_fetchers.py',
-    'core/domain/question_fetchers_test.py',
-    'core/domain/question_jobs_one_off.py',
-    'core/domain/question_jobs_one_off_test.py',
-    'core/domain/question_services.py',
-    'core/domain/question_services_test.py',
-    'core/domain/question_validators.py',
-    'core/domain/question_validators_test.py',
-    'core/domain/rating_services.py',
-    'core/domain/rating_services_test.py',
-    'core/domain/recommendations_jobs_one_off.py',
-    'core/domain/recommendations_jobs_one_off_test.py',
-    'core/domain/recommendations_services.py',
-    'core/domain/recommendations_services_test.py',
-    'core/domain/recommendations_validators.py',
-    'core/domain/recommendations_validators_test.py',
-    'core/domain/rights_domain.py',
-    'core/domain/rights_domain_test.py',
-    'core/domain/rights_manager.py',
-    'core/domain/rights_manager_test.py',
-    'core/domain/role_services.py',
-    'core/domain/role_services_test.py',
-    'core/domain/rte_component_registry.py',
-    'core/domain/rte_component_registry_test.py',
-    'core/domain/rules_registry.py',
-    'core/domain/rules_registry_test.py',
-    'core/domain/search_services.py',
-    'core/domain/search_services_test.py',
-    'core/domain/skill_domain.py',
-    'core/domain/skill_domain_test.py',
-    'core/domain/skill_fetchers.py',
-    'core/domain/skill_fetchers_test.py',
-    'core/domain/skill_jobs_one_off.py',
-    'core/domain/skill_jobs_one_off_test.py',
-    'core/domain/skill_services.py',
-    'core/domain/skill_services_test.py',
-    'core/domain/skill_validators.py',
-    'core/domain/skill_validators_test.py',
-    'core/domain/state_domain.py',
-    'core/domain/state_domain_test.py',
-    'core/domain/statistics_validators.py',
-    'core/domain/statistics_validators_test.py',
-    'core/domain/stats_domain.py',
-    'core/domain/stats_domain_test.py',
-    'core/domain/stats_jobs_continuous.py',
-    'core/domain/stats_jobs_continuous_test.py',
-    'core/domain/stats_jobs_one_off.py',
-    'core/domain/stats_jobs_one_off_test.py',
-    'core/domain/stats_services.py',
-    'core/domain/stats_services_test.py',
-    'core/domain/storage_model_audit_jobs_test.py',
-    'core/domain/story_domain.py',
-    'core/domain/story_domain_test.py',
-    'core/domain/story_fetchers.py',
-    'core/domain/story_fetchers_test.py',
-    'core/domain/story_jobs_one_off.py',
-    'core/domain/story_jobs_one_off_test.py',
-    'core/domain/story_services.py',
-    'core/domain/story_services_test.py',
-    'core/domain/story_validators.py',
-    'core/domain/story_validators_test.py',
-    'core/domain/subscription_services.py',
-    'core/domain/subscription_services_test.py',
-    'core/domain/subtopic_page_domain.py',
-    'core/domain/subtopic_page_domain_test.py',
-    'core/domain/subtopic_page_services.py',
-    'core/domain/subtopic_page_services_test.py',
-    'core/domain/subtopic_validators.py',
-    'core/domain/subtopic_validators_test.py',
-    'core/domain/suggestion_jobs_one_off.py',
-    'core/domain/suggestion_jobs_one_off_test.py',
-    'core/domain/suggestion_registry.py',
-    'core/domain/suggestion_registry_test.py',
-    'core/domain/suggestion_services.py',
-    'core/domain/suggestion_services_test.py',
-    'core/domain/suggestion_validators.py',
-    'core/domain/suggestion_validators_test.py',
-    'core/domain/summary_services.py',
-    'core/domain/summary_services_test.py',
-    'core/domain/takeout_domain.py',
-    'core/domain/takeout_service.py',
-    'core/domain/takeout_service_test.py',
-    'core/domain/taskqueue_services.py',
-    'core/domain/taskqueue_services_test.py',
-    'core/domain/topic_domain.py',
-    'core/domain/topic_domain_test.py',
-    'core/domain/topic_fetchers.py',
-    'core/domain/topic_fetchers_test.py',
-    'core/domain/topic_jobs_one_off.py',
-    'core/domain/topic_jobs_one_off_test.py',
-    'core/domain/topic_services.py',
-    'core/domain/topic_services_test.py',
-    'core/domain/topic_validators.py',
-    'core/domain/topic_validators_test.py',
-    'core/domain/translatable_object_registry.py',
-    'core/domain/translatable_object_registry_test.py',
-    'core/domain/translation_domain.py',
-    'core/domain/translation_domain_test.py',
-    'core/domain/translation_fetchers.py',
-    'core/domain/translation_fetchers_test.py',
-    'core/domain/translation_services.py',
-    'core/domain/translation_services_test.py',
-    'core/domain/translation_validators.py',
-    'core/domain/translation_validators_test.py',
-    'core/domain/user_domain.py',
-    'core/domain/user_domain_test.py',
-    'core/domain/user_jobs_one_off.py',
-    'core/domain/user_jobs_one_off_test.py',
-    'core/domain/user_query_domain.py',
-    'core/domain/user_query_domain_test.py',
-    'core/domain/user_query_jobs_one_off.py',
-    'core/domain/user_query_jobs_one_off_test.py',
-    'core/domain/user_query_services.py',
-    'core/domain/user_query_services_test.py',
-    'core/domain/user_services.py',
-    'core/domain/user_services_test.py',
-    'core/domain/user_validators.py',
-    'core/domain/user_validators_test.py',
-    'core/domain/value_generators_domain.py',
-    'core/domain/value_generators_domain_test.py',
-    'core/domain/visualization_registry.py',
-    'core/domain/visualization_registry_test.py',
-    'core/domain/voiceover_services.py',
-    'core/domain/voiceover_services_test.py',
-    'core/domain/wipeout_domain.py',
-    'core/domain/wipeout_domain_test.py',
-    'core/domain/wipeout_jobs_one_off.py',
-    'core/domain/wipeout_jobs_one_off_test.py',
-    'core/domain/wipeout_service.py',
-    'core/domain/wipeout_service_test.py',
-    'core/platform/storage/cloud_storage_emulator.py',
-    'core/platform/storage/cloud_storage_emulator_test.py',
-    'core/platform_feature_list.py',
-    'core/platform_feature_list_test.py',
-    'core/storage/beam_job/gae_models.py',
-    'core/storage/beam_job/gae_models_test.py',
+# Files that are known to contain code mypy currently reports as
+# unreachable (via --warn-unreachable), due to its inability to
+# narrow certain type patterns (see issue #21747). Each file here
+# should have (or link to) a tracking "good first issue" to fix the
+# narrowing and get removed from this list. Do NOT add a file here
+# to silence a *different* kind of mypy error - only unreachable-code
+# errors from these files are suppressed; every other mypy error in
+# these files, and every error (including new unreachable errors) in
+# every other file, still fails the build.
+NOT_FULLY_COVERED_FILES_FOR_UNREACHABLE_CODE: Final = [
+    'extensions/objects/models/objects.py',
+    'core/schema_utils.py',
+    'core/storage/user/gae_models.py',
+    'core/storage/suggestion/gae_models.py',
     'core/storage/blog/gae_models.py',
-    'core/storage/blog/gae_models_test.py',
-    'core/storage/storage_models_test.py',
-    'core/tests/build_sources/extensions/CodeRepl.py',
-    'core/tests/build_sources/extensions/DragAndDropSortInput.py',
-    'core/tests/build_sources/extensions/base.py',
-    'core/tests/build_sources/extensions/base_test.py',
-    'core/tests/build_sources/extensions/models_test.py',
-    'core/tests/data/failing_tests.py',
-    'core/tests/data/image_constants.py',
-    'core/tests/data/unicode_and_str_handler.py',
-    'core/tests/gae_suite.py',
-    'core/tests/gae_suite_test.py',
-    'core/tests/load_tests/feedback_thread_summaries_test.py',
-    'core/tests/test_utils.py',
-    'core/tests/test_utils_test.py',
-    'core/jobs',
-    'core/python_utils.py',
-    'core/python_utils_test.py',
-    'extensions/',
-    'scripts/'
+    'core/domain/email_services.py',
+    'core/domain/user_services.py',
+    'core/jobs/transforms/validation/base_validation.py',
+    'core/storage/base_model/gae_models_test.py',
+    'core/domain/user_services_test.py',
+    'core/domain/takeout_service_test.py',
+    'core/domain/event_services_test.py',
 ]
 
+CONFIG_FILE_PATH: Final = os.path.join('.', 'mypy.ini')
 
-CONFIG_FILE_PATH = os.path.join('.', 'mypy.ini')
-MYPY_REQUIREMENTS_FILE_PATH = os.path.join('.', 'mypy_requirements.txt')
-MYPY_TOOLS_DIR = os.path.join(os.getcwd(), 'third_party', 'python3_libs')
-PYTHON3_CMD = 'python3'
+# Matches lines like:
+# core/domain/exp_services.py:672: error: ... [unreachable]
+# stubs/yaml/__init__.pyi:9: error: ...
+# Also tolerates optional column and end-line:end-column suffixes
+# (file.py:LINE:COL: error: ... or file.py:LINE:COL:ENDLINE:ENDCOL: error: ...)
+# in case mypy.ini or the invocation ever turns on show_column_numbers/
+# show_error_end - the current config doesn't, but the parser shouldn't
+# silently go blind if that changes.
+_UNREACHABLE_LINE_REGEX: Final = re.compile(
+    r'^(?P<filepath>[^:]+\.pyi?):\d+(?::\d+(?::\d+:\d+)?)?: error: '
+    r'.* \[unreachable\]\s*$'
+)
 
-_PATHS_TO_INSERT = [MYPY_TOOLS_DIR, ]
-
-_PARSER = argparse.ArgumentParser(
+_PARSER: Final = argparse.ArgumentParser(
     description='Python type checking using mypy script.'
 )
-
 _PARSER.add_argument(
-    '--skip-install',
-    help='If passed, skips installing dependencies.'
-    ' By default, they are installed.',
-    action='store_true')
-
-_PARSER.add_argument(
-    '--install-globally',
-    help='optional; if specified, installs mypy and its requirements globally.'
-    ' By default, they are installed to %s' % MYPY_TOOLS_DIR,
-    action='store_true')
-
-_PARSER.add_argument(
-    '--files',
-    help='Files to type-check',
-    action='store',
-    nargs='+'
+    '--files', help='Files to type-check', action='store', nargs='+'
 )
 
 
-def install_third_party_libraries(skip_install: bool) -> None:
-    """Run the installation script.
-
-    Args:
-        skip_install: bool. Whether to skip running the installation script.
-    """
-    if not skip_install:
-        install_third_party_libs.main()
-
-
-def get_mypy_cmd(files, mypy_exec_path, using_global_mypy):
+def get_mypy_cmd(files: Optional[List[str]]) -> List[str]:
     """Return the appropriate command to be run.
 
     Args:
-        files: list(list(str)). List having first element as list of string.
-        mypy_exec_path: str. Path of mypy executable.
-        using_global_mypy: bool. Whether generated command should run using
-            global mypy.
+        files: Optional[List[str]]. List of files provided to check for MyPy
+            type checking, or None if no file is provided explicitly.
 
     Returns:
         list(str). List of command line arguments.
     """
-    if using_global_mypy:
-        mypy_cmd = 'mypy'
-    else:
-        mypy_cmd = mypy_exec_path
+    mypy_cmd = 'mypy'
+
     if files:
-        cmd = [mypy_cmd, '--config-file', CONFIG_FILE_PATH] + files
-    else:
-        excluded_files_regex = (
-            '|'.join(NOT_FULLY_COVERED_FILES + EXCLUDED_DIRECTORIES))
         cmd = [
-            mypy_cmd, '--exclude', excluded_files_regex,
-            '--config-file', CONFIG_FILE_PATH, '.'
+            mypy_cmd,
+            '--config-file',
+            CONFIG_FILE_PATH,
+            '--warn-unreachable',
+        ] + files
+    else:
+        excluded_files_regex = '|'.join(EXCLUDED_DIRECTORIES)
+        cmd = [
+            mypy_cmd,
+            '--exclude',
+            excluded_files_regex,
+            '--config-file',
+            CONFIG_FILE_PATH,
+            '--warn-unreachable',
+            '.',
         ]
     return cmd
 
 
-def install_mypy_prerequisites(install_globally):
-    """Install mypy and type stubs from mypy_requirements.txt.
+def _is_allowlisted(filepath: str) -> bool:
+    """Checks whether the given mypy-reported filepath (which may use
+    either OS-specific separators) matches an entry in the unreachable-
+    code allowlist.
+    """
+    normalized = filepath.replace(os.sep, '/')
+    return normalized in NOT_FULLY_COVERED_FILES_FOR_UNREACHABLE_CODE
+
+
+_ERROR_LINE_REGEX: Final = re.compile(
+    r'^[^:]+\.pyi?:\d+(?::\d+(?::\d+:\d+)?)?: error: '
+)
+_SUMMARY_LINE_REGEX: Final = re.compile(r'^Found \d+ errors? in \d+ files?')
+
+
+def filter_unreachable_errors_for_allowlisted_files(
+    mypy_output: str, check_stale_entries: bool
+) -> Tuple[str, int, bool]:
+    """Removes '[unreachable]' error lines that originate from files on
+    the allowlist, leaving every other line (including unreachable
+    errors from non-allowlisted files) untouched. Also rewrites mypy's
+    trailing summary line to reflect the filtered error count, since
+    mypy generates that line itself and it would otherwise still show
+    the pre-filter count.
 
     Args:
-        install_globally: bool. Whether mypy and its requirements are to be
-            installed globally.
+        mypy_output: str. Raw stdout produced by mypy.
+        check_stale_entries: bool. Whether to flag allowlist entries
+            that produced no unreachable error this run. Only valid
+            when mypy was run against the full repo - a targeted
+            `--files` run doesn't scan most allowlisted files at all,
+            so their absence from the output means nothing.
 
     Returns:
-        tuple(int, str). The return code from installing prerequisites and the
-        path of the mypy executable.
+        Tuple[str, int, bool]. The filtered output, the count of
+        remaining (non-suppressed) per-line errors, and whether any
+        allowlisted file's unreachable error was actually suppressed
+        during this run.
     """
-    # TODO(#13398): Change MyPy installation after Python3 migration. Now, we
-    # install packages globally for CI. In CI, pip installation is not in a way
-    # we expect.
-    if install_globally:
-        cmd = [
-            PYTHON3_CMD, '-m', 'pip', 'install', '-r',
-            MYPY_REQUIREMENTS_FILE_PATH
-        ]
+    kept_lines = []
+    remaining_error_count = 0
+    allowlisted_files_hit = set()
+    for line in mypy_output.splitlines():
+        unreachable_match = _UNREACHABLE_LINE_REGEX.match(line)
+        if unreachable_match and _is_allowlisted(
+            unreachable_match.group('filepath')
+        ):
+            allowlisted_files_hit.add(
+                unreachable_match.group('filepath').replace(os.sep, '/')
+            )
+            continue
+        if _SUMMARY_LINE_REGEX.match(line):
+            # Drop mypy's own summary line; we regenerate it below from
+            # the errors that actually survived filtering.
+            continue
+        if _ERROR_LINE_REGEX.match(line):
+            remaining_error_count += 1
+        kept_lines.append(line)
+
+    # Flag allowlist entries that no longer produce any unreachable
+    # error - these should be removed so the allowlist doesn't quietly
+    # accumulate stale, already-fixed entries. Only meaningful on a
+    # full-repo run; see the check_stale_entries docstring above.
+    if check_stale_entries:
+        stale_entries = (
+            set(NOT_FULLY_COVERED_FILES_FOR_UNREACHABLE_CODE)
+            - allowlisted_files_hit
+        )
+        if stale_entries:
+            remaining_error_count += len(stale_entries)
+            stale_entries_str = ', '.join(sorted(stale_entries))
+            kept_lines.append(
+                'error: The following files no longer produce unreachable-'
+                'code errors and must be removed from '
+                'NOT_FULLY_COVERED_FILES_FOR_UNREACHABLE_CODE in '
+                f'scripts/run_mypy_checks.py: {stale_entries_str}'
+            )
+
+    if remaining_error_count:
+        kept_lines.append(
+            f'Found {remaining_error_count} error(s) '
+            'after filtering allowlisted unreachable code.'
+        )
     else:
-        cmd = [
-            PYTHON3_CMD, '-m', 'pip', 'install', '-r',
-            MYPY_REQUIREMENTS_FILE_PATH, '--target', MYPY_TOOLS_DIR,
-            '--upgrade'
-        ]
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    output = process.communicate()
-    if b'can\'t combine user with prefix' in output[1]:
-        uextention_text = ['--user', '--prefix=', '--system']
-        new_process = subprocess.Popen(
-            cmd + uextention_text, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        new_process.communicate()
-        _PATHS_TO_INSERT.append(os.path.join(site.USER_BASE, 'bin'))
-        mypy_exec_path = os.path.join(site.USER_BASE, 'bin', 'mypy')
-        return (new_process.returncode, mypy_exec_path)
-    else:
-        _PATHS_TO_INSERT.append(os.path.join(MYPY_TOOLS_DIR, 'bin'))
-        mypy_exec_path = os.path.join(MYPY_TOOLS_DIR, 'bin', 'mypy')
-        return (process.returncode, mypy_exec_path)
+        kept_lines.append(
+            'Success: no issues found after filtering '
+            'allowlisted unreachable code.'
+        )
+    return (
+        '\n'.join(kept_lines),
+        remaining_error_count,
+        bool(allowlisted_files_hit),
+    )
 
 
-def main(args=None):
+def main(args: Optional[List[str]] = None) -> int:
     """Runs the MyPy type checks."""
     parsed_args = _PARSER.parse_args(args=args)
 
@@ -477,46 +227,46 @@ def main(args=None):
         # https://stackoverflow.com/q/10095037 for more details.
         sys.path.insert(1, directory)
 
-    install_third_party_libraries(parsed_args.skip_install)
-    common.fix_third_party_imports()
+    mypy_cmd = get_mypy_cmd(parsed_args.files)
 
-    python_utils.PRINT('Installing Mypy and stubs for third party libraries.')
-    return_code, mypy_exec_path = install_mypy_prerequisites(
-        parsed_args.install_globally)
-    if return_code != 0:
-        python_utils.PRINT(
-            'Cannot install Mypy and stubs for third party libraries.')
-        sys.exit(1)
-
-    python_utils.PRINT(
-        'Installed Mypy and stubs for third party libraries.')
-
-    python_utils.PRINT('Starting Mypy type checks.')
-    cmd = get_mypy_cmd(
-        parsed_args.files, mypy_exec_path, parsed_args.install_globally)
-
-    env = os.environ.copy()
-    for path in _PATHS_TO_INSERT:
-        env['PATH'] = '%s%s' % (path, os.pathsep) + env['PATH']
-    env['PYTHONPATH'] = MYPY_TOOLS_DIR
-
+    print('Starting Mypy type checks.')
     process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        mypy_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     stdout, stderr = process.communicate()
     # Standard and error output is in bytes, we need to decode the line to
     # print it.
-    python_utils.PRINT(stdout.decode('utf-8'))
-    python_utils.PRINT(stderr.decode('utf-8'))
-    if process.returncode == 0:
-        python_utils.PRINT('Mypy type checks successful.')
+    raw_stdout = stdout.decode('utf-8')
+    filtered_stdout, remaining_error_count, suppressed_something = (
+        filter_unreachable_errors_for_allowlisted_files(
+            raw_stdout, check_stale_entries=not parsed_args.files
+        )
+    )
+    print(filtered_stdout)
+    print(stderr.decode('utf-8'))
+
+    mypy_originally_failed = process.returncode != 0
+    if mypy_originally_failed and not suppressed_something:
+        # Mypy failed for a reason we didn't suppress anything for (a
+        # bad invocation, a config error, a non-unreachable error type,
+        # etc.) - trust mypy's own verdict rather than our error count,
+        # since we have no evidence this run's failure has anything to
+        # do with the allowlist.
+        mypy_check_passed = False
     else:
-        python_utils.PRINT(
+        mypy_check_passed = remaining_error_count == 0
+
+    if mypy_check_passed:
+        print('Mypy type checks successful.')
+        return 0
+    else:
+        print(
             'Mypy type checks unsuccessful. Please fix the errors. '
             'For more information, visit: '
-            'https://github.com/oppia/oppia/wiki/Backend-Type-Annotations')
-        sys.exit(2)
-    return process.returncode
+            'https://github.com/oppia/oppia/wiki/Backend-Type-Annotations'
+        )
+        sys.exit(1)
 
 
-if __name__ == '__main__': # pragma: no cover
+if __name__ == '__main__':  # pragma: no cover
     main()

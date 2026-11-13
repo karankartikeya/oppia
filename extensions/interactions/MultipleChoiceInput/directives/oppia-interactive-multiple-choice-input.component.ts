@@ -20,119 +20,137 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { BrowserCheckerService } from 'domain/utilities/browser-checker.service';
-import { MultipleChoiceInputCustomizationArgs } from 'interactions/customization-args-defs';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { InteractionRulesService } from 'pages/exploration-player-page/services/answer-classification.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { MultipleChoiceInputRulesService } from './multiple-choice-input-rules.service';
+import {Component, HostListener, Input, OnInit} from '@angular/core';
+import {RecordedVoiceovers} from 'domain/exploration/recorded-voiceovers.model';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {MultipleChoiceInputCustomizationArgs} from 'interactions/customization-args-defs';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {MultipleChoiceInputRulesService} from './multiple-choice-input-rules.service';
+import {
+  MultipleChoiceInputOrderedChoicesService,
+  ChoiceWithIndex,
+} from './multiple-choice-input-ordered-choices-service';
 
 @Component({
   selector: 'oppia-interactive-multiple-choice-input',
-  templateUrl: './multiple-choice-input-interaction.component.html'
+  templateUrl: './multiple-choice-input-interaction.component.html',
+  styleUrls: ['../static/multiple_choice_input.css'],
 })
 export class InteractiveMultipleChoiceInputComponent implements OnInit {
-  @Input() choicesWithValue: string;
-  @Input() showChoicesInShuffledOrderWithValue: string;
-  choices;
-  answer;
+  COMPONENT_NAME_RULE_INPUT!: string;
+  @Input() choicesWithValue!: string;
+  @Input() showChoicesInShuffledOrderWithValue!: string;
+  @Input() lastAnswer!: number | null;
+  choices!: ChoiceWithIndex[];
+  answer: number | null = null;
+  displayedCard!: StateCard;
+  errorMessageI18nKey: string = '';
+  recordedVoiceovers!: RecordedVoiceovers;
 
   constructor(
-    private browserCheckerService: BrowserCheckerService,
     private currentInteractionService: CurrentInteractionService,
-    private interactionAttributesExtractorService:
-      InteractionAttributesExtractorService,
-    private multipleChoiceInputRulesService: MultipleChoiceInputRulesService
-  ) { }
+    private interactionAttributesExtractorService: InteractionAttributesExtractorService,
+    private multipleChoiceInputRulesService: MultipleChoiceInputRulesService,
+    private playerTranscriptService: PlayerTranscriptService,
+    private multipleChoiceInputOrderedChoicesService: MultipleChoiceInputOrderedChoicesService
+  ) {}
 
   private getAttrs() {
     return {
       choicesWithValue: this.choicesWithValue,
-      showChoicesInShuffledOrderWithValue: (
-        this.showChoicesInShuffledOrderWithValue)
+      showChoicesInShuffledOrderWithValue:
+        this.showChoicesInShuffledOrderWithValue,
     };
   }
 
-  private validityCheckFn(): boolean {
+  private validate(): boolean {
     return this.answer !== null;
   }
 
-  ngOnInit(): void {
-    const {
-      showChoicesInShuffledOrder,
-      choices
-    } = this.interactionAttributesExtractorService.getValuesFromAttributes(
-      'MultipleChoiceInput',
-      this.getAttrs()
-    ) as MultipleChoiceInputCustomizationArgs;
-
-    var choicesWithIndex = choices.value.map(
-      function(value, originalIndex) {
-        return {originalIndex: originalIndex, value: value.html};
-      }
-    );
-
-    var shuffleChoices = (choices) => {
-      for (
-        var currentIndex = choices.length - 1;
-        currentIndex >= 0;
-        currentIndex--
-      ) {
-        var temporaryValue = null;
-        var randomIndex = null;
-        randomIndex = Math.floor(Math.random() * (currentIndex + 1));
-        temporaryValue = choices[currentIndex];
-        choices[currentIndex] = choices[randomIndex];
-        choices[randomIndex] = temporaryValue;
-      }
-      return choices;
-    };
-    // If choices need to be shuffled, shuffle them, otherwise order the
-    // choices based on their original index.
-    this.choices = (
-      showChoicesInShuffledOrder.value ? shuffleChoices(choicesWithIndex) :
-      choicesWithIndex.sort((c1, c2) => c1.originalIndex - c2.originalIndex));
-    this.answer = null;
-    this.currentInteractionService.registerCurrentInteraction(
-      () => this.submitAnswer(), () => this.validityCheckFn());
+  private shuffleChoices(choices: ChoiceWithIndex[]): void {
+    for (
+      var currentIndex = choices.length - 1;
+      currentIndex >= 0;
+      currentIndex--
+    ) {
+      var temporaryValue = null;
+      var randomIndex = null;
+      randomIndex = Math.floor(Math.random() * (currentIndex + 1));
+      temporaryValue = choices[currentIndex];
+      choices[currentIndex] = choices[randomIndex];
+      choices[randomIndex] = temporaryValue;
+    }
   }
 
-  selectAnswer(event: MouseEvent, answer: string): void {
+  private getOrderedChoices(): ChoiceWithIndex[] {
+    if (this.playerTranscriptService.getNumSubmitsForLastCard() > 0) {
+      return this.multipleChoiceInputOrderedChoicesService.get();
+    }
+
+    const {showChoicesInShuffledOrder, choices} =
+      this.interactionAttributesExtractorService.getValuesFromAttributes(
+        'MultipleChoiceInput',
+        this.getAttrs()
+      ) as MultipleChoiceInputCustomizationArgs;
+
+    const choicesWithIndex = choices.value.map((value, originalIndex) => ({
+      originalIndex,
+      choice: value,
+    }));
+
+    if (showChoicesInShuffledOrder.value) {
+      this.shuffleChoices(choicesWithIndex);
+    } else {
+      choicesWithIndex.sort((c1, c2) => c1.originalIndex - c2.originalIndex);
+    }
+    this.multipleChoiceInputOrderedChoicesService.store(choicesWithIndex);
+    return choicesWithIndex;
+  }
+
+  ngOnInit(): void {
+    this.choices = this.getOrderedChoices();
+
+    this.answer = this.lastAnswer !== undefined ? this.lastAnswer : null;
+    this.currentInteractionService.registerCurrentInteraction(
+      () => this.submitAnswer(),
+      () => this.validate()
+    );
+  }
+
+  selectAnswer(event: MouseEvent, answer: number | null): void {
     event.preventDefault();
     if (answer === null) {
       return;
     }
-    // Deselect previously selected option.
-    var selectedElement = (
-      document.querySelector(
-        'button.multiple-choice-option.selected'));
-    if (selectedElement) {
-      selectedElement.classList.remove('selected');
-    }
-    // Selected current option.
-    (event.currentTarget as HTMLDivElement).classList.add('selected');
-    this.answer = parseInt(answer, 10);
-    if (!this.browserCheckerService.isMobileDevice()) {
-      this.submitAnswer();
-    }
+    this.errorMessageI18nKey = '';
+    // The choice's originalIndex is already a number, so no parsing is needed.
+    this.answer = answer;
+    this.currentInteractionService.updateCurrentAnswer(this.answer);
+  }
+
+  isSelectedChoice(choice: ChoiceWithIndex): boolean {
+    return this.answer !== null && this.answer === choice.originalIndex;
+  }
+
+  @HostListener('document:keydown.enter', ['$event'])
+  handleEnterKey(event: KeyboardEvent): void {
+    event.preventDefault();
+    this.submitAnswer();
   }
 
   submitAnswer(): void {
     if (this.answer === null) {
+      if (this.currentInteractionService.showNoResponseError()) {
+        this.errorMessageI18nKey =
+          'I18N_INTERACTIONS_ITEM_SELECTION_NO_RESPONSE';
+      }
       return;
     }
     this.currentInteractionService.onSubmit(
-      this.answer as unknown as string,
-      this.multipleChoiceInputRulesService as unknown as InteractionRulesService
+      this.answer,
+      this.multipleChoiceInputRulesService
     );
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaInteractiveMultipleChoiceInput',
-  downgradeComponent({
-    component: InteractiveMultipleChoiceInputComponent
-  })
-);

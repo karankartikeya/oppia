@@ -16,72 +16,131 @@
 
 """Common utilities for test classes."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
+import builtins
 import collections
 import contextlib
 import copy
 import datetime
 import functools
 import inspect
+import io
 import itertools
 import json
 import logging
+import math
 import os
+import random
 import re
+import string
 import unittest
 
-from core import feconf
-from core import python_utils
-from core import schema_utils
-from core import utils
+import main
+from core import feature_flag_list, feconf, schema_utils, utils
 from core.constants import constants
 from core.controllers import base
-from core.domain import auth_domain
-from core.domain import caching_domain
-from core.domain import collection_domain
-from core.domain import collection_services
-from core.domain import exp_domain
-from core.domain import exp_fetchers
-from core.domain import exp_services
-from core.domain import fs_domain
-from core.domain import fs_services
-from core.domain import interaction_registry
-from core.domain import question_domain
-from core.domain import question_services
-from core.domain import rights_manager
-from core.domain import skill_domain
-from core.domain import skill_services
-from core.domain import state_domain
-from core.domain import story_domain
-from core.domain import story_services
-from core.domain import subtopic_page_domain
-from core.domain import subtopic_page_services
-from core.domain import topic_domain
-from core.domain import topic_services
-from core.domain import user_services
+from core.domain import (
+    auth_domain,
+    caching_domain,
+    classroom_config_domain,
+    classroom_config_services,
+    collection_domain,
+    collection_services,
+    exp_domain,
+    exp_fetchers,
+    exp_services,
+    feature_flag_domain,
+    feature_flag_services,
+    interaction_registry,
+    object_registry,
+    param_domain,
+    platform_parameter_domain,
+    platform_parameter_list,
+    platform_parameter_registry,
+    platform_parameter_services,
+    question_domain,
+    question_services,
+    rights_manager,
+    skill_domain,
+    skill_services,
+    state_domain,
+    story_domain,
+    story_fetchers,
+    story_services,
+    study_guide_domain,
+    study_guide_services,
+    subtopic_page_domain,
+    subtopic_page_services,
+    topic_domain,
+    topic_services,
+    translation_domain,
+    user_services,
+)
 from core.platform import models
-from core.platform.search import elastic_search_services
 from core.platform.taskqueue import cloud_tasks_emulator
-import main
-from proto_files import text_classifier_pb2
+from scripts import common
 
-import elasticsearch
 import requests_mock
+import webapp2
 import webtest
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Final,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    OrderedDict,
+    Pattern,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
-from typing import Any, Dict, Optional # isort: skip
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import (
+        auth_models,
+        base_models,
+        datastore_services,
+        email_services,
+        feedback_models,
+        memory_cache_services,
+        platform_auth_services,
+        platform_taskqueue_services,
+        question_models,
+        storage_services,
+        suggestion_models,
+    )
 
 (
-    auth_models, base_models, exp_models,
-    feedback_models, question_models, skill_models,
-    story_models, suggestion_models, topic_models
-) = models.Registry.import_models([
-    models.NAMES.auth, models.NAMES.base_model, models.NAMES.exploration,
-    models.NAMES.feedback, models.NAMES.question, models.NAMES.skill,
-    models.NAMES.story, models.NAMES.suggestion, models.NAMES.topic
-])
+    auth_models,
+    base_models,
+    exp_models,
+    feedback_models,
+    question_models,
+    suggestion_models,
+) = models.Registry.import_models(
+    [
+        models.Names.AUTH,
+        models.Names.BASE_MODEL,
+        models.Names.EXPLORATION,
+        models.Names.FEEDBACK,
+        models.Names.QUESTION,
+        models.Names.SUGGESTION,
+    ]
+)
 
 datastore_services = models.Registry.import_datastore_services()
 storage_services = models.Registry.import_storage_services()
@@ -92,12 +151,12 @@ platform_taskqueue_services = models.Registry.import_taskqueue_services()
 
 # Prefix to append to all lines printed by tests to the console.
 # We are using the b' prefix as all the stdouts are in bytes.
-LOG_LINE_PREFIX = b'LOG_INFO_TEST: '
+LOG_LINE_PREFIX: Final = b'LOG_INFO_TEST: '
 
 # List of model classes that don't have Wipeout or Takeout, related class
 # methods defined because they're not used directly but only as
 # base classes for the other models.
-BASE_MODEL_CLASSES_WITHOUT_DATA_POLICIES = (
+BASE_MODEL_CLASSES_WITHOUT_DATA_POLICIES: Final = (
     'BaseCommitLogEntryModel',
     'BaseHumanMaintainedModel',
     'BaseMapReduceBatchResultsModel',
@@ -105,10 +164,15 @@ BASE_MODEL_CLASSES_WITHOUT_DATA_POLICIES = (
     'BaseSnapshotContentModel',
     'BaseSnapshotMetadataModel',
     'VersionedModel',
+    'BaseFeedbackModel',
+    'BaseFeatureFlagConfigModel',
+    'BasePlatformParameterConfigModel',
 )
 
+_GenericHandlerFunctionReturnType = TypeVar('_GenericHandlerFunctionReturnType')
 
-def get_filepath_from_filename(filename, rootdir):
+
+def get_filepath_from_filename(filename: str, rootdir: str) -> Optional[str]:
     """Returns filepath using the filename. Different files are present in
     different subdirectories in the rootdir. So, we walk through the rootdir and
     match the all the filenames with the given filename.  When a match is found
@@ -129,28 +193,28 @@ def get_filepath_from_filename(filename, rootdir):
     Returns:
         str | None. The path of the file if file is found otherwise
         None.
+
+    Raises:
+        Exception. Multiple files found with given file name.
     """
-    # This is required since error files are served according to error status
-    # code. The file served is error-page.mainpage.html but it is compiled and
-    # stored as error-page-{status_code}.mainpage.html.  So, we need to swap the
-    # name here to obtain the correct filepath.
-    if filename.startswith('error-page'):
-        filename = 'error-page.mainpage.html'
-    matches = list(itertools.chain.from_iterable(
-        (os.path.join(subdir, f) for f in filenames if f == filename)
-        for subdir, _, filenames in os.walk(rootdir)))
+    matches = list(
+        itertools.chain.from_iterable(
+            (os.path.join(subdir, f) for f in filenames if f == filename)
+            for subdir, _, filenames in os.walk(rootdir)
+        )
+    )
     if len(matches) > 1:
         raise Exception('Multiple files found with name: %s' % filename)
     return matches[0] if matches else None
 
 
-def mock_load_template(filename):
+def mock_load_template(filename: str) -> str:
     """Mock for load_template function. This mock is required for backend tests
-    since we do not have webpack compilation before backend tests. The folder to
-    search templates is webpack_bundles which is generated after webpack
-    compilation. Since this folder will be missing, load_template function will
-    return an error. So, we use a mock for load_template which returns the html
-    file from the source directory instead.
+    since the compiled output may not be available. The compiled output would
+    normally be served from the build directory. Since this folder will be
+    missing during backend tests, load_template function will return an error.
+    So, we use a mock for load_template which returns the html file from the
+    source directory instead.
 
     Args:
         filename: str. The name of the file for which template is to be
@@ -158,14 +222,20 @@ def mock_load_template(filename):
 
     Returns:
         str. The contents of the given file.
+
+    Raises:
+        Exception. No file exists for the given file name.
     """
     filepath = get_filepath_from_filename(
-        filename, os.path.join('core', 'templates', 'pages'))
-    with python_utils.open_file(filepath, 'r') as f:
+        filename, os.path.join('core', 'templates', 'pages')
+    )
+    if filepath is None:
+        raise Exception('No file exists for the given file name.')
+    with open(filepath, 'r', encoding='utf-8') as f:
         return f.read()
 
 
-def check_image_png_or_webp(image_string):
+def check_image_png_or_webp(image_string: str) -> bool:
     """Checks if the image is in png or webp format only.
 
     Args:
@@ -177,353 +247,275 @@ def check_image_png_or_webp(image_string):
     return image_string.startswith(('data:image/png', 'data:image/webp'))
 
 
-def get_storage_model_module_names():
-    """Get all module names in storage."""
-    # As models.NAMES is an enum, it cannot be iterated over. So we use the
+def get_storage_model_module_names() -> Iterator[models.Names]:
+    """Get all model names in storage.
+
+    Yields:
+        Names. The model with all model names in storage.
+    """
+    # As models.Names is an enum, it cannot be iterated over. So we use the
     # __dict__ property which can be iterated over.
-    for name in models.NAMES:
-        yield name
+    yield from models.Names
 
 
-def get_storage_model_classes():
-    """Get all model classes in storage."""
+def get_storage_model_classes() -> Iterator[Type[base_models.BaseModel]]:
+    """Get all model classes in storage.
+
+    Yields:
+        BaseModel. The model with all model classes in storage.
+    """
     for module_name in get_storage_model_module_names():
         (module,) = models.Registry.import_models([module_name])
         for member_name, member_obj in inspect.getmembers(module):
             if inspect.isclass(member_obj):
-                clazz = getattr(module, member_name)
+                clazz: Type[base_models.BaseModel] = getattr(
+                    module, member_name
+                )
                 all_base_classes = [
-                    base_class.__name__ for base_class in inspect.getmro(
-                        clazz)]
+                    base_class.__name__ for base_class in inspect.getmro(clazz)
+                ]
                 if 'Model' in all_base_classes:
                     yield clazz
 
 
-class ElasticSearchStub:
-    """This stub class mocks the functionality of ES in
-    elastic_search_services.py.
+def generate_random_hexa_str() -> str:
+    """Generate 32 character random string that looks like hex number.
 
-    IMPORTANT NOTE TO DEVELOPERS: These mock functions are NOT guaranteed to
-    be exact implementations of elasticsearch functionality. If the results of
-    this mock and the local dev elasticsearch instance differ, the mock
-    functions should be updated so that their behaviour matches what a local
-    dev instance would return. (For example, this mock always has a 'version'
-    of 1 in the return dict and an arbitrary '_seq_no', although the version
-    number increments with every PUT in the elasticsearch Python client
-    library and the '_seq_no' increments with every operation.)
+    Returns:
+        str. A random string.
+    """
+    uppercase = 'ABCDEF'
+    lowercase = 'abcdef'
+    characters = '%s%s%s' % (uppercase, lowercase, string.digits)
+
+    return ''.join(random.choices(characters, k=32))
+
+
+@contextlib.contextmanager
+def swap_is_feature_flag_enabled_function(
+    feature_flag_names: List[feature_flag_list.FeatureNames],
+) -> Iterator[None]:
+    """Mocks is_feature_flag_enabled function within the context of a
+    'with' statement. is_feature_flag_enabled will return True for all
+    the features present in feature_flag_names.
+
+    Args:
+        feature_flag_names: List[FeatureNames]. The name of the feature
+            flags for which the value should be returned as True.
+
+    Yields:
+        context. The context with function replaced.
     """
 
-    _DB = {}
-
-    def reset(self):
-        """Helper method that clears the mock database."""
-        self._DB.clear()
-
-    def _generate_index_not_found_error(self, index_name):
-        """Helper method that generates an elasticsearch 'index not found' 404
-        error.
+    def mock_is_feature_flag_enabled(
+        feature_flag_name: str,
+        user_id: Optional[str] = None,  # pylint: disable=unused-argument
+        feature_flag: Optional[  # pylint: disable=unused-argument
+            feature_flag_domain.FeatureFlag
+        ] = None,
+    ) -> bool:
+        """Mocks is_feature_flag_enabled function to return True if the
+        target_feature_flag_name is present in feature_flag_names.
 
         Args:
-            index_name: str. The index that was not found.
+            feature_flag_name: str. The name of the target feature flag.
+            user_id: str|None. The id of the user, if logged-out user
+                then None.
+            feature_flag: FeatureFlag|None. The feature flag domain model.
 
         Returns:
-            elasticsearch.NotFoundError. A manually-constructed error
-            indicating that the index was not found.
+            enable_feature_flag: bool. Returns True if the target feature flag
+            name is in feature_flag_names list.
         """
-        raise elasticsearch.NotFoundError(
-            404, 'index_not_found_exception', {
-                'status': 404,
-                'error': {
-                    'reason': 'no such index [%s]' % index_name,
-                    'root_cause': [{
-                        'reason': 'no such index [%s]' % index_name,
-                        'index': index_name,
-                        'index_uuid': '_na_',
-                        'type': 'index_not_found_exception',
-                        'resource.type': 'index_or_alias',
-                        'resource.id': index_name
-                    }],
-                    'index': index_name,
-                    'index_uuid': '_na_',
-                    'type': 'index_not_found_exception',
-                    'resource.type': 'index_or_alias',
-                    'resource.id': index_name
-                }
-            }
+        return any(
+            expected_feature_flag_name.value == feature_flag_name
+            for expected_feature_flag_name in feature_flag_names
         )
 
-    def mock_create_index(self, index_name):
-        """Creates an index with the given name.
+    original_is_feature_flag_enabled = getattr(
+        feature_flag_services, 'is_feature_flag_enabled'
+    )
+    setattr(
+        feature_flag_services,
+        'is_feature_flag_enabled',
+        mock_is_feature_flag_enabled,
+    )
+    try:
+        yield
+    finally:
+        setattr(
+            feature_flag_services,
+            'is_feature_flag_enabled',
+            original_is_feature_flag_enabled,
+        )
+
+
+def enable_feature_flags(
+    feature_flag_names: List[feature_flag_list.FeatureNames],
+) -> Callable[
+    [Callable[..., _GenericHandlerFunctionReturnType]],
+    Callable[..., _GenericHandlerFunctionReturnType],
+]:
+    """This method guarantees to enable the given feature flags for the
+    scope of the test.
+
+    Args:
+        feature_flag_names: List[feature_flag_list.FeatureNames]. The list
+            of the names of the feature flags that will be enabled.
+
+    Returns:
+        function. The newly decorated function that enables given
+        feature flags for the scope of the test.
+    """
+
+    def decorator(
+        func: Callable[..., _GenericHandlerFunctionReturnType],
+    ) -> Callable[..., _GenericHandlerFunctionReturnType]:
+        # Here we use type Any because this method can accept arbitrary number
+        # of arguments with different types.
+        def wrapper(
+            *args: Any, **kwargs: Any
+        ) -> _GenericHandlerFunctionReturnType:
+            with swap_is_feature_flag_enabled_function(feature_flag_names):
+                return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+@contextlib.contextmanager
+def swap_get_platform_parameter_value_function(
+    platform_parameter_name_value_tuples: List[
+        Tuple[
+            platform_parameter_list.ParamName,
+            platform_parameter_domain.PlatformDataTypes,
+        ]
+    ],
+) -> Iterator[None]:
+    """Mocks get_platform_parameter_value function within the context of a
+    'with' statement. get_platform_parameter_value will return the value of
+    the platform parameter if the parameter is present in the
+    platform_parameter_names list.
+
+    Args:
+        platform_parameter_name_value_tuples: List[Tuple[ParamName,
+            PlatformDataTypes]]. The list of the names of the platform
+            parameters and their corresponding values that will be enabled.
+
+    Yields:
+        context. The context with function replaced.
+    """
+
+    def mock_get_platform_parameter_value(
+        parameter_name: str,
+    ) -> platform_parameter_domain.PlatformDataTypes:
+        """Mocks get_platform_parameter_value function to return the value of
+        the platform parameter if the parameter is present in the
+        platform_parameter_names list.
 
         Args:
-            index_name: str. The name of the index to create.
+            parameter_name: str. The name of the platform parameter whose
+                value is required.
 
         Returns:
-            dict. A dict representing the ElasticSearch API response.
+            PlatformDataTypes. The value of the platform parameter if the
+            parameter is present in the platform_parameter_names list.
 
         Raises:
-            elasticsearch.RequestError. An index with the given name already
-                exists.
+            Exception. The parameter_name is not present in the
+                platform_parameter_names list.
         """
-        if index_name in self._DB:
-            raise elasticsearch.RequestError(
-                400, 'resource_already_exists_exception',
-                'index [%s/RaNdOmStRiNgOfAlPhAs] already exists' % index_name)
-        self._DB[index_name] = []
-        return {
-            'index': index_name,
-            'acknowledged': True,
-            'shards_acknowledged': True
-        }
+        platform_parameter_name_value_dict = dict(
+            (x.value, y) for x, y in platform_parameter_name_value_tuples
+        )
+        if parameter_name not in platform_parameter_name_value_dict:
+            return platform_parameter_registry.Registry.get_platform_parameter(
+                parameter_name
+            ).default_value
+        return platform_parameter_name_value_dict[parameter_name]
 
-    def mock_index(self, index_name, document, id=None):  # pylint: disable=redefined-builtin
-        """Adds a document with the given ID to the index.
+    original_get_platform_parameter_value = getattr(
+        platform_parameter_services, 'get_platform_parameter_value'
+    )
+    setattr(
+        platform_parameter_services,
+        'get_platform_parameter_value',
+        mock_get_platform_parameter_value,
+    )
+    try:
+        yield
+    finally:
+        setattr(
+            platform_parameter_services,
+            'get_platform_parameter_value',
+            original_get_platform_parameter_value,
+        )
 
-        Note that, unfortunately, we have to keep the name of "id" for the
-        last kwarg, although it conflicts with a Python builtin. This is
-        because the name is an existing part of the API defined at
-        https://elasticsearch-py.readthedocs.io/en/v7.10.1/api.html
 
-        Args:
-            index_name: str. The name of the index to create.
-            document: dict. The document to store.
-            id: str. The unique identifier of the document.
+def set_platform_parameters(
+    platform_parameter_name_value_tuples: List[
+        Tuple[
+            platform_parameter_list.ParamName,
+            platform_parameter_domain.PlatformDataTypes,
+        ]
+    ],
+) -> Callable[
+    [Callable[..., _GenericHandlerFunctionReturnType]],
+    Callable[..., _GenericHandlerFunctionReturnType],
+]:
+    """This method guarantees to enable the given platform parameters for the
+    scope of the test.
 
-        Returns:
-            dict. A dict representing the ElasticSearch API response.
+    Args:
+        platform_parameter_name_value_tuples: List[Tuple[ParamName,
+            PlatformDataTypes]]. The list of the names of the platform
+            parameters and their corresponding values that will be enabled.
 
-        Raises:
-            elasticsearch.RequestError. An index with the given name already
-                exists.
-        """
-        if index_name not in self._DB:
-            raise self._generate_index_not_found_error(index_name)
-        self._DB[index_name] = [
-            d for d in self._DB[index_name] if d['id'] != id]
-        self._DB[index_name].append(document)
-        return {
-            '_index': index_name,
-            '_shards': {
-                'total': 2,
-                'successful': 1,
-                'failed': 0,
-            },
-            '_seq_no': 96,
-            '_primary_term': 1,
-            'result': 'created',
-            '_id': id,
-            '_version': 1,
-            '_type': '_doc',
-        }
+    Returns:
+        function. The newly decorated function that enables given platform
+        parameters for the scope of the test.
+    """
 
-    def mock_exists(self, index_name, doc_id):
-        """Checks whether a document with the given ID exists in the mock
-        database.
+    def decorator(
+        func: Callable[..., _GenericHandlerFunctionReturnType],
+    ) -> Callable[..., _GenericHandlerFunctionReturnType]:
+        # Here we use type Any because this method can accept arbitrary number
+        # of arguments with different types.
+        def wrapper(
+            *args: Any, **kwargs: Any
+        ) -> _GenericHandlerFunctionReturnType:
+            with swap_get_platform_parameter_value_function(
+                platform_parameter_name_value_tuples
+            ):
+                return func(*args, **kwargs)
 
-        Args:
-            index_name: str. The name of the index to check.
-            doc_id: str. The document id to check.
+        return wrapper
 
-        Returns:
-            bool. Whether the document exists in the index.
-
-        Raises:
-            elasticsearch.NotFoundError: The given index name was not found.
-        """
-        if index_name not in self._DB:
-            raise self._generate_index_not_found_error(index_name)
-        return any(d['id'] == doc_id for d in self._DB[index_name])
-
-    def mock_delete(self, index_name, doc_id):
-        """Deletes a document from an index in the mock database. Does nothing
-        if the document is not in the index.
-
-        Args:
-            index_name: str. The name of the index to delete the document from.
-            doc_id: str. The document id to be deleted from the index.
-
-        Returns:
-            dict. A dict representing the ElasticSearch API response.
-
-        Raises:
-            Exception. The document does not exist in the index.
-            elasticsearch.NotFoundError. The given index name was not found, or
-                the given doc_id was not found in the given index.
-        """
-        if index_name not in self._DB:
-            raise self._generate_index_not_found_error(index_name)
-        docs = [d for d in self._DB[index_name] if d['id'] != doc_id]
-        if len(self._DB[index_name]) != len(docs):
-            self._DB[index_name] = docs
-            return {
-                '_type': '_doc',
-                '_seq_no': 99,
-                '_shards': {
-                    'total': 2,
-                    'successful': 1,
-                    'failed': 0
-                },
-                'result': 'deleted',
-                '_primary_term': 1,
-                '_index': index_name,
-                '_version': 4,
-                '_id': '0'
-            }
-
-        raise elasticsearch.NotFoundError(
-            404, {
-                '_index': index_name,
-                '_type': '_doc',
-                '_id': doc_id,
-                '_version': 1,
-                'result': 'not_found',
-                '_shards': {
-                    'total': 2,
-                    'successful': 1,
-                    'failed': 0
-                },
-                '_seq_no': 103,
-                '_primary_term': 1
-            })
-
-    def mock_delete_by_query(self, index_name, query):
-        """Deletes documents from an index based on the given query.
-
-        Note that this mock only supports a specific for the query, i.e. the
-        one which clears the entire index. It asserts that all calls to this
-        function use that query format.
-
-        Args:
-            index_name: str. The name of the index to delete the documents from.
-            query: dict. The query that defines which documents to delete.
-
-        Returns:
-            dict. A dict representing the ElasticSearch response.
-
-        Raises:
-            AssertionError. The query is not in the correct form.
-            elasticsearch.NotFoundError. The given index name was not found.
-        """
-        assert list(query.keys()) == ['query']
-        assert query['query'] == {
-            'match_all': {}
-        }
-        if index_name not in self._DB:
-            raise self._generate_index_not_found_error(index_name)
-        index_size = len(self._DB[index_name])
-        del self._DB[index_name][:]
-        return {
-            'took': 72,
-            'version_conflicts': 0,
-            'noops': 0,
-            'throttled_until_millis': 0,
-            'failures': [],
-            'throttled_millis': 0,
-            'total': index_size,
-            'batches': 1,
-            'requests_per_second': -1.0,
-            'retries': {u'search': 0, u'bulk': 0},
-            'timed_out': False,
-            'deleted': index_size
-        }
-
-    def mock_search(self, body=None, index=None, params=None):
-        """Searches and returns documents that match the given query.
-
-        Args:
-            body: dict. A dictionary search definition that uses Query DSL.
-            index: str. The name of the index to search.
-            params: dict. A dict with two keys: `size` and `from`. The
-                corresponding values are ints which represent the number of
-                results to fetch, and the offset from which to fetch them,
-                respectively.
-
-        Returns:
-            dict. A dict representing the ElasticSearch response.
-
-        Raises:
-            AssertionError. The given arguments are not supported by this mock.
-            elasticsearch.NotFoundError. The given index name was not found.
-        """
-        assert body is not None
-        # "_all" and "" are special index names that are used to search across
-        # all indexes. We do not allow their use.
-        assert index not in ['_all', '', None]
-        assert sorted(params.keys()) == ['from', 'size']
-
-        if index not in self._DB:
-            raise self._generate_index_not_found_error(index)
-
-        result_docs = []
-        result_doc_ids = set([])
-        for doc in self._DB[index]:
-            if not doc['id'] in result_doc_ids:
-                result_docs.append(doc)
-                result_doc_ids.add(doc['id'])
-
-        filters = body['query']['bool']['filter']
-        terms = body['query']['bool']['must']
-
-        for f in filters:
-            for k, v in f['match'].items():
-                result_docs = [doc for doc in result_docs if doc[k] in v]
-
-        if terms:
-            filtered_docs = []
-            for term in terms:
-                for _, v in term.items():
-                    values = v['query'].split(' ')
-                    for doc in result_docs:
-                        strs = [val for val in doc.values() if isinstance(
-                            val, python_utils.BASESTRING)]
-                        words = []
-                        for s in strs:
-                            words += s.split(' ')
-                        if all(value in words for value in values):
-                            filtered_docs.append(doc)
-            result_docs = filtered_docs
-
-        formatted_result_docs = [{
-            '_id': doc['id'],
-            '_score': 0.0,
-            '_type': '_doc',
-            '_index': index,
-            '_source': doc
-        } for doc in result_docs[
-            params['from']: params['from'] + params['size']
-        ]]
-
-        return {
-            'timed_out': False,
-            '_shards': {
-                'failed': 0,
-                'total': 1,
-                'successful': 1,
-                'skipped': 0
-            },
-            'took': 4,
-            'hits': {
-                'hits': formatted_result_docs
-            },
-            'total': {
-                'value': len(formatted_result_docs),
-                'relation': 'eq'
-            },
-            'max_score': max(
-                [0.0] + [d['_score'] for d in formatted_result_docs]),
-        }
+    return decorator
 
 
 class AuthServicesStub:
     """Test-only implementation of the public API in core.platform.auth."""
 
-    def __init__(self):
+    class AuthUser:
+        """Authentication user with ID and deletion status."""
+
+        def __init__(self, user_id: str, deleted: bool = False) -> None:
+            self.id = user_id
+            self.deleted = deleted
+
+        def mark_as_deleted(self) -> None:
+            """Marks the user as deleted."""
+            self.deleted = True
+
+    def __init__(self) -> None:
         """Initializes a new instance that emulates an empty auth server."""
-        self._user_id_by_auth_id = {}
-        self._external_user_id_associations = set()
+        self._user_id_by_auth_id: Dict[str, AuthServicesStub.AuthUser] = {}
+        self._external_user_id_associations: Set[str] = set()
 
     @classmethod
-    def install_stub(cls, test):
+    def install_stub(cls, test: GenericTestBase) -> Callable[..., None]:
         """Installs a new instance of the stub onto the given test instance.
 
         Args:
@@ -535,44 +527,90 @@ class AuthServicesStub:
         with contextlib.ExitStack() as stack:
             stub = cls()
 
-            stack.enter_context(test.swap(
-                platform_auth_services, 'establish_auth_session',
-                stub.establish_auth_session))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'destroy_auth_session',
-                stub.destroy_auth_session))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'get_auth_claims_from_request',
-                stub.get_auth_claims_from_request))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'mark_user_for_deletion',
-                stub.mark_user_for_deletion))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'delete_external_auth_associations',
-                stub.delete_external_auth_associations))
-            stack.enter_context(test.swap(
-                platform_auth_services,
-                'verify_external_auth_associations_are_deleted',
-                stub.verify_external_auth_associations_are_deleted))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'get_auth_id_from_user_id',
-                stub.get_auth_id_from_user_id))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'get_user_id_from_auth_id',
-                stub.get_user_id_from_auth_id))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'get_multi_user_ids_from_auth_ids',
-                stub.get_multi_user_ids_from_auth_ids))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'get_multi_auth_ids_from_user_ids',
-                stub.get_multi_auth_ids_from_user_ids))
-            stack.enter_context(test.swap(
-                platform_auth_services, 'associate_auth_id_with_user_id',
-                stub.associate_auth_id_with_user_id))
-            stack.enter_context(test.swap(
-                platform_auth_services,
-                'associate_multi_auth_ids_with_user_ids',
-                stub.associate_multi_auth_ids_with_user_ids))
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'establish_auth_session',
+                    stub.establish_auth_session,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'destroy_auth_session',
+                    stub.destroy_auth_session,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'get_auth_claims_from_request',
+                    stub.get_auth_claims_from_request,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'mark_user_for_deletion',
+                    stub.mark_user_for_deletion,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'delete_external_auth_associations',
+                    stub.delete_external_auth_associations,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'verify_external_auth_associations_are_deleted',
+                    stub.verify_external_auth_associations_are_deleted,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'get_auth_id_from_user_id',
+                    stub.get_auth_id_from_user_id,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'get_user_id_from_auth_id',
+                    stub.get_user_id_from_auth_id,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'get_multi_user_ids_from_auth_ids',
+                    stub.get_multi_user_ids_from_auth_ids,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'get_multi_auth_ids_from_user_ids',
+                    stub.get_multi_auth_ids_from_user_ids,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'associate_auth_id_with_user_id',
+                    stub.associate_auth_id_with_user_id,
+                )
+            )
+            stack.enter_context(
+                test.swap(
+                    platform_auth_services,
+                    'associate_multi_auth_ids_with_user_ids',
+                    stub.associate_multi_auth_ids_with_user_ids,
+                )
+            )
 
             # Standard usage of ExitStack: enter a bunch of context managers
             # from the safety of an ExitStack's context. Once they've all been
@@ -580,32 +618,37 @@ class AuthServicesStub:
             # *stay* open. Calling the function returned will exit all of them
             # in reverse order.
             # https://docs.python.org/3/library/contextlib.html#cleaning-up-in-an-enter-implementation
-            return stack.pop_all().close
+            close = stack.pop_all().close
+        return close
 
     @classmethod
-    def establish_auth_session(cls, unused_request, unused_response):
+    def establish_auth_session(
+        cls, _: webapp2.Request, __: webapp2.Response
+    ) -> None:
         """Sets login cookies to maintain a user's sign-in session.
 
         Args:
-            unused_request: webapp2.Request. Unused because os.environ handles
+            _: webapp2.Request. Unused because os.environ handles
                 sessions.
-            unused_response: webapp2.Response. Unused because os.environ handles
+            __: webapp2.Response. Unused because os.environ handles
                 sessions.
         """
         pass
 
     @classmethod
-    def destroy_auth_session(cls, unused_response):
+    def destroy_auth_session(cls, _: webapp2.Response) -> None:
         """Clears login cookies from the given response headers.
 
         Args:
-            unused_response: webapp2.Response. Unused because os.environ handles
+            _: webapp2.Response. Unused because os.environ handles
                 sessions.
         """
         pass
 
     @classmethod
-    def get_auth_claims_from_request(cls, unused_request):
+    def get_auth_claims_from_request(
+        cls, _: webapp2.Request
+    ) -> Optional[auth_domain.AuthClaims]:
         """Authenticates the request and returns claims about its authorizer.
 
         This stub obtains authorization information from os.environ. To make the
@@ -613,7 +656,7 @@ class AuthServicesStub:
         association for the user to simulate a genuine "provided" value.
 
         Args:
-            unused_request: webapp2.Request. The HTTP request to authenticate.
+            _: webapp2.Request. The HTTP request to authenticate.
                 Unused because auth-details are extracted from environment
                 variables.
 
@@ -628,7 +671,7 @@ class AuthServicesStub:
             return auth_domain.AuthClaims(auth_id, email, role_is_super_admin)
         return None
 
-    def mark_user_for_deletion(self, user_id):
+    def mark_user_for_deletion(self, user_id: str) -> None:
         """Marks the user, and all of their auth associations, as deleted.
 
         Since the stub does not use models, this operation actually deletes the
@@ -639,11 +682,11 @@ class AuthServicesStub:
             user_id: str. The unique ID of the user whose associations should be
                 deleted.
         """
-        self._user_id_by_auth_id = {
-            a: u for a, u in self._user_id_by_auth_id.items() if u != user_id
-        }
+        for user in self._user_id_by_auth_id.values():
+            if user.id == user_id:
+                user.mark_as_deleted()
 
-    def delete_external_auth_associations(self, user_id):
+    def delete_external_auth_associations(self, user_id: str) -> None:
         """Deletes all associations that refer to the user outside of Oppia.
 
         Args:
@@ -652,7 +695,9 @@ class AuthServicesStub:
         """
         self._external_user_id_associations.discard(user_id)
 
-    def verify_external_auth_associations_are_deleted(self, user_id):
+    def verify_external_auth_associations_are_deleted(
+        self, user_id: str
+    ) -> bool:
         """Returns true if and only if we have successfully verified that all
         external associations have been deleted.
 
@@ -666,7 +711,7 @@ class AuthServicesStub:
         """
         return user_id not in self._external_user_id_associations
 
-    def get_auth_id_from_user_id(self, user_id):
+    def get_auth_id_from_user_id(self, user_id: str) -> Optional[str]:
         """Returns the auth ID associated with the given user ID.
 
         Args:
@@ -677,22 +722,40 @@ class AuthServicesStub:
             no association exists.
         """
         return next(
-            (a for a, u in self._user_id_by_auth_id.items() if u == user_id),
-            None)
+            (
+                auth_id
+                for auth_id, user in self._user_id_by_auth_id.items()
+                if user.id == user_id and not user.deleted
+            ),
+            None,
+        )
 
-    def get_user_id_from_auth_id(self, auth_id):
+    def get_user_id_from_auth_id(
+        self, auth_id: str, include_deleted: bool = False
+    ) -> Optional[str]:
         """Returns the user ID associated with the given auth ID.
 
         Args:
             auth_id: str. The auth ID.
+            include_deleted: bool. Whether to return the ID of models marked for
+                deletion.
 
         Returns:
             str|None. The user ID associated with the given auth ID, or None if
             no association exists.
         """
-        return self._user_id_by_auth_id.get(auth_id, None)
+        user = self._user_id_by_auth_id.get(auth_id, None)
+        if user is None:
+            return None
 
-    def get_multi_user_ids_from_auth_ids(self, auth_ids):
+        if include_deleted or not user.deleted:
+            return user.id
+
+        return None
+
+    def get_multi_user_ids_from_auth_ids(
+        self, auth_ids: List[str]
+    ) -> List[Optional[str]]:
         """Returns the user IDs associated with the given auth IDs.
 
         Args:
@@ -702,9 +765,11 @@ class AuthServicesStub:
             list(str|None). The user IDs associated with each of the given auth
             IDs, or None for associations which don't exist.
         """
-        return [self._user_id_by_auth_id.get(a, None) for a in auth_ids]
+        return [self.get_user_id_from_auth_id(auth_id) for auth_id in auth_ids]
 
-    def get_multi_auth_ids_from_user_ids(self, user_ids):
+    def get_multi_auth_ids_from_user_ids(
+        self, user_ids: List[str]
+    ) -> List[Optional[str]]:
         """Returns the auth IDs associated with the given user IDs.
 
         Args:
@@ -714,10 +779,15 @@ class AuthServicesStub:
             list(str|None). The auth IDs associated with each of the given user
             IDs, or None for associations which don't exist.
         """
-        auth_id_by_user_id = {u: a for a, u in self._user_id_by_auth_id.items()}
-        return [auth_id_by_user_id.get(u, None) for u in user_ids]
+        auth_id_by_user_id = {
+            user.id: auth_id
+            for auth_id, user in self._user_id_by_auth_id.items()
+        }
+        return [auth_id_by_user_id.get(user_id, None) for user_id in user_ids]
 
-    def associate_auth_id_with_user_id(self, auth_id_user_id_pair):
+    def associate_auth_id_with_user_id(
+        self, auth_id_user_id_pair: auth_domain.AuthIdUserIdPair
+    ) -> None:
         """Commits the association between auth ID and user ID.
 
         This method also adds the user to the "external" set of associations.
@@ -732,14 +802,18 @@ class AuthServicesStub:
         auth_id, user_id = auth_id_user_id_pair
         if auth_id in self._user_id_by_auth_id:
             raise Exception(
-                'auth_id=%r is already associated with user_id=%r' % (
-                    auth_id, self._user_id_by_auth_id[auth_id]))
+                'auth_id=%r is already associated with user_id=%r'
+                % (auth_id, self._user_id_by_auth_id[auth_id].id)
+            )
         auth_models.UserAuthDetailsModel(
-            id=user_id, firebase_auth_id=auth_id).put()
+            id=user_id, firebase_auth_id=auth_id
+        ).put()
         self._external_user_id_associations.add(user_id)
-        self._user_id_by_auth_id[auth_id] = user_id
+        self._user_id_by_auth_id[auth_id] = AuthServicesStub.AuthUser(user_id)
 
-    def associate_multi_auth_ids_with_user_ids(self, auth_id_user_id_pairs):
+    def associate_multi_auth_ids_with_user_ids(
+        self, auth_id_user_id_pairs: List[auth_domain.AuthIdUserIdPair]
+    ) -> None:
         """Commits the associations between auth IDs and user IDs.
 
         This method also adds the users to the "external" set of associations.
@@ -752,17 +826,27 @@ class AuthServicesStub:
             Exception. One or more auth associations already exist.
         """
         collisions = ', '.join(
-            '{auth_id=%r: user_id=%r}' % (a, self._user_id_by_auth_id[a])
-            for a, _ in auth_id_user_id_pairs if a in self._user_id_by_auth_id)
+            '{auth_id=%r: user_id=%r}' % (a, self._user_id_by_auth_id[a].id)
+            for a, _ in auth_id_user_id_pairs
+            if a in self._user_id_by_auth_id
+        )
         if collisions:
             raise Exception('already associated: %s' % collisions)
         datastore_services.put_multi(
-            [auth_models.UserAuthDetailsModel(
-                id=user_id, firebase_auth_id=auth_id)
-             for auth_id, user_id in auth_id_user_id_pairs])
-        self._external_user_id_associations.add(
-            u for _, u in auth_id_user_id_pairs)
-        self._user_id_by_auth_id.update(auth_id_user_id_pairs)
+            [
+                auth_models.UserAuthDetailsModel(
+                    id=user_id, firebase_auth_id=auth_id
+                )
+                for auth_id, user_id in auth_id_user_id_pairs
+            ]
+        )
+        external_user_ids: Set[str] = {u for _, u in auth_id_user_id_pairs}
+        self._external_user_id_associations.update(external_user_ids)
+        auth_id_user_id_pairs_with_deletion = {
+            auth_id: AuthServicesStub.AuthUser(user_id)
+            for auth_id, user_id in auth_id_user_id_pairs
+        }
+        self._user_id_by_auth_id.update(auth_id_user_id_pairs_with_deletion)
 
 
 class TaskqueueServicesStub:
@@ -770,7 +854,7 @@ class TaskqueueServicesStub:
     layer, namely the platform.taskqueue taskqueue services API.
     """
 
-    def __init__(self, test_base):
+    def __init__(self, test_base: GenericTestBase) -> None:
         """Initializes a taskqueue services stub that replaces the API
         functionality of core.platform.taskqueue.
 
@@ -779,9 +863,16 @@ class TaskqueueServicesStub:
         """
         self._test_base = test_base
         self._client = cloud_tasks_emulator.Emulator(
-            task_handler=self._task_handler, automatic_task_handling=False)
+            task_handler=self._task_handler, automatic_task_handling=False
+        )
 
-    def _task_handler(self, url, payload, queue_name, task_name=None):
+    def _task_handler(
+        self,
+        url: str,
+        payload: Dict[str, str],
+        queue_name: str,
+        task_name: Optional[str] = None,
+    ) -> None:
         """Makes a POST request to the task URL in the test app.
 
         Args:
@@ -797,14 +888,20 @@ class TaskqueueServicesStub:
             'X-Appengine-QueueName': queue_name.encode('utf-8'),
             # Maps empty strings to None so the output can become 'None'.
             'X-Appengine-TaskName': (
-                task_name.encode('utf-8') if task_name else b'None')
+                task_name.encode('utf-8') if task_name else b'None'
+            ),
         }
         csrf_token = self._test_base.get_new_csrf_token()
         self._test_base.post_task(url, payload, headers, csrf_token=csrf_token)
 
     def create_http_task(
-            self, queue_name, url, payload=None, scheduled_for=None,
-            task_name=None):
+        self,
+        queue_name: str,
+        url: str,
+        payload: Optional[Dict[str, str]] = None,
+        scheduled_for: Optional[datetime.datetime] = None,
+        task_name: Optional[str] = None,
+    ) -> cloud_tasks_emulator.Task:
         """Creates a Task in the corresponding queue that will be executed when
         the 'scheduled_for' countdown expires using the cloud tasks emulator.
 
@@ -816,16 +913,23 @@ class TaskqueueServicesStub:
             scheduled_for: datetime|None. The naive datetime object for the time
                 to execute the task. Ignored by this stub.
             task_name: str|None. Optional. The name of the task.
+
+        Returns:
+            Task. The task that was created in the queue.
         """
         # Causes the task to execute immediately by setting the scheduled_for
         # time to 0. If we allow scheduled_for to be non-zero, then tests that
         # rely on the actions made by the task will become unreliable.
-        scheduled_for = 0
-        self._client.create_task(
-            queue_name, url, payload, scheduled_for=scheduled_for,
-            task_name=task_name)
+        scheduled_for = None
+        return self._client.create_task(
+            queue_name,
+            url,
+            payload,
+            scheduled_for=scheduled_for,
+            task_name=task_name,
+        )
 
-    def count_jobs_in_taskqueue(self, queue_name=None):
+    def count_jobs_in_taskqueue(self, queue_name: Optional[str] = None) -> int:
         """Returns the total number of tasks in a single queue if a queue name
         is specified or the entire taskqueue if no queue name is specified.
 
@@ -839,7 +943,7 @@ class TaskqueueServicesStub:
         """
         return self._client.get_number_of_tasks(queue_name=queue_name)
 
-    def process_and_flush_tasks(self, queue_name=None):
+    def process_and_flush_tasks(self, queue_name: Optional[str] = None) -> None:
         """Executes all of the tasks in a single queue if a queue name is
         specified or all of the tasks in the taskqueue if no queue name is
         specified.
@@ -850,7 +954,9 @@ class TaskqueueServicesStub:
         """
         self._client.process_and_flush_tasks(queue_name=queue_name)
 
-    def get_pending_tasks(self, queue_name=None):
+    def get_pending_tasks(
+        self, queue_name: Optional[str] = None
+    ) -> List[cloud_tasks_emulator.Task]:
         """Returns a list of the tasks in a single queue if a queue name is
         specified or a list of all of the tasks in the taskqueue if no queue
         name is specified.
@@ -871,9 +977,9 @@ class MemoryCacheServicesStub:
     layer, namely the platform.cache cache services API.
     """
 
-    _CACHE_DICT = {}
+    _CACHE_DICT: Dict[str, str] = {}
 
-    def get_memory_cache_stats(self):
+    def get_memory_cache_stats(self) -> caching_domain.MemoryCacheStats:
         """Returns a mock profile of the cache dictionary. This mock does not
         have the functionality to test for peak memory usage and total memory
         usage so the values for those attributes will be 0.
@@ -884,11 +990,11 @@ class MemoryCacheServicesStub:
         """
         return caching_domain.MemoryCacheStats(0, 0, len(self._CACHE_DICT))
 
-    def flush_caches(self):
+    def flush_caches(self) -> None:
         """Wipes the cache dictionary clean."""
         self._CACHE_DICT.clear()
 
-    def get_multi(self, keys):
+    def get_multi(self, keys: List[str]) -> List[Optional[str]]:
         """Looks up a list of keys in cache dictionary.
 
         Args:
@@ -901,7 +1007,7 @@ class MemoryCacheServicesStub:
         assert isinstance(keys, list)
         return [self._CACHE_DICT.get(key, None) for key in keys]
 
-    def set_multi(self, key_value_mapping):
+    def set_multi(self, key_value_mapping: Dict[str, str]) -> bool:
         """Sets multiple keys' values at once in the cache dictionary.
 
         Args:
@@ -916,7 +1022,7 @@ class MemoryCacheServicesStub:
         self._CACHE_DICT.update(key_value_mapping)
         return True
 
-    def delete_multi(self, keys):
+    def delete_multi(self, keys: List[str]) -> int:
         """Deletes multiple keys in the cache dictionary.
 
         Args:
@@ -925,7 +1031,7 @@ class MemoryCacheServicesStub:
         Returns:
             int. Number of successfully deleted keys.
         """
-        assert all(isinstance(key, python_utils.BASESTRING) for key in keys)
+        assert all(isinstance(key, str) for key in keys)
         keys_to_delete = [key for key in keys if key in self._CACHE_DICT]
         for key in keys_to_delete:
             del self._CACHE_DICT[key]
@@ -935,13 +1041,13 @@ class MemoryCacheServicesStub:
 class TestBase(unittest.TestCase):
     """Base class for all tests."""
 
-    maxDiff = 2500
+    maxDiff: Optional[int] = 2500
 
     # A test unicode string.
-    UNICODE_TEST_STRING = 'unicode ¡马!'
+    UNICODE_TEST_STRING: Final = 'unicode ¡马!'
 
     @property
-    def namespace(self):
+    def namespace(self) -> str:
         """Returns a namespace for isolating the NDB operations of each test.
 
         Returns:
@@ -949,7 +1055,7 @@ class TestBase(unittest.TestCase):
         """
         return self.id()[-100:]
 
-    def run(self, result=None):
+    def run(self, result: Optional[unittest.TestResult] = None) -> None:
         """Run the test, collecting the result into the specified TestResult.
 
         Reference URL:
@@ -965,9 +1071,9 @@ class TestBase(unittest.TestCase):
         """
 
         with datastore_services.get_ndb_context(namespace=self.namespace):
-            super(TestBase, self).run(result=result)
+            super().run(result=result)
 
-    def _get_unicode_test_string(self, suffix):
+    def _get_unicode_test_string(self, suffix: str) -> str:
         """Returns a string that contains unicode characters and ends with the
         given suffix. This is used to test that functions behave correctly when
         handling strings with unicode characters.
@@ -981,54 +1087,88 @@ class TestBase(unittest.TestCase):
         """
         return '%s%s' % (self.UNICODE_TEST_STRING, suffix)
 
-    def _assert_validation_error(self, item, error_substring):
+    # Here we use type Any because the argument 'item' can accept any kind of
+    # object to validate.
+    def _assert_validation_error(self, item: Any, error_substring: str) -> None:
         """Checks that the given item passes default validation."""
-        with self.assertRaisesRegexp(utils.ValidationError, error_substring):
+        with self.assertRaisesRegex(utils.ValidationError, error_substring):
             item.validate()
 
-    def log_line(self, line):
+    def log_line(self, line: str) -> None:
         """Print the line with a prefix that can be identified by the script
         that calls the test.
+
+        Args:
+            line: str. The log line.
         """
         # We are using the b' prefix as all the stdouts are in bytes.
-        python_utils.PRINT(
-            b'%s%s' % (LOG_LINE_PREFIX, line.encode()))
+        print(b'%s%s' % (LOG_LINE_PREFIX, line.encode()))
 
-    def shortDescription(self):
+    def shortDescription(self) -> None:
         """Additional information logged during unit test invocation."""
         # Suppress default logging of docstrings.
         return None
 
     def get_updated_param_dict(
-            self, param_dict, param_changes, exp_param_specs):
+        self,
+        param_dict: Dict[str, str],
+        param_changes: List[param_domain.ParamChange],
+        exp_param_specs: Dict[str, param_domain.ParamSpec],
+    ) -> Dict[str, str]:
         """Updates a param dict using the given list of param_changes.
 
         Note that the list of parameter changes is ordered. Parameter changes
         later in the list may depend on parameter changes that have been set
         earlier in the same list.
+
+        Args:
+            param_dict: dict. The old param dict.
+            param_changes: list. The param changes to use for the update.
+            exp_param_specs: dict. The expected param specifications.
+
+        Returns:
+            dict. The updated param dict.
+
+        Raises:
+            Exception. Parameter not found.
         """
         new_param_dict = copy.deepcopy(param_dict)
         for param_change in param_changes:
             try:
                 obj_type = exp_param_specs[param_change.name].obj_type
-            except:
-                raise Exception('Parameter %s not found' % param_change.name)
+            except Exception as e:
+                raise Exception(
+                    'Parameter %s not found' % param_change.name
+                ) from e
+
+            raw_value = param_change.get_value(new_param_dict)
             new_param_dict[param_change.name] = (
-                param_change.get_normalized_value(obj_type, new_param_dict))
+                object_registry.Registry.get_object_class_by_type(
+                    obj_type
+                ).normalize(raw_value)
+            )
         return new_param_dict
 
-    def get_static_asset_filepath(self):
+    def get_static_asset_filepath(self) -> str:
         """Returns filepath to the static files on disk ('' or 'build/')."""
         return '' if constants.DEV_MODE else os.path.join('build')
 
-    def get_static_asset_url(self, asset_suffix):
+    def get_static_asset_url(self, asset_suffix: str) -> str:
         """Returns the relative path for the asset, appending it to the
         corresponding cache slug. asset_suffix should have a leading slash.
+
+        Args:
+            asset_suffix: str. The asset suffix to append to the cache slug.
+
+        Returns:
+            str. The relative path for the asset.
         """
         return '/assets%s%s' % (utils.get_asset_dir_prefix(), asset_suffix)
 
     @contextlib.contextmanager
-    def capture_logging(self, min_level=logging.NOTSET):
+    def capture_logging(
+        self, min_level: int = logging.NOTSET
+    ) -> Iterator[List[str]]:
         """Context manager that captures logs into a list.
 
         Strips whitespace from messages for convenience.
@@ -1044,20 +1184,28 @@ class TestBase(unittest.TestCase):
         Yields:
             list(str). A live-feed of the logging messages captured so-far.
         """
-        captured_logs = []
+        captured_logs: List[str] = []
 
-        class ListStream:
+        class ListStream(io.StringIO):
             """Stream-like object that appends writes to the captured logs."""
 
-            def write(self, msg):
-                """Appends stripped messages to captured logs."""
-                captured_logs.append(msg.strip())
+            def write(self, msg: str) -> int:
+                """Appends stripped messages to captured logs.
 
-            def flush(self):
+                Args:
+                    msg: str. The string to be written.
+
+                Returns:
+                    int. The length of the written string in bytes.
+                """
+                captured_logs.append(msg.strip())
+                return len(msg.strip())
+
+            def flush(self) -> None:
                 """Does nothing."""
                 pass
 
-        list_stream_handler = logging.StreamHandler(stream=ListStream())
+        list_stream_handler = logging.StreamHandler(ListStream())
 
         logger = logging.getLogger()
         old_level = logger.level
@@ -1069,8 +1217,12 @@ class TestBase(unittest.TestCase):
             logger.setLevel(old_level)
             logger.removeHandler(list_stream_handler)
 
+    # Here we use type Any because argument 'obj' can accept any kind
+    # of object on which attribute needs to be replaced, and argument
+    # 'newvalue' can accept any type of value to replace it with the
+    # old value.
     @contextlib.contextmanager
-    def swap(self, obj, attr, newvalue):
+    def swap(self, obj: Any, attr: str, newvalue: Any) -> Iterator[None]:
         """Swap an object's attribute value within the context of a 'with'
         statement. The object can be anything that supports getattr and setattr,
         such as class instances, modules, etc.
@@ -1103,27 +1255,55 @@ class TestBase(unittest.TestCase):
         finally:
             setattr(obj, attr, original)
 
+    # Here we use type Any because argument 'obj' can accept any kind
+    # of object on which attribute needs to be replaced, and argument
+    # 'value' can accept any type of value to replace it with the old
+    # value.
     @contextlib.contextmanager
-    def swap_to_always_return(self, obj, attr, value=None):
+    def swap_to_always_return(
+        self, obj: Any, attr: str, value: Optional[Any] = None
+    ) -> Iterator[None]:
         """Swap obj.attr with a function that always returns the given value."""
-        def function_that_always_returns(*unused_args, **unused_kwargs):
+
+        # Here we use type Any because this function returns the newly
+        # replaced return value, and that value can be of any type.
+        def function_that_always_returns(*_: str, **__: str) -> Any:
             """Returns the input value."""
             return value
+
         with self.swap(obj, attr, function_that_always_returns):
             yield
 
+    # Here we use type Any because the argument 'obj' can accept any
+    # kind of object on which attribute needs to be replaced.
     @contextlib.contextmanager
-    def swap_to_always_raise(self, obj, attr, error=Exception):
+    def swap_to_always_raise(
+        self,
+        obj: Any,
+        attr: str,
+        error: Union[Exception, Type[Exception]] = Exception,
+    ) -> Iterator[None]:
         """Swap obj.attr with a function that always raises the given error."""
-        def function_that_always_raises(*unused_args, **unused_kwargs):
+
+        def function_that_always_raises(*_: str, **__: str) -> None:
             """Raises the input exception."""
             raise error
+
         with self.swap(obj, attr, function_that_always_raises):
             yield
 
+    # Here we use type Any because argument 'obj' can accept any kind
+    # of object on which attribute needs to be replaced, and argument
+    # 'returns' can accept any type of value to replace it with the old
+    # function's return value.
     @contextlib.contextmanager
     def swap_with_call_counter(
-            self, obj, attr, raises=None, returns=None, call_through=False):
+        self,
+        obj: Any,
+        attr: str,
+        raises: Optional[Exception] = None,
+        returns: Any = None,
+    ) -> Iterator[CallCounter]:
         """Swap obj.attr with a CallCounter instance.
 
         Args:
@@ -1132,32 +1312,38 @@ class TestBase(unittest.TestCase):
             raises: Exception|None. The exception raised by the swapped
                 function. If None, then no exception is raised.
             returns: *. The return value of the swapped function.
-            call_through: bool. Whether to call through to the real function,
-                rather than use a stub implementation. If True, the `raises` and
-                `returns` arguments will be ignored.
 
         Yields:
             CallCounter. A CallCounter instance that's installed as obj.attr's
             implementation while within the context manager returned.
         """
-        if call_through:
-            impl = obj.attr
-        else:
-            def impl(*_, **__):
-                """Behaves according to the given values."""
-                if raises is not None:
-                    # Pylint thinks we're trying to raise `None` even though
-                    # we've explicitly checked for it above.
-                    raise raises # pylint: disable=raising-bad-type
-                return returns
+
+        # Here we use type Any because this method returns the return value
+        # of the swapped function, and that value can be of any type.
+        def impl(*_: str, **__: str) -> Any:
+            """Behaves according to the given values."""
+            if raises is not None:
+                # Pylint thinks we're trying to raise `None` even though
+                # we've explicitly checked for it above.
+                raise raises  # pylint: disable=raising-bad-type
+            return returns
+
         call_counter = CallCounter(impl)
         with self.swap(obj, attr, call_counter):
             yield call_counter
 
+    # Here we use type Any because the argument 'obj' can accept any
+    # kind of object on which attribute needs to be replaced.
     @contextlib.contextmanager
     def swap_with_checks(
-            self, obj, attr, new_function, expected_args=None,
-            expected_kwargs=None, called=True):
+        self,
+        obj: Any,
+        attr: str,
+        new_function: Callable[..., Any],
+        expected_args: Optional[Sequence[Tuple[Any, ...]]] = None,
+        expected_kwargs: Optional[Sequence[Dict[str, Any]]] = None,
+        called: bool = True,
+    ) -> Iterator[None]:
         """Swap an object's function value within the context of a 'with'
         statement. The object can be anything that supports getattr and setattr,
         such as class instances, modules, etc.
@@ -1199,13 +1385,18 @@ class TestBase(unittest.TestCase):
         original_function = getattr(obj, attr)
         original_long_message_value = self.longMessage
         msg = '%s.%s() failed the expectations of swap_with_checks()' % (
-            obj.__name__, attr)
+            obj.__name__,
+            attr,
+        )
 
         expected_args_iter = iter(expected_args or ())
         expected_kwargs_iter = iter(expected_kwargs or ())
 
+        # Here we use type Any because args and kwargs are the arguments of the
+        # swapped functions and swapped functions can have an arbitrary number
+        # of arguments with different types.
         @functools.wraps(original_function)
-        def new_function_with_checks(*args, **kwargs):
+        def new_function_with_checks(*args: Any, **kwargs: Any) -> Any:
             """Wrapper function for the new value which keeps track of how many
             times this function is invoked.
 
@@ -1216,72 +1407,155 @@ class TestBase(unittest.TestCase):
             Returns:
                 *. Result of `new_function`.
             """
-            new_function_with_checks.call_num += 1
+            # Here we use MyPy ignore because we are defining a new attribute
+            # 'call_num' on a function and MyPy does not allow the addition of
+            # new attributes on a function ( or a function class ). So, because
+            # of this, MyPy throws a '"Callable" has no attribute "call_num"'
+            # error. Thus to avoid the error, we used ignore here.
+            new_function_with_checks.call_num += 1  # type: ignore[attr-defined]
 
             # Includes assertion error information in addition to the message.
             self.longMessage = True
 
+            # Here we use MyPy ignore because we are accessing the 'call_num'
+            # attribute on a function which is of type 'callable' and functions
+            # of type 'callable' do not contain a 'call_num' attribute. So,
+            # because of this, MyPy throws a '"Callable" has no attribute
+            # "call_num"' error. Thus to avoid the error, we used ignore here.
             if expected_args:
                 next_args = next(expected_args_iter, None)
                 self.assertEqual(
-                    args, next_args, msg='*args to call #%d of %s' % (
-                        new_function_with_checks.call_num, msg))
+                    args,
+                    next_args,
+                    msg='*args to call #%d of %s'
+                    % (new_function_with_checks.call_num, msg),  # type: ignore[attr-defined]
+                )
 
+            # Here we use MyPy ignore because we are accessing the 'call_num'
+            # attribute on a function which is of type 'callable' and functions
+            # of type 'callable' do not contain a 'call_num' attribute. So,
+            # because of this, MyPy throws a '"Callable" has no attribute
+            # "call_num"' error. Thus to avoid the error, we used ignore here.
             if expected_kwargs:
                 next_kwargs = next(expected_kwargs_iter, None)
                 self.assertEqual(
-                    kwargs, next_kwargs, msg='**kwargs to call #%d of %s' % (
-                        new_function_with_checks.call_num, msg))
+                    kwargs,
+                    next_kwargs,
+                    msg='**kwargs to call #%d of %s'
+                    % (new_function_with_checks.call_num, msg),  # type: ignore[attr-defined]
+                )
 
             # Reset self.longMessage just in case `new_function()` raises.
             self.longMessage = original_long_message_value
 
             return new_function(*args, **kwargs)
 
-        new_function_with_checks.call_num = 0
+        # Here we use MyPy ignore because we are accessing the 'call_num'
+        # attribute on a function which is of type 'callable' and functions
+        # of type 'callable' do not contain a 'call_num' attribute. So,
+        # because of this, MyPy throws a '"Callable" has no attribute
+        # "call_num"' error. Thus to avoid the error, we used ignore here.
+        new_function_with_checks.call_num = 0  # type: ignore[attr-defined]
         setattr(obj, attr, new_function_with_checks)
 
         try:
             yield
             # Includes assertion error information in addition to the message.
             self.longMessage = True
-
+            # Here we use MyPy ignore because we are accessing the 'call_num'
+            # attribute on a function which is of type 'callable' and functions
+            # of type 'callable' do not contain a 'call_num' attribute. So,
+            # because of this, MyPy throws a '"Callable" has no attribute
+            # "call_num"' error. Thus to avoid the error, we used ignore here.
             self.assertEqual(
-                new_function_with_checks.call_num > 0, called, msg=msg)
-            pretty_unused_args = [
-                ', '.join(itertools.chain(
-                    (repr(a) for a in args),
-                    ('%s=%r' % kwarg for kwarg in kwargs.items())))
-                for args, kwargs in python_utils.zip_longest(
-                    expected_args_iter, expected_kwargs_iter, fillvalue={})
-            ]
+                new_function_with_checks.call_num > 0, called, msg=msg  # type: ignore[attr-defined]
+            )
+            pretty_unused_args: List[str] = []
+
+            # Here we use type Any because the expected_args can contains
+            # arguments of arbitrary and mixed types from different functions.
+            args: Any
+            # Here we use type Any because the expected_kwargs can contains
+            # arguments of arbitrary and mixed types from different functions.
+            kwargs: Any
+            for args, kwargs in itertools.zip_longest(
+                expected_args_iter, expected_kwargs_iter, fillvalue={}
+            ):
+                pretty_unused_args.append(
+                    ', '.join(
+                        itertools.chain(
+                            (repr(a) for a in args),
+                            ('%s=%r' % kwarg for kwarg in kwargs.items()),
+                        )
+                    )
+                )
+
+            # Here we use MyPy ignore because we are accessing the 'call_num'
+            # attribute on a function which is of type 'callable' and functions
+            # of type 'callable' do not contain a 'call_num' attribute. So,
+            # because of this, MyPy throws a '"Callable" has no attribute
+            # "call_num"' error. Thus to avoid the error, we used ignore here.
             if pretty_unused_args:
                 num_expected_calls = (
-                    new_function_with_checks.call_num + len(pretty_unused_args))
+                    new_function_with_checks.call_num  # type: ignore[attr-defined]
+                    + len(pretty_unused_args)
+                )
+
                 missing_call_summary = '\n'.join(
-                    '\tCall %d of %d: %s(%s)' % (
-                        i, num_expected_calls, attr, call_args)
+                    '\tCall %d of %d: %s(%s)'
+                    % (i, num_expected_calls, attr, call_args)
+                    # Here we use MyPy ignore because we are accessing the
+                    # 'call_num' attribute on a function which is of type
+                    # 'callable' and functions of type 'callable' do not
+                    # contain a 'call_num' attribute. So, because of this,
+                    # MyPy throws a '"Callable" has no attribute "call_num"'
+                    # error. Thus to avoid the error, we used ignore here.
                     for i, call_args in enumerate(
                         pretty_unused_args,
-                        start=new_function_with_checks.call_num + 1))
+                        start=new_function_with_checks.call_num + 1,  # type: ignore[attr-defined]
+                    )
+                )
+                # Here we use MyPy ignore because we are accessing the
+                # 'call_num' attribute on a function which is of type
+                # 'callable' and functions of type 'callable' do not
+                # contain a 'call_num' attribute. So, because of this,
+                # MyPy throws a '"Callable" has no attribute "call_num"'
+                # error. Thus to avoid the error, we used ignore here.
                 self.fail(
                     msg='Only %d of the %d expected calls were made.\n'
                     '\n'
                     'Missing:\n'
-                    '%s : %s' % (
-                        new_function_with_checks.call_num, num_expected_calls,
-                        missing_call_summary, msg))
+                    '%s : %s'
+                    % (
+                        new_function_with_checks.call_num,  # type: ignore[attr-defined]
+                        num_expected_calls,
+                        missing_call_summary,
+                        msg,
+                    )
+                )
         finally:
             self.longMessage = original_long_message_value
             setattr(obj, attr, original_function)
 
-    def assertRaises(self, *args, **kwargs):
+    # Here we use MyPy ignore because the signature of this method
+    # doesn't match with TestCase's assertRaises().
+    # Here we use type Any because args and kwargs can have an arbitrary number
+    # of arguments with different types of values.
+    def assertRaises(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[override]
         raise NotImplementedError(
             'self.assertRaises should not be used in these tests. Please use '
-            'self.assertRaisesRegexp instead.')
+            'self.assertRaisesRegex instead.'
+        )
 
-    def assertRaisesRegexp(  # pylint: disable=invalid-name
-            self, expected_exception, expected_regex, *args, **kwargs):
+    # Here we use MyPy ignore because the signature of this method
+    # doesn't match with TestCase's assertRaisesRegex().
+    def assertRaisesRegex(  # type: ignore[override]
+        self,
+        expected_exception: Union[
+            Type[BaseException], Tuple[Type[BaseException], ...]
+        ],
+        expected_regex: Union[str, Pattern[str]],
+    ) -> unittest.case._AssertRaisesContext[BaseException]:
         """Asserts that the message in a raised exception matches a regex.
         This is a wrapper around assertRaisesRegex in unittest that enforces
         strong regex.
@@ -1291,21 +1565,105 @@ class TestBase(unittest.TestCase):
                 to be raised.
             expected_regex: re.Pattern|str. Regex expected to be found in
                 error message.
-            *args: list(*). Function to be called and extra positional args.
-            **kwargs: dict(str, Any). Extra kwargs.
 
         Returns:
             bool. Whether the code raised exception in the expected format.
+
+        Raises:
+            Exception. No Regex given.
         """
         if not expected_regex:
             raise Exception(
                 'Please provide a sufficiently strong regexp string to '
-                'validate that the correct error is being raised.')
+                'validate that the correct error is being raised.'
+            )
 
-        return super(TestBase, self).assertRaisesRegexp(
-            expected_exception, expected_regex, *args, **kwargs)
+        return super().assertRaisesRegex(expected_exception, expected_regex)
 
-    def assertItemsEqual(self, *args, **kwargs):  # pylint: disable=invalid-name
+    # Here we use type Any because, in Oppia codebase TypedDict is used to
+    # define strict dictionaries and those strict dictionaries are not
+    # compatible with Dict[str, Any] type because of the invariant property of
+    # Dict type. Also, here value of Mapping is annotated as Any because this
+    # method can accept any kind of dictionaries for testing purposes. So, to
+    # make this method generalized for all test cases, we used Any here.
+    def assertDictEqual(
+        self,
+        dict_one: Mapping[str, Any],
+        dict_two: Mapping[str, Any],
+        msg: Optional[str] = None,
+    ) -> None:
+        """Checks whether the given two dictionaries are populated with same
+        key-value pairs or not. If any difference occurred then the Assertion
+        error is raised.
+
+        Args:
+            dict_one: Mapping[Any, Any]. A dictionary which we have to check
+                against.
+            dict_two: Mapping[Any, Any]. A dictionary which we have to check
+                for.
+            msg: Optional[str]. Message displayed when test fails.
+
+        Raises:
+            AssertionError. When dictionaries doesn't match.
+        """
+        super().assertDictEqual(dict_one, dict_two, msg=msg)
+
+    # Here we use type Any because the values in 'subset' and 'dictionary'
+    # can be of any type.
+    def assertDictContainsSubset(  # pylint: disable=invalid-name
+        self,
+        subset: Mapping[str, Any],
+        dictionary: Mapping[str, Any],
+        msg: Optional[str] = None,
+    ) -> None:
+        """Checks whether the given dictionary contains the given subset of
+        key-value pairs.
+
+        This method was removed from unittest.TestCase in Python 3.12. It is
+        reimplemented here (under its original name) so that call sites
+        elsewhere in the codebase can stay as readable as they were before,
+        rather than being rewritten to use assertEqual with a dict merge.
+
+        Args:
+            subset: Mapping[str, Any]. The key-value pairs that dictionary is
+                expected to contain.
+            dictionary: Mapping[str, Any]. The dictionary to check.
+            msg: Optional[str]. Message displayed when test fails.
+
+        Raises:
+            AssertionError. Dictionary does not contain subset.
+        """
+        missing_keys = []
+        mismatched_items = []
+        for key, value in subset.items():
+            if key not in dictionary:
+                missing_keys.append(key)
+            elif value != dictionary[key]:
+                mismatched_items.append(
+                    '%r, expected: %r, actual: %r'
+                    % (key, value, dictionary[key])
+                )
+
+        if not missing_keys and not mismatched_items:
+            return
+
+        standard_msg = ''
+        if missing_keys:
+            standard_msg += 'Missing: %r' % (missing_keys,)
+        if mismatched_items:
+            if standard_msg:
+                standard_msg += '; '
+            standard_msg += 'Mismatched values: %s' % (
+                ', '.join(mismatched_items)
+            )
+        self.fail(self._formatMessage(msg, standard_msg))
+
+    # Here we use type Any because the method 'assertItemsEqual' can accept any
+    # kind of iterables to compare them against each other, and these iterables
+    # can be of type List, Dict, Tuple, etc.
+    def assertItemsEqual(  # pylint: disable=invalid-name
+        self, *args: Iterable[Any], **kwargs: Iterable[Any]
+    ) -> None:
         """Compares unordered sequences if they contain the same elements,
         regardless of order. If the same element occurs more than once,
         it verifies that the elements occur the same number of times.
@@ -1315,7 +1673,12 @@ class TestBase(unittest.TestCase):
         """
         return super().assertCountEqual(*args, **kwargs)
 
-    def assert_matches_regexps(self, items, regexps, full_match=False):
+    def assert_matches_regexps(
+        self,
+        items: List[str],
+        regexps: Sequence[Union[str, Pattern[str]]],
+        full_match: bool = False,
+    ) -> None:
         """Asserts that each item matches the corresponding regexp.
 
         If there are any missing or extra items that do not correspond to a
@@ -1336,19 +1699,21 @@ class TestBase(unittest.TestCase):
         get_match = re.match if full_match else re.search
         differences = [
             '~ [i=%d]:\t%r does not match: %r' % (i, item, regexp)
-            for i, (regexp, item) in enumerate(python_utils.ZIP(regexps, items))
+            for i, (regexp, item) in enumerate(zip(regexps, items))
             if get_match(regexp, item, flags=re.DOTALL) is None
         ]
         if len(items) < len(regexps):
-            extra_regexps = regexps[len(items):]
+            extra_regexps = regexps[len(items) :]
             differences.extend(
                 '- [i=%d]:\tmissing item expected to match: %r' % (i, regexp)
-                for i, regexp in enumerate(extra_regexps, start=len(items)))
+                for i, regexp in enumerate(extra_regexps, start=len(items))
+            )
         if len(regexps) < len(items):
-            extra_items = items[len(regexps):]
+            extra_items = items[len(regexps) :]
             differences.extend(
                 '+ [i=%d]:\textra item %r' % (i, item)
-                for i, item in enumerate(extra_items, start=len(regexps)))
+                for i, item in enumerate(extra_items, start=len(regexps))
+            )
 
         if differences:
             error_message = 'Lists differ:\n\t%s' % '\n\t'.join(differences)
@@ -1372,33 +1737,54 @@ class AppEngineTestBase(TestBase):
     """
 
     # Environment values that our tests depend on.
-    AUTH_DOMAIN = 'example.com'
-    HTTP_HOST = 'localhost'
-    SERVER_NAME = 'localhost'
-    SERVER_PORT = '8080'
-    DEFAULT_VERSION_HOSTNAME = '%s:%s' % (HTTP_HOST, SERVER_PORT)
+    AUTH_DOMAIN: Final = 'example.com'
+    HTTP_HOST: Final = 'localhost'
+    SERVER_NAME: Final = 'localhost'
+    SERVER_PORT: Final = '8080'
+    DEFAULT_VERSION_HOSTNAME: Final = '%s:%s' % (HTTP_HOST, SERVER_PORT)
 
+    # Here we use type Any because in subclasses derived from this class we
+    # can provide an arbitrary number of arguments with different types. So,
+    # to allow every type of argument we used Any here.
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super(AppEngineTestBase, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         # Defined outside of setUp() because we access it from methods, but can
         # only install it during the run() method. Defining it in __init__
         # satisfies pylint's attribute-defined-outside-init warning.
-        self._platform_taskqueue_services_stub = TaskqueueServicesStub(self)
+        # TODO(#15922): Here we use cast because TaskqueueServicesStub can only
+        # accept 'GenericTestBase' class but here we are providing super class
+        # (AppEngineTestBase) which causes MyPy to throw `incompatible argument
+        # type` error. Thus, to avoid the error, we used cast here.
+        self._platform_taskqueue_services_stub = TaskqueueServicesStub(
+            cast(GenericTestBase, self)
+        )
 
     def setUp(self) -> None:
-        super(AppEngineTestBase, self).setUp()
+        super().setUp()
         # Initialize namespace for the storage emulator.
         storage_services.CLIENT.namespace = self.id()
         # Set up apps for testing.
         self.testapp = webtest.TestApp(main.app_without_context)
+        # Mock set_constants_to_default method to throw an exception.
+        # Don't directly change constants file in the test.
+        # Mock this method again in your test.
+        self.contextManager = self.swap(
+            common,
+            'set_constants_to_default',
+            self.mock_set_constants_to_default,
+        )
+        self.contextManager.__enter__()
 
     def tearDown(self) -> None:
         datastore_services.delete_multi(
-            datastore_services.query_everything().iter(keys_only=True))
+            list(datastore_services.query_everything().iter(keys_only=True))
+        )
         storage_services.CLIENT.reset()
-        super(AppEngineTestBase, self).tearDown()
+        if hasattr(self, 'contextManager'):
+            self.contextManager.__exit__(None, None, None)
+        super().tearDown()
 
-    def run(self, result=None):
+    def run(self, result: Optional[unittest.TestResult] = None) -> None:
         """Run the test, collecting the result into the specified TestResult.
 
         Reference URL:
@@ -1413,12 +1799,14 @@ class AppEngineTestBase(TestBase):
                 defaultTestResult() method) and used instead.
         """
         platform_taskqueue_services_swap = self.swap(
-            platform_taskqueue_services, 'create_http_task',
-            self._platform_taskqueue_services_stub.create_http_task)
+            platform_taskqueue_services,
+            'create_http_task',
+            self._platform_taskqueue_services_stub.create_http_task,
+        )
         with platform_taskqueue_services_swap:
-            super(AppEngineTestBase, self).run(result=result)
+            super().run(result=result)
 
-    def count_jobs_in_taskqueue(self, queue_name):
+    def count_jobs_in_taskqueue(self, queue_name: Optional[str]) -> int:
         """Returns the total number of tasks in a single queue if a queue name
         is specified or the entire taskqueue if no queue name is specified.
 
@@ -1431,9 +1819,12 @@ class AppEngineTestBase(TestBase):
             taskqueue.
         """
         return self._platform_taskqueue_services_stub.count_jobs_in_taskqueue(
-            queue_name=queue_name)
+            queue_name=queue_name
+        )
 
-    def process_and_flush_pending_tasks(self, queue_name=None):
+    def process_and_flush_pending_tasks(
+        self, queue_name: Optional[str] = None
+    ) -> None:
         """Executes all of the tasks in a single queue if a queue name is
         specified or all of the tasks in the taskqueue if no queue name is
         specified.
@@ -1443,9 +1834,12 @@ class AppEngineTestBase(TestBase):
                 queue is designated.
         """
         self._platform_taskqueue_services_stub.process_and_flush_tasks(
-            queue_name=queue_name)
+            queue_name=queue_name
+        )
 
-    def get_pending_tasks(self, queue_name=None):
+    def get_pending_tasks(
+        self, queue_name: Optional[str] = None
+    ) -> List[cloud_tasks_emulator.Task]:
         """Returns a list of the tasks in a single queue if a queue name is
         specified or a list of all of the tasks in the taskqueue if no queue
         name is specified.
@@ -1459,7 +1853,20 @@ class AppEngineTestBase(TestBase):
             taskqueue.
         """
         return self._platform_taskqueue_services_stub.get_pending_tasks(
-            queue_name=queue_name)
+            queue_name=queue_name
+        )
+
+    def mock_set_constants_to_default(self) -> None:
+        """Mock implementation of set_constants_to_default for tests.
+
+        Directly changing the shared constants file in your test can cause
+        problems. Mocking common.set_constants_to_default() in your test will
+        suppress this exception.
+        """
+        raise Exception(
+            'Tests should mock common.set_constants_to_default() to avoid '
+            'modifying the constants file during tests.'
+        )
 
 
 class GenericTestBase(AppEngineTestBase):
@@ -1475,64 +1882,84 @@ class GenericTestBase(AppEngineTestBase):
 
     # NOTE: For tests that do not/can not use the default super admin, authors
     # can override the following class-level constant.
-    AUTO_CREATE_DEFAULT_SUPERADMIN_USER = True
+    AUTO_CREATE_DEFAULT_SUPERADMIN_USER: bool = True
 
-    SUPER_ADMIN_EMAIL = 'tmpsuperadmin@example.com'
-    SUPER_ADMIN_USERNAME = 'tmpsuperadm1n'
+    SUPER_ADMIN_EMAIL: Final = 'tmpsuperadmin@example.com'
+    SUPER_ADMIN_USERNAME: Final = 'tmpsuperadm1n'
 
     # Dummy strings representing user attributes. Note that it is up to the
     # individual test to actually register these users as editors, admins, etc.
-    CURRICULUM_ADMIN_EMAIL = 'admin@example.com'
+    CURRICULUM_ADMIN_EMAIL: Final = 'admin@example.com'
     # Usernames containing the string 'admin' are reserved, so we use 'adm'
     # instead.
-    CURRICULUM_ADMIN_USERNAME = 'adm'
-    BLOG_ADMIN_EMAIL = 'blogadmin@example.com'
-    BLOG_ADMIN_USERNAME = 'blogadm'
-    BLOG_EDITOR_EMAIL = 'blogeditor@example.com'
-    BLOG_EDITOR_USERNAME = 'blogeditor'
-    MODERATOR_EMAIL = 'moderator@example.com'
-    MODERATOR_USERNAME = 'moderator'
-    RELEASE_COORDINATOR_EMAIL = 'releasecoordinator@example.com'
-    RELEASE_COORDINATOR_USERNAME = 'releasecoordinator'
-    OWNER_EMAIL = 'owner@example.com'
-    OWNER_USERNAME = 'owner'
-    EDITOR_EMAIL = 'editor@example.com'
-    EDITOR_USERNAME = 'editor'
-    TOPIC_MANAGER_EMAIL = 'topicmanager@example.com'
-    TOPIC_MANAGER_USERNAME = 'topicmanager'
-    VOICE_ARTIST_EMAIL = 'voiceartist@example.com'
-    VOICE_ARTIST_USERNAME = 'voiceartist'
-    VOICEOVER_ADMIN_EMAIL = 'voiceoveradm@example.com'
-    VOICEOVER_ADMIN_USERNAME = 'voiceoveradm'
-    VIEWER_EMAIL = 'viewer@example.com'
-    VIEWER_USERNAME = 'viewer'
-    NEW_USER_EMAIL = 'new.user@example.com'
-    NEW_USER_USERNAME = 'newuser'
-    DEFAULT_END_STATE_NAME = 'End'
+    CURRICULUM_ADMIN_USERNAME: Final = 'adm'
+    BLOG_ADMIN_EMAIL: Final = 'blogadmin@example.com'
+    BLOG_ADMIN_USERNAME: Final = 'blogadm'
+    BLOG_EDITOR_EMAIL: Final = 'blogeditor@example.com'
+    BLOG_EDITOR_USERNAME: Final = 'blogeditor'
+    CLASSROOM_ADMIN_EMAIL: Final = 'classroomadmin@example.com'
+    CLASSROOM_ADMIN_USERNAME: Final = 'classroomadm'
+    MODERATOR_EMAIL: Final = 'moderator@example.com'
+    MODERATOR_USERNAME: Final = 'moderator'
+    RELEASE_COORDINATOR_EMAIL: Final = 'releasecoordinator@example.com'
+    RELEASE_COORDINATOR_USERNAME: Final = 'releasecoordinator'
+    TECH_LEAD_EMAIL: Final = 'techlead@example.com'
+    TECH_LEAD_USERNAME: Final = 'techlead'
+    OWNER_EMAIL: Final = 'owner@example.com'
+    OWNER_USERNAME: Final = 'owner'
+    EDITOR_EMAIL: Final = 'editor@example.com'
+    EDITOR_USERNAME: Final = 'editor'
+    QUESTION_ADMIN_EMAIL: Final = 'questionExpert@app.com'
+    QUESTION_ADMIN_USERNAME: Final = 'questionExpert'
+    QUESTION_REVIEWER_EMAIL: Final = 'questionreviewer@example.com'
+    QUESTION_REVIEWER_USERNAME: Final = 'question'
+    TOPIC_MANAGER_EMAIL: Final = 'topicmanager@example.com'
+    TOPIC_MANAGER_USERNAME: Final = 'topicmanager'
+    VOICE_ARTIST_EMAIL: Final = 'voiceartist@example.com'
+    VOICE_ARTIST_USERNAME: Final = 'voiceartist'
+    VOICEOVER_ADMIN_EMAIL: Final = 'voiceoveradm@example.com'
+    VOICEOVER_ADMIN_USERNAME: Final = 'voiceoveradm'
+    VIEWER_EMAIL: Final = 'viewer@example.com'
+    VIEWER_USERNAME: Final = 'viewer'
+    NEW_USER_EMAIL: Final = 'new.user@example.com'
+    NEW_USER_USERNAME: Final = 'newuser'
+    DEFAULT_END_STATE_NAME: Final = 'End'
 
-    PSEUDONYMOUS_ID = 'pid_%s' % ('a' * 32)
+    PSEUDONYMOUS_ID: Final = 'pid_%s' % ('a' * 32)
 
-    VERSION_0_STATES_DICT = {
+    VERSION_0_STATES_DICT: Final = {
         feconf.DEFAULT_INIT_STATE_NAME: {
             'content': [{'type': 'text', 'value': ''}],
             'param_changes': [],
             'interaction': {
                 'customization_args': {},
                 'id': 'Continue',
-                'handlers': [{
-                    'name': 'submit',
-                    'rule_specs': [{
-                        'dest': 'END',
-                        'feedback': [],
-                        'param_changes': [],
-                        'definition': {'rule_type': 'default'},
-                    }],
-                }],
+                'handlers': [
+                    {
+                        'name': 'submit',
+                        'rule_specs': [
+                            {
+                                'dest': 'END',
+                                'feedback': [],
+                                'param_changes': [],
+                                'definition': {'rule_type': 'default'},
+                            }
+                        ],
+                    }
+                ],
             },
         },
     }
 
-    VERSION_27_STATE_DICT = {
+    # Here we use MyPy ignore because we are defining an older version
+    # dictionary of State which does contain 'content_ids_to_audio_translations'
+    # key but we are assigning this dict to the latest version of State
+    # which does not contain the 'content_ids_to_audio_translations' key
+    # because we only maintain the types of the latest domain objects. So,
+    # that's why we have to assign the old version dict to the latest dict
+    # type, and because of this MyPy throws an error. Thus, to avoid the error,
+    # we used ignore here.
+    VERSION_27_STATE_DICT: state_domain.StateDict = {  # type: ignore[typeddict-item]
         'content': {'content_id': 'content', 'html': ''},
         'param_changes': [],
         'content_ids_to_audio_translations': {
@@ -1566,6 +1993,7 @@ class GenericTestBase(AppEngineTestBase):
                     'html': '',
                 },
                 'dest': None,
+                'dest_if_really_stuck': None,
                 'refresher_exploration_id': None,
                 'missing_prerequisite_skill_id': None,
                 'labelled_as_correct': True,
@@ -1576,128 +2004,150 @@ class GenericTestBase(AppEngineTestBase):
             },
             'confirmed_unclassified_answers': [],
             'id': 'TextInput',
-            'hints': [{
-                'hint_content': {
-                    'content_id': 'hint_1',
-                    'html': '<p>Hint 1</p>',
-                },
-            }],
+            'hints': [
+                {
+                    'hint_content': {
+                        'content_id': 'hint_1',
+                        'html': '<p>Hint 1</p>',
+                    },
+                }
+            ],
         },
         'classifier_model_id': None,
     }
 
-    VERSION_1_STORY_CONTENTS_DICT = {
-        'nodes': [{
-            'outline': (
-                '<p>Value</p>'
-                '<oppia-noninteractive-math '
-                'raw_latex-with-value="&amp;quot;+,-,-,+&amp;quot;">'
-                '</oppia-noninteractive-math>'),
-            'exploration_id': None,
-            'destination_node_ids': [],
-            'outline_is_finalized': False,
-            'acquired_skill_ids': [],
-            'id': 'node_1',
-            'title': 'Chapter 1',
-            'prerequisite_skill_ids': [],
-        }],
+    VERSION_1_STORY_CONTENTS_DICT: Final = {
+        'nodes': [
+            {
+                'outline': (
+                    '<p>Value</p>'
+                    '<oppia-noninteractive-math '
+                    'raw_latex-with-value="&amp;quot;+,-,-,+&amp;quot;">'
+                    '</oppia-noninteractive-math>'
+                ),
+                'exploration_id': None,
+                'destination_node_ids': [],
+                'outline_is_finalized': False,
+                'acquired_skill_ids': [],
+                'id': 'node_1',
+                'title': 'Chapter 1',
+                'prerequisite_skill_ids': [],
+            }
+        ],
         'initial_node_id': 'node_1',
         'next_node_id': 'node_2',
     }
 
-    VERSION_2_STORY_CONTENTS_DICT = {
-        'nodes': [{
-            'outline': (
-                '<p>Value</p>'
-                '<oppia-noninteractive-math '
-                'raw_latex-with-value="&amp;quot;+,-,-,+&amp;quot;">'
-                '</oppia-noninteractive-math>'),
-            'exploration_id': None,
-            'destination_node_ids': [],
-            'outline_is_finalized': False,
-            'acquired_skill_ids': [],
-            'id': 'node_1',
-            'title': 'Chapter 1',
-            'prerequisite_skill_ids': [],
-            'thumbnail_filename': None,
-            'thumbnail_bg_color': None,
-        }],
+    VERSION_2_STORY_CONTENTS_DICT: Final = {
+        'nodes': [
+            {
+                'outline': (
+                    '<p>Value</p>'
+                    '<oppia-noninteractive-math '
+                    'raw_latex-with-value="&amp;quot;+,-,-,+&amp;quot;">'
+                    '</oppia-noninteractive-math>'
+                ),
+                'exploration_id': None,
+                'destination_node_ids': [],
+                'outline_is_finalized': False,
+                'acquired_skill_ids': [],
+                'id': 'node_1',
+                'title': 'Chapter 1',
+                'prerequisite_skill_ids': [],
+                'thumbnail_filename': None,
+                'thumbnail_bg_color': None,
+            }
+        ],
         'initial_node_id': 'node_1',
         'next_node_id': 'node_2',
     }
 
-    VERSION_3_STORY_CONTENTS_DICT = {
-        'nodes': [{
-            'outline': (
-                '<p>Value</p>'
-                '<oppia-noninteractive-math '
-                'raw_latex-with-value="&amp;quot;+,-,-,+&amp;quot;">'
-                '</oppia-noninteractive-math>'),
-            'exploration_id': None,
-            'destination_node_ids': [],
-            'outline_is_finalized': False,
-            'acquired_skill_ids': [],
-            'id': 'node_1',
-            'title': 'Chapter 1',
-            'description': '',
-            'prerequisite_skill_ids': [],
-            'thumbnail_filename': None,
-            'thumbnail_bg_color': None,
-        }],
+    VERSION_3_STORY_CONTENTS_DICT: Final = {
+        'nodes': [
+            {
+                'outline': (
+                    '<p>Value</p>'
+                    '<oppia-noninteractive-math '
+                    'raw_latex-with-value="&amp;quot;+,-,-,+&amp;quot;">'
+                    '</oppia-noninteractive-math>'
+                ),
+                'exploration_id': None,
+                'destination_node_ids': [],
+                'outline_is_finalized': False,
+                'acquired_skill_ids': [],
+                'id': 'node_1',
+                'title': 'Chapter 1',
+                'description': '',
+                'prerequisite_skill_ids': [],
+                'thumbnail_filename': None,
+                'thumbnail_bg_color': None,
+            }
+        ],
         'initial_node_id': 'node_1',
         'next_node_id': 'node_2',
     }
 
-    VERSION_4_STORY_CONTENTS_DICT = {
-        'nodes': [{
-            'outline': (
-                '<p>Value</p>'
-                '<oppia-noninteractive-math math_content-with-value="{'
-                '&amp;quot;raw_latex&amp;quot;: &amp;quot;+,-,-,+&amp;quot;, '
-                '&amp;quot;svg_filename&amp;quot;: &amp;quot;&amp;quot;'
-                '}">'
-                '</oppia-noninteractive-math>'),
-            'exploration_id': None,
-            'destination_node_ids': [],
-            'outline_is_finalized': False,
-            'acquired_skill_ids': [],
-            'id': 'node_1',
-            'title': 'Chapter 1',
-            'description': '',
-            'prerequisite_skill_ids': [],
-            'thumbnail_filename': None,
-            'thumbnail_bg_color': None,
-        }],
+    VERSION_4_STORY_CONTENTS_DICT: Final = {
+        'nodes': [
+            {
+                'outline': (
+                    '<p>Value</p>'
+                    '<oppia-noninteractive-math math_content-with-value="{'
+                    '&amp;quot;raw_latex&amp;quot;: &amp;quot;+,-,-,+&amp;quot;, '
+                    '&amp;quot;svg_filename&amp;quot;: &amp;quot;&amp;quot;'
+                    '}">'
+                    '</oppia-noninteractive-math>'
+                ),
+                'exploration_id': None,
+                'destination_node_ids': [],
+                'outline_is_finalized': False,
+                'acquired_skill_ids': [],
+                'id': 'node_1',
+                'title': 'Chapter 1',
+                'description': '',
+                'prerequisite_skill_ids': [],
+                'thumbnail_filename': None,
+                'thumbnail_bg_color': None,
+            }
+        ],
         'initial_node_id': 'node_1',
         'next_node_id': 'node_2',
     }
 
-    VERSION_5_STORY_CONTENTS_DICT = {
-        'nodes': [{
-            'outline': (
-                '<p>Value</p>'
-                '<oppia-noninteractive-math math_content-with-value="{'
-                '&amp;quot;raw_latex&amp;quot;: &amp;quot;+,-,-,+&amp;quot;, '
-                '&amp;quot;svg_filename&amp;quot;: &amp;quot;&amp;quot;'
-                '}">'
-                '</oppia-noninteractive-math>'),
-            'exploration_id': None,
-            'destination_node_ids': [],
-            'outline_is_finalized': False,
-            'acquired_skill_ids': [],
-            'id': 'node_1',
-            'title': 'Chapter 1',
-            'description': '',
-            'prerequisite_skill_ids': [],
-            'thumbnail_filename': None,
-            'thumbnail_bg_color': None,
-            'thumbnail_size_in_bytes': None,
-        }],
+    VERSION_5_STORY_CONTENTS_DICT: Final = {
+        'nodes': [
+            {
+                'outline': (
+                    '<p>Value</p>'
+                    '<oppia-noninteractive-math math_content-with-value="{'
+                    '&amp;quot;raw_latex&amp;quot;: &amp;quot;+,-,-,+&amp;quot;, '
+                    '&amp;quot;svg_filename&amp;quot;: &amp;quot;&amp;quot;'
+                    '}">'
+                    '</oppia-noninteractive-math>'
+                ),
+                'exploration_id': None,
+                'destination_node_ids': [],
+                'outline_is_finalized': False,
+                'acquired_skill_ids': [],
+                'id': 'node_1',
+                'title': 'Chapter 1',
+                'description': '',
+                'prerequisite_skill_ids': [],
+                'thumbnail_filename': None,
+                'thumbnail_bg_color': None,
+                'thumbnail_size_in_bytes': None,
+                'status': None,
+                'planned_publication_date_msecs': None,
+                'last_modified_msecs': None,
+                'first_publication_date_msecs': None,
+                'unpublishing_reason': None,
+            }
+        ],
         'initial_node_id': 'node_1',
         'next_node_id': 'node_2',
     }
 
-    VERSION_1_SUBTOPIC_DICT = {
+    VERSION_1_SUBTOPIC_DICT: Final = {
         'skill_ids': ['skill_1'],
         'id': 1,
         'title': 'A subtitle',
@@ -1711,14 +2161,16 @@ class GenericTestBase(AppEngineTestBase):
     # If evaluating differences in YAML, conversion to dict form via
     # utils.dict_from_yaml can isolate differences quickly.
 
-    SAMPLE_YAML_CONTENT = (
-        """author_notes: ''
-auto_tts_enabled: true
+    SAMPLE_YAML_CONTENT: str = (
+        (
+            """author_notes: ''
+auto_tts_enabled: false
 blurb: ''
 category: Category
-correctness_feedback_enabled: false
+edits_allowed: true
 init_state_name: %s
 language_code: en
+next_content_id_index: 4
 objective: ''
 param_changes: []
 param_specs: {}
@@ -1728,16 +2180,18 @@ states:
     card_is_checkpoint: true
     classifier_model_id: null
     content:
-      content_id: content
+      content_id: content_0
       html: ''
+    inapplicable_skill_misconception_ids: []
     interaction:
       answer_groups: []
       confirmed_unclassified_answers: []
       customization_args: {}
       default_outcome:
         dest: %s
+        dest_if_really_stuck: null
         feedback:
-          content_id: default_outcome
+          content_id: default_outcome_1
           html: ''
         labelled_as_correct: false
         missing_prerequisite_skill_id: null
@@ -1747,31 +2201,24 @@ states:
       id: null
       solution: null
     linked_skill_id: null
-    next_content_id_index: 0
     param_changes: []
-    recorded_voiceovers:
-      voiceovers_mapping:
-        content: {}
-        default_outcome: {}
     solicit_answer_details: false
-    written_translations:
-      translations_mapping:
-        content: {}
-        default_outcome: {}
   New state:
     card_is_checkpoint: false
     classifier_model_id: null
     content:
-      content_id: content
+      content_id: content_2
       html: ''
+    inapplicable_skill_misconception_ids: []
     interaction:
       answer_groups: []
       confirmed_unclassified_answers: []
       customization_args: {}
       default_outcome:
         dest: New state
+        dest_if_really_stuck: null
         feedback:
-          content_id: default_outcome
+          content_id: default_outcome_3
           html: ''
         labelled_as_correct: false
         missing_prerequisite_skill_id: null
@@ -1781,27 +2228,24 @@ states:
       id: null
       solution: null
     linked_skill_id: null
-    next_content_id_index: 0
     param_changes: []
-    recorded_voiceovers:
-      voiceovers_mapping:
-        content: {}
-        default_outcome: {}
     solicit_answer_details: false
-    written_translations:
-      translations_mapping:
-        content: {}
-        default_outcome: {}
 states_schema_version: %d
 tags: []
 title: Title
-""") % (
-    feconf.DEFAULT_INIT_STATE_NAME,
-    exp_domain.Exploration.CURRENT_EXP_SCHEMA_VERSION,
-    feconf.DEFAULT_INIT_STATE_NAME, feconf.DEFAULT_INIT_STATE_NAME,
-    feconf.CURRENT_STATE_SCHEMA_VERSION)
+version: 1
+"""
+        )
+        % (
+            feconf.DEFAULT_INIT_STATE_NAME,
+            exp_domain.Exploration.CURRENT_EXP_SCHEMA_VERSION,
+            feconf.DEFAULT_INIT_STATE_NAME,
+            feconf.DEFAULT_INIT_STATE_NAME,
+            feconf.CURRENT_STATE_SCHEMA_VERSION,
+        )
+    )
 
-    def run(self, result=None):
+    def run(self, result: Optional[unittest.TestResult] = None) -> None:
         """Run the test, collecting the result into the specified TestResult.
 
         Reference URL:
@@ -1817,49 +2261,49 @@ title: Title
         """
         memory_cache_services_stub = MemoryCacheServicesStub()
         memory_cache_services_stub.flush_caches()
-        es_stub = ElasticSearchStub()
-        es_stub.reset()
 
         with contextlib.ExitStack() as stack:
             stack.callback(AuthServicesStub.install_stub(self))
-            stack.enter_context(self.swap(
-                elastic_search_services.ES.indices, 'create',
-                es_stub.mock_create_index))
-            stack.enter_context(self.swap(
-                elastic_search_services.ES, 'index',
-                es_stub.mock_index))
-            stack.enter_context(self.swap(
-                elastic_search_services.ES, 'exists',
-                es_stub.mock_exists))
-            stack.enter_context(self.swap(
-                elastic_search_services.ES, 'delete',
-                es_stub.mock_delete))
-            stack.enter_context(self.swap(
-                elastic_search_services.ES, 'delete_by_query',
-                es_stub.mock_delete_by_query))
-            stack.enter_context(self.swap(
-                elastic_search_services.ES, 'search',
-                es_stub.mock_search))
-            stack.enter_context(self.swap(
-                memory_cache_services, 'flush_caches',
-                memory_cache_services_stub.flush_caches))
-            stack.enter_context(self.swap(
-                memory_cache_services, 'get_multi',
-                memory_cache_services_stub.get_multi))
-            stack.enter_context(self.swap(
-                memory_cache_services, 'set_multi',
-                memory_cache_services_stub.set_multi))
-            stack.enter_context(self.swap(
-                memory_cache_services, 'get_memory_cache_stats',
-                memory_cache_services_stub.get_memory_cache_stats))
-            stack.enter_context(self.swap(
-                memory_cache_services, 'delete_multi',
-                memory_cache_services_stub.delete_multi))
+            stack.enter_context(
+                self.swap(
+                    memory_cache_services,
+                    'flush_caches',
+                    memory_cache_services_stub.flush_caches,
+                )
+            )
+            stack.enter_context(
+                self.swap(
+                    memory_cache_services,
+                    'get_multi',
+                    memory_cache_services_stub.get_multi,
+                )
+            )
+            stack.enter_context(
+                self.swap(
+                    memory_cache_services,
+                    'set_multi',
+                    memory_cache_services_stub.set_multi,
+                )
+            )
+            stack.enter_context(
+                self.swap(
+                    memory_cache_services,
+                    'get_memory_cache_stats',
+                    memory_cache_services_stub.get_memory_cache_stats,
+                )
+            )
+            stack.enter_context(
+                self.swap(
+                    memory_cache_services,
+                    'delete_multi',
+                    memory_cache_services_stub.delete_multi,
+                )
+            )
 
-            super(GenericTestBase, self).run(result=result)
+            super().run(result=result)
 
     def setUp(self) -> None:
-        super(GenericTestBase, self).setUp()
+        super().setUp()
         if self.AUTO_CREATE_DEFAULT_SUPERADMIN_USER:
             self.signup_superadmin_user()
 
@@ -1872,7 +2316,7 @@ title: Title
         """
         os.environ['USER_ID'] = self.get_auth_id_from_email(email)
         os.environ['USER_EMAIL'] = email
-        os.environ['USER_IS_ADMIN'] = ('1' if is_super_admin else '0')
+        os.environ['USER_IS_ADMIN'] = '1' if is_super_admin else '0'
 
     def logout(self) -> None:
         """Simulates a logout by resetting the environment variables."""
@@ -1881,52 +2325,9 @@ title: Title
         os.environ['USER_IS_ADMIN'] = '0'
 
     @contextlib.contextmanager
-    def mock_datetime_utcnow(self, mocked_now):
-        """Mocks parts of the datastore to accept a fake datetime type that
-        always returns the same value for utcnow.
-
-        Example:
-            import datetime
-            mocked_now = datetime.datetime.utcnow() - datetime.timedelta(days=1)
-            with mock_datetime_utcnow(mocked_now):
-                self.assertEqual(datetime.datetime.utcnow(), mocked_now)
-            actual_now = datetime.datetime.utcnow() # Returns actual time.
-
-        Args:
-            mocked_now: datetime.datetime. The datetime which will be used
-                instead of the current UTC datetime.
-
-        Yields:
-            None. Empty yield statement.
-        """
-        if not isinstance(mocked_now, datetime.datetime):
-            raise Exception('mocked_now must be datetime, got: %r' % mocked_now)
-
-        old_datetime = datetime.datetime
-
-        class MockDatetimeType(type):
-            """Overrides isinstance() behavior."""
-
-            @classmethod
-            def __instancecheck__(cls, instance):
-                return isinstance(instance, old_datetime)
-
-        class MockDatetime(old_datetime, metaclass=MockDatetimeType):
-            """Always returns mocked_now as the current UTC time."""
-
-            @classmethod
-            def utcnow(cls) -> datetime.datetime:
-                """Returns the mocked datetime."""
-                return mocked_now
-
-        setattr(datetime, 'datetime', MockDatetime)
-        try:
-            yield
-        finally:
-            setattr(datetime, 'datetime', old_datetime)
-
-    @contextlib.contextmanager
-    def login_context(self, email, is_super_admin=False):
+    def login_context(
+        self, email: str, is_super_admin: bool = False
+    ) -> Iterator[Optional[str]]:
         """Log in with the given email under the context of a 'with' statement.
 
         Args:
@@ -1935,16 +2336,16 @@ title: Title
 
         Yields:
             str. The id of the user associated with the given email, who is now
-            'logged in'.
+            'logged in', or None if no user_id exists.
         """
         self.login(email, is_super_admin=is_super_admin)
         try:
-            yield self.get_user_id_from_email(email)
+            yield self.get_user_id_from_email(email, strict=False)
         finally:
             self.logout()
 
     @contextlib.contextmanager
-    def super_admin_context(self):
+    def super_admin_context(self) -> Iterator[Optional[str]]:
         """Log in as a global admin under the context of a 'with' statement.
 
         Yields:
@@ -1956,10 +2357,7 @@ title: Title
             yield user_id
 
     def signup(
-            self,
-            email: str,
-            username: str,
-            is_super_admin: Optional[bool] = False
+        self, email: str, username: str, is_super_admin: bool = False
     ) -> None:
         """Complete the signup process for the user with the given username.
 
@@ -1979,29 +2377,31 @@ title: Title
 
             response = self.get_html_response(feconf.SIGNUP_URL)
             self.assertEqual(response.status_int, 200)
+            self.assertNotIn('<oppia-maintenance-page>', response)
 
-            response = self.testapp.post(feconf.SIGNUP_DATA_URL, params={
-                'csrf_token': self.get_new_csrf_token(),
-                'payload': json.dumps(
-                    {'username': username, 'agreed_to_terms': True}),
-            })
+            response = self.testapp.post(
+                feconf.SIGNUP_DATA_URL,
+                params={
+                    'csrf_token': self.get_new_csrf_token(),
+                    'payload': json.dumps(
+                        {
+                            'username': username,
+                            'agreed_to_terms': True,
+                            'default_dashboard': (
+                                constants.DASHBOARD_TYPE_LEARNER
+                            ),
+                            'can_receive_email_updates': (
+                                feconf.DEFAULT_EMAIL_UPDATES_PREFERENCE
+                            ),
+                        }
+                    ),
+                },
+            )
             self.assertEqual(response.status_int, 200)
 
-    def signup_superadmin_user(self):
+    def signup_superadmin_user(self) -> None:
         """Signs up a superadmin user. Must be called at the end of setUp()."""
         self.signup(self.SUPER_ADMIN_EMAIL, self.SUPER_ADMIN_USERNAME)
-
-    def set_config_property(self, config_obj, new_config_value):
-        """Sets a given configuration object's value to the new value specified
-        using a POST request.
-        """
-        with self.super_admin_context():
-            self.post_json('/adminhandler', {
-                'action': 'save_config_properties',
-                'new_config_property_values': {
-                    config_obj.name: new_config_value,
-                },
-            }, csrf_token=self.get_new_csrf_token())
 
     def add_user_role(self, username: str, user_role: str) -> None:
         """Adds the given role to the user account with the given username.
@@ -2011,12 +2411,15 @@ title: Title
             user_role: str. Role of the given user.
         """
         with self.super_admin_context():
-            self.put_json('/adminrolehandler', {
-                'username': username,
-                'role': user_role
-            }, csrf_token=self.get_new_csrf_token())
+            self.put_json(
+                '/adminrolehandler',
+                {'username': username, 'role': user_role},
+                csrf_token=self.get_new_csrf_token(),
+            )
 
-    def set_curriculum_admins(self, curriculum_admin_usernames):
+    def set_curriculum_admins(
+        self, curriculum_admin_usernames: List[str]
+    ) -> None:
         """Sets role of given users as CURRICULUM_ADMIN.
 
         Args:
@@ -2025,7 +2428,9 @@ title: Title
         for name in curriculum_admin_usernames:
             self.add_user_role(name, feconf.ROLE_ID_CURRICULUM_ADMIN)
 
-    def set_topic_managers(self, topic_manager_usernames, topic_id):
+    def set_topic_managers(
+        self, topic_manager_usernames: List[str], topic_id: str
+    ) -> None:
         """Sets role of given users as TOPIC_MANAGER.
 
         Args:
@@ -2034,13 +2439,47 @@ title: Title
         """
         with self.super_admin_context():
             for username in topic_manager_usernames:
-                self.put_json('/topicmanagerrolehandler', {
-                    'username': username,
-                    'action': 'assign',
-                    'topic_id': topic_id
-                }, csrf_token=self.get_new_csrf_token())
+                self.put_json(
+                    '/topicmanagerrolehandler',
+                    {
+                        'username': username,
+                        'action': 'assign',
+                        'topic_id': topic_id,
+                    },
+                    csrf_token=self.get_new_csrf_token(),
+                )
 
-    def set_moderators(self, moderator_usernames):
+    def set_question_admins(self, question_admin_usernames: List[str]) -> None:
+        """Sets role of given users as QUESTION_ADMIN.
+
+        Args:
+            question_admin_usernames: list(str). List of usernames.
+        """
+        for name in question_admin_usernames:
+            self.add_user_role(name, feconf.ROLE_ID_QUESTION_ADMIN)
+
+    def set_translation_coordinators(
+        self, translation_coordinator_usernames: List[str], language_id: str
+    ) -> None:
+        """Sets role of given users as TRANSLATION_COORDINATOR.
+
+        Args:
+            translation_coordinator_usernames: list(str). List of usernames.
+            language_id: str. The language Id.
+        """
+        with self.super_admin_context():
+            for username in translation_coordinator_usernames:
+                self.put_json(
+                    '/translationcoordinatorrolehandler',
+                    {
+                        'username': username,
+                        'action': 'assign',
+                        'language_id': language_id,
+                    },
+                    csrf_token=self.get_new_csrf_token(),
+                )
+
+    def set_moderators(self, moderator_usernames: List[str]) -> None:
         """Sets role of given users as MODERATOR.
 
         Args:
@@ -2049,7 +2488,7 @@ title: Title
         for name in moderator_usernames:
             self.add_user_role(name, feconf.ROLE_ID_MODERATOR)
 
-    def set_voiceover_admin(self, voiceover_admin_username):
+    def set_voiceover_admin(self, voiceover_admin_username: List[str]) -> None:
         """Sets role of given users as VOICEOVER ADMIN.
 
         Args:
@@ -2058,18 +2497,22 @@ title: Title
         for name in voiceover_admin_username:
             self.add_user_role(name, feconf.ROLE_ID_VOICEOVER_ADMIN)
 
-    def mark_user_banned(self, username):
+    def mark_user_banned(self, username: str) -> None:
         """Marks a user banned.
 
         Args:
             username: str. The username of the user to ban.
         """
         with self.super_admin_context():
-            self.put_json('/bannedusershandler', {
-                'username': username
-            }, csrf_token=self.get_new_csrf_token())
+            self.put_json(
+                '/bannedusershandler',
+                {'username': username},
+                csrf_token=self.get_new_csrf_token(),
+            )
 
-    def set_collection_editors(self, collection_editor_usernames):
+    def set_collection_editors(
+        self, collection_editor_usernames: List[str]
+    ) -> None:
         """Sets role of given users as COLLECTION_EDITOR.
 
         Args:
@@ -2078,22 +2521,50 @@ title: Title
         for name in collection_editor_usernames:
             self.add_user_role(name, feconf.ROLE_ID_COLLECTION_EDITOR)
 
-    def get_user_id_from_email(self, email):
+    @overload
+    def get_user_id_from_email(self, email: str) -> str: ...
+
+    @overload
+    def get_user_id_from_email(
+        self, email: str, *, strict: Literal[True]
+    ) -> str: ...
+
+    @overload
+    def get_user_id_from_email(
+        self, email: str, *, strict: Literal[False]
+    ) -> Optional[str]: ...
+
+    def get_user_id_from_email(
+        self, email: str, strict: bool = True
+    ) -> Optional[str]:
         """Gets the user ID corresponding to the given email.
 
         Args:
             email: str. A valid email stored in the App Engine database.
+            strict: bool. Whether to fail noisily if no user ID corresponding
+                to the given email exists in the datastore.
 
         Returns:
             str|None. ID of the user possessing the given email, or None if
             the user does not exist.
+
+        Raises:
+            Exception. No user_id found for the given email address.
         """
         user_settings = user_services.get_user_settings_by_auth_id(
-            self.get_auth_id_from_email(email))
-        return user_settings and user_settings.user_id
+            self.get_auth_id_from_email(email)
+        )
+        if user_settings is None:
+            if not strict:
+                return None
+            raise Exception(
+                'No user_id found for the given email address: %s' % email
+            )
+
+        return user_settings.user_id
 
     @classmethod
-    def get_auth_id_from_email(cls, email):
+    def get_auth_id_from_email(cls, email: str) -> str:
         """Returns a mock auth ID corresponding to the given email.
 
         This method can use any algorithm to produce results as long as, during
@@ -2106,14 +2577,14 @@ title: Title
             email: str. The email address of the user.
 
         Returns:
-            bytes. The mock auth ID of a user possessing the given email.
+            str. The mock auth ID of a user possessing the given email.
         """
         # Although the hash function doesn't guarantee a one-to-one mapping, in
         # practice it is sufficient for our tests. We make it a positive integer
         # because those are always valid auth IDs.
-        return python_utils.UNICODE(abs(hash(email)))
+        return str(abs(hash(email)))
 
-    def get_all_python_files(self):
+    def get_all_python_files(self) -> List[str]:
         """Recursively collects all Python files in the core/ and extensions/
         directory.
 
@@ -2125,20 +2596,24 @@ title: Title
         for _dir, _, files in os.walk(current_dir):
             for file_name in files:
                 filepath = os.path.relpath(
-                    os.path.join(_dir, file_name), start=current_dir)
+                    os.path.join(_dir, file_name), start=current_dir
+                )
                 if (
-                        filepath.endswith('.py') and (
-                            filepath.startswith('core/') or
-                            filepath.startswith('extensions/')
-                        )
+                    filepath.endswith('.py')
+                    and filepath.startswith(('core/', 'extensions/'))
+                    and not filepath.startswith('core/tests')
                 ):
                     module = filepath[:-3].replace('/', '.')
                     files_in_directory.append(module)
         return files_in_directory
 
     def _get_response(
-            self, url, expected_content_type, params=None,
-            expected_status_int=200):
+        self,
+        url: str,
+        expected_content_type: str,
+        params: Optional[Dict[str, Union[str, int, bool]]] = None,
+        expected_status_int: int = 200,
+    ) -> webtest.TestResponse:
         """Get a response, transformed to a Python object.
 
         Args:
@@ -2157,15 +2632,14 @@ title: Title
         expect_errors = expected_status_int >= 400
 
         # This swap is required to ensure that the templates are fetched from
-        # source directory instead of webpack_bundles since webpack_bundles is
-        # only produced after webpack compilation which is not performed during
-        # backend tests.
+        # source directory instead of the compiled build output since the build
+        # output is not available during backend tests.
         with self.swap(base, 'load_template', mock_load_template):
             response = self.testapp.get(
                 url,
                 params=params,
                 expect_errors=expect_errors,
-                status=expected_status_int
+                status=expected_status_int,
             )
 
         if expect_errors:
@@ -2186,7 +2660,12 @@ title: Title
 
         return response
 
-    def get_html_response(self, url, params=None, expected_status_int=200):
+    def get_html_response(
+        self,
+        url: str,
+        params: Optional[Dict[str, Union[str, int, bool]]] = None,
+        expected_status_int: int = 200,
+    ) -> webtest.TestResponse:
         """Get a HTML response, transformed to a Python object.
 
         Args:
@@ -2199,12 +2678,19 @@ title: Title
             webtest.TestResponse. The test response.
         """
         return self._get_response(
-            url, 'text/html', params=params,
-            expected_status_int=expected_status_int)
+            url,
+            'text/html',
+            params=params,
+            expected_status_int=expected_status_int,
+        )
 
     def get_custom_response(
-            self, url, expected_content_type, params=None,
-            expected_status_int=200):
+        self,
+        url: str,
+        expected_content_type: str,
+        params: Optional[Dict[str, Union[str, int, bool]]] = None,
+        expected_status_int: int = 200,
+    ) -> webtest.TestResponse:
         """Get a response other than HTML or JSON as a Python object.
 
         Args:
@@ -2218,14 +2704,23 @@ title: Title
             webtest.TestResponse. The test response.
         """
         self.assertNotIn(
-            expected_content_type, ['text/html', 'application/json'])
+            expected_content_type, ['text/html', 'application/json']
+        )
 
         return self._get_response(
-            url, expected_content_type, params=params,
-            expected_status_int=expected_status_int)
+            url,
+            expected_content_type,
+            params=params,
+            expected_status_int=expected_status_int,
+        )
 
     def get_response_without_checking_for_errors(
-            self, url, expected_status_int_list, params=None):
+        self,
+        url: str,
+        expected_status_int_list: List[int],
+        http_method: Optional[str] = 'GET',
+        params: Optional[Dict[str, str]] = None,
+    ) -> webtest.TestResponse:
         """Get a response, transformed to a Python object and checks for a list
         of status codes.
 
@@ -2233,29 +2728,65 @@ title: Title
             url: str. The URL to fetch the response.
             expected_status_int_list: list(int). A list of integer status code
                 to expect.
+            http_method: str. The http method by which the request is to be
+                sent.
             params: dict. A dictionary that will be encoded into a query string.
 
         Returns:
             webtest.TestResponse. The test response.
+
+        Raises:
+            Exception. If the http method is not one of GET, POST, PUT or
+                DELETE, then this exception is raised.
         """
         if params is not None:
             self.assertIsInstance(
-                params, dict,
-                msg='Expected params to be a dict, received %s' % params)
+                params,
+                dict,
+                msg='Expected params to be a dict, received %s' % params,
+            )
+
+        response = None
 
         # This swap is required to ensure that the templates are fetched from
-        # source directory instead of webpack_bundles since webpack_bundles is
-        # only produced after webpack compilation which is not performed during
-        # backend tests.
+        # source directory instead of the compiled build output since the build
+        # output is not available during backend tests.
         with self.swap(base, 'load_template', mock_load_template):
-            response = self.testapp.get(url, params=params, expect_errors=True)
 
+            if http_method == 'GET':
+                response = self.testapp.get(
+                    url, params=params, expect_errors=True
+                )
+
+        if http_method == 'POST':
+            response = self.testapp.post(url, params=params, expect_errors=True)
+        elif http_method == 'PUT':
+            response = self.testapp.put(url, params=params, expect_errors=True)
+        elif http_method == 'DELETE':
+            response = self.testapp.delete(
+                url, params=params, expect_errors=True
+            )
+        elif http_method != 'GET':
+            raise Exception('Invalid http method %s' % http_method)
+        assert response is not None
         self.assertIn(response.status_int, expected_status_int_list)
 
         return response
 
-    def _parse_json_response(self, json_response, expect_errors):
-        """Convert a JSON server response to an object (such as a dict)."""
+    # Here we use type Any because this method can return any python object
+    # that was parsed from json response.
+    def _parse_json_response(
+        self, json_response: webtest.TestResponse, expect_errors: bool
+    ) -> Any:
+        """Convert a JSON server response to an object (such as a dict).
+
+        Args:
+            json_response: webtest.TestResponse. The test reponse.
+            expect_errors: bool. Whether errors are expected.
+
+        Returns:
+            dict. A json response from the server except the XSSI_PREFIX.
+        """
         if expect_errors:
             self.assertTrue(json_response.status_int >= 400)
         else:
@@ -2264,24 +2795,43 @@ title: Title
         self.assertEqual(json_response.content_type, 'application/json')
         self.assertTrue(json_response.body.startswith(feconf.XSSI_PREFIX))
 
-        return json.loads(json_response.body[len(feconf.XSSI_PREFIX):])
+        return json.loads(json_response.body[len(feconf.XSSI_PREFIX) :])
 
+    # Here we use type Any because this method can return a JSON response
+    # whose value can be of any type, like int, bool, str, and other
+    # types too. Also, the 'params' argument can accept different types
+    # of dictionaries that need to be sent over to the handler, those
+    # dictionaries can contain any type of values. So, to allow different
+    # dictionaries, we used Any type here.
     def get_json(
-            self,
-            url: str,
-            params: Optional[Dict[str, str]] = None,
-            expected_status_int: int = 200,
-            headers: Optional[Dict[str, str]] = None
-    ) -> Dict[str, Any]:
-        """Get a JSON response, transformed to a Python object."""
+        self,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        expected_status_int: int = 200,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        """Get a JSON response, transformed to a Python object.
+
+        Args:
+            url: str. The url to make a request for.
+            params: Dict[str, Any]. The arguments to be sent over.
+            expected_status_int: int. The expetected response status.
+            headers: Dict[str, str]. The headers used in the request.
+
+        Returns:
+            dict. A json response from the server.
+        """
         if params is not None:
             self.assertIsInstance(params, dict)
 
         expect_errors = expected_status_int >= 400
 
         json_response = self.testapp.get(
-            url, params=params, expect_errors=expect_errors,
-            status=expected_status_int, headers=headers
+            url,
+            params=params,
+            expect_errors=expect_errors,
+            status=expected_status_int,
+            headers=headers,
         )
 
         # Testapp takes in a status parameter which is the expected status of
@@ -2295,10 +2845,20 @@ title: Title
 
         return self._parse_json_response(json_response, expect_errors)
 
+    # Here we use type Any because this method can return JSON response Dict
+    # whose values can contain different types of values, like int, bool,
+    # str and other types too.
     def post_json(
-            self, url, data, headers=None, csrf_token=None,
-            expected_status_int=200, upload_files=None, use_payload=True,
-            source=None):
+        self,
+        url: str,
+        data: Any,
+        headers: Optional[Dict[str, str]] = None,
+        csrf_token: Optional[str] = None,
+        expected_status_int: int = 200,
+        upload_files: Optional[List[Tuple[str, str, bytes]]] = None,
+        use_payload: bool = True,
+        source: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Post an object to the server by JSON; return the received object.
 
         Args:
@@ -2333,9 +2893,14 @@ title: Title
         expect_errors = expected_status_int >= 400
 
         json_response = self._send_post_request(
-            self.testapp, url, data, expect_errors,
-            expected_status_int=expected_status_int, upload_files=upload_files,
-            headers=headers)
+            self.testapp,
+            url,
+            data,
+            expect_errors,
+            expected_status_int=expected_status_int,
+            upload_files=upload_files,
+            headers=headers,
+        )
 
         # Testapp takes in a status parameter which is the expected status of
         # the response. However this expected status is verified only when
@@ -2346,19 +2911,44 @@ title: Title
         # https://github.com/Pylons/webtest/blob/bf77326420b628c9ea5431432c7e171f88c5d874/webtest/app.py#L1119
         self.assertEqual(json_response.status_int, expected_status_int)
 
-        return self._parse_json_response(json_response, expect_errors)
+        # Here we use type Any because response is a JSON response dict
+        # which can contain different types of values. So, to allow every
+        # type of value we used Any here.
+        response: Dict[str, Any] = self._parse_json_response(
+            json_response, expect_errors
+        )
+        return response
 
-    def delete_json(self, url, params='', expected_status_int=200):
+    # Here we use type Any because this method can return JSON response Dict
+    # whose values can contain different types of values, like int, bool,
+    # str and other types too. Also, the 'params' argument can accept different
+    # types of dictionaries that need to be sent over to the handler, those
+    # dictionaries can contain any type of values. So, to allow different
+    # dictionaries, we used Any type here.
+    def delete_json(
+        self,
+        url: str,
+        params: Optional[Dict[str, Any]] = None,
+        expected_status_int: int = 200,
+    ) -> Dict[str, Any]:
         """Delete object on the server using a JSON call."""
+        if params is None:
+            params = {}
+
         if params:
             self.assertIsInstance(
-                params, dict,
-                msg='Expected params to be a dict, received %s' % params)
+                params,
+                dict,
+                msg='Expected params to be a dict, received %s' % params,
+            )
 
         expect_errors = expected_status_int >= 400
         json_response = self.testapp.delete(
-            url, params=params, expect_errors=expect_errors,
-            status=expected_status_int)
+            url,
+            params=params,
+            expect_errors=expect_errors,
+            status=expected_status_int,
+        )
 
         # Testapp takes in a status parameter which is the expected status of
         # the response. However this expected status is verified only when
@@ -2369,11 +2959,26 @@ title: Title
         # https://github.com/Pylons/webtest/blob/bf77326420b628c9ea5431432c7e171f88c5d874/webtest/app.py#L1119
         self.assertEqual(json_response.status_int, expected_status_int)
 
-        return self._parse_json_response(json_response, expect_errors)
+        # Here we use type Any because response is a JSON response dict
+        # which can contain different types of values. So, to allow every
+        # type of value we used Any here.
+        response: Dict[str, Any] = self._parse_json_response(
+            json_response, expect_errors
+        )
+        return response
 
     def _send_post_request(
-            self, app, url, data, expect_errors, expected_status_int=200,
-            upload_files=None, headers=None):
+        self,
+        app: webtest.TestApp,
+        url: str,
+        data: Union[Dict[str, str], bytes],
+        expect_errors: bool,
+        expected_status_int: int = 200,
+        upload_files: Optional[
+            Union[List[Tuple[str, str, bytes]], Tuple[Tuple[bytes, ...], ...]]
+        ] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> webtest.TestResponse:
         """Sends a post request with the data provided to the url specified.
 
         Args:
@@ -2397,33 +3002,86 @@ title: Title
             webtest.TestResponse. The response of the POST request.
         """
         # Convert the files to bytes.
-        if upload_files is not None:
-            upload_files = tuple(
-                tuple(
-                    f.encode('utf-8') if isinstance(f, str) else f
-                    for f in upload_file
-                ) for upload_file in upload_files
+        encoded_upload_files = tuple(
+            tuple(
+                f.encode('utf-8') if isinstance(f, str) else f
+                for f in upload_file
             )
+            for upload_file in (upload_files or ())
+        )
 
         return app.post(
-            url, params=data, headers=headers, status=expected_status_int,
-            upload_files=upload_files, expect_errors=expect_errors)
+            url,
+            params=data,
+            headers=headers,
+            status=expected_status_int,
+            upload_files=encoded_upload_files or None,
+            expect_errors=expect_errors,
+        )
 
+    # Here we use type Any because the 'payload' argument can accept
+    # different types of dictionaries that need to be sent over to the handler,
+    # those dictionaries can contain any type of values. So, to allow different
+    # dictionaries, we used Any type here.
     def post_task(
-            self, url, payload, headers, csrf_token=None, expect_errors=False,
-            expected_status_int=200):
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        headers: Dict[str, bytes] | Dict[str, str],
+        csrf_token: Optional[str] = None,
+        expect_errors: bool = False,
+        expected_status_int: int = 200,
+    ) -> webtest.TestApp:
         """Posts an object to the server by JSON with the specific headers
         specified; return the received object.
+
+        Args:
+            url: str. The url to post an object to.
+            payload: dict. The dictionary which needs to be sent.
+            headers: dict. The headers set in the request.
+            csrf_token: str. The csrf token to identify the user.
+            expect_errors: bool. Whether errors are expected.
+            expected_status_int: int. The expected status code.
+
+        Returns:
+            webtest.TestApp. The respose of the post task request.
         """
         if csrf_token:
             payload['csrf_token'] = csrf_token
         return self.testapp.post(
-            url, params=json.dumps(payload), headers=headers,
-            status=expected_status_int, expect_errors=expect_errors,
-            content_type='application/json')
+            url,
+            params=json.dumps(payload),
+            headers=headers,
+            status=expected_status_int,
+            expect_errors=expect_errors,
+            content_type='application/json',
+        )
 
-    def put_json(self, url, payload, csrf_token=None, expected_status_int=200):
-        """PUT an object to the server with JSON and return the response."""
+    # Here we use type Any because this method can return JSON response Dict
+    # whose values can contain different types of values, like int, bool,
+    # str and other types too. Also, the 'payload' argument can accept
+    # different types of dictionaries that need to be sent over to the handler,
+    # those dictionaries can contain any type of values. So, to allow different
+    # dictionaries, we used Any type here.
+    def put_json(
+        self,
+        url: str,
+        payload: Mapping[str, Any],
+        csrf_token: Optional[str] = None,
+        expected_status_int: int = 200,
+    ) -> Dict[str, Any]:
+        """PUT an object to the server with JSON and return the response.
+
+        Args:
+            url: str. The url of where to put the object.
+            payload: dict. The dictionary to be sent over to the handler.
+            csrf_token: str. The csrf token to use.
+            expected_status_int: int. The integer status code to expect. Will be
+                200 if not specified.
+
+        Returns:
+            dict. A json dict response from the server.
+        """
         params = {'payload': json.dumps(payload)}
         if csrf_token:
             params['csrf_token'] = csrf_token
@@ -2431,7 +3089,8 @@ title: Title
         expect_errors = expected_status_int >= 400
 
         json_response = self.testapp.put(
-            url, params=params, expect_errors=expect_errors)
+            url, params=params, expect_errors=expect_errors
+        )
 
         # Testapp takes in a status parameter which is the expected status of
         # the response. However this expected status is verified only when
@@ -2442,15 +3101,22 @@ title: Title
         # https://github.com/Pylons/webtest/blob/bf77326420b628c9ea5431432c7e171f88c5d874/webtest/app.py#L1119
         self.assertEqual(json_response.status_int, expected_status_int)
 
-        return self._parse_json_response(json_response, expect_errors)
+        # Here we use type Any because the 'response' is a JSON response dict
+        # that can contain different types of values. So, to allow every type
+        # of value we used Any here.
+        response: Dict[str, Any] = self._parse_json_response(
+            json_response, expect_errors
+        )
+        return response
 
-    def get_new_csrf_token(self):
+    def get_new_csrf_token(self) -> str:
         """Generates CSRF token for test."""
-        response = self.get_json('/csrfhandler')
+        response: Dict[str, str] = self.get_json('/csrfhandler')
         return response['token']
 
     def save_new_default_exploration(
-            self, exploration_id, owner_id, title='A title'):
+        self, exploration_id: str, owner_id: str, title: str = 'A title'
+    ) -> exp_domain.Exploration:
         """Saves a new default exploration written by owner_id.
 
         Args:
@@ -2462,11 +3128,17 @@ title: Title
             Exploration. The exploration domain object.
         """
         exploration = exp_domain.Exploration.create_default_exploration(
-            exploration_id, title=title, category='Algebra')
+            exploration_id, title=title, category='Algebra'
+        )
         exp_services.save_new_exploration(owner_id, exploration)
         return exploration
 
-    def set_interaction_for_state(self, state, interaction_id):
+    def set_interaction_for_state(
+        self,
+        state: state_domain.State,
+        interaction_id: str,
+        content_id_generator: translation_domain.ContentIdGenerator,
+    ) -> None:
         """Sets the interaction_id, sets the fully populated default interaction
         customization arguments, and increments next_content_id_index as needed.
 
@@ -2474,13 +3146,17 @@ title: Title
             state: State. The state domain object to set the interaction for.
             interaction_id: str. The interaction id to set. Also sets the
                 default customization args for the given interaction id.
+            content_id_generator: ContentIdGenerator. A ContentIdGenerator
+                object to be used for generating new content Ids.
         """
 
-        # We wrap next_content_id_index in a dict so that modifying it in the
-        # inner function modifies the value.
-        next_content_id_index_dict = {'value': state.next_content_id_index}
-
-        def traverse_schema_and_assign_content_ids(value, schema, contentId):
+        # Here we use type Any because, argument 'value' can accept values of
+        # customization args and customization args can have int, str, bool and
+        # other types too. Also, Any is used for schema because values in schema
+        # dictionary can be of type str, List, Dict and other types too.
+        def traverse_schema_and_assign_content_ids(
+            value: Any, schema: Dict[str, Any], ca_name: str
+        ) -> None:
             """Generates content_id from recursively traversing the schema, and
             assigning to the current value.
 
@@ -2488,34 +3164,59 @@ title: Title
                 value: *. The current traversed value in customization
                     arguments.
                 schema: dict. The current traversed schema.
-                contentId: str. The content_id generated so far.
+                ca_name: str. The arg name which will be used for generating
+                    content_id.
+
+            Raises:
+                NotImplementedError. The schema includes an unsupported type.
             """
             is_subtitled_html_spec = (
-                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM and
-                schema['obj_type'] ==
-                schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_HTML)
+                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM
+                and schema['obj_type']
+                == schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_HTML
+            )
             is_subtitled_unicode_spec = (
-                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM and
-                schema['obj_type'] ==
-                schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_UNICODE)
+                schema['type'] == schema_utils.SCHEMA_TYPE_CUSTOM
+                and schema['obj_type']
+                == schema_utils.SCHEMA_OBJ_TYPE_SUBTITLED_UNICODE
+            )
 
             if is_subtitled_html_spec or is_subtitled_unicode_spec:
-                value['content_id'] = '%s_%i' % (
-                    contentId, next_content_id_index_dict['value'])
-                next_content_id_index_dict['value'] += 1
+                value['content_id'] = content_id_generator.generate(
+                    translation_domain.ContentType.CUSTOMIZATION_ARG,
+                    extra_prefix=ca_name,
+                )
             elif schema['type'] == schema_utils.SCHEMA_TYPE_LIST:
                 for x in value:
                     traverse_schema_and_assign_content_ids(
-                        x, schema['items'], contentId)
-            elif schema['type'] == schema_utils.SCHEMA_TYPE_DICT:
-                for schema_property in schema['properties']:
-                    traverse_schema_and_assign_content_ids(
-                        schema['properties'][schema_property.name],
-                        schema_property['schema'],
-                        '%s_%s' % (contentId, schema_property.name))
+                        x, schema['items'], ca_name
+                    )
+            elif schema['type'] in (
+                schema_utils.SCHEMA_TYPE_CUSTOM,
+                schema_utils.SCHEMA_TYPE_BOOL,
+                schema_utils.SCHEMA_TYPE_INT,
+                schema_utils.SCHEMA_TYPE_FLOAT,
+                schema_utils.SCHEMA_TYPE_UNICODE,
+            ):
+                # These types need no recursion.
+                pass
+            # We exclude this else block from coverage because this block is
+            # only meant to ensure that if a new type is added to interaction
+            # schemas in the future, this utility function will fail noisily.
+            else:
+                raise NotImplementedError(
+                    (  # pragma: no cover
+                        'GenericTestBase.set_interaction_for_state() received '
+                        'an interaction schema with an unsupported type: %s. If '
+                        'you need to test such an interaction, please update '
+                        'GenericTestBase to add support.'
+                    )
+                    % schema['type']
+                )
 
-        interaction = (
-            interaction_registry.Registry.get_interaction_by_id(interaction_id))
+        interaction = interaction_registry.Registry.get_interaction_by_id(
+            interaction_id
+        )
         ca_specs = interaction.customization_arg_specs
         customization_args = {}
 
@@ -2523,18 +3224,30 @@ title: Title
             ca_name = ca_spec.name
             ca_value = ca_spec.default_value
             traverse_schema_and_assign_content_ids(
-                ca_value, ca_spec.schema, 'ca_%s' % ca_name)
-            customization_args[ca_name] = {'value': ca_value}
+                ca_value, ca_spec.schema, ca_name
+            )
+            # Here we use cast because these ca_values are fetched dynamically
+            # and contain only default types.
+            customization_args_value = cast(
+                state_domain.UnionOfCustomizationArgsDictValues, ca_value
+            )
+            customization_args[ca_name] = {'value': customization_args_value}
 
         state.update_interaction_id(interaction_id)
         state.update_interaction_customization_args(customization_args)
-        state.update_next_content_id_index(next_content_id_index_dict['value'])
 
     def save_new_valid_exploration(
-            self, exploration_id, owner_id, title='A title',
-            category='A category', objective='An objective',
-            language_code=constants.DEFAULT_LANGUAGE_CODE, end_state_name=None,
-            interaction_id='TextInput', correctness_feedback_enabled=False):
+        self,
+        exploration_id: str,
+        owner_id: str,
+        title: str = 'A title',
+        category: str = 'Algebra',
+        objective: str = 'An objective',
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+        end_state_name: Optional[str] = None,
+        interaction_id: str = 'TextInput',
+        content_html: str = '',
+    ) -> exp_domain.Exploration:
         """Saves a new strictly-validated exploration.
 
         Args:
@@ -2546,43 +3259,76 @@ title: Title
             language_code: str. The language_code of this exploration.
             end_state_name: str. The name of the end state for the exploration.
             interaction_id: str. The id of the interaction.
-            correctness_feedback_enabled: bool. Whether correctness feedback is
-                enabled for the exploration.
+            content_html: str. The html for the state content.
 
         Returns:
             Exploration. The exploration domain object.
         """
         exploration = exp_domain.Exploration.create_default_exploration(
-            exploration_id, title=title, category=category,
-            language_code=language_code)
+            exploration_id,
+            title=title,
+            category=category,
+            language_code=language_code,
+        )
+        content_id_generator = translation_domain.ContentIdGenerator(
+            exploration.next_content_id_index
+        )
+        init_state = exploration.states[exploration.init_state_name]
+        init_state.content.html = content_html
         self.set_interaction_for_state(
-            exploration.states[exploration.init_state_name], interaction_id)
+            init_state, interaction_id, content_id_generator
+        )
 
         exploration.objective = objective
-        exploration.correctness_feedback_enabled = correctness_feedback_enabled
 
         # If an end state name is provided, add terminal node with that name.
         if end_state_name is not None:
-            exploration.add_states([end_state_name])
+            exploration.add_state(
+                end_state_name,
+                content_id_generator.generate(
+                    translation_domain.ContentType.CONTENT
+                ),
+                content_id_generator.generate(
+                    translation_domain.ContentType.DEFAULT_OUTCOME
+                ),
+            )
             end_state = exploration.states[end_state_name]
-            self.set_interaction_for_state(end_state, 'EndExploration')
+            end_state.content.html = content_html
+            self.set_interaction_for_state(
+                end_state, 'EndExploration', content_id_generator
+            )
             end_state.update_interaction_default_outcome(None)
 
             # Link first state to ending state (to maintain validity).
             init_state = exploration.states[exploration.init_state_name]
             init_interaction = init_state.interaction
+            # Here, init_interaction is a InteractionInstance domain object
+            # and it is created using 'create_default_interaction' method.
+            # So, 'init_interaction' is a default_interaction and it is always
+            # going to contain a default_outcome. Thus to narrow down the type
+            # from Optional[Outcome] to Outcome for default_outcome, we used
+            # assert here.
+            assert init_interaction.default_outcome is not None
             init_interaction.default_outcome.dest = end_state_name
-            if correctness_feedback_enabled:
-                init_interaction.default_outcome.labelled_as_correct = True
+        exploration.next_content_id_index = (
+            content_id_generator.next_content_id_index
+        )
 
         exp_services.save_new_exploration(owner_id, exploration)
         return exploration
 
     def save_new_linear_exp_with_state_names_and_interactions(
-            self, exploration_id, owner_id, state_names, interaction_ids,
-            title='A title', category='A category', objective='An objective',
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            correctness_feedback_enabled=False):
+        self,
+        exploration_id: str,
+        owner_id: str,
+        state_names: List[str],
+        interaction_ids: List[str],
+        title: str = 'A title',
+        category: str = 'A category',
+        objective: str = 'An objective',
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+        content_html: str = '',
+    ) -> exp_domain.Exploration:
         """Saves a new strictly-validated exploration with a sequence of states.
 
         Args:
@@ -2599,87 +3345,75 @@ title: Title
             category: str. The category this exploration belongs to.
             objective: str. The objective of this exploration.
             language_code: str. The language_code of this exploration.
-            correctness_feedback_enabled: bool. Whether the correctness feedback
-                is enabled or not for the exploration.
+            content_html: str. The html for the state content.
 
         Returns:
             Exploration. The exploration domain object.
+
+        Raises:
+            ValueError. Given list of state names is empty.
+            ValueError. Given list of interaction ids is empty.
         """
         if not state_names:
             raise ValueError('must provide at least one state name')
         if not interaction_ids:
             raise ValueError('must provide at least one interaction type')
-        interaction_ids = itertools.cycle(interaction_ids)
+        iterable_interaction_ids = itertools.cycle(interaction_ids)
 
         exploration = exp_domain.Exploration.create_default_exploration(
-            exploration_id, title=title, init_state_name=state_names[0],
-            category=category, objective=objective, language_code=language_code)
+            exploration_id,
+            title=title,
+            init_state_name=state_names[0],
+            category=category,
+            objective=objective,
+            language_code=language_code,
+        )
+        content_id_generator = translation_domain.ContentIdGenerator(
+            exploration.next_content_id_index
+        )
 
-        exploration.correctness_feedback_enabled = correctness_feedback_enabled
-        exploration.add_states(state_names[1:])
-        for from_state_name, dest_state_name in (
-                python_utils.ZIP(state_names[:-1], state_names[1:])):
+        init_state = exploration.states[state_names[0]]
+        init_state.content.html = content_html
+
+        for state_name in state_names[1:]:
+            exploration.add_state(
+                state_name,
+                content_id_generator.generate(
+                    translation_domain.ContentType.CONTENT
+                ),
+                content_id_generator.generate(
+                    translation_domain.ContentType.DEFAULT_OUTCOME
+                ),
+            )
+            curent_state = exploration.states[state_name]
+            curent_state.content.html = content_html
+        for from_state_name, dest_state_name in zip(
+            state_names[:-1], state_names[1:]
+        ):
             from_state = exploration.states[from_state_name]
             self.set_interaction_for_state(
-                from_state, next(interaction_ids))
+                from_state, next(iterable_interaction_ids), content_id_generator
+            )
+            # Here, from_state is a State domain object and it is created using
+            # 'create_default_state' method. So, 'from_state' is a default_state
+            # and it is always going to contain a default_outcome. Thus to
+            # narrow down the type from Optional[Outcome] to Outcome for
+            # default_outcome, we used assert here.
+            assert from_state.interaction.default_outcome is not None
             from_state.interaction.default_outcome.dest = dest_state_name
-            if correctness_feedback_enabled:
-                from_state.interaction.default_outcome.labelled_as_correct = (
-                    True)
         end_state = exploration.states[state_names[-1]]
-        self.set_interaction_for_state(end_state, 'EndExploration')
+        self.set_interaction_for_state(
+            end_state, 'EndExploration', content_id_generator
+        )
         end_state.update_interaction_default_outcome(None)
 
+        exploration.next_content_id_index = (
+            content_id_generator.next_content_id_index
+        )
         exp_services.save_new_exploration(owner_id, exploration)
         return exploration
 
-    def save_new_exp_with_custom_states_schema_version(
-            self, exp_id, user_id, states_dict, version):
-        """Saves a new default exploration with the given version of state dict.
-
-        This function should only be used for creating explorations in tests
-        involving migration of datastore explorations that use an old states
-        schema version.
-
-        Note that it makes an explicit commit to the datastore instead of using
-        the usual functions for updating and creating explorations. This is
-        because the latter approach would result in an exploration with the
-        *current* states schema version.
-
-        Args:
-            exp_id: str. The exploration ID.
-            user_id: str. The user_id of the creator.
-            states_dict: dict. The dict representation of all the states.
-            version: int. Custom states schema version.
-        """
-        exp_model = exp_models.ExplorationModel(
-            id=exp_id, category='category', title='title',
-            objective='Old objective', language_code='en', tags=[], blurb='',
-            author_notes='', states_schema_version=version,
-            init_state_name=feconf.DEFAULT_INIT_STATE_NAME, states=states_dict,
-            param_specs={}, param_changes=[])
-        rights_manager.create_new_exploration_rights(exp_id, user_id)
-
-        commit_message = 'New exploration created with title \'title\'.'
-        exp_model.commit(user_id, commit_message, [{
-            'cmd': 'create_new',
-            'title': 'title',
-            'category': 'category',
-        }])
-        exp_rights = exp_models.ExplorationRightsModel.get_by_id(exp_id)
-        exp_summary_model = exp_models.ExpSummaryModel(
-            id=exp_id, title='title', category='category',
-            objective='Old objective', language_code='en', tags=[],
-            ratings=feconf.get_empty_ratings(),
-            scaled_average_rating=feconf.EMPTY_SCALED_AVERAGE_RATING,
-            status=exp_rights.status,
-            community_owned=exp_rights.community_owned,
-            owner_ids=exp_rights.owner_ids, contributor_ids=[],
-            contributors_summary={})
-        exp_summary_model.update_timestamps()
-        exp_summary_model.put()
-
-    def publish_exploration(self, owner_id, exploration_id):
+    def publish_exploration(self, owner_id: str, exploration_id: str) -> None:
         """Publish the exploration with the given exploration_id.
 
         Args:
@@ -2690,9 +3424,14 @@ title: Title
         rights_manager.publish_exploration(committer, exploration_id)
 
     def save_new_default_collection(
-            self, collection_id, owner_id, title='A title',
-            category='A category', objective='An objective',
-            language_code=constants.DEFAULT_LANGUAGE_CODE):
+        self,
+        collection_id: str,
+        owner_id: str,
+        title: str = 'A title',
+        category: str = 'A category',
+        objective: str = 'An objective',
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+    ) -> collection_domain.Collection:
         """Saves a new default collection written by owner_id.
 
         Args:
@@ -2707,17 +3446,26 @@ title: Title
             Collection. The collection domain object.
         """
         collection = collection_domain.Collection.create_default_collection(
-            collection_id, title=title, category=category, objective=objective,
-            language_code=language_code)
+            collection_id,
+            title=title,
+            category=category,
+            objective=objective,
+            language_code=language_code,
+        )
         collection_services.save_new_collection(owner_id, collection)
         return collection
 
     def save_new_valid_collection(
-            self, collection_id, owner_id, title='A title',
-            category='A category', objective='An objective',
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            exploration_id='an_exploration_id',
-            end_state_name=DEFAULT_END_STATE_NAME):
+        self,
+        collection_id: str,
+        owner_id: str,
+        title: str = 'A title',
+        category: str = 'A category',
+        objective: str = 'An objective',
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+        exploration_id: str = 'an_exploration_id',
+        end_state_name: str = DEFAULT_END_STATE_NAME,
+    ) -> collection_domain.Collection:
         """Creates an Oppia collection and adds a node saving the exploration
         details.
 
@@ -2736,22 +3484,32 @@ title: Title
             exploration details.
         """
         collection = collection_domain.Collection.create_default_collection(
-            collection_id, title=title, category=category, objective=objective,
-            language_code=language_code)
+            collection_id,
+            title=title,
+            category=category,
+            objective=objective,
+            language_code=language_code,
+        )
 
         # Check whether exploration with given exploration_id exists or not.
-        exploration = (
-            exp_fetchers.get_exploration_by_id(exploration_id, strict=False))
+        exploration = exp_fetchers.get_exploration_by_id(
+            exploration_id, strict=False
+        )
         if exploration is None:
             exploration = self.save_new_valid_exploration(
-                exploration_id, owner_id, title=title, category=category,
-                objective=objective, end_state_name=end_state_name)
+                exploration_id,
+                owner_id,
+                title=title,
+                category=category,
+                objective=objective,
+                end_state_name=end_state_name,
+            )
         collection.add_node(exploration.id)
 
         collection_services.save_new_collection(owner_id, collection)
         return collection
 
-    def publish_collection(self, owner_id, collection_id):
+    def publish_collection(self, owner_id: str, collection_id: str) -> None:
         """Publish the collection with the given collection_id.
 
         Args:
@@ -2761,11 +3519,133 @@ title: Title
         committer = user_services.get_user_actions_info(owner_id)
         rights_manager.publish_collection(committer, collection_id)
 
+    def add_explorations_to_story(
+        self, topic_id: str, story_id: str, exp_ids: List[str]
+    ) -> None:
+        """Appends a story node for each exploration id given in exp_ids to the
+        story with story_id. Each story node is assigned its exp id and then it
+        is published.
+
+        Args:
+            topic_id: str. ID of the topic that contains the story.
+            story_id: str. ID of the story containing the new node.
+            exp_ids: list(str). IDs of the exploration.
+        """
+        story = story_fetchers.get_story_by_id(story_id)
+        change_list = []
+
+        node_id = story.story_contents.next_node_id
+        for exp_id in exp_ids:
+            change_list.extend(
+                [
+                    story_domain.StoryChange(
+                        {
+                            'cmd': story_domain.CMD_ADD_STORY_NODE,
+                            'node_id': node_id,
+                            'title': node_id,
+                        }
+                    ),
+                    story_domain.StoryChange(
+                        {
+                            'cmd': story_domain.CMD_UPDATE_STORY_NODE_PROPERTY,
+                            'property_name': story_domain.STORY_NODE_PROPERTY_EXPLORATION_ID,
+                            'node_id': node_id,
+                            'old_value': None,
+                            'new_value': exp_id,
+                        }
+                    ),
+                ]
+            )
+            node_id = story_domain.StoryNode.get_incremented_node_id(node_id)
+
+        if len(change_list) > 0:
+            topic_services.update_story_and_topic_summary(
+                feconf.SYSTEM_COMMITTER_ID,
+                story_id,
+                change_list,
+                'Linked explorations to story %s' % story_id,
+                topic_id,
+            )
+
+    def create_story_for_translation_opportunity(
+        self,
+        owner_id: str,
+        admin_id: str,
+        story_id: str,
+        topic_id: str,
+        exploration_id: str,
+    ) -> None:
+        """Creates a story and links it to the supplied topic and exploration.
+
+        Args:
+            owner_id: str. User ID of the story owner.
+            admin_id: str. User ID of the admin that will publish the story.
+            story_id: str. The ID of new story.
+            topic_id: str. The ID of the topic for which to link the story.
+            exploration_id: str. The ID of the exploration that will be added
+                as a node to the story.
+        """
+        story = story_domain.Story.create_default_story(
+            story_id,
+            'title %s' % story_id,
+            'description',
+            topic_id,
+            'url-fragment',
+        )
+
+        story.language_code = 'en'
+        story_services.save_new_story(owner_id, story)
+        topic_services.add_canonical_story(owner_id, topic_id, story.id)
+        topic_services.publish_story(topic_id, story.id, admin_id)
+        story_services.update_story(
+            owner_id,
+            story.id,
+            [
+                story_domain.StoryChange(
+                    {
+                        'cmd': story_domain.CMD_ADD_STORY_NODE,
+                        'node_id': 'node_1',
+                        'title': 'Node1',
+                    }
+                ),
+                story_domain.StoryChange(
+                    {
+                        'cmd': story_domain.CMD_UPDATE_STORY_NODE_PROPERTY,
+                        'property_name': (
+                            story_domain.STORY_NODE_PROPERTY_EXPLORATION_ID
+                        ),
+                        'node_id': 'node_1',
+                        'old_value': None,
+                        'new_value': exploration_id,
+                    }
+                ),
+                story_domain.StoryChange(
+                    {
+                        'cmd': story_domain.CMD_UPDATE_STORY_NODE_PROPERTY,
+                        'property_name': (
+                            story_domain.STORY_NODE_PROPERTY_STATUS
+                        ),
+                        'node_id': 'node_1',
+                        'old_value': constants.STORY_NODE_STATUS_DRAFT,
+                        'new_value': constants.STORY_NODE_STATUS_PUBLISHED,
+                    }
+                ),
+            ],
+            'Changes.',
+        )
+
     def save_new_story(
-            self, story_id, owner_id, corresponding_topic_id,
-            title='Title', description='Description', notes='Notes',
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            url_fragment='title', meta_tag_content='story meta tag content'):
+        self,
+        story_id: str,
+        owner_id: str,
+        corresponding_topic_id: str,
+        title: str = 'Title',
+        description: str = 'Description',
+        notes: str = 'Notes',
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+        url_fragment: str = 'title',
+        meta_tag_content: str = 'story meta tag content',
+    ) -> story_domain.Story:
         """Creates an Oppia Story and saves it.
 
         NOTE: Callers are responsible for ensuring that the
@@ -2790,7 +3670,8 @@ title: Title
             Story. A newly-created story.
         """
         story = story_domain.Story.create_default_story(
-            story_id, title, description, corresponding_topic_id, url_fragment)
+            story_id, title, description, corresponding_topic_id, url_fragment
+        )
         story.title = title
         story.description = description
         story.notes = notes
@@ -2800,140 +3681,13 @@ title: Title
         story_services.save_new_story(owner_id, story)
         return story
 
-    def save_new_story_with_story_contents_schema_v1(
-            self, story_id, thumbnail_filename, thumbnail_bg_color,
-            thumbnail_size_in_bytes, owner_id, title, description,
-            notes, corresponding_topic_id,
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            url_fragment='story-frag',
-            meta_tag_content='story meta tag content'):
-        """Saves a new story with a default version 1 story contents data dict.
-
-        This function should only be used for creating stories in tests
-        involving migration of datastore stories that use an old story contents
-        schema version.
-
-        Note that it makes an explicit commit to the datastore instead of using
-        the usual functions for updating and creating stories. This is because
-        the latter approach would result in a story with the *current* story
-        contents schema version.
-
-        Args:
-            story_id: str. ID for the story to be created.
-            thumbnail_filename: str|None. Thumbnail filename for the story.
-            thumbnail_bg_color: str|None. Thumbnail background color for the
-                story.
-            thumbnail_size_in_bytes: int|None. The thumbnail size in bytes of
-                the story.
-            owner_id: str. The user_id of the creator of the story.
-            title: str. The title of the story.
-            description: str. The high level description of the story.
-            notes: str. A set of notes, that describe the characters, main
-                storyline, and setting.
-            corresponding_topic_id: str. The id of the topic to which the story
-                belongs.
-            language_code: str. The ISO 639-1 code for the language this story
-                is written in.
-            url_fragment: str. The URL fragment for the story.
-            meta_tag_content: str. The meta tag content of the story.
-        """
-        story_model = story_models.StoryModel(
-            id=story_id, thumbnail_filename=thumbnail_filename,
-            thumbnail_bg_color=thumbnail_bg_color,
-            thumbnail_size_in_bytes=thumbnail_size_in_bytes,
-            description=description, title=title,
-            language_code=language_code,
-            story_contents_schema_version=1, notes=notes,
-            corresponding_topic_id=corresponding_topic_id,
-            story_contents=self.VERSION_1_STORY_CONTENTS_DICT,
-            url_fragment=url_fragment, meta_tag_content=meta_tag_content)
-        commit_message = 'New story created with title \'%s\'.' % title
-        story_model.commit(
-            owner_id, commit_message,
-            [{'cmd': story_domain.CMD_CREATE_NEW, 'title': title}])
-
-    def save_new_story_with_story_contents_schema_v5(
-            self, story_id, thumbnail_filename, thumbnail_bg_color,
-            thumbnail_size_in_bytes, owner_id, title, description,
-            notes, corresponding_topic_id,
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            url_fragment='story-frag',
-            meta_tag_content='story meta tag content'):
-        """Saves a new story with a default version 1 story contents data dict.
-
-        This function should only be used for creating stories in tests
-        involving migration of datastore stories that use an old story contents
-        schema version.
-
-        Note that it makes an explicit commit to the datastore instead of using
-        the usual functions for updating and creating stories. This is because
-        the latter approach would result in a story with the *current* story
-        contents schema version.
-
-        Args:
-            story_id: str. ID for the story to be created.
-            thumbnail_filename: str|None. Thumbnail filename for the story.
-            thumbnail_bg_color: str|None. Thumbnail background color for the
-                story.
-            thumbnail_size_in_bytes: int|None. The thumbnail size in bytes of
-                the story.
-            owner_id: str. The user_id of the creator of the story.
-            title: str. The title of the story.
-            description: str. The high level description of the story.
-            notes: str. A set of notes, that describe the characters, main
-                storyline, and setting.
-            corresponding_topic_id: str. The id of the topic to which the story
-                belongs.
-            language_code: str. The ISO 639-1 code for the language this story
-                is written in.
-            url_fragment: str. The URL fragment for the story.
-            meta_tag_content: str. The meta tag content of the story.
-        """
-        story_content_v5 = {
-            'nodes': [{
-                'outline': (
-                    '<p>Value</p>'
-                    '<oppia-noninteractive-math math_content-with-value="{'
-                    '&amp;quot;raw_latex&amp;quot;: &amp;quot;+,-,-,+&amp;quot;, ' # pylint: disable=line-too-long
-                    '&amp;quot;svg_filename&amp;quot;: &amp;quot;&amp;quot;'
-                    '}">'
-                    '</oppia-noninteractive-math>'),
-                'exploration_id': None,
-                'destination_node_ids': [],
-                'outline_is_finalized': False,
-                'acquired_skill_ids': [],
-                'id': 'node_1',
-                'title': 'Chapter 1',
-                'description': '',
-                'prerequisite_skill_ids': [],
-                'thumbnail_filename': 'image.svg',
-                'thumbnail_bg_color': None,
-                'thumbnail_size_in_bytes': 21131,
-            }],
-            'initial_node_id': 'node_1',
-            'next_node_id': 'node_2',
-        }
-        story_model = story_models.StoryModel(
-            id=story_id, thumbnail_filename=thumbnail_filename,
-            thumbnail_bg_color=thumbnail_bg_color,
-            thumbnail_size_in_bytes=thumbnail_size_in_bytes,
-            description=description, title=title,
-            language_code=language_code,
-            story_contents_schema_version=5, notes=notes,
-            corresponding_topic_id=corresponding_topic_id,
-            story_contents=story_content_v5,
-            url_fragment=url_fragment, meta_tag_content=meta_tag_content)
-        commit_message = 'New story created with title \'%s\'.' % title
-        story_model.commit(
-            owner_id, commit_message,
-            [{'cmd': story_domain.CMD_CREATE_NEW, 'title': title}])
-        story_services.create_story_summary(story_id)
-
-    def save_new_subtopic(self, subtopic_id, owner_id, topic_id):
+    def save_new_subtopic(
+        self, subtopic_id: int, owner_id: str, topic_id: str
+    ) -> subtopic_page_domain.SubtopicPage:
         """Creates an Oppia subtopic and saves it.
 
         Args:
-            subtopic_id: str. ID for the subtopic to be created.
+            subtopic_id: int. ID for the subtopic to be created.
             owner_id: str. The user_id of the creator of the topic.
             topic_id: str. ID for the topic that the subtopic belongs to.
 
@@ -2942,32 +3696,83 @@ title: Title
         """
         subtopic_page = (
             subtopic_page_domain.SubtopicPage.create_default_subtopic_page(
-                subtopic_id, topic_id))
+                subtopic_id, topic_id
+            )
+        )
         subtopic_changes = [
-            subtopic_page_domain.SubtopicPageChange({
-                'cmd': subtopic_page_domain.CMD_CREATE_NEW,
-                'topic_id': topic_id,
-                'subtopic_id': subtopic_id,
-            })
+            subtopic_page_domain.SubtopicPageChange(
+                {
+                    'cmd': subtopic_page_domain.CMD_CREATE_NEW,
+                    'topic_id': topic_id,
+                    'subtopic_id': subtopic_id,
+                }
+            )
         ]
         subtopic_page_services.save_subtopic_page(
-            owner_id, subtopic_page, 'Create new subtopic', subtopic_changes)
+            owner_id, subtopic_page, 'Create new subtopic', subtopic_changes
+        )
         return subtopic_page
 
+    def save_new_study_guide(
+        self, subtopic_id: int, owner_id: str, topic_id: str
+    ) -> study_guide_domain.StudyGuide:
+        """Creates an Oppia study guide and saves it.
+
+        Args:
+            subtopic_id: int. ID of the subtopic for which the study guide is
+                to be created.
+            owner_id: str. The user_id of the creator of the topic.
+            topic_id: str. ID for the topic that the subtopic belongs to.
+
+        Returns:
+            StudyGuide. A newly-created study guide.
+        """
+        study_guide = study_guide_domain.StudyGuide.create_study_guide(
+            subtopic_id,
+            topic_id,
+            'Android Study Guide',
+            '<p>Android Study Guide Content</p>',
+        )
+        study_guide_changes = [
+            study_guide_domain.StudyGuideChange(
+                {
+                    'cmd': study_guide_domain.CMD_CREATE_NEW,
+                    'topic_id': topic_id,
+                    'subtopic_id': subtopic_id,
+                }
+            )
+        ]
+        study_guide_services.save_study_guide(
+            owner_id,
+            study_guide,
+            'Created new study guide',
+            study_guide_changes,
+        )
+        return study_guide
+
     def save_new_topic(
-            self, topic_id, owner_id, name='topic', abbreviated_name='topic',
-            url_fragment='topic',
-            thumbnail_filename='topic.svg',
-            thumbnail_bg_color=(
-                constants.ALLOWED_THUMBNAIL_BG_COLORS['topic'][0]),
-            thumbnail_size_in_bytes=21131,
-            description='description', canonical_story_ids=None,
-            additional_story_ids=None, uncategorized_skill_ids=None,
-            subtopics=None, next_subtopic_id=0,
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            meta_tag_content='topic meta tag content',
-            practice_tab_is_displayed=False,
-            page_title_fragment_for_web='topic page title'):
+        self,
+        topic_id: str,
+        owner_id: str,
+        name: str = 'topic',
+        abbreviated_name: str = 'topic',
+        url_fragment: str = 'topic',
+        thumbnail_filename: Optional[str] = 'topic.svg',
+        thumbnail_bg_color: Optional[str] = (
+            constants.ALLOWED_THUMBNAIL_BG_COLORS['topic'][0]
+        ),
+        thumbnail_size_in_bytes: Optional[int] = 21131,
+        description: str = 'description',
+        canonical_story_ids: Optional[List[str]] = None,
+        additional_story_ids: Optional[List[str]] = None,
+        uncategorized_skill_ids: Optional[List[str]] = None,
+        subtopics: Optional[List[topic_domain.Subtopic]] = None,
+        next_subtopic_id: int = 0,
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+        meta_tag_content: str = 'topic meta tag content',
+        practice_tab_is_displayed: bool = False,
+        page_title_fragment_for_web: str = 'topic page title',
+    ) -> topic_domain.Topic:
         """Creates an Oppia Topic and saves it.
 
         Args:
@@ -3002,107 +3807,58 @@ title: Title
         Returns:
             Topic. A newly-created topic.
         """
+        canonical_story_ids = canonical_story_ids or []
+        additional_story_ids = additional_story_ids or []
         canonical_story_references = [
             topic_domain.StoryReference.create_default_story_reference(story_id)
-            for story_id in (canonical_story_ids or [])
+            for story_id in canonical_story_ids
         ]
         additional_story_references = [
             topic_domain.StoryReference.create_default_story_reference(story_id)
-            for story_id in (additional_story_ids or [])
+            for story_id in additional_story_ids
         ]
         uncategorized_skill_ids = uncategorized_skill_ids or []
         subtopics = subtopics or []
+        skill_ids_for_diagnostic_test = []
+        for subtopic in subtopics:
+            skill_ids_for_diagnostic_test.extend(subtopic.skill_ids)
+
         topic = topic_domain.Topic(
-            topic_id, name, abbreviated_name, url_fragment, thumbnail_filename,
-            thumbnail_bg_color, thumbnail_size_in_bytes, description,
-            canonical_story_references, additional_story_references,
-            uncategorized_skill_ids, subtopics,
-            feconf.CURRENT_SUBTOPIC_SCHEMA_VERSION, next_subtopic_id,
-            language_code, 0, feconf.CURRENT_STORY_REFERENCE_SCHEMA_VERSION,
-            meta_tag_content, practice_tab_is_displayed,
-            page_title_fragment_for_web)
+            topic_id,
+            name,
+            abbreviated_name,
+            url_fragment,
+            thumbnail_filename,
+            thumbnail_bg_color,
+            thumbnail_size_in_bytes,
+            description,
+            canonical_story_references,
+            additional_story_references,
+            uncategorized_skill_ids,
+            subtopics,
+            feconf.CURRENT_SUBTOPIC_SCHEMA_VERSION,
+            next_subtopic_id,
+            language_code,
+            0,
+            feconf.CURRENT_STORY_REFERENCE_SCHEMA_VERSION,
+            meta_tag_content,
+            practice_tab_is_displayed,
+            page_title_fragment_for_web,
+            skill_ids_for_diagnostic_test,
+        )
         topic_services.save_new_topic(owner_id, topic)
         return topic
 
-    def save_new_topic_with_subtopic_schema_v1(
-            self, topic_id, owner_id, name, abbreviated_name, url_fragment,
-            canonical_name, description, thumbnail_filename, thumbnail_bg_color,
-            canonical_story_references, additional_story_references,
-            uncategorized_skill_ids, next_subtopic_id,
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            meta_tag_content='topic meta tag content',
-            practice_tab_is_displayed=False,
-            page_title_fragment_for_web='topic page title'):
-        """Saves a new topic with a default version 1 subtopic data dict.
-
-        This function should only be used for creating topics in tests involving
-        migration of datastore topics that use an old subtopic schema version.
-
-        Note that it makes an explicit commit to the datastore instead of using
-        the usual functions for updating and creating topics. This is because
-        the latter approach would result in a topic with the *current* subtopic
-        schema version.
-
-        Args:
-            topic_id: str. ID for the topic to be created.
-            owner_id: str. The user_id of the creator of the topic.
-            name: str. The name of the topic.
-            abbreviated_name: str. The abbreviated name of the topic.
-            url_fragment: str. The url fragment of the topic.
-            canonical_name: str. The canonical name (lowercase) of the topic.
-            description: str. The description of the topic.
-            thumbnail_filename: str. The thumbnail file name of the topic.
-            thumbnail_bg_color: str. The thumbnail background color of the
-                topic.
-            canonical_story_references: list(StoryReference). A set of story
-                reference objects representing the canonical stories that are
-                part of this topic.
-            additional_story_references: list(StoryReference). A set of story
-                reference object representing the additional stories that are
-                part of this topic.
-            uncategorized_skill_ids: list(str). The list of ids of skills that
-                are not part of any subtopic.
-            next_subtopic_id: int. The id for the next subtopic.
-            language_code: str. The ISO 639-1 code for the language this topic
-                is written in.
-            meta_tag_content: str. The meta tag content for the topic.
-            practice_tab_is_displayed: bool. Whether the practice tab should be
-                displayed.
-            page_title_fragment_for_web: str. The page title fragment for the
-                topic.
-        """
-        topic_rights_model = topic_models.TopicRightsModel(
-            id=topic_id, manager_ids=[], topic_is_published=True)
-        topic_model = topic_models.TopicModel(
-            id=topic_id, name=name, abbreviated_name=abbreviated_name,
-            url_fragment=url_fragment, thumbnail_filename=thumbnail_filename,
-            thumbnail_bg_color=thumbnail_bg_color,
-            canonical_name=canonical_name, description=description,
-            language_code=language_code,
-            canonical_story_references=canonical_story_references,
-            additional_story_references=additional_story_references,
-            uncategorized_skill_ids=uncategorized_skill_ids,
-            subtopic_schema_version=1,
-            story_reference_schema_version=(
-                feconf.CURRENT_STORY_REFERENCE_SCHEMA_VERSION),
-            next_subtopic_id=next_subtopic_id,
-            subtopics=[self.VERSION_1_SUBTOPIC_DICT],
-            meta_tag_content=meta_tag_content,
-            practice_tab_is_displayed=practice_tab_is_displayed,
-            page_title_fragment_for_web=page_title_fragment_for_web)
-        commit_message = 'New topic created with name \'%s\'.' % name
-        topic_rights_model.commit(
-            committer_id=owner_id,
-            commit_message='Created new topic rights',
-            commit_cmds=[{'cmd': topic_domain.CMD_CREATE_NEW}])
-        topic_model.commit(
-            owner_id, commit_message,
-            [{'cmd': topic_domain.CMD_CREATE_NEW, 'name': name}])
-
     def save_new_question(
-            self, question_id, owner_id, question_state_data,
-            linked_skill_ids, inapplicable_skill_misconception_ids=None,
-            language_code=constants.DEFAULT_LANGUAGE_CODE):
+        self,
+        question_id: str,
+        owner_id: str,
+        question_state_data: state_domain.State,
+        linked_skill_ids: List[str],
+        next_content_id_index: int,
+        inapplicable_skill_misconception_ids: Optional[List[str]] = None,
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+    ) -> question_domain.Question:
         """Creates an Oppia Question and saves it.
 
         Args:
@@ -3115,6 +3871,8 @@ title: Title
                 misconceptions ids that are not applicable to the question.
             language_code: str. The ISO 639-1 code for the language this
                 question is written in.
+            next_content_id_index: int. The next content Id index for generating
+                new content Id.
 
         Returns:
             Question. A newly-created question.
@@ -3122,16 +3880,26 @@ title: Title
         # This needs to be done because default arguments can not be of list
         # type.
         question = question_domain.Question(
-            question_id, question_state_data,
-            feconf.CURRENT_STATE_SCHEMA_VERSION, language_code, 0,
-            linked_skill_ids, inapplicable_skill_misconception_ids or [])
+            question_id,
+            question_state_data,
+            feconf.CURRENT_STATE_SCHEMA_VERSION,
+            language_code,
+            0,
+            linked_skill_ids,
+            inapplicable_skill_misconception_ids or [],
+            next_content_id_index,
+        )
         question_services.add_question(owner_id, question)
         return question
 
     def save_new_question_with_state_data_schema_v27(
-            self, question_id, owner_id, linked_skill_ids,
-            inapplicable_skill_misconception_ids=None,
-            language_code=constants.DEFAULT_LANGUAGE_CODE):
+        self,
+        question_id: str,
+        owner_id: str,
+        linked_skill_ids: List[str],
+        inapplicable_skill_misconception_ids: Optional[List[str]] = None,
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+    ) -> None:
         """Saves a new default question with a default version 27 state data
         dict.
 
@@ -3156,19 +3924,29 @@ title: Title
         # This needs to be done because default arguments can not be of list
         # type.
         question_model = question_models.QuestionModel(
-            id=question_id, question_state_data=self.VERSION_27_STATE_DICT,
-            language_code=language_code, version=1,
+            id=question_id,
+            question_state_data=self.VERSION_27_STATE_DICT,
+            language_code=language_code,
+            version=1,
             question_state_data_schema_version=27,
             linked_skill_ids=linked_skill_ids,
             inapplicable_skill_misconception_ids=(
-                inapplicable_skill_misconception_ids or []))
+                inapplicable_skill_misconception_ids or []
+            ),
+        )
         question_model.commit(
-            owner_id, 'New question created',
-            [{'cmd': question_domain.CMD_CREATE_NEW}])
+            owner_id,
+            'New question created',
+            [{'cmd': question_domain.CMD_CREATE_NEW}],
+        )
 
     def save_new_question_suggestion_with_state_data_schema_v27(
-            self, author_id, skill_id, suggestion_id=None,
-            language_code=constants.DEFAULT_LANGUAGE_CODE):
+        self,
+        author_id: str,
+        skill_id: str,
+        suggestion_id: Optional[str] = None,
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+    ) -> str:
         """Saves a new question suggestion with a default version 27 state data
         dict.
 
@@ -3181,41 +3959,57 @@ title: Title
         the latter approach would result in an question with the *current* state
         data schema version.
         """
-        score_category = (
-            suggestion_models.SCORE_TYPE_QUESTION +
-            suggestion_models.SCORE_CATEGORY_DELIMITER + skill_id)
-        change = {
-            'cmd': (
-                question_domain
-                .CMD_CREATE_NEW_FULLY_SPECIFIED_QUESTION),
+        score_category = '%s%s%s' % (
+            suggestion_models.SCORE_TYPE_QUESTION,
+            suggestion_models.SCORE_CATEGORY_DELIMITER,
+            skill_id,
+        )
+        change: Dict[
+            str,
+            Union[str, float, Dict[str, Union[Optional[Collection[str]], int]]],
+        ] = {
+            'cmd': (question_domain.CMD_CREATE_NEW_FULLY_SPECIFIED_QUESTION),
             'question_dict': {
                 'question_state_data': self.VERSION_27_STATE_DICT,
                 'question_state_data_schema_version': 27,
                 'language_code': language_code,
                 'linked_skill_ids': [skill_id],
-                'inapplicable_skill_misconception_ids': []
+                'inapplicable_skill_misconception_ids': [],
             },
             'skill_id': skill_id,
-            'skill_difficulty': 0.3
+            'skill_difficulty': 0.3,
         }
         if suggestion_id is None:
-            suggestion_id = (
-                feedback_models.GeneralFeedbackThreadModel.
-                generate_new_thread_id(
-                    feconf.ENTITY_TYPE_SKILL, skill_id))
+            suggestion_id = feedback_models.GeneralFeedbackThreadModel.generate_new_thread_id(
+                feconf.ENTITY_TYPE_SKILL, skill_id
+            )
         suggestion_models.GeneralSuggestionModel.create(
             feconf.SUGGESTION_TYPE_ADD_QUESTION,
-            feconf.ENTITY_TYPE_SKILL, skill_id, 1,
-            suggestion_models.STATUS_IN_REVIEW, author_id, None, change,
-            score_category, suggestion_id, language_code)
+            feconf.ENTITY_TYPE_SKILL,
+            skill_id,
+            1,
+            suggestion_models.STATUS_IN_REVIEW,
+            author_id,
+            None,
+            change,
+            score_category,
+            suggestion_id,
+            language_code,
+        )
 
         return suggestion_id
 
     def save_new_skill(
-            self, skill_id, owner_id, description='description',
-            misconceptions=None, rubrics=None, skill_contents=None,
-            language_code=constants.DEFAULT_LANGUAGE_CODE,
-            prerequisite_skill_ids=None):
+        self,
+        skill_id: str,
+        owner_id: str,
+        description: str = 'description',
+        misconceptions: Optional[List[skill_domain.Misconception]] = None,
+        rubrics: Optional[List[skill_domain.Rubric]] = None,
+        skill_contents: Optional[skill_domain.SkillContents] = None,
+        language_code: str = constants.DEFAULT_LANGUAGE_CODE,
+        prerequisite_skill_ids: Optional[List[str]] = None,
+    ) -> skill_domain.Skill:
         """Creates an Oppia Skill and saves it.
 
         Args:
@@ -3236,8 +4030,9 @@ title: Title
         Returns:
             Skill. A newly-created skill.
         """
-        skill = (
-            skill_domain.Skill.create_default_skill(skill_id, description, []))
+        skill = skill_domain.Skill.create_default_skill(
+            skill_id, description, []
+        )
         if misconceptions is not None:
             skill.misconceptions = misconceptions
             skill.next_misconception_id = len(misconceptions) + 1
@@ -3250,132 +4045,199 @@ title: Title
         else:
             skill.rubrics = [
                 skill_domain.Rubric(
-                    constants.SKILL_DIFFICULTIES[0], ['Explanation 1']),
+                    constants.SKILL_DIFFICULTIES[0], ['Explanation 1']
+                ),
                 skill_domain.Rubric(
-                    constants.SKILL_DIFFICULTIES[1], ['Explanation 2']),
+                    constants.SKILL_DIFFICULTIES[1], ['Explanation 2']
+                ),
                 skill_domain.Rubric(
-                    constants.SKILL_DIFFICULTIES[2], ['Explanation 3']),
+                    constants.SKILL_DIFFICULTIES[2], ['Explanation 3']
+                ),
             ]
         skill.language_code = language_code
         skill.version = 0
         skill_services.save_new_skill(owner_id, skill)
         return skill
 
-    def save_new_skill_with_defined_schema_versions(
-            self, skill_id, owner_id, description, next_misconception_id,
-            misconceptions=None, rubrics=None, skill_contents=None,
-            misconceptions_schema_version=1, rubric_schema_version=1,
-            skill_contents_schema_version=1,
-            language_code=constants.DEFAULT_LANGUAGE_CODE):
-        """Saves a new default skill with the given versions for misconceptions
-        and skill contents.
-
-        This function should only be used for creating skills in tests involving
-        migration of datastore skills that use an old schema version.
-
-        Note that it makes an explicit commit to the datastore instead of using
-        the usual functions for updating and creating skills. This is because
-        the latter approach would result in a skill with the *current* schema
-        version.
-
-        Args:
-            skill_id: str. ID for the skill to be created.
-            owner_id: str. The user_id of the creator of the skill.
-            description: str. The description of the skill.
-            next_misconception_id: int. The misconception id to be used by the
-                next misconception added.
-            misconceptions: list(Misconception.to_dict()). The list of
-                misconception dicts associated with the skill.
-            rubrics: list(Rubric.to_dict()). The list of rubric dicts associated
-                with the skill.
-            skill_contents: SkillContents.to_dict(). A SkillContents dict
-                containing the explanation and examples of the skill.
-            misconceptions_schema_version: int. The schema version for the
-                misconceptions object.
-            rubric_schema_version: int. The schema version for the rubric
-                object.
-            skill_contents_schema_version: int. The schema version for the
-                skill_contents object.
-            language_code: str. The ISO 639-1 code for the language this skill
-                is written in.
-        """
-        skill_model = skill_models.SkillModel(
-            id=skill_id, description=description, language_code=language_code,
-            misconceptions=misconceptions, rubrics=rubrics,
-            skill_contents=skill_contents,
-            next_misconception_id=next_misconception_id,
-            misconceptions_schema_version=misconceptions_schema_version,
-            rubric_schema_version=rubric_schema_version,
-            skill_contents_schema_version=skill_contents_schema_version,
-            superseding_skill_id=None, all_questions_merged=False)
-        skill_model.commit(
-            owner_id, 'New skill created.',
-            [{'cmd': skill_domain.CMD_CREATE_NEW}])
-
-    def _create_valid_question_data(self, default_dest_state_name):
+    def _create_valid_question_data(
+        self,
+        default_dest_state_name: str,
+        content_id_generator: translation_domain.ContentIdGenerator,
+    ) -> state_domain.State:
         """Creates a valid question_data dict.
 
         Args:
             default_dest_state_name: str. The default destination state.
+            content_id_generator: ContentIdGenerator. A ContentIdGenerator
+                object to be used for generating new content Id.
 
         Returns:
             dict. The default question_data dict.
         """
         state = state_domain.State.create_default_state(
-            default_dest_state_name, is_initial_state=True)
+            default_dest_state_name,
+            content_id_generator.generate(
+                translation_domain.ContentType.CONTENT
+            ),
+            content_id_generator.generate(
+                translation_domain.ContentType.DEFAULT_OUTCOME
+            ),
+            is_initial_state=True,
+        )
         state.update_interaction_id('TextInput')
-        solution_dict = {
+        solution_dict: state_domain.SolutionDict = {
             'answer_is_exclusive': False,
             'correct_answer': 'Solution',
             'explanation': {
-                'content_id': 'solution',
+                'content_id': content_id_generator.generate(
+                    translation_domain.ContentType.SOLUTION
+                ),
                 'html': '<p>This is a solution.</p>',
             },
         }
         hints_list = [
             state_domain.Hint(
-                state_domain.SubtitledHtml('hint_1', '<p>This is a hint.</p>')),
+                state_domain.SubtitledHtml(
+                    content_id_generator.generate(
+                        translation_domain.ContentType.HINT
+                    ),
+                    '<p>This is a hint.</p>',
+                )
+            ),
         ]
+        # Ruling out the possibility of None for mypy type checking, because
+        # we above we are already updating the value of interaction_id.
+        assert state.interaction.id is not None
         solution = state_domain.Solution.from_dict(
-            state.interaction.id, solution_dict)
+            state.interaction.id, solution_dict
+        )
         state.update_interaction_solution(solution)
         state.update_interaction_hints(hints_list)
-        state.update_interaction_customization_args({
-            'placeholder': {
-                'value': {
-                    'content_id': 'ca_placeholder',
-                    'unicode_str': 'Enter text here',
+        state.update_interaction_customization_args(
+            {
+                'placeholder': {
+                    'value': {
+                        'content_id': content_id_generator.generate(
+                            translation_domain.ContentType.CUSTOMIZATION_ARG,
+                            extra_prefix='placeholder',
+                        ),
+                        'unicode_str': 'Enter text here',
+                    },
                 },
-            },
-            'rows': {'value': 1},
-        })
-        state.update_next_content_id_index(2)
+                'rows': {'value': 1},
+                'catchMisspellings': {'value': False},
+            }
+        )
+        # Here, state is a State domain object and it is created using
+        # 'create_default_state' method. So, 'state' is a default_state
+        # and it is always going to contain a default_outcome. Thus to
+        # narrow down the type from Optional[Outcome] to Outcome for
+        # default_outcome, we used assert here.
+        assert state.interaction.default_outcome is not None
         state.interaction.default_outcome.labelled_as_correct = True
         state.interaction.default_outcome.dest = None
+        state.inapplicable_skill_misconception_ids = []
         return state
+
+    def save_new_valid_classroom(
+        self,
+        classroom_id: str = 'math_classroom_id',
+        name: str = 'math',
+        url_fragment: str = 'math',
+        feedback_recipient_email: str = 'user@email.com',
+        course_details: str = 'Course Details',
+        teaser_text: str = 'Teaser Text',
+        topic_list_intro: str = 'Topic list intro',
+        topic_id_to_prerequisite_topic_ids: Optional[
+            Dict[str, List[str]]
+        ] = None,
+        is_published: bool = True,
+        diagnostic_test_is_enabled: bool = False,
+        thumbnail_data: Optional[classroom_config_domain.ImageData] = None,
+        banner_data: Optional[classroom_config_domain.ImageData] = None,
+    ) -> classroom_config_domain.Classroom:
+        """Saves a new strictly-validated classroom.
+
+        Args:
+            classroom_id: str. Classroom ID of the newly-created classroom.
+            name: str. The name of the classroom.
+            url_fragment: str. The url fragment of the classroom.
+            feedback_recipient_email: str. The email of the feedback recipient.
+            course_details: str. A text to provide course details present in
+                the classroom.
+            teaser_text: str. A text to provide a summary of the classroom.
+            topic_list_intro: str. A text to provide an introduction for all
+                the topics in the classroom.
+            topic_id_to_prerequisite_topic_ids: Dict[str, List[str]]. A dict
+                with topic ID as key and list of topic IDs as value.
+            is_published: bool. Whether this classroom is published or not.
+            diagnostic_test_is_enabled: bool. Whether this classroom
+                is published or not.
+            thumbnail_data: Optional[ImageData]. Image data object for
+                thumbnail.
+            banner_data: Optional[ImageData]. Image data object for banner.
+
+        Returns:
+            Classroom. The classroom domain object.
+        """
+        dummy_thumbnail_data = classroom_config_domain.ImageData(
+            'thumbnail.svg', 'transparent', 1000
+        )
+        dummy_banner_data = classroom_config_domain.ImageData(
+            'banner.png', 'transparent', 1000
+        )
+        classroom = classroom_config_domain.Classroom(
+            classroom_id=classroom_id,
+            name=name,
+            url_fragment=url_fragment,
+            feedback_recipient_email=feedback_recipient_email,
+            teaser_text=teaser_text,
+            course_details=course_details,
+            topic_list_intro=topic_list_intro,
+            topic_id_to_prerequisite_topic_ids=(
+                topic_id_to_prerequisite_topic_ids
+                if topic_id_to_prerequisite_topic_ids is not None
+                else {}
+            ),
+            is_published=is_published,
+            diagnostic_test_is_enabled=(diagnostic_test_is_enabled),
+            thumbnail_data=(
+                thumbnail_data
+                if thumbnail_data is not None
+                else dummy_thumbnail_data
+            ),
+            banner_data=(
+                banner_data if banner_data is not None else dummy_banner_data
+            ),
+            index=0,
+        )
+
+        classroom_config_services.create_new_classroom(classroom)
+        return classroom
 
 
 class LinterTestBase(GenericTestBase):
     """Base class for linter tests."""
 
-    def setUp(self):
-        super(LinterTestBase, self).setUp()
-        self.linter_stdout = []
+    def setUp(self) -> None:
+        super().setUp()
+        self.linter_stdout: List[str] = []
 
-        def mock_print(*args):
-            """Mock for python_utils.PRINT. Append the values to print to
+        def mock_print(*args: str) -> None:
+            """Mock for print. Append the values to print to
             linter_stdout list.
 
             Args:
                 *args: list(*). Variable length argument list of values to print
                     in the same line of output.
             """
-            self.linter_stdout.append(
-                ' '.join(python_utils.UNICODE(arg) for arg in args))
+            self.linter_stdout.append(' '.join(str(arg) for arg in args))
 
-        self.print_swap = self.swap(python_utils, 'PRINT', mock_print)
+        self.print_swap = self.swap(builtins, 'print', mock_print)
 
-    def assert_same_list_elements(self, phrases, stdout):
+    def assert_same_list_elements(
+        self, phrases: List[str], stdout: List[str]
+    ) -> None:
         """Checks to see if all of the phrases appear in at least one of the
         stdout outputs.
 
@@ -3389,9 +4251,12 @@ class LinterTestBase(GenericTestBase):
                 execution.
         """
         self.assertTrue(
-            any(all(p in output for p in phrases) for output in stdout))
+            any(all(p in output for p in phrases) for output in stdout)
+        )
 
-    def assert_failed_messages_count(self, stdout, expected_failed_count):
+    def assert_failed_messages_count(
+        self, stdout: List[str], expected_failed_count: int
+    ) -> None:
         """Assert number of expected failed checks to actual number of failed
         checks.
 
@@ -3407,20 +4272,34 @@ class EmailMessageMock:
     """Mock for core.platform.models email services messages."""
 
     def __init__(
-            self, sender_email, recipient_email, subject, plaintext_body,
-            html_body, bcc=None, reply_to=None, recipient_variables=None):
+        self,
+        sender_email: str,
+        recipient_email: List[str],
+        subject: str,
+        plaintext_body: str,
+        html_body: str,
+        cc: Optional[Sequence[str]] = None,
+        bcc: Optional[Sequence[str]] = None,
+        reply_to: Optional[str] = None,
+        recipient_variables: Optional[
+            Dict[str, Dict[str, Union[str, int]]]
+        ] = None,
+        attachments: Optional[List[Dict[str, str]]] = None,
+    ) -> None:
         """Inits a mock email message with all the necessary data.
 
         Args:
             sender_email: str. The email address of the sender. This should be
                 in the form 'SENDER_NAME <SENDER_EMAIL_ADDRESS>' or
                 'SENDER_EMAIL_ADDRESS'. Must be utf-8.
-            recipient_email: str. The email address of the recipient. Must be
-                utf-8.
+            recipient_email: list(str). The email addresses of the recipients.
+                Must be utf-8.
             subject: str. The subject line of the email, Must be utf-8.
             plaintext_body: str. The plaintext body of the email. Must be utf-8.
             html_body: str. The HTML body of the email. Must fit in a datastore
                 entity. Must be utf-8.
+            cc: list(str)|None. Optional argument. List of cc emails. Emails
+                must be utf-8.
             bcc: list(str)|None. Optional argument. List of bcc emails. Emails
                 must be utf-8.
             reply_to: str|None. Optional argument. Reply address formatted like
@@ -3438,44 +4317,65 @@ class EmailMessageMock:
                     subject = 'Hey, %recipient.first%'
                 For more information about this format, see:
                 https://documentation.mailgun.com/en/latest/user_manual.html#batch-sending
+            attachments: list(dict)|None. Optional argument. A list of
+                dictionaries, where each dictionary includes the keys `filename`
+                and `path` with their corresponding values.
         """
         self.sender = sender_email
         self.to = recipient_email
         self.subject = subject
         self.body = plaintext_body
         self.html = html_body
+        self.cc = cc
         self.bcc = bcc
         self.reply_to = reply_to
         self.recipient_variables = recipient_variables
+        self.attachments = attachments
 
 
 class GenericEmailTestBase(GenericTestBase):
     """Base class for tests requiring email services."""
 
-    emails_dict = collections.defaultdict(list)
+    emails_dict: Dict[str, List[EmailMessageMock]] = collections.defaultdict(
+        list
+    )
 
-    def run(self, result=None):
+    def run(self, result: Optional[unittest.TestResult] = None) -> None:
         """Adds a context swap on top of the test_utils.run() method so that
         test classes extending GenericEmailTestBase will automatically have a
         mailgun api key, mailgun domain name and mocked version of
         send_email_to_recipients().
         """
         with self.swap(
-            email_services, 'send_email_to_recipients',
-            self._send_email_to_recipients):
-            super(EmailTestBase, self).run(result=result)
+            email_services,
+            'send_email_to_recipients',
+            self._send_email_to_recipients,
+        ):
+            super().run(result=result)
 
-    def setUp(self):
-        super(GenericEmailTestBase, self).setUp()
+    def setUp(self) -> None:
+        super().setUp()
         self._wipe_emails_dict()
 
-    def _wipe_emails_dict(self):
+    def _wipe_emails_dict(self) -> None:
         """Reset email dictionary for a new test."""
         self.emails_dict = collections.defaultdict(list)
 
     def _send_email_to_recipients(
-            self, sender_email, recipient_emails, subject, plaintext_body,
-            html_body, bcc=None, reply_to=None, recipient_variables=None):
+        self,
+        sender_email: str,
+        recipient_emails: List[str],
+        subject: str,
+        plaintext_body: str,
+        html_body: str,
+        cc: Optional[List[str]] = None,
+        bcc: Optional[List[str]] = None,
+        reply_to: Optional[str] = None,
+        recipient_variables: Optional[
+            Dict[str, Dict[str, Union[str, int]]]
+        ] = None,
+        attachments: Optional[List[Dict[str, str]]] = None,
+    ) -> bool:
         """Mocks sending an email to each email in recipient_emails.
 
         Args:
@@ -3488,6 +4388,8 @@ class GenericEmailTestBase(GenericTestBase):
             plaintext_body: str. The plaintext body of the email. Must be utf-8.
             html_body: str. The HTML body of the email. Must fit in a datastore
                 entity. Must be utf-8.
+            cc: list(str)|None. Optional argument. List of cc emails. Must be
+                utf-8.
             bcc: list(str)|None. Optional argument. List of bcc emails. Must be
                 utf-8.
             reply_to: str|None. Optional Argument. Reply address formatted like
@@ -3505,24 +4407,39 @@ class GenericEmailTestBase(GenericTestBase):
                     subject = 'Hey, %recipient.first%'
                 For more information about this format, see:
                 https://documentation.mailgun.com/en/latest/user_manual.html#batch-sending
+            attachments: list(dict)|None. Optional argument. A list of
+                dictionaries, where each dictionary includes the keys `filename`
+                and `path` with their corresponding values.
 
         Returns:
             bool. Whether the emails are sent successfully.
         """
+        cc_emails = None
+        if cc:
+            cc_emails = cc[0] if len(cc) == 1 else cc
         bcc_emails = None
         if bcc:
             bcc_emails = bcc[0] if len(bcc) == 1 else bcc
 
         new_email = EmailMessageMock(
-            sender_email, recipient_emails, subject, plaintext_body, html_body,
-            bcc=bcc_emails, reply_to=(reply_to if reply_to else None),
+            sender_email,
+            recipient_emails,
+            subject,
+            plaintext_body,
+            html_body,
+            cc=cc_emails,
+            bcc=bcc_emails,
+            reply_to=(reply_to if reply_to else None),
             recipient_variables=(
-                recipient_variables if recipient_variables else None))
+                recipient_variables if recipient_variables else None
+            ),
+            attachments=attachments if attachments else None,
+        )
         for recipient_email in recipient_emails:
             self.emails_dict[recipient_email].append(new_email)
         return True
 
-    def _get_sent_email_messages(self, to):
+    def _get_sent_email_messages(self, to: str) -> List[EmailMessageMock]:
         """Gets messages to a single recipient email.
 
         Args:
@@ -3534,7 +4451,7 @@ class GenericEmailTestBase(GenericTestBase):
         """
         return self.emails_dict[to] if to in self.emails_dict else []
 
-    def _get_all_sent_email_messages(self):
+    def _get_all_sent_email_messages(self) -> Dict[str, List[EmailMessageMock]]:
         """Gets the entire messages dictionary.
 
         Returns:
@@ -3549,85 +4466,16 @@ class GenericEmailTestBase(GenericTestBase):
 EmailTestBase = GenericEmailTestBase
 
 
-class ClassifierTestBase(GenericEmailTestBase):
-    """Base class for classifier test classes that need common functions
-    for related to reading classifier data and mocking the flow of the
-    storing the trained models through post request.
-
-    This class is derived from GenericEmailTestBase because the
-    TrainedClassifierHandlerTests test suite requires email services test
-    functions in addition to the classifier functions defined below.
-    """
-
-    def post_blob(self, url, payload, expected_status_int=200):
-        """Post a BLOB object to the server; return the received object.
-
-        Note that this method should only be used for
-        classifier.TrainedClassifierHandler handler and for no one else. The
-        reason being, we don't have any general mechanism for security for
-        transferring binary data. TrainedClassifierHandler implements a
-        specific mechanism which is restricted to the handler.
-
-        Args:
-            url: str. The URL to which BLOB object in payload should be sent
-                through a post request.
-            payload: bytes. Binary data which needs to be sent.
-            expected_status_int: int. The status expected as a response of post
-                request.
-
-        Returns:
-            dict. Parsed JSON response received upon invoking the post request.
-        """
-        data = payload
-
-        expect_errors = False
-        if expected_status_int >= 400:
-            expect_errors = True
-        response = self._send_post_request(
-            self.testapp, url, data,
-            expect_errors, expected_status_int=expected_status_int,
-            headers={'content-type': 'application/octet-stream'})
-        # Testapp takes in a status parameter which is the expected status of
-        # the response. However this expected status is verified only when
-        # expect_errors=False. For other situations we need to explicitly check
-        # the status.
-        # Reference URL:
-        # https://github.com/Pylons/webtest/blob/
-        # bf77326420b628c9ea5431432c7e171f88c5d874/webtest/app.py#L1119 .
-
-        self.assertEqual(response.status_int, expected_status_int)
-        return self._parse_json_response(response, expect_errors)
-
-    def _get_classifier_data_from_classifier_training_job(
-            self, classifier_training_job):
-        """Retrieves classifier training job from GCS using metadata stored in
-        classifier_training_job.
-
-        Args:
-            classifier_training_job: ClassifierTrainingJob. Domain object
-                containing metadata of the training job which is used to
-                retrieve the trained model.
-
-        Returns:
-            FrozenModel. Protobuf object containing classifier data.
-        """
-        filename = classifier_training_job.classifier_data_filename
-        file_system_class = fs_services.get_entity_file_system_class()
-        fs = fs_domain.AbstractFileSystem(file_system_class(
-            feconf.ENTITY_TYPE_EXPLORATION, classifier_training_job.exp_id))
-        classifier_data = utils.decompress_from_zlib(fs.get(filename))
-        classifier_data_proto = text_classifier_pb2.TextClassifierFrozenModel()
-        classifier_data_proto.ParseFromString(classifier_data)
-        return classifier_data_proto
-
-
 class FunctionWrapper:
     """A utility for making function wrappers. Create a subclass and override
     any or both of the pre_call_hook and post_call_hook methods. See these
     methods for more info.
     """
 
-    def __init__(self, func):
+    # Here we use type Any because argument 'func' can accept any kind of
+    # function signature. So, to allow every function signature we used
+    # Callable[..., Any] type here.
+    def __init__(self, func: Callable[..., Any]) -> None:
         """Creates a new FunctionWrapper instance.
 
         Args:
@@ -3637,17 +4485,25 @@ class FunctionWrapper:
                 @property.
         """
         self._func = func
-        self._instance = None
+        # Here we use object because '_instance' can be a object of any class.
+        self._instance: Optional[object] = None
 
-    def __call__(self, *args, **kwargs):
+    # Here we use type Any because this method can accept arguments of the
+    # wrapped function, and the wrapped function can have an arbitrary number
+    # of arguments with different types.
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Overrides the call method for the function to call pre_call_hook
         method which would be called before the function is executed and
         post_call_hook which would be called after the function is executed.
         """
         if self._instance is not None:
-            args = [self._instance] + list(args)
+            args = tuple([self._instance] + list(args))
 
-        args_dict = inspect.getcallargs(self._func, *args, **kwargs)
+        # Creates a mapping from positional and keyword arguments to parameters
+        # and binds them to the call signature of the method. Serves as a
+        # replacement for inspect.getcallargs() in python versions >= 3.5.
+        sig = inspect.signature(self._func)
+        args_dict = sig.bind_partial(*args, **kwargs).arguments
 
         self.pre_call_hook(args_dict)
 
@@ -3657,28 +4513,33 @@ class FunctionWrapper:
 
         return result
 
-    def __get__(self, instance, owner):
+    # Here we use object because this method can accept object of any class.
+    def __get__(self, instance: object, owner: str) -> FunctionWrapper:
         # We have to implement __get__ because otherwise, we don't have a chance
         # to bind to the instance self._func was bound to. See the following SO
         # answer: https://stackoverflow.com/a/22555978/675311
         self._instance = instance
         return self
 
-    def pre_call_hook(self, args):
+    # Here we use type Any because argument 'args' can accept arbitrary number
+    # of function's arguments and these arguments can be of any type.
+    def pre_call_hook(self, args: OrderedDict[str, Any]) -> None:
         """Override this to do tasks that should be executed before the actual
         function call.
 
         Args:
-            args: list(*). Set of arguments that the function accepts.
+            args: OrderedDict. Set of arguments that the function accepts.
         """
         pass
 
-    def post_call_hook(self, args, result):
+    # Here we use type Any because argument 'args' can accept arbitrary number
+    # of function's arguments and these arguments can be of any type.
+    def post_call_hook(self, args: OrderedDict[str, Any], result: str) -> None:
         """Override this to do tasks that should be executed after the actual
         function call.
 
         Args:
-            args: list(*). Set of arguments that the function accepts.
+            args: OrderedDict. Set of arguments that the function accepts.
             result: *. Result returned from the function.
         """
         pass
@@ -3690,15 +4551,18 @@ class CallCounter(FunctionWrapper):
     increased when the function raises an exception.
     """
 
-    def __init__(self, f):
+    # Here we use type Any because argument 'f' can accept any kind of
+    # function signature. So, to allow every function signature we used
+    # Callable[..., Any] type here.
+    def __init__(self, f: Callable[..., Any]) -> None:
         """Counts the number of times the given function has been called. See
         FunctionWrapper for arguments.
         """
-        super(CallCounter, self).__init__(f)
+        super().__init__(f)
         self._times_called = 0
 
     @property
-    def times_called(self):
+    def times_called(self) -> int:
         """Property that returns the number of times the wrapped function has
         been called.
 
@@ -3707,13 +4571,15 @@ class CallCounter(FunctionWrapper):
         """
         return self._times_called
 
-    def pre_call_hook(self, args):
+    # Here we use type Any because argument 'args' can accept arbitrary number
+    # of function's arguments and these arguments can be of any type.
+    def pre_call_hook(self, args: OrderedDict[str, Any]) -> None:
         """Method that is called before each function call to increment the
         counter tracking the number of times a function is called. This will
         also be called even when the function raises an exception.
 
         Args:
-            args: list(*). Set of arguments that the function accepts.
+            args: OrderedDict. Set of arguments that the function accepts.
         """
         self._times_called += 1
 
@@ -3723,43 +4589,60 @@ class FailingFunction(FunctionWrapper):
     It can be set to succeed after a given number of calls.
     """
 
-    INFINITY = 'infinity'
+    INFINITY: Final = math.inf
 
-    def __init__(self, f, exception, num_tries_before_success):
+    # Here we use type Any because argument 'f' can accept any kind of
+    # function signature. So, to allow every function signature we used
+    # Callable[..., Any] type here.
+    def __init__(
+        self,
+        f: Callable[..., Any],
+        exception: Union[Type[BaseException], BaseException],
+        num_tries_before_success: float,
+    ) -> None:
         """Create a new Failing function.
 
         Args:
             f: func. See FunctionWrapper.
             exception: Exception. The exception to be raised.
-            num_tries_before_success: int. The number of times to raise an
+            num_tries_before_success: float. The number of times to raise an
                 exception, before a call succeeds. If this is 0, all calls will
                 succeed, if it is FailingFunction. INFINITY, all calls will
                 fail.
+
+        Raises:
+            ValueError. The number of times to raise an exception before a call
+                succeeds should be a non-negative interger or INFINITY.
         """
-        super(FailingFunction, self).__init__(f)
+        super().__init__(f)
         self._exception = exception
         self._num_tries_before_success = num_tries_before_success
         self._always_fail = (
-            self._num_tries_before_success == FailingFunction.INFINITY)
+            self._num_tries_before_success == FailingFunction.INFINITY
+        )
         self._times_called = 0
 
         if not self._always_fail and self._num_tries_before_success < 0:
             raise ValueError(
                 'num_tries_before_success should either be an '
                 'integer greater than or equal to 0, '
-                'or FailingFunction.INFINITY')
+                'or FailingFunction.INFINITY'
+            )
 
-    def pre_call_hook(self, args):
+    # Here we use type Any because argument 'args' can accept arbitrary number
+    # of function's arguments and these arguments can be of any type.
+    def pre_call_hook(self, args: OrderedDict[str, Any]) -> None:
         """Method that is called each time before the actual function call to
         check if the exception is to be raised based on the number of tries
         before success.
 
         Args:
-            args: list(*). Set of arguments this function accepts.
+            args: OrderedDict. Set of arguments that the function accepts.
         """
         self._times_called += 1
         call_should_fail = (
-            self._always_fail or
-            self._num_tries_before_success >= self._times_called)
+            self._always_fail
+            or self._num_tries_before_success >= self._times_called
+        )
         if call_should_fail:
             raise self._exception

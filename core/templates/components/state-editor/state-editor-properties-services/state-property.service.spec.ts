@@ -17,13 +17,12 @@
  *   editor page.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { AlertsService } from 'services/alerts.service';
-import { UtilsService } from 'services/utils.service';
-import { StatePropertyService } from './state-property.service';
+import {TestBed} from '@angular/core/testing';
+import {AlertsService} from 'services/alerts.service';
+import {UtilsService} from 'services/utils.service';
+import {StatePropertyService} from './state-property.service';
 
-class MockStatePropertyService extends
-  StatePropertyService<string> {
+class MockStatePropertyService extends StatePropertyService<string> {
   restoreFromMomento() {
     return;
   }
@@ -36,7 +35,7 @@ describe('State Property Service', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [MockStatePropertyService]
+      providers: [MockStatePropertyService],
     });
 
     sps = TestBed.inject(MockStatePropertyService);
@@ -44,12 +43,14 @@ describe('State Property Service', () => {
     utilsService = TestBed.inject(UtilsService);
   });
 
-  it('should initialize class properties', () =>{
+  it('should initialize class properties', () => {
     sps.setterMethodKey = 'Some setter method key';
+    spyOn(sps.statePropertyInitializedEmitter, 'emit');
     sps.init('stateName', 'stateProperty');
     expect(sps.stateName).toEqual('stateName');
     expect(sps.displayed).toEqual('stateProperty');
     expect(sps.savedMemento).toEqual('stateProperty');
+    expect(sps.statePropertyInitializedEmitter.emit).toHaveBeenCalled();
   });
 
   it('should throw error at init method if setter key is null', () => {

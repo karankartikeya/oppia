@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { MockRouterModule } from 'hybrid-router-module-provider';
-import { ProfileLinkTextComponent } from './profile-link-text.component';
+import {AppConstants} from 'app.constants';
+
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {RouterModule} from '@angular/router';
+import {APP_BASE_HREF} from '@angular/common';
+
+import {ProfileLinkTextComponent} from './profile-link-text.component';
 
 /**
  * @fileoverview Unit tests for ProfileLinkTextComponent
@@ -26,10 +30,14 @@ describe('ProfileLinkTextComponent', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        MockRouterModule
+      imports: [RouterModule.forRoot([])],
+      declarations: [ProfileLinkTextComponent],
+      providers: [
+        {
+          provide: APP_BASE_HREF,
+          useValue: '/',
+        },
       ],
-      declarations: [ProfileLinkTextComponent]
     }).compileComponents();
   }));
 
@@ -44,5 +52,27 @@ describe('ProfileLinkTextComponent', () => {
     expect(component.isUsernameLinkable(usernamesNotLinkable[0])).toBe(false);
     expect(component.isUsernameLinkable(usernamesNotLinkable[1])).toBe(false);
     expect(component.isUsernameLinkable('linkableUsername')).toBe(true);
+  });
+
+  it('should set profile URL when the username is set', () => {
+    expect(component.profileUrl).not.toBeDefined();
+
+    component.username = 'dummy';
+
+    expect(component.profileUrl).toEqual(
+      '/' +
+        AppConstants.PAGES_REGISTERED_WITH_FRONTEND.PROFILE.ROUTE.replace(
+          ':username_fragment',
+          'dummy'
+        )
+    );
+  });
+
+  it('should set username correctly', () => {
+    expect(component.username).not.toBeDefined();
+
+    component.username = 'dummy';
+
+    expect(component.username).toEqual('dummy');
   });
 });

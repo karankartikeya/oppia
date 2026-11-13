@@ -16,14 +16,14 @@
  * @fileoverview Unit tests for WindowRef.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { WindowRef } from 'services/contextual/window-ref.service';
+import {TestBed} from '@angular/core/testing';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 describe('Window Ref', () => {
   let wrs: WindowRef;
 
   beforeEach(() => {
-    wrs = TestBed.get(WindowRef);
+    wrs = TestBed.inject(WindowRef);
   });
 
   it('should wrap the window object', () => {

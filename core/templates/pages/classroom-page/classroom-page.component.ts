@@ -16,88 +16,239 @@
  * @fileoverview Component for the classroom page.
  */
 
-import { Component } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-import { ClassroomBackendApiService } from 'domain/classroom/classroom-backend-api.service';
-import { ClassroomData } from 'domain/classroom/classroom-data.model';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { CapitalizePipe } from 'filters/string-utility-filters/capitalize.pipe';
-import { AccessValidationBackendApiService } from 'pages/oppia-root/routing/access-validation-backend-api.service';
-import { AlertsService } from 'services/alerts.service';
-import { UrlService } from 'services/contextual/url.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { LoaderService } from 'services/loader.service';
-import { PageTitleService } from 'services/page-title.service';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
+import {Component, OnDestroy} from '@angular/core';
+import {TranslateService} from '@ngx-translate/core';
+import {Subscription} from 'rxjs';
+
+import {AppConstants} from 'app.constants';
+import {ClassroomBackendApiService} from 'domain/classroom/classroom-backend-api.service';
+import {ClassroomData} from 'domain/classroom/classroom-data.model';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {CapitalizePipe} from 'filters/string-utility-filters/capitalize.pipe';
+import {AccessValidationBackendApiService} from 'pages/oppia-root/routing/access-validation-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
+import {UrlService} from 'services/contextual/url.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {LoaderService} from 'services/loader.service';
+import {PageTitleService} from 'services/page-title.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {UserService} from 'services/user.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+
+export interface ClassroomTranslationKeys {
+  name: string;
+  courseDetails: string;
+  topicListIntro: string;
+  teaserText: string;
+  [key: string]: string;
+}
 
 @Component({
   selector: 'oppia-classroom-page',
-  templateUrl: './classroom-page.component.html'
+  templateUrl: './classroom-page.component.html',
+  styleUrls: ['./classroom-page.component.css'],
 })
-export class ClassroomPageComponent {
+export class ClassroomPageComponent implements OnDestroy {
+  directiveSubscriptions = new Subscription();
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   classroomDisplayName!: string;
   classroomUrlFragment!: string;
   bannerImageFileUrl!: string;
   classroomData!: ClassroomData;
+  beginWithFirstTopicButtonText: string = '';
+  begineWithFirstTopicDescriptionText: string = '';
+  firstTopicUrl: string = '';
+  publicClassroomsCount!: number;
+  showPrivateClassroomBanner: boolean = false;
+  isUserLoggedIn: boolean = false;
+  classroomThumbnail = '';
+  classroomBanner = '';
+  classroomTranslationKeys!: ClassroomTranslationKeys;
 
   constructor(
-    private accessValidationBackendApiService:
-      AccessValidationBackendApiService,
+    private accessValidationBackendApiService: AccessValidationBackendApiService,
     private alertsService: AlertsService,
     private capitalizePipe: CapitalizePipe,
     private classroomBackendApiService: ClassroomBackendApiService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
     private loaderService: LoaderService,
     private pageTitleService: PageTitleService,
     private siteAnalyticsService: SiteAnalyticsService,
     private urlInterpolationService: UrlInterpolationService,
     private urlService: UrlService,
-    private windowRef: WindowRef
+    private windowRef: WindowRef,
+    private translateService: TranslateService,
+    private platformFeatureService: PlatformFeatureService,
+    private userService: UserService,
+    private assetsBackendApiService: AssetsBackendApiService
   ) {}
 
-  ngOnInit(): void {
-    this.classroomUrlFragment = (
-      this.urlService.getClassroomUrlFragmentFromUrl());
-    this.bannerImageFileUrl = this.urlInterpolationService.getStaticImageUrl(
-      '/splash/books.svg');
+  isCertificateAssessmentEnabled(): boolean {
+    return this.platformFeatureService.status.EnableCertificateAssessment
+      .isEnabled;
+  }
+
+  setClassroomMedia(classroomData: ClassroomData): void {
+    const classroomId = classroomData.getClassroomId();
+    const thumbnailFilename = classroomData.getThumbnailData().filename;
+    const bannerFilename = classroomData.getBannerData().filename;
+
+    this.classroomThumbnail = thumbnailFilename
+      ? this.assetsBackendApiService.getThumbnailUrlForPreview(
+          AppConstants.ENTITY_TYPE.CLASSROOM,
+          classroomId,
+          thumbnailFilename
+        )
+      : this.urlInterpolationService.getStaticImageUrl(
+          '/classroom/default-classroom-thumbnail.svg'
+        );
+
+    this.classroomBanner = bannerFilename
+      ? this.assetsBackendApiService.getImageUrlForPreview(
+          AppConstants.ENTITY_TYPE.CLASSROOM,
+          classroomId,
+          bannerFilename
+        )
+      : this.urlInterpolationService.getStaticImageUrl(
+          '/classroom/default-classroom-background.png'
+        );
+  }
+
+  isLanguageRTL(): boolean {
+    return this.i18nLanguageCodeService.isCurrentLanguageRTL();
+  }
+
+  async ngOnInit(): Promise<void> {
+    this.classroomUrlFragment =
+      this.urlService.getClassroomUrlFragmentFromUrl();
+    this.bannerImageFileUrl =
+      this.urlInterpolationService.getStaticImageUrl('/splash/books.svg');
 
     this.loaderService.showLoadingScreen('Loading');
 
-    this.accessValidationBackendApiService.validateAccessToClassroomPage(
-      this.classroomUrlFragment).then(() => {
-      this.classroomBackendApiService.fetchClassroomDataAsync(
-        this.classroomUrlFragment).then((classroomData) => {
-        this.classroomData = classroomData;
-        this.classroomDisplayName = this.capitalizePipe.transform(
-          classroomData.getName());
-        this.pageTitleService.setDocumentTitle(
-          `Learn ${this.classroomDisplayName} with Oppia | Oppia`);
-        this.loaderService.hideLoadingScreen();
-        this.classroomBackendApiService.onInitializeTranslation.emit();
-        this.siteAnalyticsService.registerClassroomPageViewed();
-      }, (errorResponse) => {
-        if (AppConstants.FATAL_ERROR_CODES.indexOf(
-          errorResponse.status) !== -1) {
-          this.alertsService.addWarning('Failed to get dashboard data');
-        }
-      });
-    }, (err) => {
-      // User provided classroom doesnot exist. Redirect to default classroom.
-      this.windowRef.nativeWindow.history.pushState(
-        null, 'classroom', AppConstants.DEFAULT_CLASSROOM_URL_FRAGMENT);
-      this.ngOnInit();
-    });
+    try {
+      await this.accessValidationBackendApiService.validateAccessToClassroomPage(
+        this.classroomUrlFragment
+      );
+      const classroomData =
+        await this.classroomBackendApiService.fetchClassroomDataAsync(
+          this.classroomUrlFragment
+        );
+      this.classroomData = classroomData;
+      this.classroomDisplayName = this.capitalizePipe.transform(
+        classroomData.getName()
+      );
+
+      this.setClassroomMedia(classroomData);
+
+      this.publicClassroomsCount = classroomData.getPublicClassroomsCount();
+
+      this.classroomTranslationKeys =
+        this.i18nLanguageCodeService.getClassroomTranslationKeys(
+          classroomData.getName()
+        );
+      this.setPageTitle();
+      this.subscribeToOnLangChange();
+      this.classroomBackendApiService.onInitializeTranslation.emit();
+      this.siteAnalyticsService.registerClassroomPageViewed();
+      if (classroomData.getTopicSummaries().length > 0) {
+        const firstTopic = classroomData.getTopicSummaries()[0].name;
+        this.firstTopicUrl =
+          `/learn/${classroomData.getUrlFragment()}/` +
+          classroomData.getTopicSummaries()[0].urlFragment;
+
+        this.beginWithFirstTopicButtonText = this.translateService.instant(
+          'I18N_CLASSROOM_PAGE_BEGIN_WITH_FIRST_TOPIC_BUTTON',
+          {
+            firstTopic: firstTopic,
+          }
+        );
+
+        this.begineWithFirstTopicDescriptionText =
+          this.translateService.instant(
+            'I18N_CLASSROOM_PAGE_NEW_TO_MATH_TEXT',
+            {
+              firstTopic: firstTopic,
+            }
+          );
+      }
+      try {
+        const userInfo = await this.userService.getUserInfoAsync();
+        this.isUserLoggedIn = userInfo.isLoggedIn();
+        this.showPrivateClassroomBanner =
+          userInfo.isCurriculumAdmin() && !this.classroomData.getIsPublished();
+      } catch {
+        this.isUserLoggedIn = false;
+        this.showPrivateClassroomBanner = false;
+      }
+      this.loaderService.hideLoadingScreen();
+    } catch (errorResponse) {
+      const status =
+        errorResponse &&
+        typeof errorResponse === 'object' &&
+        'status' in errorResponse
+          ? (errorResponse as {status: 500 | 400 | 401 | 404}).status
+          : null;
+      if (
+        status !== null &&
+        AppConstants.FATAL_ERROR_CODES.indexOf(status) !== -1
+      ) {
+        this.alertsService.addWarning('Failed to get classroom data');
+      }
+      this.loaderService.hideLoadingScreen();
+    }
+  }
+
+  subscribeToOnLangChange(): void {
+    this.directiveSubscriptions.add(
+      this.translateService.onLangChange.subscribe(() => {
+        this.setPageTitle();
+      })
+    );
+  }
+
+  setPageTitle(): void {
+    if (this.isHackyClassroomTranslationDisplayed('name')) {
+      let translatedTitle = this.translateService.instant(
+        this.classroomTranslationKeys.name
+      );
+      this.pageTitleService.setDocumentTitle(translatedTitle);
+    } else {
+      this.pageTitleService.setDocumentTitle(this.classroomDisplayName);
+    }
   }
 
   getStaticImageUrl(imagePath: string): string {
     return this.urlInterpolationService.getStaticImageUrl(imagePath);
   }
-}
 
-angular.module('oppia').directive('oppiaClassroomPage',
-  downgradeComponent({
-    component: ClassroomPageComponent
-  }) as angular.IDirectiveFactory);
+  // This method is used to choose whether to display the translation
+  // for a classroom property.
+  isHackyClassroomTranslationDisplayed(property: string): boolean {
+    if (
+      !(
+        this.classroomTranslationKeys &&
+        property in this.classroomTranslationKeys
+      )
+    ) {
+      return false;
+    }
+    return (
+      this.i18nLanguageCodeService.isHackyTranslationAvailable(
+        this.classroomTranslationKeys[property]
+      ) && !this.i18nLanguageCodeService.isCurrentLanguageEnglish()
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+
+  diagnosticTestIsEnabled(): boolean {
+    return this.classroomData.getDiagnosticTestIsEnabled();
+  }
+}

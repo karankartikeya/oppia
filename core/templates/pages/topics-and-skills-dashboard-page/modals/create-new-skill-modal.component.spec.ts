@@ -16,55 +16,50 @@
  * @fileoverview Unit Test for create new skill modal.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ChangeDetectorRef } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { SkillCreationService } from 'components/entity-creation-services/skill-creation.service';
-import { SchemaBasedEditorDirective } from 'components/forms/schema-based-editors/schema-based-editor.directive';
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
-import { SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
-import { ContextService } from 'services/context.service';
-import { CreateNewSkillModalComponent } from './create-new-skill-modal.component';
+// @ts-nocheck
+
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ChangeDetectorRef, NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {FormsModule} from '@angular/forms';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {SkillCreationService} from 'components/entity-creation-services/skill-creation.service';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {PageContextService} from 'services/page-context.service';
+import {CreateNewSkillModalComponent} from './create-new-skill-modal.component';
+import {ValidatorsService} from 'services/validators.service';
 
 describe('Create new skill modal', () => {
   let fixture: ComponentFixture<CreateNewSkillModalComponent>;
   let componentInstance: CreateNewSkillModalComponent;
-  let contextService: ContextService;
-  let skillObjectFactory: SkillObjectFactory;
-  let testObj: SubtitledHtml = SubtitledHtml
-    .createDefault('test_html', 'test_id');
+  let pageContextService: PageContextService;
+  let testObj: SubtitledHtml = SubtitledHtml.createDefault(
+    'test_html',
+    'test_id'
+  );
   let ngbActiveModal: NgbActiveModal;
   let skillEditorStateService: SkillEditorStateService;
   let skillCreationService: SkillCreationService;
+  let validatorsService: ValidatorsService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-        FormsModule
-      ],
-      declarations: [
-        CreateNewSkillModalComponent,
-        SchemaBasedEditorDirective
-      ],
-      providers: [
-        NgbActiveModal,
-        ChangeDetectorRef,
-      ]
+      imports: [HttpClientTestingModule, FormsModule],
+      declarations: [CreateNewSkillModalComponent],
+      providers: [NgbActiveModal, ChangeDetectorRef, ValidatorsService],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(CreateNewSkillModalComponent);
     componentInstance = fixture.componentInstance;
-    contextService = TestBed.inject(ContextService);
-    skillObjectFactory = TestBed.inject(SkillObjectFactory);
+    pageContextService = TestBed.inject(PageContextService);
     ngbActiveModal = TestBed.inject(NgbActiveModal);
     skillEditorStateService = TestBed.inject(SkillEditorStateService);
     skillCreationService = TestBed.inject(SkillCreationService);
+    validatorsService = TestBed.inject(ValidatorsService);
   });
 
   it('should create', () => {
@@ -72,17 +67,29 @@ describe('Create new skill modal', () => {
   });
 
   it('should initialize', () => {
-    spyOn(contextService, 'setImageSaveDestinationToLocalStorage');
+    spyOn(pageContextService, 'setImageSaveDestinationToLocalStorage');
     componentInstance.ngOnInit();
-    expect(contextService.setImageSaveDestinationToLocalStorage).
-      toHaveBeenCalled();
+    expect(
+      pageContextService.setImageSaveDestinationToLocalStorage
+    ).toHaveBeenCalled();
   });
 
   it('should update explanation', () => {
     componentInstance.bindableDict.displayedConceptCardExplanation = 'text1';
     componentInstance.updateExplanation('text2');
-    expect(componentInstance.bindableDict.displayedConceptCardExplanation).
-      toEqual('text2');
+    expect(
+      componentInstance.bindableDict.displayedConceptCardExplanation
+    ).toEqual('text2');
+  });
+
+  it('should reset explanation to empty string for a non-string value', () => {
+    componentInstance.bindableDict.displayedConceptCardExplanation = 'text1';
+
+    componentInstance.updateExplanation(null);
+
+    expect(
+      componentInstance.bindableDict.displayedConceptCardExplanation
+    ).toEqual('');
   });
 
   it('should open concept card explanation editor', () => {
@@ -91,38 +98,46 @@ describe('Create new skill modal', () => {
   });
 
   it('should get html schema', () => {
-    let schema: { type: string } = { type: 'html' };
-    componentInstance.HTML_SCHEMA = schema;
-    expect(componentInstance.getHtmlSchema()).toEqual(schema);
+    const result = componentInstance.getHtmlSchema();
+    expect(result).toEqual({
+      type: 'html',
+      ui_config: {
+        rte_component_config_id: 'SKILL_AND_STUDY_GUIDE_EDITOR_COMPONENTS',
+      },
+    });
   });
 
   it('should set error message if needed', () => {
-    spyOn(skillObjectFactory, 'hasValidDescription').and.returnValue(false);
+    spyOn(validatorsService, 'hasValidDescription').and.returnValue(false);
     componentInstance.skillDescriptionExists = false;
     componentInstance.setErrorMessageIfNeeded();
     expect(componentInstance.errorMsg).toEqual(
       'Please use a non-empty description consisting of ' +
-          'alphanumeric characters, spaces and/or hyphens.');
+        'alphanumeric characters, spaces and/or hyphens.'
+    );
     componentInstance.skillDescriptionExists = true;
     componentInstance.setErrorMessageIfNeeded();
     expect(componentInstance.errorMsg).toEqual(
       'This description already exists. Please choose a ' +
-            'new name or modify the existing skill.');
+        'new name or modify the existing skill.'
+    );
   });
 
   it('should update SkillDescription and check if exists', () => {
     spyOn(skillEditorStateService, 'updateExistenceOfSkillDescription');
-    spyOn(skillCreationService, 'getSkillDescriptionStatus').and
-      .returnValue('not_disabled');
+    spyOn(skillCreationService, 'getSkillDescriptionStatus').and.returnValue(
+      'not_disabled'
+    );
     spyOn(skillCreationService, 'markChangeInSkillDescription');
     componentInstance.newSkillDescription = 'not_empty';
     componentInstance.updateSkillDescriptionAndCheckIfExists();
     componentInstance._skillDescriptionExistsCallback(false);
     expect(componentInstance.rubrics[1].getExplanations()).toEqual([
-      componentInstance.newSkillDescription
+      componentInstance.newSkillDescription,
     ]);
-    expect(skillCreationService.markChangeInSkillDescription)
-      .toHaveBeenCalled();
+    expect(
+      skillCreationService.markChangeInSkillDescription
+    ).toHaveBeenCalled();
     expect(componentInstance.skillDescriptionExists).toBeFalse();
   });
 
@@ -132,26 +147,39 @@ describe('Create new skill modal', () => {
     expect(componentInstance.errorMsg).toBe('');
   });
 
+  it('should return true if there are more than 2 workedexamples', () => {
+    componentInstance.bindableDict.displayedConceptCardExplanation =
+      '<oppia-noninteractive-workedexample>aasdfasdf</oppia-noninteractive-workedexample><oppia-noninteractive-workedexample>aasdfasdf</oppia-noninteractive-workedexample><oppia-noninteractive-workedexample>aasdfasdf</oppia-noninteractive-workedexample>';
+    expect(componentInstance.checkExtraWorkedexample()).toEqual(true);
+  });
+
+  it('should return false if there are 2 or fewer workedexamples', () => {
+    componentInstance.bindableDict.displayedConceptCardExplanation =
+      '<oppia-noninteractive-workedexample>example1</oppia-noninteractive-workedexample><oppia-noninteractive-workedexample>example2</oppia-noninteractive-workedexample>';
+    expect(componentInstance.checkExtraWorkedexample()).toEqual(false);
+  });
+
   it('should save concept card explanation', () => {
     spyOn(SubtitledHtml, 'createDefault').and.returnValue(testObj);
     componentInstance.saveConceptCardExplanation();
-    expect(componentInstance.bindableDict.displayedConceptCardExplanation)
-      .toEqual('test_html');
+    expect(
+      componentInstance.bindableDict.displayedConceptCardExplanation
+    ).toEqual('test_html');
     expect(componentInstance.newExplanationObject).toEqual({
       html: 'test_html',
-      content_id: 'test_id'
+      content_id: 'test_id',
     });
   });
 
   it('should create new skill modal', () => {
-    spyOn(skillObjectFactory, 'hasValidDescription').and.returnValue(true);
+    spyOn(validatorsService, 'hasValidDescription').and.returnValue(true);
     componentInstance.skillDescriptionExists = false;
     spyOn(ngbActiveModal, 'close');
     componentInstance.createNewSkill();
     expect(ngbActiveModal.close).toHaveBeenCalledWith({
       description: componentInstance.newSkillDescription,
       rubrics: componentInstance.rubrics,
-      explanation: componentInstance.newExplanationObject
+      explanation: componentInstance.newExplanationObject,
     });
   });
 

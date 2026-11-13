@@ -16,25 +16,24 @@
  * @fileoverview Component for Alert Messages
  */
 
-import { Component, Input } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ToastrService } from 'ngx-toastr';
-import { AlertsService } from 'services/alerts.service';
-require('ngx-toastr/toastr.css');
+import {Component, Input} from '@angular/core';
+import {ToastrService} from 'ngx-toastr';
+import {AlertsService} from 'services/alerts.service';
 
 export interface MessageObject {
-  type: string,
-  content: string,
-  timeout: number
+  type: string;
+  content: string;
+  timeout: number;
+  closeButton?: boolean;
 }
 
 @Component({
   selector: 'oppia-alert-message',
-  template: '<div class="oppia-alert-message"></div>'
+  template: '<div class="oppia-alert-message"></div>',
 })
 export class AlertMessageComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() messageObject!: MessageObject;
   @Input() messageIndex!: number;
@@ -46,22 +45,25 @@ export class AlertMessageComponent {
 
   ngOnInit(): void {
     if (this.messageObject.type === 'info') {
-      this.toastrService.info(this.messageObject.content, '', {
-        timeOut: this.messageObject.timeout,
-      }).onHidden.toPromise().then(() => {
-        this.alertsService.deleteMessage(this.messageObject);
-      });
+      this.toastrService
+        .info(this.messageObject.content, '', {
+          timeOut: this.messageObject.timeout,
+          closeButton: this.messageObject.closeButton,
+        })
+        .onHidden.toPromise()
+        .then(() => {
+          this.alertsService.deleteMessage(this.messageObject);
+        });
     } else if (this.messageObject.type === 'success') {
-      this.toastrService.success(this.messageObject.content, '', {
-        timeOut: this.messageObject.timeout
-      }).onHidden.toPromise().then(() => {
-        this.alertsService.deleteMessage(this.messageObject);
-      });
+      this.toastrService
+        .success(this.messageObject.content, '', {
+          timeOut: this.messageObject.timeout,
+          closeButton: this.messageObject.closeButton,
+        })
+        .onHidden.toPromise()
+        .then(() => {
+          this.alertsService.deleteMessage(this.messageObject);
+        });
     }
   }
 }
-
-angular.module('oppia').directive('oppiaAlertMessage',
-  downgradeComponent({
-    component: AlertMessageComponent
-  }) as angular.IDirectiveFactory);

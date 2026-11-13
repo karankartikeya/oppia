@@ -16,9 +16,10 @@
  * @fileoverview Unit tests for the NumericInput short response.
  */
 
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ShortResponseNumericInput } from './oppia-short-response-numeric-input.component';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ShortResponseNumericInput} from './oppia-short-response-numeric-input.component';
+import {NumberConversionService} from 'services/number-conversion.service';
 
 describe('ShortResponseNumericInput', () => {
   let component: ShortResponseNumericInput;
@@ -30,14 +31,24 @@ describe('ShortResponseNumericInput', () => {
     }
   }
 
-  beforeEach(async(() => {
+  class MockNumberConversionService {
+    convertToLocalizedNumber(number: number | string): string {
+      return String(number);
+    }
+  }
+
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [ShortResponseNumericInput],
       providers: [
         {
           provide: HtmlEscaperService,
-          useClass: mockHtmlEscaperService
-        }
+          useClass: mockHtmlEscaperService,
+        },
+        {
+          provide: NumberConversionService,
+          useClass: MockNumberConversionService,
+        },
       ],
     }).compileComponents();
   }));
@@ -52,7 +63,7 @@ describe('ShortResponseNumericInput', () => {
 
     component.ngOnInit();
 
-    expect(component.displayAnswer).toBe(20);
+    expect(component.displayAnswer).toBe('20');
   });
 
   it('should not round of decimal answers', () => {
@@ -60,6 +71,6 @@ describe('ShortResponseNumericInput', () => {
 
     component.ngOnInit();
 
-    expect(component.displayAnswer).toBe(24.5);
+    expect(component.displayAnswer).toBe('24.5');
   });
 });

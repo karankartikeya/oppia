@@ -16,28 +16,21 @@
  * @fileoverview Unit tests for DeleteMisconceptionModalController.
  */
 
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { DeleteMisconceptionModalComponent } from './delete-misconception-modal.component';
-import { Skill, SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
-import constants from 'assets/constants';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {DeleteMisconceptionModalComponent} from './delete-misconception-modal.component';
+import {Skill} from 'domain/skill/skill.model';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {AppConstants} from 'app.constants';
 
 class MockActiveModal {
-  close(value): void {
+  close(value: string): void {
     return;
-  }
-}
-
-class MockSkillEditorStateService {
-  getSkill(): Skill {
-    return null;
   }
 }
 
 describe('Delete Misconception Modal Component', () => {
   let skillEditorStateService: SkillEditorStateService;
-  let skillObjectFactory: SkillObjectFactory;
   let skillObject: Skill;
   let index = 0;
   let component: DeleteMisconceptionModalComponent;
@@ -45,39 +38,44 @@ describe('Delete Misconception Modal Component', () => {
   let ngbActiveModal: NgbActiveModal;
   let closeSpy: jasmine.Spy;
 
+  class MockSkillEditorStateService {
+    getSkill(): Skill {
+      return skillObject;
+    }
+  }
+
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [DeleteMisconceptionModalComponent],
       providers: [
         {
           provide: NgbActiveModal,
-          useClass: MockActiveModal
+          useClass: MockActiveModal,
         },
         {
           provide: SkillEditorStateService,
-          useClass: MockSkillEditorStateService
-        }
-      ]
+          useClass: MockSkillEditorStateService,
+        },
+      ],
     }).compileComponents();
     fixture = TestBed.createComponent(DeleteMisconceptionModalComponent);
     component = fixture.componentInstance;
     component.index = index;
     ngbActiveModal = TestBed.inject(NgbActiveModal);
-    skillObjectFactory = TestBed.inject(SkillObjectFactory);
     skillEditorStateService = TestBed.inject(SkillEditorStateService);
     closeSpy = spyOn(ngbActiveModal, 'close').and.callThrough();
 
     let misconceptionDict1 = {
-      id: '2',
+      id: 2,
       name: 'test name',
       notes: 'test notes',
       feedback: 'test feedback',
-      must_be_addressed: true
+      must_be_addressed: true,
     };
 
     let rubricDict = {
-      difficulty: constants.SKILL_DIFFICULTIES[0],
-      explanations: ['explanation']
+      difficulty: AppConstants.SKILL_DIFFICULTIES[0],
+      explanations: ['explanation'],
     };
 
     let skillContentsDict = {
@@ -85,13 +83,12 @@ describe('Delete Misconception Modal Component', () => {
         html: 'test explanation',
         content_id: 'explanation',
       },
-      worked_examples: [],
       recorded_voiceovers: {
-        voiceovers_mapping: {}
-      }
+        voiceovers_mapping: {},
+      },
     };
 
-    skillObject = skillObjectFactory.createFromBackendDict({
+    skillObject = Skill.createFromBackendDict({
       id: 'skill1',
       description: 'test description 1',
       misconceptions: [misconceptionDict1],
@@ -102,23 +99,25 @@ describe('Delete Misconception Modal Component', () => {
       next_misconception_id: 3,
       prerequisite_skill_ids: ['skill_1'],
       superseding_skill_id: 'skill0',
-      all_questions_merged: true
+      all_questions_merged: true,
     });
 
     spyOn(skillEditorStateService, 'getSkill').and.returnValue(skillObject);
     component.ngOnInit();
   }));
 
-  it('should initialize properties after component is initialized',
-    () => {
-      expect(component.skill).toEqual(skillObject);
-    });
-
-  it('should close the modal with misconception id when clicking on save' +
-    ' button', () => {
-    component.confirm();
-    expect(closeSpy).toHaveBeenCalledWith({
-      id: '2'
-    });
+  it('should initialize properties after component is initialized', () => {
+    expect(component.skill).toEqual(skillObject);
   });
+
+  it(
+    'should close the modal with misconception id when clicking on save' +
+      ' button',
+    () => {
+      component.confirm();
+      expect(closeSpy).toHaveBeenCalledWith({
+        id: 2,
+      });
+    }
+  );
 });

@@ -16,101 +16,175 @@
  * @fileoverview Unit test for Solution Explanation Editor Component.
  */
 
-import { EventEmitter } from '@angular/core';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {EditabilityService} from 'services/editability.service';
+import {PageContextService} from 'services/page-context.service';
+import {
+  ExplanationFormSchema,
+  SolutionExplanationEditor,
+} from './solution-explanation-editor.component';
+import {ExternalSaveService} from 'services/external-save.service';
+import {StateSolutionService} from 'components/state-editor/state-editor-properties-services/state-solution.service';
+import {Solution} from 'domain/exploration/solution.model';
 
-describe('SolutionExplanationEditorComponent', () => {
-  let ctrl = null;
-  let $rootScope = null;
-  let $scope = null;
+class MockStateSolutionService {
+  displayed = {
+    explanation: {
+      _html: 'Hello world',
+      contentId: 'contentId',
+      get html(): string {
+        return '<p>Hello world</p>';
+      },
+    },
+  };
 
-  let EditabilityService = null;
-  let ExternalSaveService = null;
-  let StateSolutionService = null;
+  savedMemento = {
+    explanation: {
+      _html: 'Hello world 2',
+      contentId: 'xyz',
+      get html(): string {
+        return '<p>Hello world 2</p>';
+      },
+    },
+  };
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
+  saveDisplayedValue() {}
+}
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
+describe('Solution explanation editor', () => {
+  let component: SolutionExplanationEditor;
+  let fixture: ComponentFixture<SolutionExplanationEditor>;
 
-    EditabilityService = $injector.get('EditabilityService');
-    ExternalSaveService = $injector.get('ExternalSaveService');
-    StateSolutionService = $injector.get('StateSolutionService');
+  let pageContextService: PageContextService;
+  let editabilityService: EditabilityService;
+  let stateSolutionService: StateSolutionService;
+  let externalSaveService: ExternalSaveService;
+  let externalSaveServiceEmitter = new EventEmitter<void>();
 
-    ctrl = $componentController('solutionExplanationEditor', {
-      $scope: $scope
-    }, {
-      showMarkAllAudioAsNeedingUpdateModalIfRequired: () => {},
-      onSaveSolution: () => {}
-    });
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      declarations: [SolutionExplanationEditor],
+      providers: [
+        PageContextService,
+        EditabilityService,
+        ExternalSaveService,
+        {
+          provide: StateSolutionService,
+          useClass: MockStateSolutionService,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
+  beforeEach(() => {
+    fixture = TestBed.createComponent(SolutionExplanationEditor);
+    component = fixture.componentInstance;
+
+    pageContextService = TestBed.inject(PageContextService);
+    editabilityService = TestBed.inject(EditabilityService);
+    stateSolutionService = TestBed.inject(StateSolutionService);
+    externalSaveService = TestBed.inject(ExternalSaveService);
+
+    spyOnProperty(externalSaveService, 'onExternalSave').and.returnValue(
+      externalSaveServiceEmitter
+    );
+    spyOn(pageContextService, 'getEntityType').and.returnValue('question');
+    spyOn(editabilityService, 'isEditable').and.returnValue(true);
+
+    fixture.detectChanges();
+    component.ngOnInit();
+  });
+
   afterEach(() => {
-    ctrl.$onDestroy();
+    component.ngOnDestroy();
   });
 
-  it('should set component properties on initialization', () => {
-    spyOn(EditabilityService, 'isEditable').and.returnValue(true);
-
-    expect(ctrl.editSolutionForm).toEqual(undefined);
-    expect(ctrl.isEditable).toBe(undefined);
-    expect(ctrl.explanationEditorIsOpen).toBe(undefined);
-
-    ctrl.$onInit();
-
-    expect(ctrl.editSolutionForm).toEqual({});
-    expect(ctrl.isEditable).toBe(true);
-    expect(ctrl.explanationEditorIsOpen).toBe(false);
-  });
-
-  it('should save explanation when external save event is triggered', () => {
-    let onExternalSaveEmitter = new EventEmitter();
-    spyOnProperty(ExternalSaveService, 'onExternalSave')
-      .and.returnValue(onExternalSaveEmitter);
-    spyOn(ctrl, 'showMarkAllAudioAsNeedingUpdateModalIfRequired');
-
-    ctrl.$onInit();
-
-    ctrl.explanationEditorIsOpen = true;
-    ctrl.editSolutionForm = {
-      $valid: true
-    };
-    StateSolutionService.savedMemento = {
-      explanation: {
-        html: '<p> Hint </p>'
-      }
-    };
-    StateSolutionService.displayed = {
-      explanation: {
-        contentId: 'contentID',
-        html: '<p> Hint Changed </p>'
-      }
+  it('should intitalize with default values', () => {
+    const schema: ExplanationFormSchema = {
+      type: 'html',
+      ui_config: {
+        rte_component_config_id: 'ALL_COMPONENTS',
+        hide_complex_extensions: true,
+      },
     };
 
-    onExternalSaveEmitter.emit();
-    $scope.$apply();
+    expect(component.isEditable).toEqual(true);
+    expect(component.explanationEditorIsOpen).toEqual(false);
+    expect(component.EXPLANATION_FORM_SCHEMA).toEqual(schema);
+    expect(component.getSchema()).toEqual(schema);
+    expect(component.isSolutionExplanationLengthExceeded()).toBeFalse();
 
-    expect(ctrl.showMarkAllAudioAsNeedingUpdateModalIfRequired)
-      .toHaveBeenCalledWith(['contentID']);
-    expect(ctrl.explanationEditorIsOpen).toBe(false);
+    component.openExplanationEditor();
+    expect(component.explanationEditorIsOpen).toBeTrue();
+
+    component.cancelThisExplanationEdit();
+    expect(component.explanationEditorIsOpen).toBeFalse();
   });
 
-  it('should open explanation editor when user clicks on \'Edit hint\'', () => {
-    ctrl.isEditable = true;
-    ctrl.explanationEditorIsOpen = false;
+  it('should open shema based editor on user click', () => {
+    const schema: ExplanationFormSchema = {
+      type: 'html',
+      ui_config: {
+        rte_component_config_id: 'ALL_COMPONENTS',
+        hide_complex_extensions: true,
+      },
+    };
 
-    ctrl.openExplanationEditor();
+    component.openExplanationEditor();
 
-    expect(ctrl.explanationEditorIsOpen).toBe(true);
+    expect(component.getSchema()).toEqual(schema);
+    expect(component.explanationEditorIsOpen).toBeTrue();
+
+    const updatedHtml = 'updateHtml';
+
+    component.updateExplanationHtml(updatedHtml);
+
+    let solutionDisplayed = stateSolutionService.displayed as Solution;
+
+    expect(solutionDisplayed.explanation._html).toBe(updatedHtml);
+
+    component.updateExplanationHtml(null);
+
+    expect(solutionDisplayed.explanation._html).toBe('');
   });
 
-  it('should cancel hint edit if user clicks on \'Cancel\'', () => {
-    ctrl.explanationEditorIsOpen = true;
+  it('should save the explanation', fakeAsync(() => {
+    spyOn(component.saveSolution, 'emit').and.stub();
 
-    ctrl.cancelThisExplanationEdit();
+    component.explanationEditorIsOpen = true;
+    externalSaveServiceEmitter.emit();
+    tick();
 
-    expect(ctrl.explanationEditorIsOpen).toBe(false);
+    expect(component.saveSolution.emit).toHaveBeenCalled();
+    expect(component.explanationEditorIsOpen).toBe(false);
+  }));
+
+  it('should throw error if solution is not saved yet', () => {
+    stateSolutionService.displayed = null;
+
+    expect(() => {
+      component.updateExplanationHtml('html');
+    }).toThrowError('Solution is undefined');
+    expect(() => {
+      component.isSolutionExplanationLengthExceeded();
+    }).toThrowError('Solution is undefined');
+    expect(() => {
+      component.saveThisExplanation();
+    }).toThrowError('Solution is undefined');
+  });
+
+  it('should expose the solution properties from the injected service', () => {
+    expect(component.displayedSolution).toBe(stateSolutionService.displayed);
+    expect(component.solutionSavedMemento).toBe(
+      stateSolutionService.savedMemento
+    );
   });
 });

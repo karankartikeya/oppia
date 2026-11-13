@@ -14,24 +14,24 @@
 
 /**
  * @fileoverview Unit tests for SchemaFormSubmittedService
-*/
+ */
 
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import {EventEmitter} from '@angular/core';
+import {TestBed} from '@angular/core/testing';
 
-import { SchemaFormSubmittedService } from
-  'services/schema-form-submitted.service';
+import {SchemaFormSubmittedService} from 'services/schema-form-submitted.service';
 
 describe('Schema Submitted Service', () => {
   let schemaFormSubmittedService: SchemaFormSubmittedService;
 
   beforeEach(() => {
-    schemaFormSubmittedService = TestBed.get(SchemaFormSubmittedService);
+    schemaFormSubmittedService = TestBed.inject(SchemaFormSubmittedService);
   });
 
   it('should fetch submittedSchemaBasedForm event emitter', () => {
     let sampleSubmittedSchemaBasedFormEventEmitter = new EventEmitter();
     expect(schemaFormSubmittedService.onSubmittedSchemaBasedForm).toEqual(
-      sampleSubmittedSchemaBasedFormEventEmitter);
+      sampleSubmittedSchemaBasedFormEventEmitter
+    );
   });
 });

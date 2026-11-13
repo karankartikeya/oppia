@@ -19,6 +19,8 @@
 export const AdminPageConstants = {
   ADMIN_ROLE_HANDLER_URL: '/adminrolehandler',
   TOPIC_MANAGER_ROLE_HANDLER_URL: '/topicmanagerrolehandler',
+  TRANSLATION_COORDINATOR_ROLE_HANDLER_URL:
+    '/translationcoordinatorrolehandler',
 
   ADMIN_HANDLER_URL: '/adminhandler',
   ADMIN_TOPICS_CSV_DOWNLOAD_HANDLER_URL: '/admintopicscsvdownloadhandler',
@@ -35,14 +37,21 @@ export const AdminPageConstants = {
   ADMIN_SUPER_ADMIN_PRIVILEGES_HANDLER_URL: '/adminsuperadminhandler',
   ADMIN_BANNED_USERS_HANDLER: '/bannedusershandler',
   ADMIN_UPDATE_BLOG_POST_DATA_HANDLER: '/updateblogpostdatahandler',
+  ADMIN_REGENERATE_TOPIC_SUMMARIES_URL: '/regenerate_topic_summaries_handler',
+  ADMIN_GENERATE_STUDY_GUIDE_MODELS_URL: '/generate_study_guide_models_handler',
+  ADMIN_DELETE_STUDY_GUIDE_MODELS_URL: '/delete_study_guide_models_handler',
+  ADMIN_VERIFY_STUDY_GUIDE_MODELS_URL: '/verify_study_guide_models_handler',
+  AUTOMATIC_VOICEOVER_ADMIN_CONTROL_URL:
+    '/automatic_voiceover_admin_control_handler',
 
   ADMIN_TAB_URLS: {
     ACTIVITIES: '#/activities',
-    CONFIG: '#/config',
-    FEATURES: '#/features',
+    PLATFORM_PARAMETERS: '#/platform-parameters',
     ROLES: '#/roles',
-    MISC: '#/misc'
+    MISC: '#/misc',
   },
 
-  PROFILE_URL_TEMPLATE: '/profile/<username>'
+  EXPLORATION_INTERACTIONS_HANDLER: '/interactions',
+
+  PROFILE_URL_TEMPLATE: '/profile/<username>',
 } as const;

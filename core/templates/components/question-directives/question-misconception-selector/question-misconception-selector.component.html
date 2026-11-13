@@ -1,38 +1,33 @@
-Selected Misconception: <[$ctrl.selectedMisconception && $ctrl.selectedMisconception.getName()]>
-<div ng-repeat="(skillId, misconceptions) in $ctrl.misconceptionsBySkill">
-  <div ng-repeat="misconception in misconceptions">
-    <button class="btn btn-secondary misconception-button" ng-click="$ctrl.selectMisconception(misconception, skillId)">
-      <b class="d-inline"><[misconception.isMandatory() ? '' : ' (Optional) ']><[misconception.getName()]></b>
-      <angular-html-bind class="misconception-notes-container" html-data="misconception.getNotes()">
-      </angular-html-bind>
+Selected Misconception: {{ selectedMisconception && selectedMisconception.getName() }}
+<!-- This misconceptionsBySkill returns an object where value correspond to misconceptions and key correspond to skillId  -->
+<div *ngFor="let member of misconceptionsBySkill | keyvalue" class="misconception-list-container">
+  <div *ngFor="let misconception of member.value">
+    <button class="btn btn-secondary misconception-button" (click)="selectMisconception(misconception, member.key)"
+            [ngClass]="{'misconception-button-selected': selectedMisconceptionSkillId === member.key && selectedMisconception?.getId() === misconception.getId()}">
+      <strong class="d-inline e2e-test-misconception-title">{{ misconception.isMandatory() ? '' : ' (Optional) ' }}{{ misconception.getName() }}</strong>
+      <oppia-rte-output-display class="misconception-notes-container" [rteString]="misconception.getNotes()">
+      </oppia-rte-output-display>
     </button>
-    <div ng-if="$ctrl.selectedMisconceptionSkillId === skillId && $ctrl.selectedMisconception.getId() === misconception.getId()">
+    <div *ngIf="selectedMisconceptionSkillId === member.key && selectedMisconception?.getId() === misconception.getId()"
+         class="misconception-info-container">
       <label class="misconception-label"> Note to creators: </label>
-      <angular-html-bind html-data="misconception.getNotes()">
-      </angular-html-bind>
+      <oppia-rte-output-display [rteString]="misconception.getNotes() || 'None'">
+      </oppia-rte-output-display>
       <label class="misconception-label"> Misconception Feedback: </label>
-      <angular-html-bind html-data="misconception.getFeedback()">
-      </angular-html-bind>
+      <oppia-rte-output-display [rteString]="misconception.getFeedback()">
+      </oppia-rte-output-display>
     </div>
   </div>
 </div>
-<span ng-click="$ctrl.toggleMisconceptionFeedbackUsage()" aria-hidden="true">
-  <i ng-if="!$ctrl.misconceptionFeedbackIsUsed" class="material-icons md-18 misconception-feedback-usage-checkbox">&#xE835;</i>
-  <i ng-if="$ctrl.misconceptionFeedbackIsUsed" class="material-icons md-18 misconception-feedback-usage-checkbox">&#xE834;</i>
+<div>
+  <button class="btn btn-secondary misconception-button e2e-test-no-misconception-button"
+          (click)="selectNoMisconception()"
+          [ngClass]="{'misconception-button-selected': selectedMisconception === null}">
+    <strong class="d-inline">No misconception</strong>
+  </button>
+</div>
+<div *ngIf="selectedMisconception !== null" (click)="toggleMisconceptionFeedbackUsage()" (keydown.space)="toggleMisconceptionFeedbackUsage()" tabindex="0" class="misconception-feedback-usage-container">
+  <i *ngIf="!misconceptionFeedbackIsUsed" class="material-icons md-18 misconception-feedback-usage-checkbox">&#xE835;</i>
+  <i *ngIf="misconceptionFeedbackIsUsed" class="material-icons md-18 misconception-feedback-usage-checkbox">&#xE834;</i>
   Use misconception feedback as answer group feedback.
-</span>
-<style>
-  question-misconception-selector .misconception-button {
-    text-align: left;
-    width: 100%
-  }
-  question-misconception-selector .misconception-feedback-usage-checkbox {
-    cursor: pointer;
-  }
-  question-misconception-selector .misconception-label {
-    margin-top: 2vh;
-  }
-  question-misconception-selector .misconception-notes-container > p {
-    display: inline;
-  }
-</style>
+</div>

@@ -17,17 +17,22 @@
  *     Classification Result domain objects.
  */
 
-import { Outcome } from 'domain/exploration/OutcomeObjectFactory';
+import {Outcome} from 'domain/exploration/outcome.model';
 
 export class AnswerClassificationResult {
   outcome: Outcome;
   answerGroupIndex: number;
-  ruleIndex: number;
+  // 'ruleIndex' is null if the answer was classified into the answer
+  // group bucket using machine learning classification.
+  ruleIndex: number | null;
   classificationCategorization: string;
 
   constructor(
-      outcome: Outcome, answerGroupIndex: number, ruleIndex: number,
-      classificationCategorization: string) {
+    outcome: Outcome,
+    answerGroupIndex: number,
+    ruleIndex: number | null,
+    classificationCategorization: string
+  ) {
     this.outcome = outcome;
     this.answerGroupIndex = answerGroupIndex;
     this.ruleIndex = ruleIndex;

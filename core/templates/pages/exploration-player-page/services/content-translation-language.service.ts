@@ -17,111 +17,148 @@
  * used for content translations.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { ContentTranslationManagerService } from
-  'pages/exploration-player-page/services/content-translation-manager.service';
-import { ExplorationLanguageInfo } from
-  'pages/exploration-player-page/services/audio-translation-language.service';
-import { LanguageUtilService } from 'domain/utilities/language-util.service';
-import { UrlService } from 'services/contextual/url.service';
+import {LanguageUtilService} from 'domain/utilities/language-util.service';
+import {UrlService} from 'services/contextual/url.service';
 
-import { INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM } from 'pages/exploration-player-page/switch-content-language-refresh-required-modal.component';
+import {INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM} from 'pages/exploration-player-page/current-lesson-player/modals/switch-content-language-refresh-required-modal.component';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+
+export interface ExplorationLanguageInfo {
+  /**
+   * This inteface is used to keep track of the audio language code (value)
+   * and the audio language description to display (displayed) for the
+   * _languagesInExploration property.
+   */
+  value: string;
+  displayed: string;
+}
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ContentTranslationLanguageService {
   constructor(
     private languageUtilService: LanguageUtilService,
-    private contentTranslationManagerService: ContentTranslationManagerService,
-    private urlService: UrlService
+    private urlService: UrlService,
+    private platformFeatureService: PlatformFeatureService,
+    private i18nLanguageCodeService: I18nLanguageCodeService
   ) {}
 
   // The 'currentContentLanguageCode' is initialized using private methods.
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   private currentContentLanguageCode!: string;
   private languageOptions: ExplorationLanguageInfo[] = [];
 
   _init(
-      allContentLanguageCodesInExploration: string[],
-      preferredContentLanguageCodes: string[],
-      explorationLanguageCode: string
+    allContentLanguageCodesInExploration: string[],
+    preferredContentLanguageCodes: string[],
+    explorationLanguageCode: string
   ): void {
     this.currentContentLanguageCode = '';
     this.languageOptions = [];
-    // Set the content language that is chosen initially.
-    // Use the following priority (highest to lowest):
-    // 1. The URL parameter "initialContentLanguageCode".
-    // 2. Preferred content languages.
-    // 3. Otherwise, the exploration language code.
+    allContentLanguageCodesInExploration.push(explorationLanguageCode);
 
+    // The "initialContentLanguageCode" url parameter (set by the topic
+    // viewer's Play button) takes the highest priority regardless of which
+    // lesson player is active, so that the lesson content loads in the text
+    // language that was selected before navigation.
     const urlParams = this.urlService.getUrlParams();
     if (
-      urlParams.hasOwnProperty(INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM) &&
+      Object.prototype.hasOwnProperty.call(
+        urlParams,
+        INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM
+      ) &&
       allContentLanguageCodesInExploration.includes(
-        urlParams[INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM])
+        urlParams[INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM]
+      )
     ) {
-      this.setCurrentContentLanguageCode(urlParams[
-        INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM]);
+      this.setCurrentContentLanguageCode(
+        urlParams[INITIAL_CONTENT_LANGUAGE_CODE_URL_PARAM]
+      );
     }
 
-    if (
-      !this.currentContentLanguageCode &&
-      preferredContentLanguageCodes !== null
-    ) {
-      for (const languageCode of preferredContentLanguageCodes) {
-        if (allContentLanguageCodesInExploration.includes(languageCode)) {
-          this.setCurrentContentLanguageCode(languageCode);
-          break;
+    if (this.isNewLessonPlayerEnabled()) {
+      // Set the content language that is chosen initially.
+      // Use the following priority (highest to lowest):
+      // 1. The URL parameter "initialContentLanguageCode" (set above).
+      // 2. Preferred site language.
+      // 3. Otherwise, the exploration language code.
+
+      const preferredSiteLanguage =
+        this.i18nLanguageCodeService.getCurrentI18nLanguageCode();
+      if (
+        !this.currentContentLanguageCode &&
+        preferredSiteLanguage !== null &&
+        allContentLanguageCodesInExploration.includes(preferredSiteLanguage)
+      ) {
+        this.currentContentLanguageCode = preferredSiteLanguage;
+      }
+
+      if (
+        !this.currentContentLanguageCode &&
+        explorationLanguageCode !== null
+      ) {
+        this.currentContentLanguageCode = explorationLanguageCode;
+      }
+    } else {
+      // Set the content language that is chosen initially.
+      // Use the following priority (highest to lowest):
+      // 1. The URL parameter "initialContentLanguageCode" (set above).
+      // 2. Preferred content languages.
+      // 3. Otherwise, the exploration language code.
+
+      if (
+        !this.currentContentLanguageCode &&
+        preferredContentLanguageCodes !== null
+      ) {
+        for (const languageCode of preferredContentLanguageCodes) {
+          if (allContentLanguageCodesInExploration.includes(languageCode)) {
+            this.setCurrentContentLanguageCode(languageCode);
+            break;
+          }
         }
+      }
+
+      if (
+        !this.currentContentLanguageCode &&
+        explorationLanguageCode !== null
+      ) {
+        this.currentContentLanguageCode = explorationLanguageCode;
       }
     }
 
-    if (
-      !this.currentContentLanguageCode &&
-      explorationLanguageCode !== null
-    ) {
-      this.currentContentLanguageCode = explorationLanguageCode;
-    }
-
-    allContentLanguageCodesInExploration.push(explorationLanguageCode);
-    allContentLanguageCodesInExploration.forEach(
-      (languageCode: string) => {
-        // TODO(#12341): Change getContentanguageDescription to instead refer to
-        // the list of languages that we support written translations for. (Note
-        // that this is not the same as "getContentLanguageDescription", because
-        // the latter refers to the language that the exploration is written
-        // in.)
-        let languageDescription = (
-          this.languageUtilService.getContentLanguageDescription(
-            languageCode
-          )
-        );
-        if (!languageDescription) {
-          throw new Error('The exploration language code is invalid');
-        }
-        this.languageOptions.push({
-          value: languageCode,
-          displayed: languageDescription
-        });
+    allContentLanguageCodesInExploration.forEach((languageCode: string) => {
+      // TODO(#12341): Change getContentanguageDescription to instead refer to
+      // the list of languages that we support written translations for. (Note
+      // that this is not the same as "getContentLanguageDescription", because
+      // the latter refers to the language that the exploration is written
+      // in.)
+      let languageDescription =
+        this.languageUtilService.getContentLanguageDescription(languageCode);
+      if (!languageDescription) {
+        throw new Error('The exploration language code is invalid');
+      }
+      this.languageOptions.push({
+        value: languageCode,
+        displayed: languageDescription,
       });
+    });
   }
 
   init(
-      allContentLanguageCodesInExploration: string[],
-      preferredContentLanguageCodes: string[],
-      explorationLanguageCode: string): void {
-    // Original transcript needs to be set before initializing the rest of this
-    // service. This ensures that the transcript is restored correctly
-    // when selected language is the same as the exploration language.
-    this.contentTranslationManagerService.setOriginalTranscript(
-      explorationLanguageCode);
+    allContentLanguageCodesInExploration: string[],
+    preferredContentLanguageCodes: string[],
+    explorationLanguageCode: string
+  ): void {
     this._init(
-      allContentLanguageCodesInExploration, preferredContentLanguageCodes,
-      explorationLanguageCode);
+      allContentLanguageCodesInExploration,
+      preferredContentLanguageCodes,
+      explorationLanguageCode
+    );
   }
 
   /**
@@ -146,13 +183,11 @@ export class ContentTranslationLanguageService {
    */
   setCurrentContentLanguageCode(newLanguageCode: string): void {
     if (this.currentContentLanguageCode !== newLanguageCode) {
-      this.contentTranslationManagerService.displayTranslations(
-        newLanguageCode);
       this.currentContentLanguageCode = newLanguageCode;
     }
   }
-}
 
-angular.module('oppia').factory(
-  'ContentTranslationLanguageService',
-  downgradeInjectable(ContentTranslationLanguageService));
+  isNewLessonPlayerEnabled(): boolean {
+    return this.platformFeatureService.status.NewLessonPlayer.isEnabled;
+  }
+}

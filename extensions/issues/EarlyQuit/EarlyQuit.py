@@ -16,28 +16,37 @@
 
 """Python configuration for recording early quit issue."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.issues import base
+
+from typing import List
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class EarlyQuit(base.BaseExplorationIssueSpec):
     """Issue that's recorded when the learner quits the exploration early."""
 
-    _customization_arg_specs = [{
-        'name': 'state_name',
-        'description': 'State name',
-        'schema': {
-            'type': 'unicode',
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'state_name',
+            'description': 'State name',
+            'schema': {
+                'type': 'unicode',
+            },
+            'default_value': '',
         },
-        'default_value': ''
-    }, {
-        'name': 'time_spent_in_exp_in_msecs',
-        'description': (
-            'Time spent in the exploration before quitting in milliseconds'),
-        'schema': {
-            'type': 'int',
+        {
+            'name': 'time_spent_in_exp_in_msecs',
+            'description': (
+                'Time spent in the exploration before quitting in milliseconds'
+            ),
+            'schema': {
+                'type': 'int',
+            },
+            'default_value': 0,
         },
-        'default_value': 0
-    }]
+    ]

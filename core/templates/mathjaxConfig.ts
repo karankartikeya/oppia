@@ -14,15 +14,19 @@ window.MathJax = {
   showProcessingMessages: false,
   SVG: {
     useGlobalCache: false,
+    // This setting forces MathJax to inherit the page's font, which allows
+    // the browser's native Complex Text Layout (CTL) engine to properly connect
+    // right-to-left Arabic cursive characters inside \text{...} blocks (Fixes #26148).
+    mtextFontInherit: true,
     linebreaks: {
       automatic: true,
-      width: '500px'
+      width: '500px',
     },
     scale: 91,
     showMathMenu: false,
-    useFontCache: false
+    useFontCache: false,
   },
   TeX: {
-    extensions: ['AMSmath.js', 'AMSsymbols.js', 'autoload-all.js']
-  }
+    extensions: ['AMSmath.js', 'AMSsymbols.js', 'autoload-all.js'],
+  },
 };

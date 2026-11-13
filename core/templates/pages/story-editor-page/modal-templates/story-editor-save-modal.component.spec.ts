@@ -16,15 +16,16 @@
  * @fileoverview Unit tests for story editor save modal.
  */
 
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { StoryEditorSaveModalComponent } from './story-editor-save-modal.component';
-import { FormsModule } from '@angular/forms';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {StoryEditorSaveModalComponent} from './story-editor-save-modal.component';
+import {FormsModule} from '@angular/forms';
 
 class MockActiveModal {
   dismiss(): void {
     return;
   }
+
   close(): void {
     return;
   }
@@ -41,9 +42,9 @@ describe('Story Editor Save Modal Component', () => {
       providers: [
         {
           provide: NgbActiveModal,
-          useClass: MockActiveModal
-        }
-      ]
+          useClass: MockActiveModal,
+        },
+      ],
     }).compileComponents();
   }));
 

@@ -16,32 +16,43 @@
  * @fileoverview Unit tests for the signup page root component.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { AppConstants } from 'app.constants';
-import { MetaTagCustomizationService } from 'services/contextual/meta-tag-customization.service';
-import { PageHeadService } from 'services/page-head.service';
-import { PageTitleService } from 'services/page-title.service';
+import {NO_ERRORS_SCHEMA, EventEmitter} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {TranslateService} from '@ngx-translate/core';
 
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { SignupPageRootComponent } from './signup-page-root.component';
+import {AppConstants} from 'app.constants';
+import {MetaTagCustomizationService} from 'services/contextual/meta-tag-customization.service';
+import {PageHeadService} from 'services/page-head.service';
+import {PageTitleService} from 'services/page-title.service';
+
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {SignupPageRootComponent} from './signup-page-root.component';
+
+class MockTranslateService {
+  onLangChange: EventEmitter<string> = new EventEmitter();
+  instant(key: string): string {
+    return key;
+  }
+}
 
 describe('Signup Page Root', () => {
   let fixture: ComponentFixture<SignupPageRootComponent>;
   let component: SignupPageRootComponent;
   let pageHeadService: PageHeadService;
+  let translateService: TranslateService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [
-        SignupPageRootComponent,
-        MockTranslatePipe
-      ],
+      declarations: [SignupPageRootComponent, MockTranslatePipe],
       providers: [
         PageTitleService,
-        MetaTagCustomizationService
+        MetaTagCustomizationService,
+        {
+          provide: TranslateService,
+          useClass: MockTranslateService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -49,17 +60,50 @@ describe('Signup Page Root', () => {
     fixture = TestBed.createComponent(SignupPageRootComponent);
     component = fixture.componentInstance;
     pageHeadService = TestBed.inject(PageHeadService);
+    translateService = TestBed.inject(TranslateService);
   });
 
-  it('should successfully instantiate the component',
-    () => {
-      expect(component).toBeDefined();
-    });
+  it('should successfully instantiate the component', () => {
+    expect(component).toBeDefined();
+  });
 
-  it('should initialize', () => {
-    spyOn(pageHeadService, 'updateTitleAndMetaTags');
+  it('should initialize and subscribe to onLangChange', () => {
+    spyOn(translateService.onLangChange, 'subscribe');
+
     component.ngOnInit();
+
+    expect(translateService.onLangChange.subscribe).toHaveBeenCalled();
+  });
+
+  it('should update page title whenever the language changes', () => {
+    component.ngOnInit();
+    spyOn(component, 'setPageTitleAndMetaTags');
+
+    translateService.onLangChange.emit();
+
+    expect(component.setPageTitleAndMetaTags).toHaveBeenCalled();
+  });
+
+  it('should obtain translated title and set the title and meta tags', () => {
+    spyOn(translateService, 'instant').and.callThrough();
+    spyOn(pageHeadService, 'updateTitleAndMetaTags');
+
+    component.setPageTitleAndMetaTags();
+
+    expect(translateService.instant).toHaveBeenCalledWith(
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.SIGNUP.TITLE
+    );
     expect(pageHeadService.updateTitleAndMetaTags).toHaveBeenCalledWith(
-      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.SIGNUP);
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.SIGNUP.TITLE,
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.SIGNUP.META
+    );
+  });
+
+  it('should unsubscribe on component destruction', () => {
+    spyOn(component.directiveSubscriptions, 'unsubscribe');
+
+    component.ngOnDestroy();
+
+    expect(component.directiveSubscriptions.unsubscribe).toHaveBeenCalled();
   });
 });

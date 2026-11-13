@@ -16,13 +16,30 @@
  * @fileoverview This file imports the MIDI.js library.
  */
 
-require('static/midi-js-c26ebb/build/MIDI.js');
-window.Base64Binary = require('static/midi-js-c26ebb/inc/shim/Base64binary.js');
+import {AppConstants} from 'app.constants';
+import 'midi/build/MIDI.js';
+window.Base64Binary = require('midi/inc/shim/Base64binary.js');
 
-$(document).ready(function() {
+var soundfontPath: string;
+
+if (AppConstants.DEV_MODE) {
+  soundfontPath = '/dist/oppia-angular/midi/examples/soundfont/';
+} else {
+  soundfontPath = '/build/midi/examples/soundfont/';
+}
+
+const ready = (fn: () => void): void => {
+  if (document.readyState !== 'loading') {
+    fn();
+  } else {
+    document.addEventListener('DOMContentLoaded', fn);
+  }
+};
+
+ready(() => {
   MIDI.loadPlugin({
-    soundfontUrl: '/third_party/static/midi-js-c26ebb/examples/soundfont/',
+    soundfontUrl: soundfontPath,
     instrument: 'acoustic_grand_piano',
-    callback: function() {}
+    callback: () => {},
   });
 });

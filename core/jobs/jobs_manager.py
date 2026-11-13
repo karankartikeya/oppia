@@ -16,25 +16,32 @@
 
 """Services for executing Apache Beam jobs."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import contextlib
 import logging
 import pprint
+import traceback
 
 from core import feconf
-from core import python_utils
-from core.domain import beam_job_services
-from core.jobs import base_jobs
-from core.jobs import job_options
-from core.jobs.io import job_io
+from core.domain import beam_job_services, caching_services
+from core.jobs import base_jobs, job_options
+from core.jobs.batch_jobs import firebase_server_sync_jobs
+from core.jobs.io import cache_io, job_io
+from core.platform import models
 from core.storage.beam_job import gae_models as beam_job_models
 
 import apache_beam as beam
 from apache_beam import runners
 from google.cloud import dataflow
-from typing import Iterator, Optional, Type
+from typing import Dict, Iterator, Optional, Type
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import app_identity_services, datastore_services
+
+app_identity_services = models.Registry.import_app_identity_services()
+datastore_services = models.Registry.import_datastore_services()
 
 # This is a mapping from the Google Cloud Dataflow JobState enum to our enum.
 # https://cloud.google.com/dataflow/docs/reference/rest/v1b3/projects.jobs#jobstate
@@ -56,7 +63,8 @@ _GCLOUD_DATAFLOW_JOB_STATE_TO_OPPIA_BEAM_JOB_STATE = {
     # job state. This state may only be set via a Cloud Dataflow jobs.update
     # call, and only if the job has not yet reached another terminal state.
     dataflow.JobState.JOB_STATE_CANCELLED: (
-        beam_job_models.BeamJobState.CANCELLED),
+        beam_job_models.BeamJobState.CANCELLED
+    ),
     # Indicates that the job was successfully updated, meaning that this job was
     # stopped and another job was started, inheriting state from this one. This
     # is a terminal job state. This state may only be set by the Cloud Dataflow
@@ -86,7 +94,8 @@ _GCLOUD_DATAFLOW_JOB_STATE_TO_OPPIA_BEAM_JOB_STATE = {
     # of stopping. Jobs that are cancelling may only transition to
     # JOB_STATE_CANCELLED or JOB_STATE_FAILED.
     dataflow.JobState.JOB_STATE_CANCELLING: (
-        beam_job_models.BeamJobState.CANCELLING),
+        beam_job_models.BeamJobState.CANCELLING
+    ),
 }
 
 
@@ -94,7 +103,8 @@ def run_job(
     job_class: Type[base_jobs.JobBase],
     sync: bool,
     namespace: Optional[str] = None,
-    pipeline: Optional[beam.Pipeline] = None
+    pipeline: Optional[beam.Pipeline] = None,
+    parameterized_args: Optional[Dict[str, str]] = None,
 ) -> beam_job_models.BeamJobRunModel:
     """Runs the specified job synchronously.
 
@@ -107,22 +117,68 @@ def run_job(
         namespace: str. The namespace in which models should be created.
         pipeline: Pipeline. The pipeline to run the job upon. If omitted, then a
             new pipeline will be used instead.
+        parameterized_args: dict(str, str). The dictionary of parameterized
+            arguments to be passed to the job.
 
     Returns:
         BeamJobRun. Contains metadata related to the execution status of the
         job.
+
+    Raises:
+        ValueError. The parameterized_args defines service_account_email.
+        RuntimeError. Failed to deploy given job to the Dataflow service.
     """
+    job_name = job_class.__name__
+
+    additional_options: Dict[str, int | str] = {}
+    if does_job_requires_limiting_workers(job_name):
+        # We want to limit the number of workers for Beam jobs related to voiceover
+        # synthesis, as these jobs depend on Azure for voiceover regeneration, and
+        # increasing parallelism may lead to rate-limiting issues.
+        logging.info('Limiting the number of workers for job: %s' % job_name)
+        additional_options = {
+            'max_num_workers': 15,
+            'autoscaling_algorithm': 'THROUGHPUT_BASED',
+        }
+
+    if parameterized_args:
+        if 'service_account_email' in parameterized_args:
+            raise ValueError(
+                'SENSITIVE: service_account_email cannot be passed as an '
+                'option (choose_service_account_id_for_job() is responsible '
+                'for assigning the correct account)'
+            )
+        additional_options.update(parameterized_args)
+
+    if service_account_id := choose_service_account_id_for_job(job_class):
+        additional_options['service_account_email'] = (
+            feconf.CLOUD_SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
+                service_account_id=service_account_id,
+                app_id=app_identity_services.get_application_id(),
+            )
+        )
+
     if pipeline is None:
         pipeline = beam.Pipeline(
             runner=runners.DirectRunner() if sync else runners.DataflowRunner(),
-            options=job_options.JobOptions(namespace=namespace))
+            options=job_options.JobOptions(
+                flags=None,
+                namespace=namespace,
+                oppia_project_id=app_identity_services.get_application_id(),
+                **additional_options,
+            ),
+        )
 
     job = job_class(pipeline)
-    job_name = job_class.__name__
 
-    # NOTE: Exceptions raised within this context are logged and suppressed.
+    # Clear cache before running the job to be sure that the cache
+    # does not affect the job.
+    caching_services.flush_memory_caches()
+
+    # NOTE: Exceptions raised within this context are logged to the job's
+    # stderr and suppressed.
     with _job_bookkeeping_context(job_name) as run_model:
-        _ = job.run() | job_io.PutResults(run_model.id)
+        _ = job.run() | job_io.PutResults(run_model.id) | cache_io.FlushCache()
 
         run_result = pipeline.run()
 
@@ -137,13 +193,20 @@ def run_job(
         else:
             raise RuntimeError(
                 'Failed to deploy %s to the Dataflow service. Please try again '
-                'after a few minutes.' % job_name)
+                'after a few minutes.' % job_name
+            )
+
+    # NDB operations in Beam do not properly update the context cache
+    # (this cache is separate for every application thread), thus we clear
+    # it ourselves.
+    with datastore_services.get_ndb_context() as ndb_context:
+        ndb_context.clear_cache()
 
     return run_model
 
 
 def refresh_state_of_beam_job_run_model(
-    beam_job_run_model: beam_job_models.BeamJobRunModel
+    beam_job_run_model: beam_job_models.BeamJobRunModel,
 ) -> None:
     """Refreshs the state of the given BeamJobRunModel.
 
@@ -153,37 +216,44 @@ def refresh_state_of_beam_job_run_model(
     job_id = beam_job_run_model.dataflow_job_id
     if job_id is None:
         beam_job_run_model.latest_job_state = (
-            beam_job_models.BeamJobState.UNKNOWN.value)
+            beam_job_models.BeamJobState.UNKNOWN.value
+        )
         beam_job_run_model.update_timestamps(update_last_updated_time=False)
         return
 
     try:
-        job = dataflow.JobsV1Beta3Client().get_job(dataflow.GetJobRequest(
-            job_id=job_id, project_id=feconf.OPPIA_PROJECT_ID,
-            location=feconf.GOOGLE_APP_ENGINE_REGION))
+        oppia_project_id = app_identity_services.get_application_id()
+        job = dataflow.JobsV1Beta3Client().get_job(
+            dataflow.GetJobRequest(
+                job_id=job_id,
+                project_id=oppia_project_id,
+                location=feconf.GOOGLE_APP_ENGINE_REGION,
+            )
+        )
 
-    except Exception:
+    except Exception as e:
         job_state = beam_job_models.BeamJobState.UNKNOWN.value
         job_state_updated = beam_job_run_model.last_updated
 
-        logging.exception('Failed to update job_id="%s"!' % job_id)
+        logging.warning('Failed to update job_id="%s": %s', job_id, e)
 
     else:
         job_state = _GCLOUD_DATAFLOW_JOB_STATE_TO_OPPIA_BEAM_JOB_STATE.get(
-            job.current_state, beam_job_models.BeamJobState.UNKNOWN).value
+            job.current_state, beam_job_models.BeamJobState.UNKNOWN
+        ).value
         job_state_updated = job.current_state_time.replace(tzinfo=None)
 
         if (
-                beam_job_run_model.latest_job_state == (
-                    beam_job_models.BeamJobState.CANCELLING.value) and
-                job_state != beam_job_models.BeamJobState.CANCELLED.value
+            beam_job_run_model.latest_job_state
+            == (beam_job_models.BeamJobState.CANCELLING.value)
+            and job_state != beam_job_models.BeamJobState.CANCELLED.value
         ):
             job_state = beam_job_run_model.latest_job_state
             job_state_updated = beam_job_run_model.last_updated
 
         if (
-                beam_job_run_model.latest_job_state != job_state and
-                job_state == beam_job_models.BeamJobState.FAILED.value
+            beam_job_run_model.latest_job_state != job_state
+            and job_state == beam_job_models.BeamJobState.FAILED.value
         ):
             _put_job_stderr(beam_job_run_model.id, pprint.pformat(job))
 
@@ -197,28 +267,38 @@ def cancel_job(beam_job_run_model: beam_job_models.BeamJobRunModel) -> None:
 
     Args:
         beam_job_run_model: BeamJobRunModel. The model to update.
+
+    Raises:
+        ValueError. The given model has no job ID.
     """
     job_id = beam_job_run_model.dataflow_job_id
     if job_id is None:
         raise ValueError('dataflow_job_id must not be None')
 
     try:
-        dataflow.JobsV1Beta3Client().update_job(dataflow.UpdateJobRequest(
-            job_id=job_id, project_id=feconf.OPPIA_PROJECT_ID,
-            location=feconf.GOOGLE_APP_ENGINE_REGION,
-            job=dataflow.Job(
-                requested_state=dataflow.JobState.JOB_STATE_CANCELLED)))
+        oppia_project_id = app_identity_services.get_application_id()
+        dataflow.JobsV1Beta3Client().update_job(
+            dataflow.UpdateJobRequest(
+                job_id=job_id,
+                project_id=oppia_project_id,
+                location=feconf.GOOGLE_APP_ENGINE_REGION,
+                job=dataflow.Job(
+                    requested_state=dataflow.JobState.JOB_STATE_CANCELLED
+                ),
+            )
+        )
     except Exception:
         logging.exception('Failed to cancel job_id="%s"!' % job_id)
     else:
         beam_job_run_model.latest_job_state = (
-            beam_job_models.BeamJobState.CANCELLING.value)
+            beam_job_models.BeamJobState.CANCELLING.value
+        )
         beam_job_run_model.update_timestamps()
 
 
 @contextlib.contextmanager
 def _job_bookkeeping_context(
-    job_name: str
+    job_name: str,
 ) -> Iterator[beam_job_models.BeamJobRunModel]:
     """Returns a context manager which commits failure details if an exception
     occurs.
@@ -234,9 +314,9 @@ def _job_bookkeeping_context(
     try:
         yield run_model
 
-    except Exception as exception:
+    except Exception:
         run_model.latest_job_state = beam_job_models.BeamJobState.FAILED.value
-        _put_job_stderr(run_model.id, python_utils.UNICODE(exception))
+        _put_job_stderr(run_model.id, traceback.format_exc())
 
     finally:
         run_model.put()
@@ -249,6 +329,59 @@ def _put_job_stderr(job_id: str, stderr: str) -> None:
         job_id: str. The ID of the job that failed.
         stderr: str. The error output for the given job.
     """
-    result_model = (
-        beam_job_services.create_beam_job_run_result_model(job_id, '', stderr))
+    result_model = beam_job_services.create_beam_job_run_result_model(
+        job_id, '', stderr
+    )
     result_model.put()
+
+
+def does_job_requires_limiting_workers(job_name: str) -> bool:
+    """Returns whether the given job requires limiting the number of workers.
+
+    Args:
+        job_name: str. The name of the job.
+
+    Returns:
+        bool. Whether the given job requires limiting the number of workers.
+    """
+    jobs_requiring_limiting_workers = [
+        'VoiceoverSynthesisJob',
+        'VoiceoverSynthesisAuditJob',
+        'VoiceoverSynthesisByAccentJob',
+        # The below job is used in unit tests.
+        'VoiceoverSynthesisForTestingJob',
+    ]
+    return job_name in jobs_requiring_limiting_workers
+
+
+def choose_service_account_id_for_job(
+    job_class: type[base_jobs.JobBase],
+) -> str | None:
+    """Returns the service account ID that should be used to run the given job.
+
+    Service accounts are used to grant an Apache Beam worker access to external
+    resources. As of 2026-06, the only external resources that Oppia interacts
+    with from Apache Beam jobs are from the Firebase Authentication server.
+
+    Args:
+        job_class: type[base_jobs.JobBase]. The job's class.
+
+    Returns:
+        str|None. The service account ID that should be used to run the given
+        job, or None if no custom service account is required.
+    """
+    match job_class:
+        case firebase_server_sync_jobs.FirebaseServerSyncJob:
+            return feconf.SENSITIVE_FIREBASE_AUTH_READ_WRITE_SERVICE_ACCOUNT_ID
+        case firebase_server_sync_jobs.AuditFirebaseServerSyncJob:
+            return feconf.SENSITIVE_FIREBASE_AUTH_READ_ONLY_SERVICE_ACCOUNT_ID
+        case _:
+            message = (
+                f'{job_class.__name__} does not need a custom service account, '
+                'so the Compute Engine default service account will be assumed'
+            )
+            email = (
+                app_identity_services.get_compute_engine_default_service_account_email()
+            )
+            logging.info('%s: %s' % (message, email) if email else message)
+            return None

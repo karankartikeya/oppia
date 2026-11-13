@@ -3,11 +3,11 @@
 </div>
 
 <div class="modal-body">
-  <concept-card [skillIds]="skillIds" [index]="index"> </concept-card>
+  <oppia-concept-card [skillIds]="skillIds" [index]="index"> </oppia-concept-card>
 </div>
 
 <div class="modal-footer">
-  <button class="btn btn-default"
+  <button class="btn btn-secondary e2e-test-close-concept-card"
           (click)="cancel()">
     Close
   </button>

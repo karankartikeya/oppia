@@ -15,65 +15,99 @@
 /**
  * @fileoverview Unit tests for error page.
  */
-import { EventEmitter, NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, TestBed, ComponentFixture } from '@angular/core/testing';
+import {CUSTOM_ELEMENTS_SCHEMA} from '@angular/core';
+import {
+  TestBed,
+  ComponentFixture,
+  fakeAsync,
+  tick,
+} from '@angular/core/testing';
+import {TranslateModule} from '@ngx-translate/core';
 
-import { ErrorPageComponent } from './error-page.component';
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { I18nLanguageCodeService } from 'services/i18n-language-code.service';
-import { PageTitleService } from 'services/page-title.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
+import {ErrorPageComponent} from './error-page.component';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
-class MockI18nLanguageCodeService {
-  codeChangeEventEmiiter = new EventEmitter<string>();
-  getCurrentI18nLanguageCode() {
-    return 'en';
-  }
-
-  get onI18nLanguageCodeChange() {
-    return this.codeChangeEventEmiiter;
-  }
-}
-
-let component: ErrorPageComponent;
-let fixture: ComponentFixture<ErrorPageComponent>;
-
-describe('Error page', () => {
-  let pageTitle = null;
-
-  beforeEach(async(() => {
-    TestBed.configureTestingModule({
-      declarations: [ErrorPageComponent, MockTranslatePipe],
-      providers: [
-        {
-          provide: I18nLanguageCodeService,
-          useClass: MockI18nLanguageCodeService
-        },
-        UrlInterpolationService,
-        PageTitleService
-      ],
-      schemas: [NO_ERRORS_SCHEMA]
-    }).compileComponents();
-    pageTitle = TestBed.get(PageTitleService);
-  }));
+describe('ErrorPageComponent', () => {
+  let component: ErrorPageComponent;
+  let fixture: ComponentFixture<ErrorPageComponent>;
+  let windowRef: WindowRef;
 
   beforeEach(() => {
+    try {
+      if (window && window.sessionStorage) {
+        window.sessionStorage.clear();
+      }
+    } catch (error) {
+      // SessionStorage can throw in restricted environments; ignore safely.
+    }
+
+    TestBed.configureTestingModule({
+      imports: [TranslateModule.forRoot()],
+      declarations: [ErrorPageComponent],
+      providers: [UrlInterpolationService, WindowRef],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    }).compileComponents();
+
     fixture = TestBed.createComponent(ErrorPageComponent);
     component = fixture.componentInstance;
-    component.statusCode = '404';
-    fixture.detectChanges();
+    windowRef = TestBed.inject(WindowRef);
+  });
+
+  afterEach(() => {
+    // Clean up sessionStorage after each test.
+    windowRef.nativeWindow.sessionStorage.clear();
   });
 
   it('should check if status code is a number', () => {
+    component.statusCode = '404';
     expect(component.getStatusCode()).toBe(404);
     expect(component.getStatusCode()).toBeInstanceOf(Number);
   });
 
-  it('should set images and page title when $onInit triggers', () => {
-    component.ngOnInit();
-    expect(component.getStaticImageUrl('/general/oops_mint.webp'))
-      .toBe('/assets/images/general/oops_mint.webp');
-    expect(pageTitle.getDocumentTitle()).toBe('Error 404 - Oppia');
+  it('should get the static image url', () => {
+    component.statusCode = '404';
+    expect(component.getStaticImageUrl('/general/oops_mint.webp')).toBe(
+      '/assets/images/general/oops_mint.webp'
+    );
   });
+
+  it('should extract custom error message from sessionStorage', fakeAsync(() => {
+    component.statusCode = '401';
+    windowRef.nativeWindow.sessionStorage.setItem(
+      'oppia_401_error_message',
+      'You must be an admin to access this page.'
+    );
+
+    component.ngOnInit();
+    tick();
+
+    expect(component.customErrorMessage).toBe(
+      'You must be an admin to access this page.'
+    );
+  }));
+
+  it('should clear sessionStorage after reading error message', fakeAsync(() => {
+    component.statusCode = '401';
+    windowRef.nativeWindow.sessionStorage.setItem(
+      'oppia_401_error_message',
+      'You must be an admin to access this page.'
+    );
+
+    component.ngOnInit();
+    tick();
+
+    expect(
+      windowRef.nativeWindow.sessionStorage.getItem('oppia_401_error_message')
+    ).toBeNull();
+  }));
+
+  it('should not set custom error message if sessionStorage is empty', fakeAsync(() => {
+    component.statusCode = '401';
+
+    component.ngOnInit();
+    tick();
+
+    expect(component.customErrorMessage).toBeNull();
+  }));
 });

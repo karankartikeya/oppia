@@ -2,13 +2,16 @@
 // present on the type of window.
 
 interface Window {
-    HTMLElement: HTMLElement;
-    __fixtures__: KarmaFixtures;
-    decodeURIComponent: (encodedURIComponent: string) => string;
-    encodeURIComponent: (decodedURIComponent: string) => string;
-    gtag: Function;
-    $: JQueryStatic;
-    Base64Binary: Base64Binary;
-    jQuery: JQueryStatic;
-    dataLayer: object[];
+  HTMLElement: HTMLElement;
+  __fixtures__: KarmaFixtures;
+  decodeURIComponent: (encodedURIComponent: string) => string;
+  encodeURIComponent: (decodedURIComponent: string) => string;
+  logClick: (clickDetails: {
+    position: {x: number; y: number};
+    timeInMilliseconds: number;
+  }) => void;
+  gtag: Function;
+  Base64Binary: Base64Binary;
+  dataLayer: object[];
+  Guppy: Guppy;
 }

@@ -75,11 +75,11 @@ export type MathEquationAnswer = string;
 export type MultipleChoiceAnswer = number;
 
 export interface MusicNotesAnswer {
-  readableNoteName: string,
+  readableNoteName: string;
   noteDuration: {
-    num: number,
-    den: number
-  }
+    num: number;
+    den: number;
+  };
 }
 
 export interface NumberWithUnitsAnswer {
@@ -106,23 +106,24 @@ export type SetInputAnswer = string[];
 
 export type TextInputAnswer = string;
 
-export type InteractionAnswer = (
-  AlgebraicExpressionAnswer |
-  CodeReplAnswer |
-  ContinueAnswer |
-  DragAndDropAnswer |
-  FractionAnswer |
-  GraphAnswer |
-  ImageClickAnswer |
-  InteractiveMapAnswer |
-  ItemSelectionAnswer |
-  MultipleChoiceAnswer |
-  MusicNotesAnswer |
-  NumericExpressionAnswer |
-  NumberWithUnitsAnswer |
-  NumericInputAnswer |
-  PencilCodeEditorAnswer |
-  RatioInputAnswer |
-  SetInputAnswer |
-  TextInputAnswer |
-  MathEquationAnswer);
+export type InteractionAnswer =
+  | AlgebraicExpressionAnswer
+  | CodeReplAnswer
+  | ContinueAnswer
+  | DragAndDropAnswer
+  | FractionAnswer
+  | GraphAnswer
+  | ImageClickAnswer
+  | InteractiveMapAnswer
+  | ItemSelectionAnswer
+  | MultipleChoiceAnswer
+  | MusicNotesAnswer
+  | NumericExpressionAnswer
+  | NumberWithUnitsAnswer
+  | NumericInputAnswer
+  | PencilCodeEditorAnswer
+  | RatioInputAnswer
+  | SetInputAnswer
+  | TextInputAnswer
+  | MusicNotesAnswer[]
+  | MathEquationAnswer;

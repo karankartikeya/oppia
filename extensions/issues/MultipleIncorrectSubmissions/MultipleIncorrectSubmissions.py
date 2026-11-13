@@ -16,10 +16,15 @@
 
 """Python configuration for recording multiple incorrect submissions issue."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.issues import base
+
+from typing import List
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class MultipleIncorrectSubmissions(base.BaseExplorationIssueSpec):
@@ -27,18 +32,21 @@ class MultipleIncorrectSubmissions(base.BaseExplorationIssueSpec):
     in the same card and quits the exploration.
     """
 
-    _customization_arg_specs = [{
-        'name': 'state_name',
-        'description': 'State name',
-        'schema': {
-            'type': 'unicode',
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'state_name',
+            'description': 'State name',
+            'schema': {
+                'type': 'unicode',
+            },
+            'default_value': '',
         },
-        'default_value': ''
-    }, {
-        'name': 'num_times_answered_incorrectly',
-        'description': 'Number of times incorrect answers were submitted',
-        'schema': {
-            'type': 'int',
+        {
+            'name': 'num_times_answered_incorrectly',
+            'description': 'Number of times incorrect answers were submitted',
+            'schema': {
+                'type': 'int',
+            },
+            'default_value': 0,
         },
-        'default_value': 0
-    }]
+    ]

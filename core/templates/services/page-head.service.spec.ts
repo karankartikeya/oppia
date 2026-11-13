@@ -16,10 +16,11 @@
  * @fileoverview Unit tests for PageHeadService.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { PageTitleService } from 'services/page-title.service';
-import { MetaTagCustomizationService } from './contextual/meta-tag-customization.service';
-import { PageHeadService } from './page-head.service';
+import {TestBed} from '@angular/core/testing';
+
+import {PageTitleService} from 'services/page-title.service';
+import {MetaTagCustomizationService} from './contextual/meta-tag-customization.service';
+import {PageHeadService} from './page-head.service';
 
 describe('Page head service', () => {
   let pageHeadService: PageHeadService;
@@ -37,23 +38,22 @@ describe('Page head service', () => {
     let meta = {
       PROPERTY_TYPE: '',
       PROPERTY_VALUE: '',
-      CONTENT: ''
+      CONTENT: '',
     };
     spyOn(pageTitleService, 'setDocumentTitle');
     spyOn(metaTagCustomizationService, 'addOrReplaceMetaTags');
-    pageHeadService.updateTitleAndMetaTags({
-      ROUTE: '',
-      TITLE: title,
-      META: [meta]
-    });
+
+    pageHeadService.updateTitleAndMetaTags(title, [meta]);
+
     expect(pageTitleService.setDocumentTitle).toHaveBeenCalledWith(title);
-    expect(metaTagCustomizationService.addOrReplaceMetaTags)
-      .toHaveBeenCalledWith([
-        {
-          propertyType: meta.PROPERTY_TYPE,
-          propertyValue: meta.PROPERTY_VALUE,
-          content: meta.CONTENT
-        }
-      ]);
+    expect(
+      metaTagCustomizationService.addOrReplaceMetaTags
+    ).toHaveBeenCalledWith([
+      {
+        propertyType: meta.PROPERTY_TYPE,
+        propertyValue: meta.PROPERTY_VALUE,
+        content: meta.CONTENT,
+      },
+    ]);
   });
 });

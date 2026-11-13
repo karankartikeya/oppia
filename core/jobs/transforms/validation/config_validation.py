@@ -16,48 +16,38 @@
 
 """Beam DoFns and PTransforms to provide validation of config models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core.domain import config_domain
 from core.domain import platform_parameter_domain as parameter_domain
 from core.jobs.decorators import validation_decorators
 from core.jobs.transforms.validation import base_validation
 from core.platform import models
 
-(config_models,) = models.Registry.import_models([models.NAMES.config])
+from typing import Type
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import config_models
+
+(config_models,) = models.Registry.import_models([models.Names.CONFIG])
 
 
 @validation_decorators.AuditsExisting(
-    config_models.ConfigPropertySnapshotMetadataModel)
-class ValidateConfigPropertySnapshotMetadataModel(
-        base_validation.BaseValidateCommitCmdsSchema):
-    """Overrides _get_change_domain_class for
-    ConfigPropertySnapshotMetadataModel.
-    """
-
-    def _get_change_domain_class(self, input_model): # pylint: disable=unused-argument
-        """Returns a change domain class.
-
-        Args:
-            input_model: datastore_services.Model. Entity to validate.
-
-        Returns:
-            config_domain.ConfigPropertyChange. A domain object class for the
-            changes made by commit commands of the model.
-        """
-        return config_domain.ConfigPropertyChange
-
-
-@validation_decorators.AuditsExisting(
-    config_models.PlatformParameterSnapshotMetadataModel)
+    config_models.PlatformParameterSnapshotMetadataModel
+)
 class ValidatePlatformParameterSnapshotMetadataModel(
-        base_validation.BaseValidateCommitCmdsSchema):
+    base_validation.BaseValidateCommitCmdsSchema[
+        config_models.PlatformParameterSnapshotMetadataModel
+    ]
+):
     """Overrides _get_change_domain_class for
     PlatformParameterSnapshotMetadataModel.
     """
 
-    def _get_change_domain_class(self, input_model): # pylint: disable=unused-argument
+    def _get_change_domain_class(
+        self,
+        input_model: config_models.PlatformParameterSnapshotMetadataModel,  # pylint: disable=unused-argument
+    ) -> Type[parameter_domain.PlatformParameterChange]:
         """Returns a change domain class.
 
         Args:

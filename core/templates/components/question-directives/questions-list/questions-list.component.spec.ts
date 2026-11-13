@@ -12,1096 +12,1444 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
-import { QuestionSummary } from 'domain/question/question-summary-object.model';
-import { QuestionObjectFactory } from 'domain/question/QuestionObjectFactory';
-import { MisconceptionObjectFactory } from 'domain/skill/MisconceptionObjectFactory';
-import { ShortSkillSummary } from 'domain/skill/short-skill-summary.model';
-import { SkillDifficulty } from 'domain/skill/skill-difficulty.model';
-import { SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-
 /**
  * @fileoverview Unit test for Questions List Component.
  */
 
+// @ts-nocheck
+
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {QuestionUndoRedoService} from 'domain/editor/undo_redo/question-undo-redo.service';
+import {
+  EditableQuestionBackendApiService,
+  FetchQuestionResponse,
+  SkillLinkageModificationsArray,
+} from 'domain/question/editable-question-backend-api.service';
+import {QuestionSummary} from 'domain/question/question-summary-object.model';
+import {Question} from 'domain/question/question.model';
+import {Misconception} from 'domain/skill/misconception.model';
+import {ShortSkillSummary} from 'domain/skill/short-skill-summary.model';
+import {SkillBackendApiService} from 'domain/skill/skill-backend-api.service';
+import {SkillDifficulty} from 'domain/skill/skill-difficulty.model';
+import {Skill} from 'domain/skill/skill.model';
+import {SkillSummary} from 'domain/skill/skill-summary.model';
+import {State} from 'domain/state/state.model';
+import {CategorizedSkills} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {SkillEditorRoutingService} from 'pages/skill-editor-page/services/skill-editor-routing.service';
+import {AlertsService} from 'services/alerts.service';
+import {PageContextService} from 'services/page-context.service';
+import {LoggerService} from 'services/contextual/logger.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {QuestionValidationService} from 'services/question-validation.service';
+import {QuestionsListService} from 'services/questions-list.service';
+import {QuestionsListComponent} from './questions-list.component';
+
 class MockNgbModalRef {
   componentInstance = {
-    skillSummaries: null,
-    skillsInSameTopicCount: null,
-    categorizedSkills: null,
-    allowSkillsFromOtherTopics: null,
-    untriagedSkillSummaries: null
+    skillSummaries: [],
+    skillsInSameTopicCount: 0,
+    categorizedSkills: {} as CategorizedSkills,
+    allowSkillsFromOtherTopics: false,
+    untriagedSkillSummaries: [] as SkillSummary[],
   };
 }
 
-describe('QuestionsListComponent', () => {
-  let ctrl = null;
-  let $rootScope = null;
-  let $scope = null;
-  let $q = null;
-  let $uibModal = null;
-  let $timeout = null;
+class MockNgbModal {
+  open() {
+    return {
+      result: Promise.resolve(),
+    };
+  }
+}
 
+class MockUrlInterpolationService {
+  interpolateUrl(value: string): string {
+    return value;
+  }
+}
+
+describe('Questions List Component', () => {
+  let component: QuestionsListComponent;
+  let fixture: ComponentFixture<QuestionsListComponent>;
   let ngbModal: NgbModal;
-  let WindowDimensionsService = null;
-  let QuestionsListService = null;
-  let AlertsService = null;
-  let SkillBackendApiService = null;
-  let skillObjectFactory: SkillObjectFactory;
-  let misconceptionObjectFactory: MisconceptionObjectFactory;
-  let QuestionObjectFactory: QuestionObjectFactory;
-  let EditableQuestionBackendApiService = null;
-  let QuestionUndoRedoService = null;
-  let QuestionValidationService = null;
-  let SkillEditorRoutingService = null;
-  let ContextService = null;
-  let question = null;
-  let questionStateData = null;
-  let skill = null;
+  let windowDimensionsService: WindowDimensionsService;
+  let questionsListService: QuestionsListService;
+  let skillEditorRoutingService: SkillEditorRoutingService;
+  let skillBackendApiService: SkillBackendApiService;
+  let alertsService: AlertsService;
+  let loggerService: LoggerService;
+  let editableQuestionBackendApiService: EditableQuestionBackendApiService;
+  let questionUndoRedoService: QuestionUndoRedoService;
+  let pageContextService: PageContextService;
+  let questionValidationService: QuestionValidationService;
+  let skill: Skill;
+  let question: Question | null = null;
+  let questionStateData: State | null = null;
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [QuestionsListComponent],
+      providers: [
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
+        },
+        WindowDimensionsService,
+        QuestionsListService,
+        SkillEditorRoutingService,
+        SkillBackendApiService,
+        AlertsService,
+        EditableQuestionBackendApiService,
+        QuestionUndoRedoService,
+        {
+          provide: UrlInterpolationService,
+          useClass: MockUrlInterpolationService,
+        },
+        PageContextService,
+        QuestionValidationService,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  }));
 
   beforeEach(() => {
+    fixture = TestBed.createComponent(QuestionsListComponent);
+    component = fixture.componentInstance;
+
     ngbModal = TestBed.inject(NgbModal);
-    skillObjectFactory = TestBed.inject(SkillObjectFactory);
-    misconceptionObjectFactory = TestBed.inject(MisconceptionObjectFactory);
-  });
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
-    $q = $injector.get('$q');
-    $uibModal = $injector.get('$uibModal');
-    $timeout = $injector.get('$timeout');
+    windowDimensionsService = TestBed.inject(WindowDimensionsService);
+    questionsListService = TestBed.inject(QuestionsListService);
+    skillEditorRoutingService = TestBed.inject(SkillEditorRoutingService);
+    skillBackendApiService = TestBed.inject(SkillBackendApiService);
+    alertsService = TestBed.inject(AlertsService);
+    editableQuestionBackendApiService = TestBed.inject(
+      EditableQuestionBackendApiService
+    );
+    questionUndoRedoService = TestBed.inject(QuestionUndoRedoService);
+    loggerService = TestBed.inject(LoggerService);
+    pageContextService = TestBed.inject(PageContextService);
+    questionValidationService = TestBed.inject(QuestionValidationService);
 
-    WindowDimensionsService = $injector.get('WindowDimensionsService');
-    QuestionsListService = $injector.get('QuestionsListService');
-    SkillEditorRoutingService = $injector.get('SkillEditorRoutingService');
-    SkillBackendApiService = $injector.get('SkillBackendApiService');
-    AlertsService = $injector.get('AlertsService');
-    QuestionObjectFactory = $injector.get('QuestionObjectFactory');
-    EditableQuestionBackendApiService = $injector
-      .get('EditableQuestionBackendApiService');
-    QuestionUndoRedoService = $injector.get('QuestionUndoRedoService');
-    ContextService = $injector.get('ContextService');
-    QuestionValidationService = $injector.get('QuestionValidationService');
-
-    ctrl = $componentController('questionsList', {
-      $scope: $scope,
-      NgbModal: ngbModal
-    }, {
-      getSelectedSkillId: () => {},
-      getSkillIds: () => {},
-      getSkillIdToRubricsObject: () => {},
-      selectSkillModalIsShown: () => {},
-      canEditQuestion: () => {},
-      getAllSkillSummaries: () => {},
-      getGroupedSkillSummaries: () => {}
-    });
-
-    question = QuestionObjectFactory.createFromBackendDict({
+    question = Question.createFromBackendDict({
       id: '1',
       question_state_data: {
         content: {
           html: 'Question 1',
-          content_id: 'content_1'
+          content_id: 'content_1',
         },
         interaction: {
-          answer_groups: [{
-            outcome: {
-              dest: 'outcome 1',
-              feedback: {
-                content_id: 'content_5',
-                html: ''
+          answer_groups: [
+            {
+              outcome: {
+                dest: 'outcome 1',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'content_5',
+                  html: '',
+                },
+                labelled_as_correct: true,
+                param_changes: [],
+                refresher_exploration_id: null,
+                missing_prerequisite_skill_id: null,
               },
-              labelled_as_correct: true,
-              param_changes: [],
-              refresher_exploration_id: null,
-              missing_prerequisite_skill_id: null,
+              rule_specs: [],
+              training_data: [],
+              tagged_skill_misconception_id: null,
             },
-            rule_specs: [],
-            training_data: null,
-            tagged_skill_misconception_id: null
-          }],
+          ],
           confirmed_unclassified_answers: [],
           customization_args: {
             placeholder: {
               value: {
                 content_id: 'ca_placeholder_0',
-                unicode_str: ''
-              }
+                unicode_str: '',
+              },
             },
-            rows: { value: 1 }
+            rows: {value: 1},
+            catchMisspellings: {
+              value: false,
+            },
           },
           default_outcome: {
             dest: null,
+            dest_if_really_stuck: null,
             feedback: {
               html: 'Correct Answer',
-              content_id: 'content_2'
+              content_id: 'content_2',
             },
             param_changes: [],
             labelled_as_correct: true,
             missing_prerequisite_skill_id: null,
-            refresher_exploration_id: null
+            refresher_exploration_id: null,
           },
-          hints: [{
-            hint_content: {
-              html: 'Hint 1',
-              content_id: 'content_3'
-            }
-          }],
+          hints: [
+            {
+              hint_content: {
+                html: 'Hint 1',
+                content_id: 'content_3',
+              },
+            },
+          ],
           solution: {
             correct_answer: 'This is the correct answer',
             answer_is_exclusive: false,
             explanation: {
               html: 'Solution explanation',
-              content_id: 'content_4'
-            }
+              content_id: 'content_4',
+            },
           },
-          id: 'TextInput'
+          id: 'TextInput',
         },
         param_changes: [],
-        recorded_voiceovers: {
-          voiceovers_mapping: {}
-        },
-        written_translations: {
-          translations_mapping: {}
-        },
         classifier_model_id: null,
         solicit_answer_details: false,
         card_is_checkpoint: false,
         linked_skill_id: null,
-        next_content_id_index: null,
+        inapplicable_skill_misconception_ids: [],
       },
-      inapplicable_skill_misconception_ids: null,
+      inapplicable_skill_misconception_ids: [],
       language_code: 'en',
       linked_skill_ids: [],
+      next_content_id_index: 5,
       question_state_data_schema_version: 44,
-      version: 45
+      version: 45,
     });
 
     questionStateData = question.getStateData();
 
-    skill = skillObjectFactory.createFromBackendDict({
+    skill = Skill.createFromBackendDict({
       id: 'skillId1',
       description: 'test description 1',
-      misconceptions: [{
-        id: '2',
-        name: 'test name',
-        notes: 'test notes',
-        feedback: 'test feedback',
-        must_be_addressed: true
-      }],
+      misconceptions: [
+        {
+          id: 2,
+          name: 'test name',
+          notes: 'test notes',
+          feedback: 'test feedback',
+          must_be_addressed: true,
+        },
+      ],
       rubrics: [],
       skill_contents: {
         explanation: {
           html: 'test explanation',
           content_id: 'explanation',
         },
-        worked_examples: [],
         recorded_voiceovers: {
-          voiceovers_mapping: {}
-        }
+          voiceovers_mapping: {},
+        },
       },
       language_code: 'en',
       version: 3,
       prerequisite_skill_ids: [],
-      all_questions_merged: null,
-      next_misconception_id: null,
-      superseding_skill_id: null
+      all_questions_merged: false,
+      next_misconception_id: 0,
+      superseding_skill_id: '',
     });
 
-    spyOn(ctrl, 'getSelectedSkillId').and.returnValue('skillId1');
-    spyOn(ctrl, 'getSkillIds').and.returnValue(['skillId1', 'skillId2']);
-  }));
-
-  it('should set component properties on initialization', () => {
-    spyOn(WindowDimensionsService, 'isWindowNarrow').and.returnValue(true);
-
-    expect(ctrl.showDifficultyChoices).toBe(undefined);
-    expect(ctrl.difficultyCardIsShown).toBe(undefined);
-    expect(ctrl.associatedSkillSummaries).toEqual(undefined);
-    expect(ctrl.selectedSkillId).toBe(undefined);
-    expect(ctrl.editorIsOpen).toBe(undefined);
-    expect(ctrl.deletedQuestionIds).toEqual(undefined);
-    expect(ctrl.questionEditorIsShown).toBe(undefined);
-    expect(ctrl.questionIsBeingUpdated).toBe(undefined);
-
-    ctrl.$onInit();
-
-    expect(ctrl.showDifficultyChoices).toBe(false);
-    expect(ctrl.difficultyCardIsShown).toBe(false);
-    expect(ctrl.associatedSkillSummaries).toEqual([]);
-    expect(ctrl.selectedSkillId).toBe('skillId1');
-    expect(ctrl.editorIsOpen).toBe(false);
-    expect(ctrl.deletedQuestionIds).toEqual([]);
-    expect(ctrl.questionEditorIsShown).toBe(false);
-    expect(ctrl.questionIsBeingUpdated).toBe(false);
-
-    ctrl.$onDestroy();
+    component.selectedSkillId = 'skillId1';
   });
 
-  it('should subscribe to question summaries init event on' +
-    ' component initialization', () => {
-    spyOn(QuestionsListService.onQuestionSummariesInitialized, 'subscribe');
+  it(
+    'should subscribe to question summaries init event on' +
+      ' component initialization',
+    () => {
+      spyOn(questionsListService.onQuestionSummariesInitialized, 'subscribe');
 
-    ctrl.$onInit();
+      component.ngOnInit();
 
-    expect(QuestionsListService.onQuestionSummariesInitialized.subscribe)
-      .toHaveBeenCalled();
-  });
+      expect(
+        questionsListService.onQuestionSummariesInitialized.subscribe
+      ).toHaveBeenCalled();
+    }
+  );
 
-  it('should reset history and fetch question summaries on' +
-    ' initialization', () => {
-    let resetHistoryAndFetch = true;
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
+  it(
+    'should reset history and fetch question summaries on' + ' initialization',
+    () => {
+      let resetHistoryAndFetch = true;
+      spyOn(questionsListService, 'getQuestionSummariesAsync');
 
-    expect(ctrl.skillIds).toEqual(undefined);
+      component.ngOnInit();
 
-    ctrl.$onInit();
+      expect(
+        questionsListService.getQuestionSummariesAsync
+      ).toHaveBeenCalledWith(
+        'skillId1',
+        resetHistoryAndFetch,
+        resetHistoryAndFetch
+      );
+    }
+  );
 
-    expect(ctrl.skillIds).toEqual(['skillId1', 'skillId2']);
-    expect(QuestionsListService.getQuestionSummariesAsync).toHaveBeenCalledWith(
-      'skillId1', resetHistoryAndFetch, resetHistoryAndFetch
-    );
-  });
+  it(
+    'should not reset history and fetch question summaries when question' +
+      ' summaries are initialized',
+    () => {
+      let resetHistoryAndFetch = false;
+      let questionSummariesInitializedEmitter = new EventEmitter();
+      spyOnProperty(
+        questionsListService,
+        'onQuestionSummariesInitialized'
+      ).and.returnValue(questionSummariesInitializedEmitter);
+      spyOn(questionsListService, 'getQuestionSummariesAsync');
 
-  it('should not reset history and fetch question summaries when question' +
-    ' summaries are initialized', () => {
-    let resetHistoryAndFetch = false;
-    let questionSummariesInitializedEmitter = new EventEmitter();
-    spyOnProperty(QuestionsListService, 'onQuestionSummariesInitialized')
-      .and.returnValue(questionSummariesInitializedEmitter);
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
+      component.ngOnInit();
 
-    ctrl.$onInit();
+      questionSummariesInitializedEmitter.emit();
 
-    questionSummariesInitializedEmitter.emit();
+      expect(
+        questionsListService.getQuestionSummariesAsync
+      ).toHaveBeenCalledWith(
+        'skillId1',
+        resetHistoryAndFetch,
+        resetHistoryAndFetch
+      );
+    }
+  );
 
-    expect(QuestionsListService.getQuestionSummariesAsync).toHaveBeenCalledWith(
-      'skillId1', resetHistoryAndFetch, resetHistoryAndFetch
-    );
-  });
+  it(
+    'should fetch misconception ids for selected skill on' + ' initialization',
+    fakeAsync(() => {
+      component.selectedSkillId = 'true';
+      spyOn(skillBackendApiService, 'fetchSkillAsync').and.returnValue(
+        Promise.resolve({
+          skill: skill,
+          assignedSkillTopicData: {},
+          groupedSkillSummaries: {},
+        })
+      );
 
-  it('should fetch misconception ids for selected skill on' +
-    ' initialization', () => {
-    spyOn(SkillBackendApiService, 'fetchSkillAsync').and.returnValue($q.resolve(
-      {
-        skill: skill
-      }
-    ));
+      expect(component.misconceptionIdsForSelectedSkill).toBeUndefined();
 
-    expect(ctrl.misconceptionIdsForSelectedSkill).toEqual(undefined);
+      component.ngOnInit();
+      tick();
 
-    ctrl.$onInit();
-    $scope.$apply();
+      expect(component.misconceptionIdsForSelectedSkill).toEqual([2]);
+    })
+  );
 
-    expect(ctrl.misconceptionIdsForSelectedSkill).toEqual(['2']);
-  });
+  it(
+    'should fetch difficulty count for selected skill on' + ' initialization',
+    fakeAsync(() => {
+      component.selectedSkillId = 'true';
+
+      const skillWithExplanations = Skill.createFromBackendDict({
+        id: 'skillId1',
+        description: 'test description 1',
+        misconceptions: [],
+        rubrics: [
+          {
+            difficulty: 'Easy',
+            explanations: ['explanation1'],
+          },
+          {
+            difficulty: 'Medium',
+            explanations: [],
+          },
+        ],
+        skill_contents: {
+          explanation: {html: 'test explanation', content_id: 'explanation'},
+          recorded_voiceovers: {voiceovers_mapping: {}},
+        },
+        language_code: 'en',
+        version: 3,
+        prerequisite_skill_ids: [],
+        all_questions_merged: false,
+        next_misconception_id: 0,
+        superseding_skill_id: '',
+      });
+
+      spyOn(skillBackendApiService, 'fetchSkillAsync').and.returnValue(
+        Promise.resolve({
+          skill: skillWithExplanations,
+          assignedSkillTopicData: {},
+          groupedSkillSummaries: {},
+        })
+      );
+
+      expect(component.difficultyCount).toBeUndefined();
+
+      component.ngOnInit();
+      tick();
+
+      expect(component.difficultyCount).toEqual(1);
+    })
+  );
 
   it('should start creating question on navigating to question editor', () => {
-    spyOn(SkillEditorRoutingService, 'navigateToQuestionEditor')
-      .and.returnValue(true);
-    spyOn(ctrl, 'createQuestion').and.stub();
+    spyOn(
+      skillEditorRoutingService,
+      'navigateToQuestionEditor'
+    ).and.returnValue(true);
+    spyOn(component, 'createQuestion').and.stub();
 
-    ctrl.$onInit();
+    component.ngOnInit();
 
-    expect(ctrl.createQuestion).toHaveBeenCalled();
+    expect(component.createQuestion).toHaveBeenCalled();
   });
+
+  it('should not start creating a question if there are alerts', fakeAsync(() => {
+    alertsService.addWarning('a warning');
+    spyOn(loggerService, 'error').and.stub();
+
+    component.createQuestion();
+
+    expect(loggerService.error).toHaveBeenCalledWith(
+      'Could not create new question due to warnings: a warning'
+    );
+  }));
 
   it('should get selected skill id when a question is created', () => {
     // When modal is not shown, then newQuestionSkillIds get the values of
     // skillIds.
-    spyOn(ctrl, 'selectSkillModalIsShown').and.returnValues(true, false);
-    ctrl.skillIds = ['skillId2'];
-    expect(ctrl.newQuestionSkillIds).toEqual(undefined);
+    expect(component.newQuestionSkillIds).toBeUndefined();
 
-    ctrl.createQuestion();
+    component.selectSkillModalIsShown = true;
+    component.createQuestion();
 
-    expect(ctrl.newQuestionSkillIds).toEqual(['skillId1']);
+    expect(component.newQuestionSkillIds).toEqual(['skillId1']);
 
-    ctrl.createQuestion();
+    component.selectSkillModalIsShown = false;
+    component.createQuestion();
 
-    expect(ctrl.newQuestionSkillIds).toEqual(['skillId2']);
+    expect(component.newQuestionSkillIds).toEqual(['skillId1']);
   });
 
-  it('should populate misconceptions when a question is created', () => {
-    const skill = skillObjectFactory.createFromBackendDict({
+  it('should populate misconceptions when a question is created', fakeAsync(() => {
+    const skill = Skill.createFromBackendDict({
       id: 'skillId1',
       description: 'test description 1',
-      misconceptions: [{
-        id: '2',
-        name: 'test name',
-        notes: 'test notes',
-        feedback: 'test feedback',
-        must_be_addressed: true
-      }],
+      misconceptions: [
+        {
+          id: 2,
+          name: 'test name',
+          notes: 'test notes',
+          feedback: 'test feedback',
+          must_be_addressed: true,
+        },
+      ],
       rubrics: [],
       skill_contents: {
         explanation: {
           html: 'test explanation',
           content_id: 'explanation',
         },
-        worked_examples: [],
         recorded_voiceovers: {
-          voiceovers_mapping: {}
-        }
+          voiceovers_mapping: {},
+        },
       },
       language_code: 'en',
       version: 3,
       prerequisite_skill_ids: [],
-      all_questions_merged: null,
-      next_misconception_id: null,
-      superseding_skill_id: null
+      all_questions_merged: false,
+      next_misconception_id: 0,
+      superseding_skill_id: '',
     });
-    spyOn(SkillBackendApiService, 'fetchMultiSkillsAsync').and.returnValue(
-      $q.resolve([skill])
+    spyOn(skillBackendApiService, 'fetchMultiSkillsAsync').and.returnValue(
+      Promise.resolve([skill])
     );
-    ctrl.linkedSkillsWithDifficulty = [
-      SkillDifficulty.create('skillId1', '', 1)
+    component.linkedSkillsWithDifficulty = [
+      SkillDifficulty.create('skillId1', '', 1),
     ];
 
-    expect(ctrl.misconceptionsBySkill).toEqual(undefined);
+    expect(component.misconceptionsBySkill).toBeUndefined();
 
-    ctrl.initiateQuestionCreation();
-    $scope.$apply();
+    component.createQuestion();
+    tick();
 
-    expect(ctrl.misconceptionsBySkill).toEqual({
+    expect(component.misconceptionsBySkill).toEqual({
       skillId1: [
-        misconceptionObjectFactory.createFromBackendDict({
-          id: '2',
+        Misconception.createFromBackendDict({
+          id: 2,
           name: 'test name',
           notes: 'test notes',
           feedback: 'test feedback',
-          must_be_addressed: true
-        })
-      ]
+          must_be_addressed: true,
+        }),
+      ],
     });
-  });
+  }));
 
-  it('should warning message if fetching skills fails', () => {
-    spyOn(AlertsService, 'addWarning');
-    spyOn(SkillBackendApiService, 'fetchMultiSkillsAsync').and.returnValue(
-      $q.reject('Error occurred.')
+  it('should show warning message if fetching skills fails', () => {
+    spyOn(alertsService, 'addWarning');
+    spyOn(skillBackendApiService, 'fetchMultiSkillsAsync').and.returnValue(
+      Promise.reject('Error occurred.')
     );
 
-    ctrl.populateMisconceptions();
-    $scope.$apply();
+    component.populateMisconceptions(['']);
 
-    expect(AlertsService.addWarning).toHaveBeenCalled();
+    expect(skillBackendApiService.fetchMultiSkillsAsync).toHaveBeenCalled();
   });
 
   it('should show the index of a question', () => {
-    spyOn(QuestionsListService, 'getCurrentPageNumber').and.returnValue(5);
+    spyOn(questionsListService, 'getCurrentPageNumber').and.returnValue(5);
 
     // Question index = NUM_QUESTION_PER_PAGE (10) * current page number (5) +
     // index + 1 = 10 * 5 + 1 + 1 = 52.
-    expect(ctrl.getQuestionIndex(1)).toBe(52);
+    expect(component.getQuestionIndex(1)).toBe(52);
   });
 
-  it('should fetch question summaries on moving to next page', () => {
-    ctrl.selectedSkillId = 'skillId1';
-    spyOn(QuestionsListService, 'incrementPageNumber');
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
+  it('should fetch question summaries and use them on moving to next page', done => {
+    component.selectedSkillId = 'skillId1';
+    spyOn(questionsListService, 'incrementPageNumber');
+    spyOn(questionsListService, 'getQuestionSummariesAsync').and.resolveTo();
+    spyOn(questionsListService, 'getCachedQuestionSummaries');
 
-    ctrl.goToNextPage();
+    component.goToNextPage();
 
-    expect(QuestionsListService.incrementPageNumber).toHaveBeenCalled();
-    expect(QuestionsListService.getQuestionSummariesAsync).toHaveBeenCalledWith(
-      'skillId1', true, false
+    // Since goToNextPage calls an async function but is not async itself, we need to let that call finish.
+    setTimeout(() => {
+      expect(questionsListService.incrementPageNumber).toHaveBeenCalled();
+      expect(
+        questionsListService.getQuestionSummariesAsync
+      ).toHaveBeenCalledWith('skillId1', true, false);
+      expect(
+        questionsListService.getCachedQuestionSummaries
+      ).toHaveBeenCalled();
+      done();
+    });
+  });
+
+  it('should use cached question summaries on moving to previous page', () => {
+    component.selectedSkillId = 'skillId1';
+    spyOn(questionsListService, 'decrementPageNumber');
+    spyOn(questionsListService, 'getCachedQuestionSummaries');
+
+    component.goToPreviousPage();
+
+    expect(questionsListService.decrementPageNumber).toHaveBeenCalled();
+    expect(questionsListService.getCachedQuestionSummaries).toHaveBeenCalled();
+  });
+
+  it(
+    'should check if warning is to be shown for unaddressed skill' +
+      ' misconceptions',
+    () => {
+      // The selected skill id is skillId1.
+      component.misconceptionIdsForSelectedSkill = [1, 2];
+
+      expect(
+        component.showUnaddressedSkillMisconceptionWarning([
+          'skillId1-1',
+          'skillId1-2',
+        ])
+      ).toBe(true);
+      expect(
+        component.showUnaddressedSkillMisconceptionWarning([
+          'skillId1-1',
+          'skillId2-2',
+        ])
+      ).toBe(false);
+    }
+  );
+
+  it("should get skill editor's URL", () => {
+    expect(component.getSkillEditorUrl('skillId1')).toBe(
+      '/skill_editor/skillId1'
     );
-  });
-
-  it('should fetch question summaries on moving to previous page', () => {
-    ctrl.selectedSkillId = 'skillId1';
-    spyOn(QuestionsListService, 'decrementPageNumber');
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
-
-    ctrl.goToPreviousPage();
-
-    expect(QuestionsListService.decrementPageNumber).toHaveBeenCalled();
-    expect(QuestionsListService.getQuestionSummariesAsync).toHaveBeenCalledWith(
-      'skillId1', false, false
-    );
-  });
-
-  it('should check if warning is to be shown for unaddressed skill' +
-    ' misconceptions', () => {
-    // The selected skill id is skillId1.
-    ctrl.misconceptionIdsForSelectedSkill = [1, 2];
-
-    expect(ctrl.showUnaddressedSkillMisconceptionWarning([
-      'skillId1-1',
-      'skillId1-2',
-    ])).toBe(true);
-    expect(ctrl.showUnaddressedSkillMisconceptionWarning([
-      'skillId1-1',
-      'skillId2-2',
-    ])).toBe(false);
-  });
-
-
-  it('should get skill editor\'s URL', () => {
-    expect(ctrl.getSkillEditorUrl('skillId1')).toBe('/skill_editor/skillId1');
   });
 
   it('should check if current page is the last one', () => {
-    spyOn(QuestionsListService, 'isLastQuestionBatch').and.returnValue(true);
+    spyOn(questionsListService, 'isLastQuestionBatch').and.returnValue(true);
 
-    expect(ctrl.isLastPage()).toBe(true);
+    expect(component.isLastPage()).toBe(true);
   });
 
-  it('should not save and publish question if there are' +
-    ' validation errors', () => {
-    ctrl.question = question;
-    spyOn(AlertsService, 'addWarning');
-    spyOn(ctrl.question, 'getValidationErrorMessage').and.returnValue('Error');
-    spyOn(ctrl.question, 'getUnaddressedMisconceptionNames')
-      .and.returnValue(['misconception1', 'misconception2']);
+  it(
+    'should not save and publish question if there are' + ' validation errors',
+    () => {
+      component.question = question as Question;
+      spyOn(alertsService, 'addWarning');
+      spyOn(
+        questionValidationService,
+        'getValidationErrorMessage'
+      ).and.returnValue('Error');
+      spyOn(
+        component.question,
+        'getUnaddressedMisconceptionNames'
+      ).and.returnValue(['misconception1', 'misconception2']);
 
-    ctrl.saveAndPublishQuestion('Commit');
+      component.saveAndPublishQuestion('Commit');
 
-    expect(AlertsService.addWarning).toHaveBeenCalledWith('Error');
-  });
+      expect(alertsService.addWarning).toHaveBeenCalledWith('Error');
+    }
+  );
 
-  it('should create new question in the backend if there are no validation' +
-  ' error on saving and publishing a question when question is not already' +
-  ' being updated', () => {
-    ctrl.question = question;
-    ctrl.questionIsBeingUpdated = false;
-    ctrl.skillLinkageModificationsArray = ['1', '2', 1];
-    spyOn(ctrl.question, 'getValidationErrorMessage').and.returnValue('');
-    spyOn(ctrl.question, 'getUnaddressedMisconceptionNames')
-      .and.returnValue([]);
-    spyOn(EditableQuestionBackendApiService, 'createQuestionAsync')
-      .and.returnValue($q.resolve({
-        questionId: 'qId'
-      }));
-    spyOn(EditableQuestionBackendApiService, 'editQuestionSkillLinksAsync');
+  it(
+    'should show an error and not save question if there are' +
+      ' errors from question backend api service',
+    fakeAsync(() => {
+      component.question = question as Question;
+      component.questionIsBeingUpdated = false;
+      spyOn(
+        editableQuestionBackendApiService,
+        'createQuestionAsync'
+      ).and.returnValue(Promise.reject('Error'));
+      spyOn(
+        component.question,
+        'getUnaddressedMisconceptionNames'
+      ).and.returnValue([]);
+      spyOn(alertsService, 'addWarning');
 
-    ctrl.saveAndPublishQuestion('Commit');
-    $scope.$apply();
+      component.saveAndPublishQuestion(null);
+      tick();
 
-    expect(EditableQuestionBackendApiService.editQuestionSkillLinksAsync)
-      .toHaveBeenCalledWith('qId', ['1', '2', 1]);
-  });
+      expect(alertsService.addWarning).toHaveBeenCalledWith('Error');
+    })
+  );
 
-  it('should save question when another question is being updated', () => {
-    ctrl.question = question;
-    ctrl.questionIsBeingUpdated = true;
-    spyOn(ctrl.question, 'getValidationErrorMessage').and.returnValue('');
-    spyOn(ctrl.question, 'getUnaddressedMisconceptionNames')
-      .and.returnValue([]);
-    spyOn(QuestionUndoRedoService, 'hasChanges').and.returnValue(true);
-    spyOn(EditableQuestionBackendApiService, 'updateQuestionAsync')
-      .and.returnValue($q.resolve());
-    spyOn(QuestionUndoRedoService, 'clearChanges');
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
+  it(
+    'should create new question in the backend if there are no validation' +
+      ' error on saving and publishing a question when question is not already' +
+      ' being updated',
+    fakeAsync(() => {
+      component.question = question as Question;
+      component.questionIsBeingUpdated = false;
+      component.skillLinkageModificationsArray = [
+        {
+          id: '1',
+          task: '',
+          difficulty: 1,
+        },
+        {
+          id: '2',
+          task: '',
+          difficulty: 2,
+        },
+        {
+          id: '1',
+          task: '',
+          difficulty: 1,
+        },
+      ];
 
-    ctrl.saveAndPublishQuestion('Commit');
-    $scope.$apply();
+      spyOn(
+        questionValidationService,
+        'getValidationErrorMessage'
+      ).and.returnValue('');
+      spyOn(
+        component.question,
+        'getUnaddressedMisconceptionNames'
+      ).and.returnValue([]);
+      spyOn(
+        editableQuestionBackendApiService,
+        'createQuestionAsync'
+      ).and.returnValue(
+        Promise.resolve({
+          questionId: 'qId',
+        })
+      );
+      spyOn(
+        editableQuestionBackendApiService,
+        'editQuestionSkillLinksAsync'
+      ).and.returnValue(Promise.resolve(question));
 
-    expect(QuestionUndoRedoService.clearChanges).toHaveBeenCalled();
-    expect(QuestionsListService.getQuestionSummariesAsync)
-      .toHaveBeenCalledWith('skillId1', true, true);
-  });
+      component.saveAndPublishQuestion('Commit');
+      tick();
 
-  it('should show error if saving question fails when another question' +
-    ' is being updated', () => {
-    ctrl.question = question;
-    ctrl.questionIsBeingUpdated = true;
-    spyOn(ctrl.question, 'getValidationErrorMessage').and.returnValue('');
-    spyOn(ctrl.question, 'getUnaddressedMisconceptionNames')
-      .and.returnValue([]);
-    spyOn(QuestionUndoRedoService, 'hasChanges').and.returnValue(true);
-    spyOn(EditableQuestionBackendApiService, 'updateQuestionAsync')
-      .and.returnValue($q.reject());
-    spyOn(QuestionUndoRedoService, 'clearChanges');
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
-    spyOn(AlertsService, 'addWarning');
+      expect(
+        editableQuestionBackendApiService.editQuestionSkillLinksAsync
+      ).toHaveBeenCalledWith('qId', [
+        {
+          id: '1',
+          task: '',
+          difficulty: 1,
+        },
+        {
+          id: '2',
+          task: '',
+          difficulty: 2,
+        },
+        {
+          id: '1',
+          task: '',
+          difficulty: 1,
+        },
+      ]);
+    })
+  );
 
-    ctrl.saveAndPublishQuestion('Commit');
-    $scope.$apply();
+  it('should save question when another question is being updated', fakeAsync(() => {
+    component.question = question as Question;
+    component.questionIsBeingUpdated = true;
 
-    expect(QuestionUndoRedoService.clearChanges).not.toHaveBeenCalled();
-    expect(QuestionsListService.getQuestionSummariesAsync)
-      .not.toHaveBeenCalled();
-    expect(AlertsService.addWarning).toHaveBeenCalledWith(
-      'There was an error saving the question.');
-  });
+    spyOn(
+      questionValidationService,
+      'getValidationErrorMessage'
+    ).and.returnValue('');
+    spyOn(
+      component.question,
+      'getUnaddressedMisconceptionNames'
+    ).and.returnValue([]);
+    spyOn(questionUndoRedoService, 'hasChanges').and.returnValue(true);
+    spyOn(
+      editableQuestionBackendApiService,
+      'updateQuestionAsync'
+    ).and.returnValue(Promise.resolve(question));
+    spyOn(questionUndoRedoService, 'clearChanges');
+    spyOn(questionsListService, 'getQuestionSummariesAsync');
 
-  it('should display warning if commit message is not given while saving' +
-    ' a question', () => {
-    ctrl.question = question;
-    ctrl.questionIsBeingUpdated = true;
-    spyOn(ctrl.question, 'getValidationErrorMessage').and.returnValue('');
-    spyOn(ctrl.question, 'getUnaddressedMisconceptionNames')
-      .and.returnValue([]);
-    spyOn(QuestionUndoRedoService, 'hasChanges').and.returnValue(true);
-    spyOn(AlertsService, 'addWarning');
+    component.saveAndPublishQuestion('Commit');
+    tick();
 
-    ctrl.saveAndPublishQuestion();
-    $scope.$apply();
+    expect(questionUndoRedoService.clearChanges).toHaveBeenCalled();
+    expect(questionsListService.getQuestionSummariesAsync).toHaveBeenCalledWith(
+      'skillId1',
+      true,
+      true
+    );
+  }));
 
-    expect(AlertsService.addWarning)
-      .toHaveBeenCalledWith('Please provide a valid commit message.');
-  });
+  it(
+    'should show error if saving question fails when another question' +
+      ' is being updated',
+    fakeAsync(() => {
+      component.question = question as Question;
+      component.questionIsBeingUpdated = true;
+      spyOn(
+        questionValidationService,
+        'getValidationErrorMessage'
+      ).and.returnValue('');
+      spyOn(
+        component.question,
+        'getUnaddressedMisconceptionNames'
+      ).and.returnValue([]);
+      spyOn(questionUndoRedoService, 'hasChanges').and.returnValue(true);
+      spyOn(questionUndoRedoService, 'getCommittableChangeList');
+      spyOn(
+        editableQuestionBackendApiService,
+        'updateQuestionAsync'
+      ).and.returnValue(Promise.reject());
+      spyOn(questionUndoRedoService, 'clearChanges');
+      spyOn(questionsListService, 'getQuestionSummariesAsync');
+      spyOn(alertsService, 'addWarning');
 
-  it('should show \'confirm question modal exit\' modal when user ' +
-    'clicks cancel', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve()
-    });
+      component.saveAndPublishQuestion('Commit');
+      tick();
 
-    ctrl.cancel();
-    $scope.$apply();
+      expect(questionUndoRedoService.clearChanges).not.toHaveBeenCalled();
+      expect(
+        questionsListService.getQuestionSummariesAsync
+      ).not.toHaveBeenCalled();
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'There was an error saving the question.'
+      );
+    })
+  );
 
-    expect($uibModal.open).toHaveBeenCalled();
-  });
+  it(
+    'should display warning if commit message is not given while saving' +
+      ' a question',
+    fakeAsync(() => {
+      component.question = question as Question;
+      component.questionIsBeingUpdated = true;
+      spyOn(
+        questionValidationService,
+        'getValidationErrorMessage'
+      ).and.returnValue('');
+      spyOn(
+        component.question,
+        'getUnaddressedMisconceptionNames'
+      ).and.returnValue([]);
+      spyOn(questionUndoRedoService, 'hasChanges').and.returnValue(true);
+      spyOn(alertsService, 'addWarning');
 
-  it('should reset image save destination when user clicks confirm on' +
-    ' \'confirm question modal exit\' modal', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve('confirm')
-    });
-    spyOn(ContextService, 'resetImageSaveDestination');
+      component.saveAndPublishQuestion(null);
+      tick();
 
-    ctrl.cancel();
-    $scope.$apply();
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Please provide a valid commit message.'
+      );
+    })
+  );
 
-    expect(ContextService.resetImageSaveDestination).toHaveBeenCalled();
-  });
+  it(
+    "should show 'confirm question modal exit' modal when user " +
+      'clicks cancel',
+    fakeAsync(() => {
+      spyOn(ngbModal, 'open').and.callFake((dlg: unknown, opt: unknown) => {
+        return {
+          result: Promise.resolve(),
+        } as NgbModalRef;
+      });
 
-  it('should close \'confirm question modal exit\' modal when user clicks' +
-    ' cancel', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject('close')
-    });
+      component.cancel();
+      tick();
 
-    ctrl.cancel();
-    $scope.$apply();
+      expect(ngbModal.open).toHaveBeenCalled();
+    })
+  );
 
-    expect($uibModal.open).toHaveBeenCalled();
-  });
+  it(
+    'should reset image save destination when user clicks confirm on' +
+      " 'confirm question modal exit' modal",
+    fakeAsync(() => {
+      spyOn(ngbModal, 'open').and.returnValue({
+        result: Promise.resolve('confirm'),
+      } as NgbModalRef);
+      spyOn(pageContextService, 'resetImageSaveDestination').and.stub();
+
+      component.cancel();
+      tick();
+
+      expect(pageContextService.resetImageSaveDestination).toHaveBeenCalled();
+    })
+  );
+
+  it('should not disable save button when user cancels the save modal', fakeAsync(() => {
+    component.questionIsBeingUpdated = true;
+    spyOn(ngbModal, 'open').and.returnValue({
+      result: Promise.reject(),
+    } as NgbModalRef);
+
+    component.saveQuestion();
+    tick();
+
+    expect(component.questionIsBeingSaved).toBe(false);
+  }));
+
+  it(
+    "should close 'confirm question modal exit' modal when user clicks" +
+      ' cancel',
+    fakeAsync(() => {
+      spyOn(ngbModal, 'open').and.callFake((dlg: unknown, opt: unknown) => {
+        return {
+          result: Promise.reject(),
+        } as NgbModalRef;
+      });
+
+      component.cancel();
+      tick();
+
+      expect(ngbModal.open).toHaveBeenCalled();
+    })
+  );
 
   it('should update skill difficulty when user selects a difficulty', () => {
     let skill = SkillDifficulty.create('skillId1', '', 0.9);
-    ctrl.newQuestionSkillIds = ['skillId1'];
-    ctrl.linkedSkillsWithDifficulty = [];
-    ctrl.skillLinkageModificationsArray = [];
+    component.newQuestionSkillIds = ['skillId1'];
+    component.linkedSkillsWithDifficulty = [];
+    component.skillLinkageModificationsArray = [];
 
-    ctrl.updateSkillWithDifficulty(skill, 0);
+    component.updateSkillWithDifficulty(skill, 0);
 
-    expect(ctrl.linkedSkillsWithDifficulty[0]).toBe(skill);
-    expect(ctrl.newQuestionSkillDifficulties).toEqual([0.9]);
-    expect(ctrl.skillLinkageModificationsArray).toEqual([
+    expect(component.linkedSkillsWithDifficulty[0]).toBe(skill);
+    expect(component.newQuestionSkillDifficulties).toEqual([0.9]);
+    expect(component.skillLinkageModificationsArray).toEqual([
       {
         id: 'skillId1',
         task: 'update_difficulty',
-        difficulty: 0.9
-      }
+        difficulty: 0.9,
+      },
     ]);
 
-    ctrl.newQuestionSkillIds = [];
-    ctrl.linkedSkillsWithDifficulty = [];
-    ctrl.skillLinkageModificationsArray = [];
-    ctrl.newQuestionSkillDifficulties = [];
+    component.newQuestionSkillIds = [];
+    component.linkedSkillsWithDifficulty = [];
+    component.skillLinkageModificationsArray = [];
+    component.newQuestionSkillDifficulties = [];
 
-    ctrl.updateSkillWithDifficulty(skill, 0);
+    component.updateSkillWithDifficulty(skill, 0);
 
-    expect(ctrl.newQuestionSkillIds).toEqual(
-      ['skillId1']);
-    expect(ctrl.newQuestionSkillDifficulties).toEqual([0.9]);
-    expect(ctrl.skillLinkageModificationsArray).toEqual([
+    expect(component.newQuestionSkillIds).toEqual(['skillId1']);
+    expect(component.newQuestionSkillDifficulties).toEqual([0.9]);
+    expect(component.skillLinkageModificationsArray).toEqual([
       {
         id: 'skillId1',
         task: 'update_difficulty',
-        difficulty: 0.9
-      }
+        difficulty: 0.9,
+      },
     ]);
   });
 
   describe('when user clicks on edit question', () => {
-    let questionSummaryForOneSkill = QuestionSummary
-      .createFromBackendDict({
-        id: 'qId',
-        interaction_id: '',
-        misconception_ids: [],
-        question_content: ''
-      });
+    let questionSummaryForOneSkill = QuestionSummary.createFromBackendDict({
+      id: 'qId',
+      interaction_id: '',
+      misconception_ids: [],
+      question_content: '',
+    });
     let skillDescription = 'Skill Description';
     let difficulty: 0.9;
 
     it('should return null if editor is already opened', () => {
-      spyOn(ctrl, 'canEditQuestion');
-      ctrl.editorIsOpen = true;
+      component.editorIsOpen = true;
 
-      expect(ctrl.editQuestion()).toBe(undefined);
-      expect(ctrl.canEditQuestion).not.toHaveBeenCalled();
+      expect(component.editQuestion({} as QuestionSummary, '', 0)).toBe(
+        undefined
+      );
     });
 
-    it('should warning if user does not have rights to delete a' +
-      ' question', () => {
-      spyOn(ctrl, 'canEditQuestion').and.returnValue(false);
-      spyOn(AlertsService, 'addWarning');
+    it(
+      'should warning if user does not have rights to delete a' + ' question',
+      () => {
+        component.canEditQuestion = false;
+        spyOn(alertsService, 'addWarning');
 
-      ctrl.editQuestion();
+        component.editQuestion({} as QuestionSummary, '', 0);
 
-      expect(AlertsService.addWarning).toHaveBeenCalledWith(
-        'User does not have enough rights to delete the question');
-    });
+        expect(alertsService.addWarning).toHaveBeenCalledWith(
+          'User does not have enough rights to edit the question'
+        );
+      }
+    );
 
-    it('should fetch question data from backend and set new ' +
-      'question\'s properties', () => {
-      ctrl.editorIsOpen = false;
-      spyOn(ctrl, 'canEditQuestion').and.returnValue(true);
-      spyOn(ctrl, 'selectSkillModalIsShown').and.returnValue(true);
-      spyOn(EditableQuestionBackendApiService, 'fetchQuestionAsync')
-        .and.returnValue($q.resolve({
-          associated_skill_dicts: [{
-            id: 'skillId1',
-            misconceptions: [{
-              id: 'misconception1',
-              feedback: '',
-              must_be_addressed: false,
-              notes: '',
-              name: 'MIsconception 1'
-            }],
-            description: ''
-          }],
-          questionObject: question
-        }));
+    it(
+      'should fetch question data from backend and set new ' +
+        "question's properties",
+      fakeAsync(() => {
+        component.editorIsOpen = false;
+        component.canEditQuestion = true;
+        component.selectSkillModalIsShown = true;
 
-      ctrl.editQuestion(
-        questionSummaryForOneSkill, skillDescription, difficulty);
-      $scope.$apply();
+        spyOn(
+          editableQuestionBackendApiService,
+          'fetchQuestionAsync'
+        ).and.returnValue(
+          Promise.resolve({
+            associated_skill_dicts: [
+              {
+                id: 'skillId1',
+                misconceptions: [
+                  {
+                    id: 1,
+                    feedback: '',
+                    must_be_addressed: false,
+                    notes: '',
+                    name: 'MIsconception 1',
+                  },
+                ],
+                description: '',
+              },
+            ],
+            questionObject: question,
+          } as FetchQuestionResponse)
+        );
 
-      expect(ctrl.question).toEqual(question);
-      expect(ctrl.questionId).toBe('1');
-      expect(ctrl.questionStateData).toEqual(questionStateData);
-    });
+        component.editQuestion(
+          questionSummaryForOneSkill,
+          skillDescription,
+          difficulty
+        );
+        tick();
 
-    it('should display warning if fetching from backend fails', () => {
-      ctrl.editorIsOpen = false;
-      ctrl.skillIds = ['skillId1'];
-      spyOn(ctrl, 'canEditQuestion').and.returnValue(true);
-      spyOn(ctrl, 'selectSkillModalIsShown').and.returnValue(false);
-      spyOn(EditableQuestionBackendApiService, 'fetchQuestionAsync')
-        .and.returnValue($q.reject({
-          error: 'Failed to fetch question.'
-        }));
-      spyOn(AlertsService, 'addWarning');
+        expect(component.question).toEqual(question);
+        expect(component.questionId).toBe('1');
+        expect(component.questionStateData).toEqual(questionStateData);
+      })
+    );
 
-      ctrl.editQuestion(
-        questionSummaryForOneSkill, skillDescription, difficulty);
-      $scope.$apply();
+    it('should display warning if fetching from backend fails', fakeAsync(() => {
+      component.editorIsOpen = false;
 
-      expect(AlertsService.addWarning).toHaveBeenCalledWith(
+      component.canEditQuestion = true;
+      component.selectSkillModalIsShown = false;
+      spyOn(
+        editableQuestionBackendApiService,
+        'fetchQuestionAsync'
+      ).and.returnValue(
+        Promise.reject({
+          error: 'Failed to fetch question.',
+        })
+      );
+      spyOn(alertsService, 'addWarning');
+
+      component.editQuestion(
+        questionSummaryForOneSkill,
+        skillDescription,
+        difficulty
+      );
+      tick();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
         'Failed to fetch question.'
       );
-    });
+    }));
   });
 
-  it('should save image destination to local storage if question editor is' +
-    ' opened while a question is already being created', () => {
-    ctrl.newQuestionIsBeingCreated = true;
-    spyOn(ContextService, 'setImageSaveDestinationToLocalStorage');
+  it(
+    'should save image destination to local storage if question editor is' +
+      ' opened while a question is already being created',
+    () => {
+      component.newQuestionIsBeingCreated = true;
+      spyOn(pageContextService, 'setImageSaveDestinationToLocalStorage');
 
-    ctrl.openQuestionEditor();
+      component.openQuestionEditor();
 
-    expect(ContextService.setImageSaveDestinationToLocalStorage)
-      .toHaveBeenCalled();
-  });
+      expect(
+        pageContextService.setImageSaveDestinationToLocalStorage
+      ).toHaveBeenCalled();
+    }
+  );
 
-  describe('when deleting question from skill', () => {
+  describe('when removing question from skill', () => {
     let questionId = 'qId';
-    let skillDescription = 'Skill Description';
 
-    it('should display warning when user does not have rights to delete' +
-      ' a question', () => {
-      spyOn(ctrl, 'canEditQuestion').and.returnValue(false);
-      spyOn(AlertsService, 'addWarning');
+    it('should remove question when user is in the skill editor', fakeAsync(() => {
+      component.selectedSkillId = 'skillId1';
+      component.deletedQuestionIds = [];
+      spyOn(alertsService, 'addSuccessMessage');
+      spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: {
+          skillId: 'skillId',
+          canEditQuestion: true,
+          numberOfQuestions: 3,
+        },
+        result: Promise.resolve(),
+      } as NgbModalRef);
+      component.allSkillSummaries = [];
+      spyOn(
+        editableQuestionBackendApiService,
+        'editQuestionSkillLinksAsync'
+      ).and.returnValue(Promise.resolve(question));
 
-      ctrl.deleteQuestionFromSkill(questionId, skillDescription);
+      component.removeQuestionFromSkill(questionId, 1);
+      tick();
 
-      expect(AlertsService.addWarning).toHaveBeenCalledWith(
-        'User does not have enough rights to delete the question');
-    });
-
-    it('should delete question when user is in the skill editor', () => {
-      ctrl.selectedSkillId = 'skillId1';
-      ctrl.deletedQuestionIds = [];
-      spyOn(ctrl, 'canEditQuestion').and.returnValue(true);
-      spyOn(AlertsService, 'addSuccessMessage');
-      spyOn(ctrl, 'getAllSkillSummaries').and.returnValue([]);
-      spyOn(EditableQuestionBackendApiService, 'editQuestionSkillLinksAsync')
-        .and.returnValue($q.resolve());
-
-      ctrl.deleteQuestionFromSkill(questionId, skillDescription);
-      $scope.$apply();
-
-      expect(AlertsService.addSuccessMessage).toHaveBeenCalledWith(
-        'Deleted Question'
+      expect(ngbModal.open).toHaveBeenCalled();
+      expect(alertsService.addSuccessMessage).toHaveBeenCalledWith(
+        'Question Removed'
       );
-    });
+    }));
 
-    it('should delete question when user is not in the skill editor', () => {
-      ctrl.selectedSkillId = 'skillId1';
-      ctrl.deletedQuestionIds = [];
-      spyOn(ctrl, 'canEditQuestion').and.returnValue(true);
-      spyOn(AlertsService, 'addSuccessMessage');
-      spyOn(ctrl, 'getAllSkillSummaries').and.returnValue([
+    it('should remove question when user is not in the skill editor', fakeAsync(() => {
+      component.selectedSkillId = 'skillId1';
+      component.deletedQuestionIds = [];
+      spyOn(alertsService, 'addSuccessMessage');
+      spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: {
+          skillId: 'skillId',
+          canEditQuestion: true,
+          numberOfQuestions: 3,
+        },
+        result: Promise.resolve(),
+      } as NgbModalRef);
+      component.allSkillSummaries = [
         ShortSkillSummary.createFromBackendDict({
           skill_id: '1',
-          skill_description: 'Skill Description'
-        })
-      ]);
-      spyOn(EditableQuestionBackendApiService, 'editQuestionSkillLinksAsync')
-        .and.returnValue($q.resolve());
+          skill_description: 'Skill Description',
+        }),
+      ];
+      spyOn(
+        editableQuestionBackendApiService,
+        'editQuestionSkillLinksAsync'
+      ).and.returnValue(Promise.resolve(question));
 
-      ctrl.deleteQuestionFromSkill(questionId, skillDescription);
-      $scope.$apply();
+      component.removeQuestionFromSkill(questionId, 1);
+      tick();
 
-      expect(AlertsService.addSuccessMessage).toHaveBeenCalledWith(
-        'Deleted Question'
+      expect(ngbModal.open).toHaveBeenCalled();
+      expect(alertsService.addSuccessMessage).toHaveBeenCalledWith(
+        'Question Removed'
       );
-    });
+    }));
+
+    it('should cancel remove question modal', fakeAsync(() => {
+      component.deletedQuestionIds = [];
+      spyOn(alertsService, 'addInfoMessage');
+      component.allSkillSummaries = [
+        ShortSkillSummary.createFromBackendDict({
+          skill_id: '1',
+          skill_description: 'Skill Description',
+        }),
+      ];
+      spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: {
+          skillId: 'skillId',
+          canEditQuestion: true,
+          numberOfQuestions: 3,
+        },
+        result: Promise.reject(),
+      } as NgbModalRef);
+      spyOn(
+        editableQuestionBackendApiService,
+        'editQuestionSkillLinksAsync'
+      ).and.returnValue(Promise.resolve(question));
+      spyOn(component, 'removeQuestionSkillLinkAsync');
+
+      component.removeQuestionFromSkill(questionId, 1);
+      tick();
+      expect(ngbModal.open).toHaveBeenCalled();
+      expect(component.removeQuestionSkillLinkAsync).not.toHaveBeenCalled();
+    }));
   });
 
   it('should not remove skill if it is the only one', () => {
-    ctrl.associatedSkillSummaries = ['summary'];
-    spyOn(AlertsService, 'addInfoMessage');
+    component.associatedSkillSummaries = [
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: '1',
+        skill_description: 'Skill Description',
+      }),
+    ];
+    spyOn(alertsService, 'addInfoMessage');
 
-    ctrl.removeSkill();
+    component.removeSkill('');
 
-    expect(AlertsService.addInfoMessage).toHaveBeenCalledWith(
-      'A question should be linked to at least one skill.');
+    expect(alertsService.addInfoMessage).toHaveBeenCalledWith(
+      'A question should be linked to at least one skill.'
+    );
   });
 
   it('should remove skill linked to a question', () => {
-    ctrl.associatedSkillSummaries = [
+    component.associatedSkillSummaries = [
       ShortSkillSummary.createFromBackendDict({
         skill_id: '1',
-        skill_description: 'Skill Description'
+        skill_description: 'Skill Description',
       }),
       ShortSkillSummary.createFromBackendDict({
         skill_id: '2',
-        skill_description: 'Skill Description'
-      })
+        skill_description: 'Skill Description',
+      }),
     ];
-    ctrl.skillLinkageModificationsArray = [];
-    ctrl.removeSkill('1');
+    component.skillLinkageModificationsArray = [];
+    component.removeSkill('1');
 
-    expect(ctrl.associatedSkillSummaries).toEqual([
+    expect(component.associatedSkillSummaries).toEqual([
       ShortSkillSummary.createFromBackendDict({
         skill_id: '2',
-        skill_description: 'Skill Description'
-      })
+        skill_description: 'Skill Description',
+      }),
     ]);
-    expect(ctrl.skillLinkageModificationsArray).toEqual([
+    expect(component.skillLinkageModificationsArray).toEqual([
       {
         id: '1',
-        task: 'remove'
-      }
+        task: 'remove',
+        difficulty: component.difficulty,
+      } as SkillLinkageModificationsArray,
     ]);
   });
 
-  it('should check that question is not savable if there are no' +
-    ' changes', () => {
-    ctrl.skillLinkageModificationsArray = [];
-    ctrl.isSkillDifficultyChanged = false;
-    spyOn(QuestionUndoRedoService, 'hasChanges').and.returnValue(false);
+  it(
+    'should check that question is not savable if there are no' + ' changes',
+    () => {
+      component.skillLinkageModificationsArray = [];
+      component.isSkillDifficultyChanged = false;
+      spyOn(questionUndoRedoService, 'hasChanges').and.returnValue(false);
 
-    expect(ctrl.isQuestionSavable()).toBe(false);
-  });
+      expect(component.isQuestionSavable()).toBe(false);
+    }
+  );
 
   it('should check if question is savable', () => {
-    ctrl.questionIsBeingUpdated = false;
-    ctrl.newQuestionSkillDifficulties = [0.9];
-    spyOn(QuestionUndoRedoService, 'hasChanges').and.returnValue(true);
-    spyOn(QuestionValidationService, 'isQuestionValid')
-      .and.returnValues(true, false);
+    component.questionIsBeingUpdated = false;
+    component.newQuestionSkillDifficulties = [0.9];
+    spyOn(questionUndoRedoService, 'hasChanges').and.returnValue(true);
+    spyOn(questionValidationService, 'isQuestionValid').and.returnValues(
+      true,
+      false
+    );
 
-    expect(ctrl.isQuestionSavable()).toBe(true);
+    expect(component.isQuestionSavable()).toBe(true);
 
-    ctrl.questionIsBeingUpdated = true;
-    expect(ctrl.isQuestionSavable()).toBe(false);
+    component.questionIsBeingUpdated = true;
+    expect(component.isQuestionSavable()).toBe(false);
   });
 
   it('should show solution if interaction can have solution', () => {
-    ctrl.question = question;
-    spyOn(ctrl.question, 'getStateData').and.returnValue({
+    component.question = question as Question;
+    spyOn(component.question, 'getStateData').and.returnValue({
       interaction: {
-        id: 'TextInput'
-      }
-    });
+        id: 'TextInput',
+      },
+    } as State);
 
-    expect(ctrl.showSolutionCheckpoint()).toBe(true);
+    expect(component.showSolutionCheckpoint()).toBe(true);
+    // This throws "Type 'null' is not assignable to type 'Question'.". We need to
+    // suppress this error because we are testing the component's behavior when
+    // question is null.
+    // @ts-expect-error
+    component.question = null;
+    expect(component.showSolutionCheckpoint()).toBe(false);
   });
 
-  it('should show info message if skills is already linked to question', () => {
+  it('should show info message if skills is already linked to question', fakeAsync(() => {
     var skillSummaryDict = {
       id: 'skillId1',
       description: 'description1',
       language_code: 'en',
       version: 1,
       misconception_count: 3,
-      worked_examples_count: 3,
       skill_model_created_on: 1593138898626.193,
-      skill_model_last_updated: 1593138898626.193
+      skill_model_last_updated: 1593138898626.193,
     };
-    ctrl.associatedSkillSummaries = [
+    component.associatedSkillSummaries = [
       ShortSkillSummary.createFromBackendDict({
         skill_id: 'skillId1',
-        skill_description: 'Skill Description'
+        skill_description: 'Skill Description',
       }),
       ShortSkillSummary.createFromBackendDict({
         skill_id: 'skillId2',
-        skill_description: 'Skill Description'
-      })
+        skill_description: 'Skill Description',
+      }),
     ];
-    spyOn(ctrl, 'getGroupedSkillSummaries').and.returnValue({
+    component.groupedSkillSummaries = {
       current: [],
-      others: [skillSummaryDict]
-    });
-    spyOn(ngbModal, 'open').and.returnValue(
-      <NgbModalRef>{
-        componentInstance: new MockNgbModalRef(),
-        result: $q.resolve(skillSummaryDict)
-      }
-    );
-    spyOn(AlertsService, 'addInfoMessage');
-
-    ctrl.addSkill();
-    $scope.$apply();
-
-    expect(AlertsService.addInfoMessage).toHaveBeenCalledWith(
-      'Skill already linked to question'
-    );
-  });
-
-  it('should link skill if it is not already linked to question', () => {
-    var skillSummaryDict = {
-      id: 'skillId1',
-      description: 'description1',
-      language_code: 'en',
-      version: 1,
-      misconception_count: 3,
-      worked_examples_count: 3,
-      skill_model_created_on: 1593138898626.193,
-      skill_model_last_updated: 1593138898626.193
+      others: [skillSummaryDict],
     };
-    ctrl.associatedSkillSummaries = [
-      ShortSkillSummary.createFromBackendDict({
-        skill_id: 'skillId2',
-        skill_description: 'Skill Description'
-      }),
-      ShortSkillSummary.createFromBackendDict({
-        skill_id: 'skillId3',
-        skill_description: 'Skill Description'
-      })
-    ];
-    spyOn(ctrl, 'getGroupedSkillSummaries').and.returnValue({
-      current: [],
-      others: [skillSummaryDict]
-    });
-    spyOn(ngbModal, 'open').and.returnValue(
-      <NgbModalRef>{
-        componentInstance: new MockNgbModalRef(),
-        result: $q.resolve(skillSummaryDict)
-      }
-    );
+    spyOn(ngbModal, 'open').and.returnValue({
+      componentInstance: new MockNgbModalRef(),
+      result: Promise.resolve(skillSummaryDict),
+    } as NgbModalRef);
+    spyOn(alertsService, 'addInfoMessage');
 
-    ctrl.addSkill();
-    $scope.$apply();
-
-    expect(ctrl.associatedSkillSummaries).toEqual(
-      [
-        ShortSkillSummary.createFromBackendDict({
-          skill_id: 'skillId2',
-          skill_description: 'Skill Description'
-        }),
-        ShortSkillSummary.createFromBackendDict({
-          skill_id: 'skillId3',
-          skill_description: 'Skill Description'
-        }),
-        ShortSkillSummary.createFromBackendDict({
-          skill_id: 'skillId1',
-          skill_description: 'description1'
-        })
-      ]
-    );
-    expect(ctrl.skillLinkageModificationsArray).toEqual([{
-      id: 'skillId1',
-      task: 'add',
-      difficulty: 0.3
-    }]);
-  });
-
-  it('should close modal when user clicks on cancel', () => {
-    var skillSummaryDict = {
-      id: 'skillId1',
-      description: 'description1',
-      language_code: 'en',
-      version: 1,
-      misconception_count: 3,
-      worked_examples_count: 3,
-      skill_model_created_on: 1593138898626.193,
-      skill_model_last_updated: 1593138898626.193
-    };
-    ctrl.associatedSkillSummaries = [
-      ShortSkillSummary.createFromBackendDict({
-        skill_id: 'skillId2',
-        skill_description: 'Skill Description'
-      }),
-      ShortSkillSummary.createFromBackendDict({
-        skill_id: 'skillId3',
-        skill_description: 'Skill Description'
-      })
-    ];
-    spyOn(ctrl, 'getGroupedSkillSummaries').and.returnValue({
-      current: [],
-      others: [skillSummaryDict]
-    });
-    spyOn(ngbModal, 'open').and.returnValue(
-      <NgbModalRef>{
-        componentInstance: new MockNgbModalRef(),
-        result: $q.reject(skillSummaryDict)
-      }
-    );
-    spyOn(AlertsService, 'addInfoMessage');
-
-    ctrl.addSkill();
-    $scope.$apply();
+    component.addSkill();
 
     expect(ngbModal.open).toHaveBeenCalled();
-  });
+  }));
 
-  it('should save and publish question after updating linked skill', () => {
-    spyOn(EditableQuestionBackendApiService, 'editQuestionSkillLinksAsync')
-      .and.returnValue($q.resolve());
-    spyOn(QuestionsListService, 'getQuestionSummariesAsync');
-    spyOn(ctrl, 'saveAndPublishQuestion');
+  it('should link skill if it is not already linked to question', fakeAsync(() => {
+    var skillSummaryDict = {
+      id: 'skillId1',
+      description: 'description1',
+      language_code: 'en',
+      version: 1,
+      misconception_count: 3,
+      skill_model_created_on: 1593138898626.193,
+      skill_model_last_updated: 1593138898626.193,
+    };
+    component.associatedSkillSummaries = [
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId2',
+        skill_description: 'Skill Description',
+      }),
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId3',
+        skill_description: 'Skill Description',
+      }),
+    ];
+    component.groupedSkillSummaries = {
+      current: [],
+      others: [skillSummaryDict],
+    };
+    spyOn(ngbModal, 'open').and.returnValue({
+      componentInstance: new MockNgbModalRef(),
+      result: Promise.resolve(skillSummaryDict),
+    } as NgbModalRef);
 
-    ctrl.updateSkillLinkageAndQuestions('commit');
-    $scope.$apply();
-    $timeout.flush(500);
+    component.addSkill();
+    tick();
 
-    expect(QuestionsListService.getQuestionSummariesAsync).toHaveBeenCalled();
-    expect(ctrl.editorIsOpen).toBe(false);
-    expect(ctrl.saveAndPublishQuestion).toHaveBeenCalledWith('commit');
-  });
+    expect(component.associatedSkillSummaries).toEqual([
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId2',
+        skill_description: 'Skill Description',
+      }),
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId3',
+        skill_description: 'Skill Description',
+      }),
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId1',
+        skill_description: 'description1',
+      }),
+    ]);
+    expect(component.skillLinkageModificationsArray).toEqual([
+      {
+        id: 'skillId1',
+        task: 'add',
+        difficulty: 0.6,
+      },
+    ]);
+  }));
 
-  it('should update skill linkage correctly', () => {
-    ctrl.skillLinkageModificationsArray = [
+  it('should close modal when user clicks on cancel', fakeAsync(() => {
+    var skillSummaryDict = {
+      id: 'skillId1',
+      description: 'description1',
+      language_code: 'en',
+      version: 1,
+      misconception_count: 3,
+      skill_model_created_on: 1593138898626.193,
+      skill_model_last_updated: 1593138898626.193,
+    };
+    component.associatedSkillSummaries = [
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId2',
+        skill_description: 'Skill Description',
+      }),
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: 'skillId3',
+        skill_description: 'Skill Description',
+      }),
+    ];
+    component.groupedSkillSummaries = {
+      current: [],
+      others: [skillSummaryDict],
+    };
+
+    spyOn(ngbModal, 'open').and.returnValue({
+      componentInstance: new MockNgbModalRef(),
+      result: Promise.reject(skillSummaryDict),
+    } as NgbModalRef);
+    spyOn(alertsService, 'addInfoMessage');
+
+    component.addSkill();
+    tick();
+
+    expect(ngbModal.open).toHaveBeenCalled();
+  }));
+
+  it('should save and publish question after updating linked skill', fakeAsync(() => {
+    spyOn(
+      editableQuestionBackendApiService,
+      'editQuestionSkillLinksAsync'
+    ).and.returnValue(Promise.resolve(question));
+    spyOn(questionsListService, 'getQuestionSummariesAsync');
+    spyOn(component, 'saveAndPublishQuestion');
+
+    component.updateSkillLinkageAndQuestions('commit');
+
+    tick(500);
+
+    expect(questionsListService.getQuestionSummariesAsync).toHaveBeenCalled();
+    expect(component.editorIsOpen).toBe(false);
+    expect(component.saveAndPublishQuestion).toHaveBeenCalledWith('commit');
+  }));
+
+  it('should update skill linkage correctly', fakeAsync(() => {
+    component.skillLinkageModificationsArray = [
       {
         id: 'skillId1',
         task: 'update_difficulty',
-        difficulty: 0.9
-      }
+        difficulty: 0.9,
+      },
     ];
-    spyOn(EditableQuestionBackendApiService, 'editQuestionSkillLinksAsync')
-      .and.returnValue($q.resolve());
+    spyOn(
+      editableQuestionBackendApiService,
+      'editQuestionSkillLinksAsync'
+    ).and.returnValue(Promise.resolve(question));
+    spyOn(alertsService, 'addSuccessMessage');
 
-    ctrl.updateSkillLinkage();
-    $scope.$apply();
-    $timeout.flush(500);
+    component.updateSkillLinkage();
 
-    expect(ctrl.skillLinkageModificationsArray).toEqual([]);
-  });
+    tick(500);
 
-  it('should open question editor save modal if question' +
-    ' is being updated when user click on \'SAVE\' button', () => {
-    ctrl.questionIsBeingUpdated = true;
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve('commit')
-    });
-    spyOn(ctrl, 'updateSkillLinkageAndQuestions');
-    spyOn(ctrl, 'saveAndPublishQuestion');
+    expect(component.skillLinkageModificationsArray).toEqual([]);
+    expect(alertsService.addSuccessMessage).toHaveBeenCalledWith(
+      'Question saved successfully.',
+      2000
+    );
+  }));
 
-    // If skillLinkageModificationsArray is present.
-    ctrl.skillLinkageModificationsArray = ['1', '2'];
+  it(
+    'should open question editor save modal if question' +
+      " is being updated when user click on 'SAVE' button",
+    fakeAsync(() => {
+      component.questionIsBeingUpdated = true;
+      spyOn(ngbModal, 'open').and.returnValue({
+        result: Promise.resolve('commit'),
+      } as NgbModalRef);
+      spyOn(component, 'updateSkillLinkageAndQuestions');
+      spyOn(component, 'saveAndPublishQuestion');
 
-    ctrl.saveQuestion();
-    $scope.$apply();
+      // If skillLinkageModificationsArray is present.
+      component.skillLinkageModificationsArray = [
+        {
+          id: '1',
+          task: '',
+          difficulty: 1,
+        },
+      ];
 
-    expect(ctrl.updateSkillLinkageAndQuestions).toHaveBeenCalledWith('commit');
+      component.saveQuestion();
+      tick();
 
-    // If skillLinkageModificationsArray is not present.
-    ctrl.skillLinkageModificationsArray = [];
+      expect(component.updateSkillLinkageAndQuestions).toHaveBeenCalledWith(
+        'commit'
+      );
 
-    ctrl.saveQuestion();
-    $scope.$apply();
+      // If skillLinkageModificationsArray is not present.
+      component.skillLinkageModificationsArray = [];
 
-    expect(ctrl.saveAndPublishQuestion).toHaveBeenCalledWith('commit');
-  });
+      component.saveQuestion();
+      tick();
 
-  it('should create new question if user clicks on \'SAVE\' and if question' +
-    ' is not being updates', () => {
-    ctrl.questionIsBeingUpdated = false;
-    spyOn(SkillEditorRoutingService, 'creatingNewQuestion');
-    spyOn(ctrl, 'saveAndPublishQuestion');
+      expect(component.saveAndPublishQuestion).toHaveBeenCalledWith('commit');
+    })
+  );
 
-    ctrl.saveQuestion();
+  it(
+    "should create new question if user clicks on 'SAVE' and if question" +
+      ' is not being updates',
+    () => {
+      component.questionIsBeingUpdated = false;
+      spyOn(skillEditorRoutingService, 'creatingNewQuestion');
+      spyOn(component, 'saveAndPublishQuestion');
 
-    expect(ctrl.saveAndPublishQuestion).toHaveBeenCalled();
-    expect(SkillEditorRoutingService.creatingNewQuestion).toHaveBeenCalled();
-  });
+      component.saveQuestion();
 
-  it('should close question editor save modal if user clicks cancel', () => {
-    ctrl.questionIsBeingUpdated = true;
-    spyOn(ctrl, 'saveAndPublishQuestion');
-    ctrl.skillLinkageModificationsArray = ['1', '2'];
+      expect(component.saveAndPublishQuestion).toHaveBeenCalled();
+      expect(skillEditorRoutingService.creatingNewQuestion).toHaveBeenCalled();
+    }
+  );
 
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject()
-    });
+  it('should close question editor save modal if user clicks cancel', fakeAsync(() => {
+    component.questionIsBeingUpdated = true;
+    spyOn(component, 'saveAndPublishQuestion');
+    component.skillLinkageModificationsArray = [
+      {
+        id: '1',
+        task: '',
+        difficulty: 1,
+      },
+      {
+        id: '2',
+        task: '',
+        difficulty: 2,
+      },
+    ];
 
-    ctrl.saveQuestion();
-    $scope.$apply();
+    spyOn(ngbModal, 'open').and.returnValue({
+      result: Promise.reject(),
+    } as NgbModalRef);
 
-    expect(ctrl.saveAndPublishQuestion).not.toHaveBeenCalled();
-  });
+    component.saveQuestion();
+    tick();
+
+    expect(component.saveAndPublishQuestion).not.toHaveBeenCalled();
+  }));
 
   it('should get cached question summaries for one skill', () => {
-    let summary = QuestionSummary
-      .createFromBackendDict({
-        id: 'qId',
-        interaction_id: '',
-        misconception_ids: [],
-        question_content: ''
-      });
-    spyOn(QuestionsListService, 'getCachedQuestionSummaries').and.returnValue(
-      summary);
+    spyOn(questionsListService, 'getCachedQuestionSummaries').and.returnValue(
+      undefined
+    );
 
-    expect(ctrl.getQuestionSummariesForOneSkill()).toEqual(summary);
+    expect(component.getQuestionSummariesForOneSkill()).toBeUndefined();
   });
 
   it('should not toggle difficulty card if window is not narrow', () => {
-    spyOn(WindowDimensionsService, 'isWindowNarrow').and.returnValue(false);
-    ctrl.difficultyCardIsShown = true;
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+    component.difficultyCardIsShown = true;
 
-    ctrl.toggleDifficultyCard();
+    component.toggleDifficultyCard();
 
-    expect(ctrl.difficultyCardIsShown).toBe(true);
+    expect(component.difficultyCardIsShown).toBe(true);
   });
 
   it('should toggle difficulty card if window is narrow', () => {
-    spyOn(WindowDimensionsService, 'isWindowNarrow').and.returnValue(true);
-    ctrl.difficultyCardIsShown = true;
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(true);
+    component.difficultyCardIsShown = true;
 
-    ctrl.toggleDifficultyCard();
+    component.toggleDifficultyCard();
 
-    expect(ctrl.difficultyCardIsShown).toBe(false);
+    expect(component.difficultyCardIsShown).toBe(false);
   });
 
   it('should get current page number', () => {
-    spyOn(QuestionsListService, 'getCurrentPageNumber').and.returnValue(5);
+    spyOn(questionsListService, 'getCurrentPageNumber').and.returnValue(5);
 
-    expect(ctrl.getCurrentPageNumber()).toBe(5);
+    expect(component.getCurrentPageNumber()).toBe(5);
   });
 });

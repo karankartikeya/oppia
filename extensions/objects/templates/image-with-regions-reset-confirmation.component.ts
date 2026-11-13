@@ -16,18 +16,22 @@
  * @fileoverview Component for resetting image regions editor.
  */
 
-import { Component } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ConfirmOrCancelModal } from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
+import {Component, Optional} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {MatBottomSheetRef} from '@angular/material/bottom-sheet';
+import {ConfirmOrCancelModal} from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
 
 @Component({
   selector: 'oppia-image-with-regions-reset-confirmation-modal',
   templateUrl: './image-with-regions-reset-confirmation.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
-export class ImageWithRegionsResetConfirmationModalComponent
-  extends ConfirmOrCancelModal {
-  constructor(ngbActiveModal: NgbActiveModal) {
-    super(ngbActiveModal);
+export class ImageWithRegionsResetConfirmationModalComponent extends ConfirmOrCancelModal {
+  constructor(
+    @Optional() ngbActiveModal: NgbActiveModal,
+    @Optional()
+    imageWithRegionsResetBottomSheetRef?: MatBottomSheetRef<ImageWithRegionsResetConfirmationModalComponent>
+  ) {
+    super(ngbActiveModal, imageWithRegionsResetBottomSheetRef);
   }
 }

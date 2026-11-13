@@ -1,3 +1,5 @@
+# TODO(#24855): Depend on official stubs rather than maintaining our own.
+
 from typing import Any, Dict, Optional
 
 class App:
@@ -7,9 +9,8 @@ class App:
     project_id: str = ...
 
 def get_app(name: Optional[str] = ...) -> App: ...
-
 def initialize_app(
-        credential: Optional[object] = ...,
-        options: Optional[Dict[str, Any]] = ...,
-        name: str = ...
+    credential: Optional[object] = ...,
+    options: Optional[Dict[str, Any]] = ...,
+    name: str = ...,
 ) -> App: ...

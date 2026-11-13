@@ -16,16 +16,14 @@
  * @fileoverview Service for computing the average rating.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
-import { ExplorationRatings } from
-  'domain/summary/learner-exploration-summary.model';
+import {ExplorationRatings} from 'domain/summary/learner-exploration-summary.model';
 
 type ExplorationRatingsKey = keyof ExplorationRatings;
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class RatingComputationService {
   static areRatingsShown(ratingFrequencies: ExplorationRatings): boolean {
@@ -33,7 +31,7 @@ export class RatingComputationService {
 
     let totalNumber: number = 0;
     for (var value in ratingFrequencies) {
-      totalNumber += ratingFrequencies[<ExplorationRatingsKey> value];
+      totalNumber += ratingFrequencies[value as ExplorationRatingsKey];
     }
 
     return totalNumber >= MINIMUM_ACCEPTABLE_NUMBER_OF_RATINGS;
@@ -42,15 +40,14 @@ export class RatingComputationService {
   // Returns 'null' if the ratings are less than the
   // minimum acceptable number of ratings. The average should
   // not be computed in this case.
-  computeAverageRating(
-      ratingFrequencies: ExplorationRatings): number | null {
+  computeAverageRating(ratingFrequencies: ExplorationRatings): number | null {
     if (!RatingComputationService.areRatingsShown(ratingFrequencies)) {
       return null;
     } else {
       var totalNumber = 0;
       var totalValue = 0.0;
       for (var value in ratingFrequencies) {
-        let _value = <ExplorationRatingsKey> value;
+        let _value = value as ExplorationRatingsKey;
         totalValue += parseInt(_value) * ratingFrequencies[_value];
         totalNumber += ratingFrequencies[_value];
       }
@@ -59,6 +56,3 @@ export class RatingComputationService {
     }
   }
 }
-
-angular.module('oppia').factory(
-  'RatingComputationService', downgradeInjectable(RatingComputationService));

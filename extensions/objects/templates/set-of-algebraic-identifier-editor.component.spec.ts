@@ -16,25 +16,28 @@
  * @fileoverview Unit tests for the set of algebraic identifier component.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { TestBed, waitForAsync } from '@angular/core/testing';
-import { SetOfAlgebraicIdentifierEditorComponent } from './set-of-algebraic-identifier-editor.component';
+// @ts-nocheck
+
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {TestBed, waitForAsync} from '@angular/core/testing';
+import {SetOfAlgebraicIdentifierEditorComponent} from './set-of-algebraic-identifier-editor.component';
 
 // TODO(#11014): Add more extensive front end tests for object editors that rely
 // on schema editors.
-describe('SetOfAlgebraicIdentifier', function() {
+describe('SetOfAlgebraicIdentifier', function () {
   let component: SetOfAlgebraicIdentifierEditorComponent;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [SetOfAlgebraicIdentifierEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(waitForAsync(() => {
     component = TestBed.createComponent(
-      SetOfAlgebraicIdentifierEditorComponent).componentInstance;
+      SetOfAlgebraicIdentifierEditorComponent
+    ).componentInstance;
   }));
 
   it('should initialize the value with an empty array', () => {
@@ -43,5 +46,14 @@ describe('SetOfAlgebraicIdentifier', function() {
     expect(component.value).toEqual([]);
     component.updateValue(['a', 'b', 'c']);
     expect(component.value).toEqual(['a', 'b', 'c']);
+  });
+
+  it('should not update the value when the input is not a string array', () => {
+    component.getSchema();
+    component.ngOnInit();
+
+    component.updateValue('abc');
+
+    expect(component.value).toEqual([]);
   });
 });

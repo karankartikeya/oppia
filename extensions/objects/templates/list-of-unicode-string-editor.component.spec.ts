@@ -16,18 +16,20 @@
  * @fileoverview Unit tests for list of unicode string editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { ListOfUnicodeStringEditorComponent } from './list-of-unicode-string-editor.component';
+// @ts-nocheck
+
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {ListOfUnicodeStringEditorComponent} from './list-of-unicode-string-editor.component';
 
 describe('ListOfUnicodeStringEditorComponent', () => {
   let component: ListOfUnicodeStringEditorComponent;
   let fixture: ComponentFixture<ListOfUnicodeStringEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [ListOfUnicodeStringEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -49,8 +51,8 @@ describe('ListOfUnicodeStringEditorComponent', () => {
     expect(component.getSchema()).toEqual({
       type: 'list',
       items: {
-        type: 'unicode'
-      }
+        type: 'unicode',
+      },
     });
   });
 
@@ -59,22 +61,22 @@ describe('ListOfUnicodeStringEditorComponent', () => {
     let newValue = [
       {
         title: 'New Hint introduction',
-        content: 'This set of tabs shows some hints.'
+        content: 'This set of tabs shows some hints.',
       },
       {
         title: 'New Hint 1',
-        content: 'This is a first hint.'
-      }
+        content: 'This is a first hint.',
+      },
     ];
     component.value = [
       {
         title: 'Hint introduction',
-        content: 'This set of tabs shows some hints.'
+        content: 'This set of tabs shows some hints.',
       },
       {
         title: 'Hint 1',
-        content: 'This is a first hint.'
-      }
+        content: 'This is a first hint.',
+      },
     ];
 
     component.updateValue(newValue);

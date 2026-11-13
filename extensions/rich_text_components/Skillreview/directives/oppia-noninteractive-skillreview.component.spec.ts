@@ -16,20 +16,27 @@
  * @fileoverview Directive for the concept card rich-text component.
  */
 
-import { async, ComponentFixture, fakeAsync, flush, TestBed, tick } from '@angular/core/testing';
-import { CkEditorCopyContentService } from 'components/ck-editor-helpers/ck-editor-copy-content.service';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { NoninteractiveSkillreview } from './oppia-noninteractive-skillreview.component';
-import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
-import { ContextService } from 'services/context.service';
-import { SimpleChanges } from '@angular/core';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  flush,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {CkEditorCopyContentService} from 'components/ck-editor-helpers/ck-editor-copy-content.service';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {NoninteractiveSkillreview} from './oppia-noninteractive-skillreview.component';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {PageContextService} from 'services/page-context.service';
+import {SimpleChanges} from '@angular/core';
 
 describe('NoninteractiveSkillreview', () => {
   let component: NoninteractiveSkillreview;
   let fixture: ComponentFixture<NoninteractiveSkillreview>;
   let ckEditorCopyContentService: CkEditorCopyContentService;
   let ngbModal: NgbModal;
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
 
   class mockHtmlEscaperService {
     escapedJsonToObj(answer: string): string {
@@ -40,24 +47,24 @@ describe('NoninteractiveSkillreview', () => {
   class MockNgbModalRef {
     componentInstance = {
       skillId: null,
-      explorationId: null
+      explorationId: null,
     };
   }
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [NoninteractiveSkillreview],
       providers: [
         {
           provide: HtmlEscaperService,
-          useClass: mockHtmlEscaperService
-        }
-      ]
+          useClass: mockHtmlEscaperService,
+        },
+      ],
     }).compileComponents();
   }));
 
   beforeEach(() => {
-    contextService = TestBed.inject(ContextService);
+    pageContextService = TestBed.inject(PageContextService);
     ngbModal = TestBed.inject(NgbModal);
     ckEditorCopyContentService = TestBed.inject(CkEditorCopyContentService);
     fixture = TestBed.createComponent(NoninteractiveSkillreview);
@@ -67,15 +74,18 @@ describe('NoninteractiveSkillreview', () => {
     component.textWithValue = 'concept card';
   });
 
-  it('should initialise component when user inserts a concept card in the' +
-  ' rich text editor', () => {
-    component.ngOnInit();
+  it(
+    'should initialise component when user inserts a concept card in the' +
+      ' rich text editor',
+    () => {
+      component.ngOnInit();
 
-    expect(component.skillId).toBe('skillId');
-    expect(component.linkText).toBe('concept card');
-  });
+      expect(component.skillId).toBe('skillId');
+      expect(component.linkText).toBe('concept card');
+    }
+  );
 
-  it('should not initialise when \'skillIdWithValue\' is empty', () => {
+  it("should not initialise when 'skillIdWithValue' is empty", () => {
     component.skillIdWithValue = '';
 
     component.ngOnInit();
@@ -84,7 +94,7 @@ describe('NoninteractiveSkillreview', () => {
     expect(component.linkText).toBeUndefined();
   });
 
-  it('should not initialise when \'textWithValue\' is empty', () => {
+  it("should not initialise when 'textWithValue' is empty", () => {
     component.textWithValue = '';
 
     component.ngOnInit();
@@ -94,108 +104,244 @@ describe('NoninteractiveSkillreview', () => {
   });
 
   it('should open concept card when user clicks the link', () => {
-    spyOn(contextService, 'removeCustomEntityContext');
+    spyOn(pageContextService, 'removeCustomEntityContext');
     let e = {
       currentTarget: {
         offsetParent: {
           dataset: {
-            ckeWidgetId: false
-          }
-        }
-      }
+            ckeWidgetId: false,
+          },
+        },
+      },
     } as unknown as MouseEvent;
 
     ckEditorCopyContentService.copyModeActive = false;
     const modalSpy = spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
-      return <NgbModalRef>(
-          { componentInstance: MockNgbModalRef,
-            result: Promise.resolve()
-          });
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.resolve(),
+      } as NgbModalRef;
     });
 
     component.openConceptCard(e);
 
     expect(modalSpy).toHaveBeenCalled();
-    expect(contextService.removeCustomEntityContext).not.toHaveBeenCalled();
+    expect(pageContextService.removeCustomEntityContext).not.toHaveBeenCalled();
   });
 
   it('should close concept card when user clicks the link', fakeAsync(() => {
-    spyOn(contextService, 'removeCustomEntityContext');
+    spyOn(pageContextService, 'setCustomEntityContext');
+    spyOn(pageContextService, 'getEntityId').and.callFake(function () {
+      return 'InitialEntityId';
+    });
+    spyOn(pageContextService, 'getEntityType').and.callFake(function () {
+      return 'InitialEntityType';
+    });
+    spyOn(pageContextService, 'removeCustomEntityContext');
     let e = {
       currentTarget: {
         offsetParent: {
           dataset: {
-            ckeWidgetId: false
-          }
-        }
-      }
+            ckeWidgetId: false,
+          },
+        },
+      },
     } as unknown as MouseEvent;
 
     ckEditorCopyContentService.copyModeActive = false;
     const modalSpy = spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
-      return <NgbModalRef>(
-          { componentInstance: MockNgbModalRef,
-            result: Promise.reject('cancel')
-          });
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.reject('cancel'),
+      } as NgbModalRef;
     });
 
     component.openConceptCard(e);
     tick();
 
     expect(modalSpy).toHaveBeenCalled();
-    expect(contextService.removeCustomEntityContext).toHaveBeenCalled();
+    expect(pageContextService.removeCustomEntityContext).toHaveBeenCalled();
+    expect(pageContextService.setCustomEntityContext).toHaveBeenCalledWith(
+      'InitialEntityType',
+      'InitialEntityId'
+    );
   }));
 
-  it('should throw error when modal is closed in a method other than' +
-  '\'cancel\', \'escape key press\' or \'backdrop click\'', fakeAsync(() => {
+  it('should not throw error when modal is dismissed with numeric value 0', fakeAsync(() => {
+    spyOn(pageContextService, 'setCustomEntityContext');
+    spyOn(pageContextService, 'getEntityId').and.returnValue('InitialEntityId');
+    spyOn(pageContextService, 'getEntityType').and.returnValue(
+      'InitialEntityType'
+    );
+    spyOn(pageContextService, 'removeCustomEntityContext');
+
     let e = {
       currentTarget: {
         offsetParent: {
           dataset: {
-            ckeWidgetId: false
-          }
-        }
-      }
+            ckeWidgetId: false,
+          },
+        },
+      },
     } as unknown as MouseEvent;
 
     ckEditorCopyContentService.copyModeActive = false;
     spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
-      return <NgbModalRef>(
-          { componentInstance: MockNgbModalRef,
-            result: Promise.reject('close')
-          });
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.reject(0),
+      } as NgbModalRef;
     });
 
-    let error;
-    try {
+    expect(() => {
       component.openConceptCard(e);
       flush();
-    } catch (e: unknown) {
-      error = e as Error;
-      expect(error.message.indexOf('Error: close') !== -1).toBeTrue();
-    }
-    expect(error).not.toBeUndefined();
+    }).not.toThrowError();
+
+    expect(pageContextService.removeCustomEntityContext).toHaveBeenCalled();
+    expect(pageContextService.setCustomEntityContext).toHaveBeenCalledWith(
+      'InitialEntityType',
+      'InitialEntityId'
+    );
   }));
 
-  it('should not open modal when ck Editor copy mode is active',
+  it('should not throw error when modal is dismissed with numeric value 1', fakeAsync(() => {
+    spyOn(pageContextService, 'setCustomEntityContext');
+    spyOn(pageContextService, 'getEntityId').and.returnValue('InitialEntityId');
+    spyOn(pageContextService, 'getEntityType').and.returnValue(
+      'InitialEntityType'
+    );
+    spyOn(pageContextService, 'removeCustomEntityContext');
+
+    let e = {
+      currentTarget: {
+        offsetParent: {
+          dataset: {
+            ckeWidgetId: false,
+          },
+        },
+      },
+    } as unknown as MouseEvent;
+
+    ckEditorCopyContentService.copyModeActive = false;
+    spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.reject(1),
+      } as NgbModalRef;
+    });
+
+    expect(() => {
+      component.openConceptCard(e);
+      flush();
+    }).not.toThrowError();
+
+    expect(pageContextService.removeCustomEntityContext).toHaveBeenCalled();
+    expect(pageContextService.setCustomEntityContext).toHaveBeenCalledWith(
+      'InitialEntityType',
+      'InitialEntityId'
+    );
+  }));
+
+  it('should not throw error when modal is dismissed with undefined', fakeAsync(() => {
+    spyOn(pageContextService, 'setCustomEntityContext');
+    spyOn(pageContextService, 'getEntityId').and.returnValue('InitialEntityId');
+    spyOn(pageContextService, 'getEntityType').and.returnValue(
+      'InitialEntityType'
+    );
+    spyOn(pageContextService, 'removeCustomEntityContext');
+
+    let e = {
+      currentTarget: {
+        offsetParent: {
+          dataset: {
+            ckeWidgetId: false,
+          },
+        },
+      },
+    } as unknown as MouseEvent;
+
+    ckEditorCopyContentService.copyModeActive = false;
+    spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
+      return {
+        componentInstance: MockNgbModalRef,
+        result: Promise.reject(undefined),
+      } as NgbModalRef;
+    });
+
+    expect(() => {
+      component.openConceptCard(e);
+      flush();
+    }).not.toThrowError();
+
+    expect(pageContextService.removeCustomEntityContext).toHaveBeenCalled();
+    expect(pageContextService.setCustomEntityContext).toHaveBeenCalledWith(
+      'InitialEntityType',
+      'InitialEntityId'
+    );
+  }));
+
+  it(
+    'should throw error when modal is closed in a method other than' +
+      "'cancel', 'escape key press' or 'backdrop click'",
     fakeAsync(() => {
       let e = {
         currentTarget: {
           offsetParent: {
             dataset: {
-              ckeWidgetId: false
-            }
-          }
-        }
+              ckeWidgetId: false,
+            },
+          },
+        },
       } as unknown as MouseEvent;
-      const modalSpy = spyOn(ngbModal, 'open');
-      ckEditorCopyContentService.copyModeActive = true;
 
-      component.openConceptCard(e);
-      tick();
+      ckEditorCopyContentService.copyModeActive = false;
+      spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
+        return {
+          componentInstance: MockNgbModalRef,
+          result: Promise.reject('close'),
+        } as NgbModalRef;
+      });
 
-      expect(modalSpy).not.toHaveBeenCalled();
-    }));
+      let error;
+      try {
+        component.openConceptCard(e);
+        flush();
+        // We use unknown type because we are unsure of the type of error
+        // that was thrown. Since the catch block cannot identify the
+        // specific type of error, we are unable to further optimise the
+        // code by introducing more types of errors.
+      } catch (e: unknown) {
+        error = e as Error;
+        expect(error.message.indexOf('Error: close') !== -1).toBeTrue();
+      }
+      expect(error).not.toBeUndefined();
+    })
+  );
+
+  it('should not open modal when ck Editor copy mode is active', fakeAsync(() => {
+    // This throws "Type object is not assignable to type
+    // 'MouseEvent'." We need to suppress this error
+    // because of the need to test validations. This
+    // throws an error only in the test environment.
+    // @ts-ignore
+    let e = {
+      currentTarget: {
+        offsetParent: {
+          dataset: {
+            ckeWidgetId: false,
+          },
+        },
+      },
+    } as MouseEvent;
+    const modalSpy = spyOn(ngbModal, 'open');
+    ckEditorCopyContentService.copyModeActive = true;
+
+    component.openConceptCard(e);
+    tick();
+
+    expect(modalSpy).not.toHaveBeenCalled();
+  }));
 
   it('should update view when user edits the concept card link', () => {
     let changes: SimpleChanges = {
@@ -203,8 +349,8 @@ describe('NoninteractiveSkillreview', () => {
         currentValue: 'new skillId',
         previousValue: 'skillId',
         firstChange: false,
-        isFirstChange: () => false
-      }
+        isFirstChange: () => false,
+      },
     };
     component.skillIdWithValue = 'new skillId';
 
@@ -219,8 +365,8 @@ describe('NoninteractiveSkillreview', () => {
         currentValue: 'new text',
         previousValue: 'text',
         firstChange: false,
-        isFirstChange: () => false
-      }
+        isFirstChange: () => false,
+      },
     };
     component.textWithValue = 'new text';
 

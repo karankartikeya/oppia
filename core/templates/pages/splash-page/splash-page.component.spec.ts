@@ -16,27 +16,54 @@
  * @fileoverview Unit tests for the splash page.
  */
 
-import { EventEmitter } from '@angular/core';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { TestBed, fakeAsync, flushMicrotasks } from '@angular/core/testing';
-import { I18nLanguageCodeService } from 'services/i18n-language-code.service';
-import { LoaderService } from 'services/loader.service';
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { WindowDimensionsService } from
-  'services/contextual/window-dimensions.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
-import { UserInfo } from 'domain/user/user-info.model';
-import { UserService } from 'services/user.service';
-import { SplashPageComponent } from './splash-page.component';
-import { of } from 'rxjs';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
+import {EventEmitter} from '@angular/core';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {TestBed, fakeAsync, flushMicrotasks} from '@angular/core/testing';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {LoaderService} from 'services/loader.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {UserInfo} from 'domain/user/user-info.model';
+import {UserService} from 'services/user.service';
+import {SplashPageComponent} from './splash-page.component';
+import {of} from 'rxjs';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {PrimaryButtonComponent} from '../../components/button-directives/primary-button.component';
+
+class MockWindowRef {
+  _window = {
+    location: {
+      _href: '',
+      get href() {
+        return this._href;
+      },
+      set href(val) {
+        this._href = val;
+      },
+      replace: (val: string) => {},
+    },
+    sessionStorage: {
+      last_uploaded_audio_lang: 'en',
+      removeItem: (name: string) => {},
+    },
+    gtag: () => {},
+  };
+
+  get nativeWindow() {
+    return this._window;
+  }
+}
 
 class MockI18nLanguageCodeService {
   codeChangeEventEmitter = new EventEmitter<string>();
   getCurrentI18nLanguageCode() {
     return 'en';
+  }
+
+  isCurrentLanguageRTL() {
+    return true;
   }
 
   get onI18nLanguageCodeChange() {
@@ -46,91 +73,110 @@ class MockI18nLanguageCodeService {
 
 describe('Splash Page', () => {
   let siteAnalyticsService: SiteAnalyticsService;
-  let loaderService: LoaderService = null;
+  let loaderService: LoaderService;
   let userService: UserService;
   let windowDimensionsService: WindowDimensionsService;
   let resizeEvent = new Event('resize');
-  beforeEach(async() => {
+  let mockWindowRef = new MockWindowRef();
+
+  beforeEach(async () => {
     TestBed.configureTestingModule({
-      declarations: [SplashPageComponent, MockTranslatePipe],
+      declarations: [
+        SplashPageComponent,
+        MockTranslatePipe,
+        PrimaryButtonComponent,
+      ],
       providers: [
         {
           provide: I18nLanguageCodeService,
-          useClass: MockI18nLanguageCodeService
+          useClass: MockI18nLanguageCodeService,
         },
         {
           provide: WindowDimensionsService,
           useValue: {
             isWindowNarrow: () => true,
-            getResizeEvent: () => of(resizeEvent)
-          }
+            getResizeEvent: () => of(resizeEvent),
+          },
         },
         SiteAnalyticsService,
         UrlInterpolationService,
         {
           provide: WindowRef,
-          useValue: {
-            nativeWindow: {
-              location: {
-                href: ''
-              },
-              gtag: () => {}
-            }
-          }
-        }
-      ]
+          useValue: mockWindowRef,
+        },
+      ],
     }).compileComponents();
   });
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
+      imports: [HttpClientTestingModule],
     });
-    loaderService = TestBed.get(LoaderService);
-    userService = TestBed.get(UserService);
-    windowDimensionsService = TestBed.get(WindowDimensionsService);
+    loaderService = TestBed.inject(LoaderService);
+    userService = TestBed.inject(UserService);
+    windowDimensionsService = TestBed.inject(WindowDimensionsService);
     siteAnalyticsService = TestBed.inject(SiteAnalyticsService);
   });
 
-  let component;
+  let component: SplashPageComponent;
   beforeEach(() => {
     const splashPageComponent = TestBed.createComponent(SplashPageComponent);
     component = splashPageComponent.componentInstance;
   });
 
-  it('should get static image url', function() {
+  it('should get static image url', function () {
     expect(component.getStaticImageUrl('/path/to/image')).toBe(
-      '/assets/images/path/to/image');
+      '/assets/images/path/to/image'
+    );
   });
 
-  it('should record analytics when Browse Lessons is clicked', function() {
+  it('should record analytics when start learning is clicked', function () {
     spyOn(
-      siteAnalyticsService, 'registerClickBrowseLessonsButtonEvent')
-      .and.callThrough();
+      siteAnalyticsService,
+      'registerClickHomePageStartLearningButtonEvent'
+    ).and.callThrough();
+
+    component.onClickStartLearningButton();
+
+    expect(
+      siteAnalyticsService.registerClickHomePageStartLearningButtonEvent
+    ).toHaveBeenCalled();
+  });
+
+  it('should record analytics when Browse Lessons is clicked', function () {
+    spyOn(
+      siteAnalyticsService,
+      'registerClickBrowseLessonsButtonEvent'
+    ).and.callThrough();
     component.onClickBrowseLessonsButton();
-    expect(siteAnalyticsService.registerClickBrowseLessonsButtonEvent)
-      .toHaveBeenCalled();
+    expect(
+      siteAnalyticsService.registerClickBrowseLessonsButtonEvent
+    ).toHaveBeenCalled();
   });
 
-  it('should record analytics when Start Contributing is clicked', function() {
+  it('should record analytics when Start Contributing is clicked', function () {
     spyOn(
-      siteAnalyticsService, 'registerClickStartContributingButtonEvent')
-      .and.callThrough();
+      siteAnalyticsService,
+      'registerClickStartContributingButtonEvent'
+    ).and.callThrough();
     component.onClickStartContributingButton();
-    expect(siteAnalyticsService.registerClickStartContributingButtonEvent)
-      .toHaveBeenCalled();
+    expect(
+      siteAnalyticsService.registerClickStartContributingButtonEvent
+    ).toHaveBeenCalled();
   });
 
-  it('should record analytics when Start Teaching is clicked', function() {
+  it('should record analytics when Start Teaching is clicked', function () {
     spyOn(
-      siteAnalyticsService, 'registerClickStartTeachingButtonEvent'
+      siteAnalyticsService,
+      'registerClickStartTeachingButtonEvent'
     ).and.callThrough();
     component.onClickStartTeachingButton();
-    expect(siteAnalyticsService.registerClickStartTeachingButtonEvent)
-      .toHaveBeenCalled();
+    expect(
+      siteAnalyticsService.registerClickStartTeachingButtonEvent
+    ).toHaveBeenCalled();
   });
 
-  it('should increment and decrement testimonial IDs correctly', function() {
+  it('should increment and decrement testimonial IDs correctly', function () {
     component.ngOnInit();
     expect(component.displayedTestimonialId).toBe(0);
     component.incrementDisplayedTestimonialId();
@@ -146,9 +192,9 @@ describe('Splash Page', () => {
     expect(component.displayedTestimonialId).toBe(2);
   });
 
-  it('should get testimonials correctly', function() {
+  it('should get testimonials correctly', function () {
     component.ngOnInit();
-    expect(component.getTestimonials().length).toBe(component.testimonialCount);
+    expect(component.testimonialCount).toBe(component.getTestimonials().length);
   });
 
   it('should evaluate if user is logged in', fakeAsync(() => {
@@ -162,10 +208,10 @@ describe('Splash Page', () => {
       preferred_site_language_code: null,
       username: 'tester',
       email: 'test@test.com',
-      user_is_logged_in: true
+      user_is_logged_in: true,
     };
-    spyOn(userService, 'getUserInfoAsync').and.returnValue(Promise.resolve(
-      UserInfo.createFromBackendDict(UserInfoObject))
+    spyOn(userService, 'getUserInfoAsync').and.returnValue(
+      Promise.resolve(UserInfo.createFromBackendDict(UserInfoObject))
     );
     component.ngOnInit();
     flushMicrotasks();
@@ -183,28 +229,37 @@ describe('Splash Page', () => {
       preferred_site_language_code: null,
       username: 'tester',
       email: 'test@test.com',
-      user_is_logged_in: false
+      user_is_logged_in: false,
     };
-    spyOn(userService, 'getUserInfoAsync').and.returnValue(Promise.resolve(
-      UserInfo.createFromBackendDict(UserInfoObject))
+    spyOn(userService, 'getUserInfoAsync').and.returnValue(
+      Promise.resolve(UserInfo.createFromBackendDict(UserInfoObject))
     );
     component.ngOnInit();
     flushMicrotasks();
     expect(component.userIsLoggedIn).toBe(false);
   }));
 
+  it('should treat the user as logged out when fetching user info fails', fakeAsync(() => {
+    spyOn(userService, 'getUserInfoAsync').and.returnValue(
+      Promise.reject(new Error('Failed to fetch user info.'))
+    );
+    spyOn(loaderService, 'hideLoadingScreen');
+    component.ngOnInit();
+    flushMicrotasks();
+    expect(component.userIsLoggedIn).toBe(false);
+    expect(loaderService.hideLoadingScreen).toHaveBeenCalled();
+  }));
+
   it('should check if loader screen is working', fakeAsync(() => {
     spyOn(loaderService, 'showLoadingScreen').and.callThrough();
     component.ngOnInit();
-    expect(loaderService.showLoadingScreen)
-      .toHaveBeenCalledWith('Loading');
+    expect(loaderService.showLoadingScreen).toHaveBeenCalledWith('Loading');
   }));
 
   it('should set component properties when ngOnInit() is called', () => {
     component.ngOnInit();
     expect(component.displayedTestimonialId).toBe(0);
     expect(component.testimonialCount).toBe(4);
-    expect(component.classroomUrl).toBe('/learn/math');
     spyOn(windowDimensionsService, 'isWindowNarrow').and.callThrough;
     expect(windowDimensionsService.isWindowNarrow()).toHaveBeenCalled;
     expect(component.isWindowNarrow).toBe(true);

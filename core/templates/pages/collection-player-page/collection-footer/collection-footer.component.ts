@@ -17,32 +17,28 @@
  * in collection player.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, OnInit} from '@angular/core';
 
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { UrlService } from 'services/contextual/url.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {UrlService} from 'services/contextual/url.service';
 
 @Component({
   selector: 'collection-footer',
   templateUrl: './collection-footer.component.html',
-  styleUrls: []
+  styleUrls: ['./collection-footer.component.css'],
 })
 export class CollectionFooterComponent implements OnInit {
   collectionId: string = '';
   constructor(
     private urlInterpolationService: UrlInterpolationService,
-    private urlService: UrlService) {
-  }
+    private urlService: UrlService
+  ) {}
+
   ngOnInit(): void {
     this.collectionId = this.urlService.getCollectionIdFromUrl();
   }
+
   getStaticImageUrl(imagePath: string): string {
     return this.urlInterpolationService.getStaticImageUrl(imagePath);
   }
 }
-
-angular.module('oppia').directive(
-  'collectionFooter', downgradeComponent(
-    {component: CollectionFooterComponent}));

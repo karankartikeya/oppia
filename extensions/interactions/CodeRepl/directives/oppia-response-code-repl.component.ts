@@ -19,42 +19,41 @@
  * into the directive is: the name of the parameter, followed by 'With',
  * followed by the name of the arg.
  */
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
 
-interface Answer {
+export interface Answer {
   error: string;
+  code: string;
+  output: string;
+  evaluation: string;
 }
 
 @Component({
   selector: 'oppiaResponseCodeRepl',
   templateUrl: './code-repl-response.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class ResponseCodeReplComponent implements OnInit {
-  @Input('answer') answerWithValue!: string;
+  @Input() answer!: string;
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  answer!: Answer;
+  escapedAnswer!: Answer;
   errorFocusLabel!: string;
   constructor(
     private htmlEscaperService: HtmlEscaperService,
     private focusManagerService: FocusManagerService
-  ) { }
+  ) {}
 
   ngOnInit(): void {
-    this.answer = this.htmlEscaperService.escapedJsonToObj(
-      this.answerWithValue) as Answer;
-    if (this.answer.error) {
+    this.escapedAnswer = this.htmlEscaperService.escapedJsonToObj(
+      this.answer
+    ) as Answer;
+    if (this.escapedAnswer.error) {
       this.errorFocusLabel = this.focusManagerService.generateFocusLabel();
       this.focusManagerService.setFocus(this.errorFocusLabel);
     }
   }
 }
-
-angular.module('oppia').directive('oppiaResponseCodeRepl', downgradeComponent({
-  component: ResponseCodeReplComponent
-}) as angular.IDirectiveFactory);

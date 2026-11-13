@@ -16,28 +16,30 @@
  * @fileoverview Unit tests for the AnswerClassificationResult model.
  */
 
-import { AnswerClassificationResult } from
-  'domain/classifier/answer-classification-result.model';
-import { OutcomeObjectFactory } from 'domain/exploration/OutcomeObjectFactory';
+import {AnswerClassificationResult} from 'domain/classifier/answer-classification-result.model';
+import {Outcome} from 'domain/exploration/outcome.model';
 
 describe('Answer classification result model', () => {
-  let oof: OutcomeObjectFactory;
   let DEFAULT_OUTCOME_CLASSIFICATION: string;
 
   beforeEach(() => {
-    oof = new OutcomeObjectFactory();
     DEFAULT_OUTCOME_CLASSIFICATION = 'default_outcome';
   });
 
   it('should create a new result', () => {
     var answerClassificationResult = new AnswerClassificationResult(
-      oof.createNew('default', '', '', []), 1, 0, DEFAULT_OUTCOME_CLASSIFICATION
+      Outcome.createNew('default', '', '', []),
+      1,
+      0,
+      DEFAULT_OUTCOME_CLASSIFICATION
     );
 
     expect(answerClassificationResult.outcome).toEqual(
-      oof.createNew('default', '', '', []));
+      Outcome.createNew('default', '', '', [])
+    );
     expect(answerClassificationResult.answerGroupIndex).toEqual(1);
     expect(answerClassificationResult.classificationCategorization).toEqual(
-      DEFAULT_OUTCOME_CLASSIFICATION);
+      DEFAULT_OUTCOME_CLASSIFICATION
+    );
   });
 });

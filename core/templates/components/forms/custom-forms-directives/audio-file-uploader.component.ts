@@ -16,19 +16,26 @@
  * @fileoverview Component that enables the user to upload audio files.
  */
 
-import { Component, ElementRef, EventEmitter, Input, Output, ViewChild } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
+import {
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  Output,
+  ViewChild,
+} from '@angular/core';
+import {AppConstants} from 'app.constants';
 
 @Component({
   selector: 'oppia-audio-file-uploader',
-  templateUrl: './audio-file-uploader.component.html'
+  templateUrl: './audio-file-uploader.component.html',
+  styleUrls: ['./audio-file-uploader.component.css'],
 })
 export class AudioFileUploaderComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() droppedFile!: FileList;
+  @Input() droppedFile!: File;
   @Output() fileChange: EventEmitter<File> = new EventEmitter<File>();
   @Output() fileClear: EventEmitter<void> = new EventEmitter<void>();
   // The following properties are used in function 'addAudio' which cannot
@@ -77,8 +84,3 @@ export class AudioFileUploaderComponent {
     }
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaAudioFileUploader',
-  downgradeComponent({ component: AudioFileUploaderComponent })
-);

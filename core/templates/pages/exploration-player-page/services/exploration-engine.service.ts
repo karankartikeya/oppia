@@ -16,539 +16,1098 @@
  * @fileoverview Utility service for the learner's view of an exploration.
  */
 
-import { EventEmitter, Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { AnswerClassificationResult } from 'domain/classifier/answer-classification-result.model';
-import { Exploration, ExplorationBackendDict, ExplorationObjectFactory } from 'domain/exploration/ExplorationObjectFactory';
-import { Interaction } from 'domain/exploration/InteractionObjectFactory';
-import { ParamChange } from 'domain/exploration/ParamChangeObjectFactory';
-import { ReadOnlyExplorationBackendApiService } from 'domain/exploration/read-only-exploration-backend-api.service';
-import { BindableVoiceovers, RecordedVoiceovers } from 'domain/exploration/recorded-voiceovers.model';
-import { State } from 'domain/state/StateObjectFactory';
-import { StateCard } from 'domain/state_card/state-card.model';
-import { ExpressionInterpolationService } from 'expressions/expression-interpolation.service';
-import { AlertsService } from 'services/alerts.service';
-import { ContextService } from 'services/context.service';
-import { UrlService } from 'services/contextual/url.service';
-import { ExplorationFeaturesBackendApiService } from 'services/exploration-features-backend-api.service';
-import { ExplorationHtmlFormatterService } from 'services/exploration-html-formatter.service';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
-import { AnswerClassificationService, InteractionRulesService } from './answer-classification.service';
-import { AudioPreloaderService } from './audio-preloader.service';
-import { AudioTranslationLanguageService } from './audio-translation-language.service';
-import { ContentTranslationLanguageService } from './content-translation-language.service';
-import { ImagePreloaderService } from './image-preloader.service';
-import { ExplorationParams, LearnerParamsService } from './learner-params.service';
-import { PlayerTranscriptService } from './player-transcript.service';
-import { StatsReportingService } from './stats-reporting.service';
+import {Injectable} from '@angular/core';
+import {TranslateService} from '@ngx-translate/core';
+import {AppConstants} from 'app.constants';
+import {AnswerClassificationResult} from 'domain/classifier/answer-classification-result.model';
+import {
+  Exploration,
+  ExplorationBackendDict,
+} from 'domain/exploration/exploration.model';
+import {ParamChange} from 'domain/exploration/param-change.model';
+import {ParamSpec} from 'domain/exploration/param-spec.model';
+import {ReadOnlyExplorationBackendApiService} from 'domain/exploration/read-only-exploration-backend-api.service';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {StateObjectsBackendDict} from 'domain/exploration/states.model';
+import {State} from 'domain/state/state.model';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {ExpressionInterpolationService} from 'expressions/expression-interpolation.service';
+import {AlertsService} from 'services/alerts.service';
+import {LoggerService} from 'services/contextual/logger.service';
+import {PageContextService} from 'services/page-context.service';
+import {UrlService} from 'services/contextual/url.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {ExplorationHtmlFormatterService} from 'services/exploration-html-formatter.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {
+  AnswerClassificationService,
+  InteractionRulesService,
+} from './answer-classification.service';
+import {AudioPreloaderService} from './audio-preloader.service';
+import {ContentTranslationLanguageService} from './content-translation-language.service';
+import {ContentTranslationManagerService} from './content-translation-manager.service';
+import {ImagePreloaderService} from './image-preloader.service';
+import {
+  ExplorationParams,
+  LearnerParamsService,
+} from './learner-params.service';
+import {PlayerTranscriptService} from './player-transcript.service';
+import {StatsReportingService} from './stats-reporting.service';
+import {ExplorationPlayerConstants} from '../current-lesson-player/exploration-player-page.constants';
+import isEqual from 'lodash/isEqual';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {LearnerAnswerInfoService} from './learner-answer-info.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {ComputeGraphService} from 'services/compute-graph.service';
+import {StateGraphLayoutService} from 'components/graph-services/graph-layout.service';
+import forEach from 'lodash/forEach';
 
- @Injectable({
-   providedIn: 'root'
- })
+@Injectable({
+  providedIn: 'root',
+})
 export class ExplorationEngineService {
-   private _explorationId: string;
-   private _editorPreviewMode: boolean;
-   private _questionPlayerMode: boolean;
-   private _updateActiveStateIfInEditorEventEmitter: EventEmitter<string> =
-     (new EventEmitter());
+  private _explorationId!: string;
 
-   answerIsBeingProcessed: boolean = false;
-   alwaysAskLearnersForAnswerDetails: boolean = false;
-   exploration: Exploration;
+  answerIsBeingProcessed: boolean = false;
+  exploration!: Exploration;
+  currentStateName!: string;
+  nextStateName!: string;
+  nextStateIfStuckName!: string | null;
 
-   // This list may contain duplicates. A state name is added to it each time
-   // the learner moves to a new card.
-   visitedStateNames: string[] = [];
-   currentStateName: string;
-   nextStateName: string;
+  // This list may contain duplicates. A state name is added to it each time
+  // the learner moves to a new card.
+  visitedStateNames: string[] = [];
 
-   // Param changes to be used ONLY in editor preview mode.
-   manualParamChanges: ParamChange[];
-   initStateName: string;
-   version: number;
+  // Param changes to be used ONLY in editor preview mode.
+  manualParamChanges!: ParamChange[];
+  initStateName!: string;
 
-   constructor(
-     private alertsService: AlertsService,
-     private answerClassificationService: AnswerClassificationService,
-     private audioPreloaderService: AudioPreloaderService,
-     private audioTranslationLanguageService: AudioTranslationLanguageService,
-     private contentTranslationLanguageService:
-       ContentTranslationLanguageService,
-     private contextService: ContextService,
-     private explorationFeaturesBackendApiService:
-       ExplorationFeaturesBackendApiService,
-     private explorationHtmlFormatterService: ExplorationHtmlFormatterService,
-     private explorationObjectFactory: ExplorationObjectFactory,
-     private expressionInterpolationService: ExpressionInterpolationService,
-     private focusManagerService: FocusManagerService,
-     private imagePreloaderService: ImagePreloaderService,
-     private learnerParamsService: LearnerParamsService,
-     private playerTranscriptService: PlayerTranscriptService,
-     private readOnlyExplorationBackendApiService:
-       ReadOnlyExplorationBackendApiService,
-     private statsReportingService: StatsReportingService,
-     private urlService: UrlService
-   ) {
-     this.setExplorationProperties();
-   }
+  constructor(
+    private alertsService: AlertsService,
+    private answerClassificationService: AnswerClassificationService,
+    private audioPreloaderService: AudioPreloaderService,
+    private contentTranslationLanguageService: ContentTranslationLanguageService,
+    private pageContextService: PageContextService,
+    private computeGraphService: ComputeGraphService,
+    private stateGraphLayoutService: StateGraphLayoutService,
+    private contentTranslationManagerService: ContentTranslationManagerService,
+    private entityTranslationsService: EntityTranslationsService,
+    private explorationHtmlFormatterService: ExplorationHtmlFormatterService,
+    private expressionInterpolationService: ExpressionInterpolationService,
+    private focusManagerService: FocusManagerService,
+    private imagePreloaderService: ImagePreloaderService,
+    private learnerParamsService: LearnerParamsService,
+    private learnerAnswerInfoService: LearnerAnswerInfoService,
+    private loggerService: LoggerService,
+    private playerTranscriptService: PlayerTranscriptService,
+    private readOnlyExplorationBackendApiService: ReadOnlyExplorationBackendApiService,
+    private statsReportingService: StatsReportingService,
+    private stateEditorService: StateEditorService,
+    private translateService: TranslateService,
+    private urlInterpolationService: UrlInterpolationService,
+    private platformFeatureService: PlatformFeatureService,
+    private urlService: UrlService
+  ) {
+    this.setExplorationProperties();
+  }
 
-   setExplorationProperties(): void {
-     let pathnameArray = this.urlService.getPathname().split('/');
-     let explorationContext = false;
+  /**
+   * Initializes exploration-related properties based on the current URL path.
+   *
+   * This function detects whether the page is within an exploration context
+   * (e.g., learner view, editor, skill editor, embed, lesson, etc.).
+   * If so, it sets the exploration ID and version using services and fetches
+   * the full exploration data unless in question player or skill editor mode.
+   * Otherwise, assigns default test values for the ID and version.
+   *
+   * This method must be called before exploration initialization in most cases.
+   */
+  setExplorationProperties(): void {
+    let pathnameArray = this.urlService.getPathname().split('/');
+    let explorationContext = false;
 
-     for (let i = 0; i < pathnameArray.length; i++) {
-       if (pathnameArray[i] === 'explore' ||
-             pathnameArray[i] === 'create' ||
-             pathnameArray[i] === 'skill_editor' ||
-             pathnameArray[i] === 'embed') {
-         explorationContext = true;
-         break;
-       }
-     }
+    for (let i = 0; i < pathnameArray.length; i++) {
+      if (
+        pathnameArray[i] === 'explore' ||
+        pathnameArray[i] === 'create' ||
+        pathnameArray[i] === 'skill_editor' ||
+        pathnameArray[i] === 'embed' ||
+        pathnameArray[i] === 'lesson'
+      ) {
+        explorationContext = true;
+        break;
+      }
+    }
 
-     if (explorationContext) {
-       this._explorationId = this.contextService.getExplorationId();
-       this.version = this.urlService.getExplorationVersionFromUrl();
-       this._editorPreviewMode = this.contextService
-         .isInExplorationEditorPage();
-       this._questionPlayerMode = this.contextService.isInQuestionPlayerMode();
-       if (!this._questionPlayerMode &&
-       !('skill_editor' === this.urlService.getPathname()
-         .split('/')[1].replace(/"/g, "'"))) {
-         this.readOnlyExplorationBackendApiService
-           .loadExplorationAsync(this._explorationId, this.version)
-           .then((exploration) => {
-             this.version = exploration.version;
-           });
-       }
-     } else {
-       this._explorationId = 'test_id';
-       this.version = 1;
-       this._editorPreviewMode = false;
-       this._questionPlayerMode = false;
-     }
-   }
+    if (explorationContext) {
+      this._explorationId = this.pageContextService.getExplorationId();
+      let version = this.urlService.getExplorationVersionFromUrl();
+      this.pageContextService.setExplorationVersion(version);
 
-   randomFromArray<T>(arr: T[]): T {
-     return arr[Math.floor(Math.random() * arr.length)];
-   }
+      const pathSegment = this.urlService
+        .getPathname()
+        .split('/')[1]
+        .replace(/"/g, "'");
 
-   // Evaluate feedback.
-   makeFeedback(
-       feedbackHtml: string, envs: Record<string, string>[]): string {
-     return this.expressionInterpolationService
-       .processHtml(feedbackHtml, envs);
-   }
+      if (
+        !this.pageContextService.isInQuestionPlayerMode() &&
+        pathSegment !== 'skill_editor'
+      ) {
+        this.readOnlyExplorationBackendApiService
+          .loadExplorationAsync(this._explorationId, version)
+          .then(exploration => {
+            this.pageContextService.setExplorationVersion(exploration.version);
+          });
+      }
+    } else {
+      this._explorationId = 'test_id';
+      let version = 1;
+      this.pageContextService.setExplorationVersion(version);
+    }
+  }
 
-   private _getRandomSuffix(): string {
-     // This is a bit of a hack. When a refresh to a $scope variable
-     // happens,
-     // AngularJS compares the new value of the variable to its previous
-     // value. If they are the same, then the variable is not updated.
-     // Appending a random suffix makes the new value different from the
-     // previous one, and thus indirectly forces a refresh.
-     let randomSuffix = '';
-     let N = Math.round(Math.random() * 1000);
-     for (let i = 0; i < N; i++) {
-       randomSuffix += ' ';
-     }
-     return randomSuffix;
-   }
+  /**
+   * Returns a random element from the provided array.
+   *
+   * @template T
+   * @param {readonly T[]} arr - The array from which to select a random element.
+   * @returns {T} A randomly selected element from the array.
+   */
+  randomFromArray<T>(arr: readonly T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
 
-   // Evaluate parameters. Returns null if any evaluation fails.
-   makeParams(
-       oldParams: ExplorationParams, paramChanges: ParamChange[],
-       envs: Record<string, string>[]): ExplorationParams {
-     let newParams: ExplorationParams = { ...oldParams };
-     if (paramChanges.every((pc) => {
-       if (pc.generatorId === 'Copier') {
-         if (!pc.customizationArgs.parse_with_jinja) {
-           newParams[pc.name] = pc.customizationArgs.value;
-         } else {
-           let paramValue: string = this.expressionInterpolationService
-             .processUnicode(
-               pc.customizationArgs.value, [newParams].concat(envs));
-           if (paramValue === null) {
-             return false;
-           }
-           newParams[pc.name] = paramValue;
-         }
-       } else {
-         // RandomSelector.
-         newParams[pc.name] = this.randomFromArray(
-           pc.customizationArgs.list_of_values);
-       }
-       return true;
-     })) {
-       // All parameters were evaluated successfully.
-       return newParams;
-     }
-     // Evaluation of some parameter failed.
-     return null;
-   }
+  /**
+   * Generates the appropriate feedback to display for a given answer.
+   *
+   * If the interaction is a TextInput and the outcome is the default one,
+   * the function checks if the answer is likely a misspelling. If so, it returns
+   * a localized "misspelled answer" response. Otherwise, it interpolates the
+   * feedback using the current parameter environment.
+   *
+   * @param {string} answer - The learner's submitted answer.
+   * @param {StateCard} oldStateCard - The StateCard representing the current state.
+   * @param {Outcome} outcome - The outcome returned by the classifier.
+   * @param {Record<string, string>[]} envs - A list of parameter environments for interpolation.
+   * @returns {string} The feedback message to display to the learner.
+   */
+  private _getFeedback(
+    answer: string,
+    oldStateCard: StateCard,
+    outcome: Outcome,
+    envs: Record<string, string>[]
+  ): string {
+    const oldInteractionId = oldStateCard.getInteractionId();
+    const oldInteractionArgs = oldStateCard.getInteractionCustomizationArgs();
+    const defaultOutcome = oldStateCard.getInteraction()?.defaultOutcome;
+    const shouldCheckForMisspelling =
+      oldInteractionId === AppConstants.INTERACTION_NAMES.TEXT_INPUT &&
+      oldInteractionArgs !== null &&
+      'catchMisspellings' in oldInteractionArgs &&
+      oldInteractionArgs.catchMisspellings.value &&
+      isEqual(outcome, defaultOutcome);
 
-   // Evaluate question string.
-   makeQuestion(newState: State, envs: Record<string, string>[]): string {
-     return this.expressionInterpolationService.processHtml(
-       newState.content.html, envs);
-   }
+    if (shouldCheckForMisspelling) {
+      const answerIsOnlyMisspelled =
+        this.answerClassificationService.isAnswerOnlyMisspelled(
+          oldStateCard.getInteraction(),
+          answer
+        );
+      if (answerIsOnlyMisspelled) {
+        const randomResponse = this.randomFromArray(
+          ExplorationPlayerConstants.I18N_ANSWER_MISSPELLED_RESPONSE_TEXT_IDS
+        );
+        return this.translateService.instant(randomResponse);
+      }
+    }
 
+    return this.expressionInterpolationService.processHtml(
+      outcome.feedback.html,
+      envs
+    );
+  }
 
-   // This should only be called when 'exploration' is non-null.
-   _loadInitialState(
-       successCallback: (stateCard: StateCard, str: string) => void): void {
-     let initialState: State = this.exploration.getInitialState();
-     let oldParams: ExplorationParams = this.learnerParamsService
-       .getAllParams();
-     let newParams: ExplorationParams = this.makeParams(
-       oldParams, initialState.paramChanges, [oldParams]);
-     if (newParams === null) {
-       this.alertsService.addWarning('Expression parsing error.');
-       return;
-     }
-     if (newParams) {
-       this.learnerParamsService.init(newParams);
-     }
-     this.currentStateName = this.exploration.initStateName;
-     this.nextStateName = this.exploration.initStateName;
+  extractDepthGraph(): {[stateName: string]: number} {
+    const graphData = this.computeGraphService.compute(
+      this.getInitialStateName(),
+      this.getExploration().states
+    );
+    const computedNodes = this.stateGraphLayoutService.computeLayout(
+      graphData.nodes,
+      graphData.links,
+      graphData.initStateId,
+      graphData.finalStateIds
+    );
 
-     let interaction: Interaction = this.exploration
-       .getInteraction(this.exploration.initStateName);
-     let nextFocusLabel: string = this.focusManagerService.generateFocusLabel();
+    let depthGraph: {[stateName: string]: number} = {};
+    forEach(computedNodes, node => {
+      depthGraph[node.id] = node.depth;
+    });
 
-     let interactionId = interaction.id;
-     let interactionHtml = null;
+    return depthGraph;
+  }
 
-     if (interactionId) {
-       interactionHtml = this.explorationHtmlFormatterService
-         .getInteractionHtml(
-           interactionId,
-           this.exploration.getInteractionCustomizationArgs(
-             this.currentStateName),
-           true, nextFocusLabel, null);
-     }
+  getMaxStateDepth(): number {
+    const depthGraph = this.extractDepthGraph();
+    let maxDepth = 0;
+    for (let stateName in depthGraph) {
+      if (depthGraph[stateName] > maxDepth) {
+        maxDepth = depthGraph[stateName];
+      }
+    }
+    return maxDepth;
+  }
 
-     let questionHtml: string = this.makeQuestion(initialState, [newParams]);
-     if (questionHtml === null) {
-       this.alertsService.addWarning('Expression parsing error.');
-       return;
-     }
+  /**
+   * Generates a random string of spaces to force Angular to treat component
+   * input values as changed, even when logically they are the same.
+   *
+   * This is a workaround to force Angular to re-render components when needed.
+   *
+   * @returns {string} A random string consisting of whitespace characters.
+   */
+  getRandomSuffix(): string {
+    // This is a bit of a hack. When a refresh to a component property
+    // happens, Angular compares the new value of the property to its previous
+    // value. If they are the same, then the property is not updated.
+    // Appending a random suffix makes the new value different from the
+    // previous one, and thus indirectly forces a refresh.
+    let randomSuffix = '';
+    let N = Math.round(Math.random() * 1000);
+    for (let i = 0; i < N; i++) {
+      randomSuffix += ' ';
+    }
+    return randomSuffix;
+  }
 
-     if (!this._editorPreviewMode) {
-       this.statsReportingService.recordExplorationStarted(
-         this.exploration.initStateName, newParams);
-     }
+  /**
+   * Evaluates and returns a new set of exploration parameters based on the
+   * provided list of parameter changes.
+   *
+   * Parameters may be generated using either the 'Copier' or 'RandomSelector'
+   * generators. If any parameter evaluation fails, an error is thrown.
+   *
+   * @param {ExplorationParams} oldParams - The base set of parameters to extend.
+   * @param {ParamChange[]} paramChanges - A list of parameter changes to apply.
+   * @param {Record<string, string>[]} envs - A list of environments used for interpolation.
+   * @returns {ExplorationParams} A new object with evaluated parameter values.
+   * @throws {Error} If any parameter cannot be evaluated correctly.
+   */
+  makeParams(
+    oldParams: ExplorationParams,
+    paramChanges: ParamChange[],
+    envs: Record<string, string>[]
+  ): ExplorationParams {
+    let newParams: ExplorationParams = {...oldParams};
+    if (
+      paramChanges.every(pc => {
+        if (pc.generatorId === 'Copier') {
+          if (!pc.customizationArgs.parse_with_jinja) {
+            newParams[pc.name] = pc.customizationArgs.value || '';
+          } else {
+            let paramValue = this.expressionInterpolationService.processUnicode(
+              pc.customizationArgs.value || '',
+              [newParams].concat(envs)
+            );
+            if (paramValue === null) {
+              return false;
+            }
+            newParams[pc.name] = paramValue;
+          }
+        } else {
+          // RandomSelector.
+          newParams[pc.name] = this.randomFromArray(
+            pc.customizationArgs.list_of_values || []
+          );
+        }
+        return true;
+      })
+    ) {
+      // All parameters were evaluated successfully.
+      return newParams;
+    }
+    // Evaluation of some parameter failed.
+    throw new Error('Parameter evaluation failed.');
+  }
 
-     let initialCard =
-       StateCard.createNewCard(
-         this.currentStateName, questionHtml, interactionHtml,
-         interaction, initialState.recordedVoiceovers,
-         initialState.writtenTranslations,
-         initialState.content.contentId, this.audioTranslationLanguageService);
-     successCallback(initialCard, nextFocusLabel);
-   }
+  /**
+   * Evaluates and returns the question content (HTML) for a given state.
+   *
+   * @param {State} newState - The state whose content is to be processed.
+   * @param {Record<string, string>[]} envs - A list of environments for interpolation.
+   * @returns {string} The processed HTML string for the question content.
+   */
+  makeQuestion(newState: State, envs: Record<string, string>[]): string {
+    return this.expressionInterpolationService.processHtml(
+      newState.content.html,
+      envs
+    );
+  }
 
-   // Initialize the parameters in the exploration as specified in the
-   // exploration-level initial parameter changes list, followed by any
-   // manual parameter changes (in editor preview mode).
-   initParams(manualParamChanges: ParamChange[]): void {
-     let baseParams = {};
-     this.exploration.paramSpecs.forEach((paramName, paramSpec) => {
-       baseParams[paramName] = paramSpec.getType().createDefaultValue();
-     });
+  /**
+   * Loads and initializes the first state of the exploration.
+   *
+   * This sets the current and next state names to the initial state, processes
+   * initial parameter changes, generates HTML for the interaction, and invokes
+   * the success callback with the constructed StateCard.
+   *
+   * Should only be called when the `exploration` object is already initialized.
+   *
+   * @param {(stateCard: StateCard, str: string) => void} successCallback - Callback function
+   *   that is passed the initial StateCard and the focus label once the state is loaded.
+   */
+  loadInitialState(
+    successCallback: (stateCard: StateCard, str: string) => void
+  ): void {
+    let initialState: State = this.exploration.getInitialState();
+    let oldParams: ExplorationParams = this.learnerParamsService.getAllParams();
+    let newParams: ExplorationParams = this.makeParams(
+      oldParams,
+      initialState.paramChanges,
+      [oldParams]
+    );
+    if (newParams === null) {
+      this.alertsService.addWarning('Expression parsing error.');
+      return;
+    }
+    if (newParams) {
+      this.learnerParamsService.init(newParams);
+    }
+    this.currentStateName = this.exploration.initStateName;
+    this.nextStateName = this.exploration.initStateName;
 
-     let startingParams = this.makeParams(
-       baseParams,
-       this.exploration.paramChanges.concat(manualParamChanges),
-       [baseParams]);
+    let interaction = this.exploration.getInteraction(
+      this.exploration.initStateName
+    );
+    if (!interaction) {
+      throw new Error('Interaction for the initial state is not defined.');
+    }
+    let nextFocusLabel: string = this.focusManagerService.generateFocusLabel();
 
-     this.learnerParamsService.init(startingParams);
-   }
+    let interactionId = interaction.id;
+    let interactionHtml = '';
+    let interactionCustomizationArgs =
+      this.exploration.getInteractionCustomizationArgs(this.currentStateName);
+    if (interactionCustomizationArgs === null) {
+      this.alertsService.addWarning(
+        'Interaction customization args cannot be null.'
+      );
+      return;
+    }
+    if (interactionId) {
+      interactionHtml = this.explorationHtmlFormatterService.getInteractionHtml(
+        interactionId,
+        interactionCustomizationArgs,
+        true,
+        nextFocusLabel,
+        null
+      );
+    }
 
-   private _getNextInteractionHtml(labelForFocusTarget: string): string {
-     let interactionId: string = this.exploration
-       .getInteractionId(this.nextStateName);
+    let questionHtml: string = this.makeQuestion(initialState, [newParams]);
+    if (questionHtml === null) {
+      this.alertsService.addWarning('Expression parsing error.');
+      return;
+    }
 
-     return this.explorationHtmlFormatterService.getInteractionHtml(
-       interactionId,
-       this.exploration.getInteractionCustomizationArgs(this.nextStateName),
-       true,
-       labelForFocusTarget, null);
-   }
+    if (!this.pageContextService.isInExplorationEditorPage()) {
+      this.statsReportingService.recordExplorationStarted(
+        this.exploration.initStateName,
+        newParams
+      );
+    }
 
-   checkAlwaysAskLearnersForAnswerDetails(): void {
-     this.explorationFeaturesBackendApiService.fetchExplorationFeaturesAsync(
-       this._explorationId).then((featuresData) => {
-       this.alwaysAskLearnersForAnswerDetails = (
-         featuresData.alwaysAskLearnersForAnswerDetails);
-     });
-   }
+    let contentId = initialState.content.contentId;
+    if (contentId === null) {
+      throw new Error('Content id cannot be null.');
+    }
 
-   // This should only be used in editor preview mode. It sets the
-   // exploration data from what's currently specified in the editor, and
-   // also initializes the parameters to empty strings.
-   initSettingsFromEditor(
-       activeStateNameFromPreviewTab: string,
-       manualParamChangesToInit: ParamChange[]): void {
-     if (this._editorPreviewMode) {
-       this.manualParamChanges = manualParamChangesToInit;
-       this.initStateName = activeStateNameFromPreviewTab;
-     } else {
-       throw new Error('Cannot populate exploration in learner mode.');
-     }
-   }
+    let initialCard = StateCard.createNewCard(
+      this.currentStateName,
+      questionHtml,
+      interactionHtml,
+      interaction,
+      contentId
+    );
+    successCallback(initialCard, nextFocusLabel);
+  }
 
-   /**
-    * Initializes an exploration, passing the data for the first state to
-    * successCallback.
-    *
-    * In editor preview mode, populateExploration() must be called before
-    * calling init().
-    *
-    * @param {function} successCallback - The function to execute after the
-    *   initial exploration data is successfully loaded. This function will
-    *   be passed two arguments:
-    *   - stateName {string}, the name of the first state
-    *   - initHtml {string}, an HTML string representing the content of the
-    *       first state.
-    */
-   init(
-       explorationDict: ExplorationBackendDict,
-       explorationVersion: number, preferredAudioLanguage: string,
-       autoTtsEnabled: boolean, preferredContentLanguageCodes: string[],
-       successCallback: (stateCard: StateCard, label: string) => void): void {
-     this.exploration = this.explorationObjectFactory.createFromBackendDict(
-       explorationDict);
-     this.answerIsBeingProcessed = false;
-     if (this._editorPreviewMode) {
-       this.exploration.setInitialStateName(this.initStateName);
-       this.visitedStateNames = [this.exploration.getInitialState().name];
-       this.initParams(this.manualParamChanges);
-       this.audioTranslationLanguageService.init(
-         this.exploration.getAllVoiceoverLanguageCodes(),
-         null,
-         this.exploration.getLanguageCode(),
-         explorationDict.auto_tts_enabled);
-       this.audioPreloaderService.init(this.exploration);
-       this.audioPreloaderService.kickOffAudioPreloader(this.initStateName);
-       this._loadInitialState(successCallback);
-     } else {
-       this.visitedStateNames.push(this.exploration.getInitialState().name);
-       this.version = explorationVersion;
-       this.initParams([]);
-       this.audioTranslationLanguageService.init(
-         this.exploration.getAllVoiceoverLanguageCodes(),
-         preferredAudioLanguage,
-         this.exploration.getLanguageCode(),
-         autoTtsEnabled);
-       this.audioPreloaderService.init(this.exploration);
-       this.audioPreloaderService.kickOffAudioPreloader(
-         this.exploration.getInitialState().name);
-       this.imagePreloaderService.init(this.exploration);
-       this.imagePreloaderService.kickOffImagePreloader(
-         this.exploration.getInitialState().name);
-       this.checkAlwaysAskLearnersForAnswerDetails();
-       this._loadInitialState(successCallback);
-     }
-     this.contentTranslationLanguageService.init(
-       this.exploration.getDisplayableWrittenTranslationLanguageCodes(),
-       preferredContentLanguageCodes,
-       this.exploration.getLanguageCode()
-     );
-   }
+  getInitialStateName(): string {
+    return this.exploration.getInitialState().name ?? '';
+  }
 
-   moveToExploration(successCallback: (StateCard, string) => void): void {
-     this._loadInitialState(successCallback);
-   }
+  /**
+   * Initializes exploration parameters.
+   *
+   * This sets parameter values based on the default exploration-level parameter
+   * specifications and applies any manual parameter changes provided (typically
+   * used in editor preview mode).
+   *
+   * @param {ParamChange[]} manualParamChanges - A list of manually provided parameter changes
+   *   (used in preview mode).
+   */
+  private _initParams(manualParamChanges: ParamChange[]): void {
+    let baseParams: ExplorationParams = {};
+    this.exploration.paramSpecs.forEach(
+      (paramName: string, paramSpec: ParamSpec) => {
+        baseParams[paramName] = String(
+          paramSpec.getType().createDefaultValue()
+        );
+      }
+    );
 
-   isCurrentStateInitial(): boolean {
-     return this.currentStateName === this.exploration.initStateName;
-   }
+    let startingParams = this.makeParams(
+      baseParams,
+      this.exploration.paramChanges.concat(manualParamChanges),
+      [baseParams]
+    );
 
-   recordNewCardAdded(): void {
-     this.currentStateName = this.nextStateName;
-   }
+    this.learnerParamsService.init(startingParams);
+  }
 
-   getState(): State {
-     let stateName: string = this.playerTranscriptService.getLastStateName();
-     return this.exploration.getState(stateName);
-   }
+  /**
+   * Generates the HTML string for an interaction for the given state.
+   *
+   * This method fetches the interaction ID and customization arguments for
+   * the given state name, and uses the HTML formatter service to generate the
+   * corresponding HTML. It throws an error if the interaction ID or customization
+   * arguments are not defined.
+   *
+   * @param {string} labelForFocusTarget - The label used for managing screen reader focus.
+   * @param {string} stateName - The name of the state whose interaction HTML is to be generated.
+   * @returns {string} The formatted HTML for the state's interaction.
+   * @throws {Error} If the interaction ID or customization arguments are null.
+   */
+  private _getInteractionHtmlByStateName(
+    labelForFocusTarget: string,
+    stateName: string
+  ): string {
+    let interactionId = this.exploration.getInteractionId(stateName);
 
-   getExplorationId(): string {
-     return this._explorationId;
-   }
+    if (interactionId === null) {
+      throw new Error('Interaction id cannot be null.');
+    }
 
-   getExplorationTitle(): string {
-     return this.exploration.title;
-   }
+    let interactionCustomizationArgs =
+      this.exploration.getInteractionCustomizationArgs(stateName);
+    if (interactionCustomizationArgs === null) {
+      throw new Error('Interaction customization args cannot be null.');
+    }
 
-   getExplorationVersion(): number {
-     return this.version;
-   }
+    return this.explorationHtmlFormatterService.getInteractionHtml(
+      interactionId,
+      interactionCustomizationArgs,
+      true,
+      labelForFocusTarget,
+      null
+    );
+  }
 
-   getAuthorRecommendedExpIds(): string[] {
-     return this.exploration.getAuthorRecommendedExpIds(this.currentStateName);
-   }
+  /**
+   * Sets up the exploration state and parameters from the editor preview.
+   *
+   * This method is used **only** in exploration editor preview mode. It sets
+   * the initial state name and any manually defined parameter changes so that
+   * the preview behaves like a real learner session.
+   *
+   * @param {string} activeStateNameFromPreviewTab - The name of the state selected in the preview tab.
+   * @param {ParamChange[]} manualParamChangesToInit - A list of parameter changes to initialize.
+   * @throws {Error} If called outside the exploration editor context.
+   */
+  initSettingsFromEditor(
+    activeStateNameFromPreviewTab: string,
+    manualParamChangesToInit: ParamChange[]
+  ): void {
+    if (this.pageContextService.isInExplorationEditorPage()) {
+      this.manualParamChanges = manualParamChangesToInit;
+      this.initStateName = activeStateNameFromPreviewTab;
+    } else {
+      throw new Error('Cannot populate exploration in learner mode.');
+    }
+  }
 
-   getLanguageCode(): string {
-     return this.exploration.getLanguageCode();
-   }
+  /**
+   * Initializes the learner view of the exploration and loads the initial state.
+   *
+   * This method is responsible for setting up services related to audio,
+   * images, translations, and learner parameters. It supports both learner mode
+   * and editor preview mode (if called after `initSettingsFromEditor`).
+   *
+   * @param {ExplorationBackendDict} explorationDict - The backend dictionary containing exploration data.
+   * @param {number | null} explorationVersion - The current version of the exploration.
+   * @param {string | null} preferredAudioLanguage - The learner's preferred audio language.
+   * @param {boolean | null} autoTtsEnabled - Whether automatic text-to-speech is enabled.
+   * @param {string[]} preferredContentLanguageCodes - List of preferred content languages for translations.
+   * @param {string[]} displayableLanguageCodes - List of available content languages for display.
+   * @param {(stateCard: StateCard, label: string) => void} successCallback - Callback to execute after
+   *   loading the initial state, receiving the generated StateCard and focus label.
+   *
+   * @throws {Error} If the initial state name is null or the exploration version is not set.
+   */
+  init(
+    explorationDict: ExplorationBackendDict,
+    explorationVersion: number | null,
+    preferredAudioLanguage: string | null,
+    autoTtsEnabled: boolean | null,
+    preferredContentLanguageCodes: string[],
+    displayableLanguageCodes: string[],
+    successCallback: (stateCard: StateCard, label: string) => void
+  ): void {
+    this.exploration = Exploration.createFromBackendDict(
+      explorationDict,
+      this.loggerService,
+      this.urlInterpolationService
+    );
+    this.answerIsBeingProcessed = false;
+    let initStateName = this.exploration.getInitialState().name;
+    if (initStateName === null) {
+      throw new Error('Initial state name cannot be null.');
+    }
+    if (this.pageContextService.isInExplorationEditorPage()) {
+      this.exploration.setInitialStateName(this.initStateName);
+      this.visitedStateNames = [initStateName];
+      this._initParams(this.manualParamChanges);
+      this.audioPreloaderService.init(this.exploration);
+      this.audioPreloaderService.kickOffAudioPreloader(this.initStateName);
+      this.loadInitialState(successCallback);
+    } else {
+      this.visitedStateNames.push(initStateName);
+      this.pageContextService.setExplorationVersion(explorationVersion);
+      this._initParams([]);
+      this.audioPreloaderService.init(this.exploration);
+      this.audioPreloaderService.kickOffAudioPreloader(initStateName);
+      this.imagePreloaderService.init(this.exploration);
+      this.imagePreloaderService.kickOffImagePreloader(initStateName);
+      this.learnerAnswerInfoService.checkAlwaysAskLearnersForAnswerDetails();
+      this.loadInitialState(successCallback);
+    }
 
-   isInPreviewMode(): boolean {
-     return !!this._editorPreviewMode;
-   }
+    const version = this.pageContextService.getExplorationVersion();
+    if (!version) {
+      throw new Error('Exploration version is not set.');
+    }
 
-   submitAnswer(
-       answer: string, interactionRulesService: InteractionRulesService,
-       successCallback: (
-         nextCard: StateCard,
-         refreshInteraction: boolean,
-         feedbackHtml: string,
-         feedbackAudioTranslations: BindableVoiceovers,
-         refresherExplorationId: string,
-         missingPrerequisiteSkillId: string,
-         remainOnCurrentCard: boolean,
-         taggedSkillMisconceptionId: string,
-         wasOldStateInitial: boolean,
-         isFirstHit: boolean,
-         isFinalQuestion: boolean,
-         focusLabel: string
-       ) => void): boolean {
-     if (this.answerIsBeingProcessed) {
-       return;
-     }
-     this.answerIsBeingProcessed = true;
-     let oldStateName: string = this.playerTranscriptService.getLastStateName();
-     let oldState: State = this.exploration.getState(oldStateName);
-     let recordedVoiceovers: RecordedVoiceovers = oldState.recordedVoiceovers;
-     let oldStateCard: StateCard = this.playerTranscriptService.getLastCard();
-     let classificationResult: AnswerClassificationResult = (
-       this.answerClassificationService.getMatchingClassificationResult(
-         oldStateName, oldStateCard.getInteraction(), answer,
-         interactionRulesService));
-     let answerIsCorrect: boolean = classificationResult.outcome
-       .labelledAsCorrect;
+    this.entityTranslationsService.init(
+      this._explorationId,
+      'exploration',
+      version
+    );
+    this.contentTranslationManagerService.setOriginalTranscript(
+      this.exploration.getLanguageCode()
+    );
 
-     // Use {...} to clone the object
-     // since classificationResult.outcome points
-     // at oldState.interaction.default_outcome.
-     let outcome = {...classificationResult.outcome};
-     let newStateName: string = outcome.dest;
+    this.contentTranslationLanguageService.init(
+      displayableLanguageCodes,
+      preferredContentLanguageCodes,
+      this.exploration.getLanguageCode()
+    );
 
-     if (!this._editorPreviewMode) {
-       let feedbackIsUseful: boolean = (
-         this.answerClassificationService
-           .isClassifiedExplicitlyOrGoesToNewState(
-             oldStateName, oldState, answer,
-             interactionRulesService));
-       this.statsReportingService.recordAnswerSubmitted(
-         oldStateName,
-         this.learnerParamsService.getAllParams(),
-         answer,
-         classificationResult.answerGroupIndex,
-         classificationResult.ruleIndex,
-         classificationResult.classificationCategorization,
-         feedbackIsUseful);
+    let pathnameArray = this.urlService.getPathname().split('/');
+    if (this.isNewLessonPlayerEnabled() && pathnameArray.includes('lesson')) {
+      this.contentTranslationManagerService.displayTranslations(
+        this.contentTranslationLanguageService.getCurrentContentLanguageCode()
+      );
+      this.contentTranslationManagerService.initLessonTranslations();
+    }
+  }
 
-       this.statsReportingService.recordAnswerSubmitAction(
-         oldStateName, newStateName, oldState.interaction.id, answer,
-         outcome.feedback.html);
-     }
+  /**
+   * Updates the current state name to reflect that a new card
+   * (i.e., a new state) has been added to the player's transcript.
+   *
+   * This is typically called after navigating to a new state.
+   */
+  recordNewCardAdded(): void {
+    this.currentStateName = this.nextStateName;
+  }
 
-     let refresherExplorationId = outcome.refresherExplorationId;
-     let missingPrerequisiteSkillId = outcome.missingPrerequisiteSkillId;
-     let newState = this.exploration.getState(newStateName);
-     let isFirstHit = Boolean(this.visitedStateNames.indexOf(
-       newStateName) === -1);
-     if (oldStateName !== newStateName) {
-       this.visitedStateNames.push(newStateName);
-     }
-     // Compute the data for the next state.
-     let oldParams: ExplorationParams = this.learnerParamsService
-       .getAllParams();
-     oldParams.answer = answer;
-     let feedbackHtml: string =
-       this.makeFeedback(outcome.feedback.html, [oldParams]);
-     let feedbackContentId: string = outcome.feedback.contentId;
-     let feedbackAudioTranslations: BindableVoiceovers = (
-       recordedVoiceovers.getBindableVoiceovers(feedbackContentId));
-     if (feedbackHtml === null) {
-       this.answerIsBeingProcessed = false;
-       this.alertsService.addWarning('Feedback content should not be empty.');
-       return;
-     }
-     let newParams = (
-       newState ? this.makeParams(
-         oldParams, newState.paramChanges, [oldParams]) : oldParams);
-     if (newParams === null) {
-       this.answerIsBeingProcessed = false;
-       this.alertsService.addWarning('Parameters should not be empty.');
-       return;
-     }
+  /**
+   * Retrieves the current State object based on the last state name
+   * recorded in the player's transcript.
+   *
+   * @returns {State} The current State object.
+   */
+  getState(): State {
+    let stateName: string = this.playerTranscriptService.getLastStateName();
+    return this.exploration.getState(stateName);
+  }
 
-     let questionHtml = this.makeQuestion(newState, [newParams, {
-       answer: 'answer'
-     }]);
-     if (questionHtml === null) {
-       this.answerIsBeingProcessed = false;
-       // TODO(#13133): Remove all question related naming conventions.
-       this.alertsService.addWarning('Question content should not be empty.');
-       return;
-     }
+  /**
+   * Retrieves the State object corresponding to the provided state name.
+   *
+   * @param {string} stateName - The name of the state to retrieve.
+   * @returns {State} The corresponding State object.
+   */
+  getStateFromStateName(stateName: string): State {
+    return this.exploration.getState(stateName);
+  }
 
-     // TODO(sll): Remove the 'answer' key from newParams.
-     newParams.answer = answer;
+  getExploration(): Exploration {
+    return this.exploration;
+  }
 
-     this.answerIsBeingProcessed = false;
+  /**
+   * Returns a list of exploration IDs that the author recommends
+   * for the given state.
+   *
+   * These are typically shown to the learner as suggested next steps.
+   *
+   * @param {string} stateName - The name of the state for which to fetch recommendations.
+   * @returns {string[]} A list of recommended exploration IDs.
+   */
+  getAuthorRecommendedExpIdsByStateName(stateName: string): string[] {
+    let authorRecommendedExpIds =
+      this.exploration.getAuthorRecommendedExpIds(stateName);
+    return authorRecommendedExpIds ? authorRecommendedExpIds : [];
+  }
 
-     let refreshInteraction = (
-       oldStateName !== newStateName ||
-       this.exploration.isInteractionInline(oldStateName));
-     this.nextStateName = newStateName;
-     let onSameCard: boolean = (oldStateName === newStateName);
+  /**
+   * Returns the language code for the current exploration.
+   *
+   * @returns {string} The language code (e.g., 'en', 'hi').
+   */
+  getLanguageCode(): string {
+    return this.exploration.getLanguageCode();
+  }
 
-     this._updateActiveStateIfInEditorEventEmitter.emit(newStateName);
+  /**
+   * Handles the submission of an answer by the learner.
+   *
+   * This function classifies the answer using the provided interaction rules,
+   * records learner statistics, computes feedback and parameters for the next
+   * state, and generates the next StateCard to be displayed.
+   *
+   * If applicable, it also generates a special "stuck state" card used in
+   * scenarios where the learner is not progressing.
+   *
+   * @param {string} answer - The learner's submitted answer.
+   * @param {InteractionRulesService} interactionRulesService - The service used to classify the answer.
+   * @param {Function} successCallback - Callback that is called after successful processing
+   *   of the answer. It receives the next StateCard and other context information:
+   *   - nextCard: The generated StateCard for the next state.
+   *   - refreshInteraction: Whether the interaction should be refreshed.
+   *   - feedbackHtml: HTML string representing feedback to the learner.
+   *   - refresherExplorationId: ID of an exploration to refer the learner to (if applicable).
+   *   - missingPrerequisiteSkillId: ID of a missing skill (if applicable).
+   *   - remainOnCurrentCard: Whether the learner remains on the same state.
+   *   - taggedSkillMisconceptionId: ID of a tagged misconception (currently unused).
+   *   - wasOldStateInitial: Whether the current state was the initial state.
+   *   - isFirstHit: Whether this is the learner’s first time visiting the new state.
+   *   - isFinalQuestion: Whether the question was the final one (currently unused).
+   *   - nextCardIfReallyStuck: A special fallback card if learner is stuck.
+   *   - focusLabel: The label used for accessibility focus management.
+   *
+   * @returns {boolean} Whether the answer is classified as correct.
+   */
+  submitAnswer(
+    answer: string,
+    interactionRulesService: InteractionRulesService,
+    successCallback: (
+      nextCard: StateCard,
+      refreshInteraction: boolean,
+      feedbackHtml: string,
+      refresherExplorationId: string | null,
+      missingPrerequisiteSkillId: string,
+      remainOnCurrentCard: boolean,
+      taggedSkillMisconceptionId: string,
+      wasOldStateInitial: boolean,
+      isFirstHit: boolean,
+      isFinalQuestion: boolean,
+      nextCardIfReallyStuck: StateCard | null,
+      focusLabel: string
+    ) => void
+  ): boolean {
+    if (this.answerIsBeingProcessed) {
+      return false;
+    }
+    this.answerIsBeingProcessed = true;
+    let oldStateName: string = this.playerTranscriptService.getLastStateName();
+    let oldState: State = this.exploration.getState(oldStateName);
+    let oldStateCard: StateCard = this.playerTranscriptService.getLastCard();
+    let classificationResult: AnswerClassificationResult =
+      this.answerClassificationService.getMatchingClassificationResult(
+        oldStateName,
+        oldStateCard.getInteraction(),
+        answer,
+        interactionRulesService
+      );
+    let answerIsCorrect: boolean =
+      classificationResult.outcome.labelledAsCorrect;
 
-     let _nextFocusLabel = this.focusManagerService.generateFocusLabel();
-     let nextInteractionHtml = null;
-     if (this.exploration.getInteraction(this.nextStateName).id) {
-       nextInteractionHtml = this._getNextInteractionHtml(_nextFocusLabel);
-     }
-     if (newParams) {
-       this.learnerParamsService.init(newParams);
-     }
+    // Use {...} to clone the object
+    // since classificationResult.outcome points
+    // at oldState.interaction.default_outcome.
+    let outcome = {...classificationResult.outcome};
+    let newStateName: string = outcome.dest;
 
-     questionHtml = questionHtml + this._getRandomSuffix();
-     nextInteractionHtml = nextInteractionHtml + this._getRandomSuffix();
+    if (!this.pageContextService.isInExplorationEditorPage()) {
+      let feedbackIsUseful: boolean =
+        this.answerClassificationService.isClassifiedExplicitlyOrGoesToNewState(
+          oldStateName,
+          oldState,
+          answer,
+          interactionRulesService
+        );
+      if (classificationResult.ruleIndex === null) {
+        this.alertsService.addWarning(
+          'No rule matched for the submitted answer.'
+        );
+        this.answerIsBeingProcessed = false;
+        return false;
+      }
+      this.statsReportingService.recordAnswerSubmitted(
+        oldStateName,
+        this.learnerParamsService.getAllParams(),
+        answer,
+        this._explorationId,
+        answerIsCorrect,
+        classificationResult.answerGroupIndex,
+        classificationResult.ruleIndex,
+        classificationResult.classificationCategorization,
+        feedbackIsUseful
+      );
 
-     let nextCard = StateCard.createNewCard(
-       this.nextStateName, questionHtml, nextInteractionHtml,
-       this.exploration.getInteraction(this.nextStateName),
-       this.exploration.getState(this.nextStateName).recordedVoiceovers,
-       this.exploration.getState(this.nextStateName).writtenTranslations,
-       this.exploration.getState(this.nextStateName).content.contentId,
-       this.audioTranslationLanguageService);
-     successCallback(
-       nextCard, refreshInteraction, feedbackHtml,
-       feedbackAudioTranslations, refresherExplorationId,
-       missingPrerequisiteSkillId, onSameCard, null,
-       (oldStateName === this.exploration.initStateName), isFirstHit, false,
-       _nextFocusLabel);
-     return answerIsCorrect;
-   }
+      let interactionId = oldState.interaction.id;
+      if (interactionId === null) {
+        this.alertsService.addWarning('Interaction id cannot be null.');
+        this.answerIsBeingProcessed = false;
+        return false;
+      }
 
-   isAnswerBeingProcessed(): boolean {
-     return this.answerIsBeingProcessed;
-   }
+      this.statsReportingService.recordAnswerSubmitAction(
+        oldStateName,
+        newStateName,
+        interactionId,
+        answer,
+        outcome.feedback.html
+      );
+    }
 
-   getAlwaysAskLearnerForAnswerDetails(): boolean {
-     return this.alwaysAskLearnersForAnswerDetails;
-   }
+    let refresherExplorationId = outcome.refresherExplorationId;
+    let missingPrerequisiteSkillId = outcome.missingPrerequisiteSkillId;
+    let newState = this.exploration.getState(newStateName);
+    let isFirstHit = Boolean(
+      this.visitedStateNames.indexOf(newStateName) === -1
+    );
+    if (oldStateName !== newStateName) {
+      this.visitedStateNames.push(newStateName);
+    }
+    // Compute the data for the next state.
+    let oldParams: ExplorationParams = this.learnerParamsService.getAllParams();
+    oldParams.answer = answer;
+    let feedbackHtml: string = this._getFeedback(
+      answer,
+      oldStateCard,
+      classificationResult.outcome,
+      [oldParams]
+    );
+    let newParams = newState
+      ? this.makeParams(oldParams, newState.paramChanges, [oldParams])
+      : oldParams;
+    if (newParams === null) {
+      this.answerIsBeingProcessed = false;
+      this.alertsService.addWarning('Parameters should not be empty.');
+      return false;
+    }
 
-   get onUpdateActiveStateIfInEditor(): EventEmitter<string> {
-     return this._updateActiveStateIfInEditorEventEmitter;
-   }
+    let questionHtml = this.makeQuestion(newState, [
+      newParams,
+      {
+        answer: 'answer',
+      },
+    ]);
+    if (questionHtml === null) {
+      this.answerIsBeingProcessed = false;
+      // TODO(#13133): Remove all question related naming conventions.
+      this.alertsService.addWarning('Question content should not be empty.');
+      return false;
+    }
+
+    // TODO(sll): Remove the 'answer' key from newParams.
+    newParams.answer = answer;
+
+    this.answerIsBeingProcessed = false;
+
+    let refreshInteraction =
+      oldStateName !== newStateName ||
+      this.exploration.isInteractionInline(oldStateName);
+    this.nextStateName = newStateName;
+    let onSameCard: boolean = oldStateName === newStateName;
+
+    this.stateEditorService.onUpdateActiveStateIfInEditor.emit(newStateName);
+
+    let _nextFocusLabel = this.focusManagerService.generateFocusLabel();
+    let nextInteractionHtml = null;
+    let interaction = this.exploration.getInteraction(this.nextStateName);
+    if (!interaction) {
+      this.alertsService.addWarning(
+        'Interaction for the next state is not defined.'
+      );
+      return false;
+    }
+    if (interaction.id) {
+      nextInteractionHtml = this._getInteractionHtmlByStateName(
+        _nextFocusLabel,
+        this.nextStateName
+      );
+    }
+
+    if (newParams) {
+      this.learnerParamsService.init(newParams);
+    }
+
+    questionHtml = questionHtml + this.getRandomSuffix();
+    nextInteractionHtml = nextInteractionHtml + this.getRandomSuffix();
+    let contentId = this.exploration.getState(this.nextStateName).content
+      .contentId;
+    if (contentId === null) {
+      throw new Error('Content id cannot be null.');
+    }
+
+    let nextCard = StateCard.createNewCard(
+      this.nextStateName,
+      questionHtml,
+      nextInteractionHtml,
+      interaction,
+      contentId
+    );
+
+    const nextCardIfReallyStuck = this._getNextCardIfReallyStuck(
+      answer,
+      outcome.destIfReallyStuck,
+      oldParams,
+      _nextFocusLabel
+    );
+
+    successCallback(
+      nextCard,
+      refreshInteraction,
+      feedbackHtml,
+      refresherExplorationId,
+      missingPrerequisiteSkillId ?? '',
+      onSameCard,
+      '',
+      oldStateName === this.exploration.initStateName,
+      isFirstHit,
+      false,
+      nextCardIfReallyStuck,
+      _nextFocusLabel
+    );
+    return answerIsCorrect;
+  }
+
+  /**
+   * Computes the fallback StateCard to show if the learner is determined to be
+   * "really stuck" (e.g., consistently giving incorrect responses).
+   *
+   * This method generates the question content and interaction HTML for the
+   * fallback state (if provided), and constructs a new StateCard for it.
+   *
+   * @param {string} answer - The learner’s submitted answer.
+   * @param {string | null} newStateNameIfStuck - The name of the fallback state to move to.
+   * @param {ExplorationParams} oldParams - The current exploration parameters.
+   * @param {string} nextFocusLabel - The label used for accessibility focus management.
+   *
+   * @returns {StateCard | null} A StateCard for the fallback state, or null if no fallback exists.
+   * @throws {Error} If the content ID of the fallback state is null.
+   */
+  private _getNextCardIfReallyStuck(
+    answer: string,
+    newStateNameIfStuck: string | null,
+    oldParams: ExplorationParams,
+    nextFocusLabel: string
+  ): StateCard | null {
+    if (newStateNameIfStuck === null) {
+      return null;
+    }
+    let newStateIfStuck = this.exploration.getState(newStateNameIfStuck);
+    let newParamsIfStuck = newStateIfStuck
+      ? this.makeParams(oldParams, newStateIfStuck.paramChanges, [oldParams])
+      : oldParams;
+
+    let questionHtmlIfStuck = this.makeQuestion(newStateIfStuck, [
+      newParamsIfStuck,
+      {
+        answer: 'answer',
+      },
+    ]);
+
+    newParamsIfStuck.answer = answer;
+
+    this.nextStateIfStuckName = newStateNameIfStuck;
+
+    let nextInteractionIfStuckHtml = null;
+    let interaction = this.exploration.getInteraction(
+      this.nextStateIfStuckName
+    );
+    if (!interaction) {
+      this.alertsService.addWarning(
+        'Interaction for the next state if stuck is not defined.'
+      );
+      return null;
+    }
+
+    if (interaction.id) {
+      nextInteractionIfStuckHtml = this._getInteractionHtmlByStateName(
+        nextFocusLabel,
+        this.nextStateIfStuckName
+      );
+    }
+
+    questionHtmlIfStuck = questionHtmlIfStuck + this.getRandomSuffix();
+    nextInteractionIfStuckHtml =
+      nextInteractionIfStuckHtml + this.getRandomSuffix();
+
+    let contentId = this.exploration.getState(this.nextStateIfStuckName).content
+      .contentId;
+    if (contentId === null) {
+      return null;
+    }
+
+    return StateCard.createNewCard(
+      this.nextStateIfStuckName,
+      questionHtmlIfStuck,
+      nextInteractionIfStuckHtml,
+      interaction,
+      contentId
+    );
+  }
+
+  /**
+   * Returns a new StateCard object for the given state name.
+   *
+   * This function generates the HTML for both the content and interaction
+   * of the specified state, appends random suffixes for uniqueness,
+   * and ensures the contentId is not null. It throws an error if the
+   * interaction is not defined or if contentId is null.
+   *
+   * @param {string} stateName - The name of the state to get the StateCard for.
+   * @returns {StateCard} A newly created StateCard object for the given state.
+   * @throws {Error} If the interaction for the state is not defined.
+   * @throws {Error} If the content ID of the state is null.
+   */
+  getStateCardByName(stateName: string): StateCard {
+    const _nextFocusLabel = this.focusManagerService.generateFocusLabel();
+    let interactionHtml = null;
+    let interaction = this.exploration.getInteraction(stateName);
+    if (!interaction) {
+      throw new Error('Interaction for the state is not defined.');
+    }
+    if (interaction.id) {
+      interactionHtml = this._getInteractionHtmlByStateName(
+        _nextFocusLabel,
+        stateName
+      );
+    }
+    let contentHtml =
+      this.exploration.getState(stateName).content.html +
+      this.getRandomSuffix();
+    interactionHtml = interactionHtml + this.getRandomSuffix();
+
+    let contentId = this.exploration.getState(stateName).content.contentId;
+    if (contentId === null) {
+      throw new Error('Content id cannot be null.');
+    }
+
+    return StateCard.createNewCard(
+      stateName,
+      contentHtml,
+      interactionHtml,
+      interaction,
+      contentId
+    );
+  }
+
+  /**
+   * Returns the shortest path (as an array of state names) from the initial
+   * state to the specified destination state.
+   *
+   * The path is computed using a breadth-first search over the state graph
+   * constructed from all possible answer groups and default outcomes.
+   *
+   * @param {StateObjectsBackendDict} allStates - A dictionary of all state objects.
+   * @param {string} destStateName - The name of the destination state.
+   * @returns {string[]} The list of state names representing the shortest path
+   *   from the initial state to the destination state.
+   */
+  getShortestPathToState(
+    allStates: StateObjectsBackendDict,
+    destStateName: string
+  ): string[] {
+    let stateGraphLinks: {source: string; target: string}[] = [];
+
+    // Create a list of all possible links between states.
+    for (let stateName of Object.keys(allStates)) {
+      let interaction = this.exploration.getState(stateName).interaction;
+      if (interaction.id) {
+        let groups = interaction.answerGroups;
+        for (let h = 0; h < groups.length; h++) {
+          stateGraphLinks.push({
+            source: stateName,
+            target: groups[h].outcome.dest,
+          });
+        }
+
+        if (interaction.defaultOutcome) {
+          stateGraphLinks.push({
+            source: stateName,
+            target: interaction.defaultOutcome.dest,
+          });
+        }
+      }
+    }
+
+    let shortestPathToStateInReverse: string[] = [];
+    let pathsQueue: string[] = [];
+    let visitedNodes: Record<string, boolean> = {};
+    let nodeToParentMap: Record<string, string | null> = {};
+    visitedNodes[this.exploration.initStateName] = true;
+    pathsQueue.push(this.exploration.initStateName);
+    // 1st state does not have a parent
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    nodeToParentMap[this.exploration.initStateName] = null;
+    while (pathsQueue.length > 0) {
+      // '.shift()' here can return an undefined value, but we're already
+      // checking for pathsQueue.length > 0, so this is safe.
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      let currStateName = pathsQueue.shift()!;
+
+      if (currStateName === destStateName) {
+        break;
+      }
+
+      for (let e = 0; e < stateGraphLinks.length; e++) {
+        let edge = stateGraphLinks[e];
+        let dest = edge.target;
+        if (
+          edge.source === currStateName &&
+          !visitedNodes.hasOwnProperty(dest)
+        ) {
+          visitedNodes[dest] = true;
+          nodeToParentMap[dest] = currStateName;
+          pathsQueue.push(dest);
+        }
+      }
+    }
+
+    if (!visitedNodes[destStateName]) {
+      return [];
+    }
+
+    // Reconstruct the shortest path from node to parent map.
+    let currStateName: string | null = destStateName;
+    while (currStateName !== null) {
+      shortestPathToStateInReverse.push(currStateName);
+      currStateName = nodeToParentMap[currStateName] ?? null;
+    }
+    // Actual shortest path in order is reverse of the path retrieved
+    // from parent map, hence we return the reversed path that goes
+    // from initStateName to destStateName.
+    return shortestPathToStateInReverse.reverse();
+  }
+
+  isNewLessonPlayerEnabled(): boolean {
+    return this.platformFeatureService.status.NewLessonPlayer.isEnabled;
+  }
 }
-
-angular.module('oppia').factory('ExplorationEngineService',
-  downgradeInjectable(ExplorationEngineService));

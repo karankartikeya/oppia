@@ -13,13 +13,12 @@
 // limitations under the License.
 
 /**
- * @fileoverview Karma spec files accumulator.
+ * @fileoverview Main entry point for the Angular 11 test target.
+ *
+ * This file initializes the Angular testing environment, sets up the
+ * jasmine reporter, and explicitly discovers all spec files under
+ * core/templates and extensions via require.context.
  */
-
-// The following file finds all the spec files and merges them all to a single
-// file which Karma uses to run its tests. The Karma is unable to run the tests
-// on multiple files and the DI fails in that case, the reason of which is
-// unclear (related issue -> https://github.com/oppia/oppia/issues/7053).
 
 // These polyfills are necessary to help the TestBed resolve parameters for
 // ApplicationModule
@@ -33,18 +32,26 @@ import 'zone.js/dist/sync-test';
 import 'zone.js/dist/jasmine-patch';
 import 'zone.js/dist/async-test';
 import 'zone.js/dist/fake-async-test';
-import { getTestBed } from '@angular/core/testing';
+import {getTestBed} from '@angular/core/testing';
 import {
   BrowserDynamicTestingModule,
-  platformBrowserDynamicTesting
+  platformBrowserDynamicTesting,
 } from '@angular/platform-browser-dynamic/testing';
 
+// Note: In Angular 11, the native @angular-devkit/build-angular:karma builder
+// still uses Webpack under the hood. We are required to have a custom main entry
+// point with require.context so that the builder can discover our tests and initialize
+// our custom Jasmine reporter. Once the codebase is upgraded to Angular 15+, we can
+// safely delete this file and rely on the CLI's auto-discovery.
 // NOTE - These types are defined by taking
 // https://webpack.js.org/guides/dependency-management/#context-module-api
 // as a reference.
 interface RequireContext {
-  context(
-      directory: string, useSubdirectories: boolean, regExp: RegExp): Context;
+  context: (
+    directory: string,
+    useSubdirectories: boolean,
+    regExp: RegExp
+  ) => Context;
 }
 
 interface Context {
@@ -62,29 +69,25 @@ getTestBed().initTestEnvironment(
   platformBrowserDynamicTesting()
 );
 
+// Load all spec files from core/templates and extensions.
+// When Angular CLI's --include flag is used, the SingleTestTransformLoader
+// replaces this require.context with direct imports for only the specified
+// files. This MUST be a single-line require.context because the transform
+// loader's regex (require.context\(.*) uses .* which cannot cross newlines.
+const context = require.context(
+  '../../',
+  true,
+  /(?:core\/templates|extensions)\/.*\.spec\.ts$/
+);
+context.keys().forEach(context);
+
 jasmine.getEnv().addReporter({
-  specDone: function(result) {
+  specDone: function (result) {
     // Specs that are being excluded when using fit or fdescribe will not
     // be reported.
     if (result.status !== 'excluded') {
       // eslint-disable-next-line no-console
       console.log('Spec: ' + result.fullName + ' has ' + result.status);
     }
-  }
+  },
 });
-
-// Then we find all the tests, as well as any controller, directive,
-// service/factory files.
-// All files from the services_sources folder are exempted, because they
-// shouldn't be tested (those files are just intended as data files for backend
-// tests).
-// Known failing files are exempted (#6960).
-// TODO(#6960): Fix the tests that broke down after introduction of Webpack due
-//              to templateCache.
-// The '@nodelib' and 'openapi3-ts' are excluded from the tests since they are
-// coming from third party library.
-/* eslint-disable-next-line max-len */
-const context = require.context('../../', true, /((\.s|S)pec\.ts$|(?<!services_sources)\/[\w\d.\-]*(component|controller|directive|service|Factory)\.ts$)(?<!combined-tests\.spec\.ts)(?<!state-content-editor\.directive\.spec\.ts)(?<!music-notes-input\.spec\.ts)(?<!state-interaction-editor\.directive\.spec\.ts)(?<!@nodelib.*\.spec\.ts)(?<!openapi3-ts.*\.spec\.ts)(?<!(valid|invalid)[_-][\w\d.\-]*\.ts)/);
-
-// And load the modules.
-context.keys().map(context);

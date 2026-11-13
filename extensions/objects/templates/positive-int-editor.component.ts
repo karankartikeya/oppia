@@ -19,38 +19,49 @@
 // Every editor directive should implement an alwaysEditable option. There
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
-import { ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
 interface PositiveIntSchema {
-  type: string;
+  type: 'int';
   validators: {
     id: string;
-    'min_value'?: number;
+    min_value?: number;
   }[];
 }
 
 @Component({
   selector: 'positive-int-editor',
   templateUrl: './positive-int-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class PositiveIntEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   @Input() value!: number;
   @Output() valueChanged = new EventEmitter();
   SCHEMA: PositiveIntSchema = {
     type: 'int',
-    validators: [{
-      id: 'is_at_least',
-      min_value: 1
-    }, {
-      id: 'is_integer'
-    }]
+    validators: [
+      {
+        id: 'is_at_least',
+        min_value: 1,
+      },
+      {
+        id: 'is_integer',
+      },
+    ],
   };
+
   constructor(private changeDetectorRef: ChangeDetectorRef) {}
 
   ngOnInit(): void {
@@ -63,7 +74,12 @@ export class PositiveIntEditorComponent implements OnInit {
     return this.SCHEMA;
   }
 
-  updateValue(newValue: number): void {
+  updateValue(newValue: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only numbers are accepted.
+    if (typeof newValue !== 'number') {
+      return;
+    }
     if (this.value === newValue) {
       return;
     }
@@ -72,6 +88,3 @@ export class PositiveIntEditorComponent implements OnInit {
     this.changeDetectorRef.detectChanges();
   }
 }
-angular.module('oppia').directive('positiveIntEditor', downgradeComponent({
-  component: PositiveIntEditorComponent
-}) as angular.IDirectiveFactory);

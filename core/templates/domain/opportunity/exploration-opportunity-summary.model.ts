@@ -16,18 +16,40 @@
  * @fileoverview Frontend model for exploration opportunity summary.
  */
 
+import {AppConstants} from 'app.constants';
+
 export interface TranslationCountsDict {
-  [languageCode: string]: number
+  [languageCode: string]: number;
 }
 
 export interface ExplorationOpportunitySummaryBackendDict {
-  'id': string;
-  'topic_name': string;
-  'story_title': string;
-  'chapter_title': string;
-  'content_count': number;
-  'translation_counts': TranslationCountsDict;
-  'translation_in_review_counts': TranslationCountsDict;
+  id: string;
+  topic_name: string;
+  story_title: string;
+  chapter_title: string;
+  content_count: number;
+  translation_counts: TranslationCountsDict;
+  translation_in_review_counts: TranslationCountsDict;
+  language_code: string;
+  is_pinned: boolean;
+  reviewer_only_content_count: number;
+}
+
+export interface TranslationOpportunityCardInfoBackendDict {
+  topic_ids: string[];
+  entity_id: string;
+  content_count: number;
+  incomplete_translation_language_codes: string[];
+  translation_counts: TranslationCountsDict;
+  entity_type: string;
+  topic_name: string;
+  entity_description: string;
+  is_pinned: boolean;
+  currently_available_to_learners: boolean;
+  translation_in_review_counts: TranslationCountsDict;
+  story_title?: string | null;
+  language_code?: string | null;
+  reviewer_only_content_count?: number | null;
 }
 
 export class ExplorationOpportunitySummary {
@@ -38,12 +60,24 @@ export class ExplorationOpportunitySummary {
   contentCount: number;
   translationCounts: TranslationCountsDict;
   translationInReviewCount: TranslationCountsDict;
+  languageCode: string;
+  isPinned: boolean;
+  reviewerOnlyContentCount: number;
+  entityType?: string;
 
   constructor(
-      expId: string, topicName: string, storyTitle: string,
-      chapterTitle: string, contentCount: number,
-      translationCounts: TranslationCountsDict,
-      translationInReviewCount: TranslationCountsDict) {
+    expId: string,
+    topicName: string,
+    storyTitle: string,
+    chapterTitle: string,
+    contentCount: number,
+    translationCounts: TranslationCountsDict,
+    translationInReviewCount: TranslationCountsDict,
+    languageCode: string,
+    isPinned: boolean,
+    reviewerOnlyContentCount: number,
+    entityType?: string
+  ) {
     this.id = expId;
     this.topicName = topicName;
     this.storyTitle = storyTitle;
@@ -51,15 +85,45 @@ export class ExplorationOpportunitySummary {
     this.contentCount = contentCount;
     this.translationCounts = translationCounts;
     this.translationInReviewCount = translationInReviewCount;
+    this.languageCode = languageCode;
+    this.isPinned = isPinned;
+    this.reviewerOnlyContentCount = reviewerOnlyContentCount;
+    this.entityType = entityType;
   }
 
   static createFromBackendDict(
-      backendDict: ExplorationOpportunitySummaryBackendDict):
-      ExplorationOpportunitySummary {
+    backendDict: ExplorationOpportunitySummaryBackendDict
+  ): ExplorationOpportunitySummary {
     return new ExplorationOpportunitySummary(
-      backendDict.id, backendDict.topic_name, backendDict.story_title,
-      backendDict.chapter_title, backendDict.content_count,
-      backendDict.translation_counts, backendDict.translation_in_review_counts);
+      backendDict.id,
+      backendDict.topic_name,
+      backendDict.story_title,
+      backendDict.chapter_title,
+      backendDict.content_count,
+      backendDict.translation_counts,
+      backendDict.translation_in_review_counts,
+      backendDict.language_code,
+      backendDict.is_pinned,
+      backendDict.reviewer_only_content_count
+    );
+  }
+
+  static createFromBackendDictV2(
+    backendDict: TranslationOpportunityCardInfoBackendDict
+  ): ExplorationOpportunitySummary {
+    return new ExplorationOpportunitySummary(
+      backendDict.entity_id,
+      backendDict.topic_name,
+      backendDict.story_title || '',
+      backendDict.entity_description,
+      backendDict.content_count,
+      backendDict.translation_counts,
+      backendDict.translation_in_review_counts,
+      backendDict.language_code || AppConstants.DEFAULT_LANGUAGE_CODE,
+      backendDict.is_pinned,
+      backendDict.reviewer_only_content_count || 0,
+      backendDict.entity_type
+    );
   }
 
   getExplorationId(): string {
@@ -71,19 +135,32 @@ export class ExplorationOpportunitySummary {
   }
 
   getOpportunitySubheading(): string {
-    return (this.topicName + ' - ' + this.storyTitle);
+    if (this.entityType) {
+      const formattedEntityType =
+        this.entityType.charAt(0).toUpperCase() + this.entityType.slice(1);
+      return formattedEntityType + ' - ' + this.topicName;
+    }
+    return this.storyTitle
+      ? this.topicName + ' - ' + this.storyTitle
+      : this.topicName;
   }
 
   getContentCount(): number {
     return this.contentCount;
   }
 
+  getReviewerOnlyContentCount(): number {
+    return this.reviewerOnlyContentCount;
+  }
+
   getTranslationProgressPercentage(languageCode: string): number {
     let progressPercentage = 0;
-    if (this.translationCounts.hasOwnProperty(languageCode) && (
-      this.contentCount > 0)) {
-      progressPercentage = (
-        (this.translationCounts[languageCode] / this.contentCount) * 100);
+    if (
+      this.translationCounts.hasOwnProperty(languageCode) &&
+      this.contentCount > 0
+    ) {
+      progressPercentage =
+        (this.translationCounts[languageCode] / this.contentCount) * 100;
     }
     return progressPercentage;
   }
@@ -91,18 +168,18 @@ export class ExplorationOpportunitySummary {
   getTranslationsInReviewCount(languageCode: string): number {
     let inReviewCount = 0;
     if (this.translationInReviewCount.hasOwnProperty(languageCode)) {
-      inReviewCount = (
-        this.translationInReviewCount[languageCode]);
+      inReviewCount = this.translationInReviewCount[languageCode];
     }
     return inReviewCount;
   }
 
   getTranslationsCount(languageCode: string): number {
     let translationsCount = 0;
-    if (this.translationCounts.hasOwnProperty(languageCode) && (
-      this.contentCount > 0)) {
-      translationsCount = (
-        this.translationCounts[languageCode]);
+    if (
+      this.translationCounts.hasOwnProperty(languageCode) &&
+      this.contentCount > 0
+    ) {
+      translationsCount = this.translationCounts[languageCode];
     }
     return translationsCount;
   }

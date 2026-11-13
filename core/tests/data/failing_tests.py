@@ -1,4 +1,3 @@
-
 import os
 import sys
 
@@ -9,5 +8,5 @@ class FailingTests(test_utils.GenericTestBase):
 
     AUTO_CREATE_DEFAULT_SUPERADMIN_USER = False
 
-    def test_fail(self):
+    def test_fail(self) -> None:
         self.assertEqual(1, 2)

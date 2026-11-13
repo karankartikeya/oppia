@@ -16,28 +16,41 @@
  * @fileoverview Unit tests for StorySummaryTileComponent.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { StorySummary } from 'domain/story/story-summary.model';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { WindowDimensionsService } from 'services/contextual/window-dimensions.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { StorySummaryTileComponent } from './story-summary-tile.component';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {StorySummary} from 'domain/story/story-summary.model';
+import {StoryNode} from 'domain/story/story-node.model';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {StorySummaryTileComponent} from './story-summary-tile.component';
+import {PlatformFeatureService} from '../../services/platform-feature.service';
 
+class MockPlatformFeatureService {
+  status = {
+    SerialChapterLaunchLearnerView: {
+      isEnabled: false,
+    },
+  };
+}
 
 describe('StorySummaryTileComponent', () => {
   let component: StorySummaryTileComponent;
   let fixture: ComponentFixture<StorySummaryTileComponent>;
   let wds: WindowDimensionsService;
-  let urlInterpolationService: UrlInterpolationService;
+  let mockPlatformFeatureService = new MockPlatformFeatureService();
+  let i18nLanguageCodeService: I18nLanguageCodeService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
-      declarations: [
-        StorySummaryTileComponent,
-        MockTranslatePipe
-      ]
+      declarations: [StorySummaryTileComponent, MockTranslatePipe],
+      providers: [
+        {
+          provide: PlatformFeatureService,
+          useValue: mockPlatformFeatureService,
+        },
+      ],
     }).compileComponents();
   }));
 
@@ -45,7 +58,19 @@ describe('StorySummaryTileComponent', () => {
     fixture = TestBed.createComponent(StorySummaryTileComponent);
     component = fixture.componentInstance;
     wds = TestBed.inject(WindowDimensionsService);
-    urlInterpolationService = TestBed.inject(UrlInterpolationService);
+    i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
+
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageRTL').and.returnValue(
+      true
+    );
+  });
+
+  it('should get status of Serial Chapter Launch Learner Feature flag', () => {
+    expect(component.isSerialChapterFeatureLearnerFlagEnabled()).toEqual(false);
+
+    mockPlatformFeatureService.status.SerialChapterLaunchLearnerView.isEnabled =
+      true;
+    expect(component.isSerialChapterFeatureLearnerFlagEnabled()).toEqual(true);
   });
 
   it('should set properties on initialization', () => {
@@ -61,40 +86,119 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [
+        {
+          id: 'node_1',
+          title: 'node1',
+          description: 'This is node 1',
+          destination_node_ids: [],
+          prerequisite_skill_ids: [],
+          acquired_skill_ids: [],
+          outline: '',
+          outline_is_finalized: true,
+          exploration_id: 'exp-1',
+          thumbnail_bg_color: null,
+          thumbnail_filename: null,
+          status: 'Published',
+          planned_publication_date_msecs: null,
+          last_modified_msecs: null,
+          first_publication_date_msecs: null,
+          unpublishing_reason: null,
+        },
+        {
+          id: 'node_2',
+          title: 'node2',
+          description: 'This is node 2',
+          destination_node_ids: [],
+          prerequisite_skill_ids: [],
+          acquired_skill_ids: [],
+          outline: '',
+          outline_is_finalized: true,
+          exploration_id: 'exp-2',
+          thumbnail_bg_color: null,
+          thumbnail_filename: null,
+          status: 'Published',
+          planned_publication_date_msecs: null,
+          last_modified_msecs: null,
+          first_publication_date_msecs: null,
+          unpublishing_reason: null,
+        },
+        {
+          id: 'node_3',
+          title: 'node3',
+          description: 'This is node 3',
+          destination_node_ids: [],
+          prerequisite_skill_ids: [],
+          acquired_skill_ids: [],
+          outline: '',
+          outline_is_finalized: true,
+          exploration_id: 'exp-3',
+          thumbnail_bg_color: null,
+          thumbnail_filename: null,
+          status: 'Ready To Publish',
+          planned_publication_date_msecs: null,
+          last_modified_msecs: null,
+          first_publication_date_msecs: null,
+          unpublishing_reason: null,
+        },
+      ],
     });
 
-    expect(component.nodeCount).toBe(undefined);
-    expect(component.completedStoriesCount).toBe(undefined);
-    expect(component.storyProgress).toBe(undefined);
-    expect(component.storyLink).toBe(undefined);
-    expect(component.storyTitle).toBe(undefined);
-    expect(component.strokeDashArrayValues).toBe(undefined);
-    expect(component.completedStrokeDashArrayValues).toBe(undefined);
-    expect(component.thumbnailBgColor).toBe(undefined);
-    expect(component.nodeTitles).toEqual(undefined);
+    spyOn(i18nLanguageCodeService, 'getStoryTranslationKey').and.returnValue(
+      'I18N_STORY_storyId_TITLE'
+    );
+    spyOn(
+      i18nLanguageCodeService,
+      'getExplorationTranslationKey'
+    ).and.returnValue('I18N_EXPLORATION_explId_TITLE');
+    spyOn(
+      i18nLanguageCodeService,
+      'isHackyTranslationAvailable'
+    ).and.returnValues(false, true);
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageEnglish').and.returnValues(
+      false,
+      false
+    );
 
     component.ngOnInit();
 
     expect(component.nodeCount).toBe(3);
     expect(component.completedStoriesCount).toBe(1);
-    expect(component.storyProgress).toBe(33);
+    expect(component.storyProgress).toBe(50);
     expect(component.storyLink).toBe('#');
     expect(component.storyTitle).toBe('Story Title');
-
+    expect(component.storyTitleTranslationKey).toEqual(
+      'I18N_STORY_storyId_TITLE'
+    );
+    expect(component.nodeTitlesTranslationKeys).toEqual([
+      'I18N_EXPLORATION_explId_TITLE',
+      'I18N_EXPLORATION_explId_TITLE',
+      'I18N_EXPLORATION_explId_TITLE',
+    ]);
+    // Translation is only displayed if the language is not English
+    // and it's hacky translation is available.
+    let hackyStoryTitleTranslationIsDisplayed =
+      component.isHackyStoryTitleTranslationDisplayed();
+    expect(hackyStoryTitleTranslationIsDisplayed).toBe(false);
+    let hackyNodeTitleTranslationIsDisplayed =
+      component.isHackyNodeTitleTranslationDisplayed(0);
+    expect(hackyNodeTitleTranslationIsDisplayed).toBe(true);
     // Here the value is calculated by the formula -> (circumference -
-    // (nodeCount * gapLength))/nodeCount = (2 * 20 * Math.PI - (3*5)) / 3
-    // = 36.88790204786391. Along with this value, gapLength (5) is also
-    // concatenated to the string.
-    expect(component.strokeDashArrayValues).toBe('36.88790204786391 5');
+    // (availableNodeCount * gapLength))/availableNodeCount =
+    // (2 * 20 * Math.PI - (2*5)) / 2 = 57.83185307179586. Along with this
+    // value, gapLength (5) is also concatenated to the string.
+    expect(component.strokeDashArrayValues).toBe('57.83185307179586 5');
 
     // Here the value for completed node is calculated with the same formula,
     // and the last node's value is the difference of (2 * 20 * Math.PI) and the
     // first value.
     expect(component.completedStrokeDashArrayValues).toBe(
-      '36.88790204786391 88.7758040957278');
+      '57.83185307179586 67.83185307179586'
+    );
     expect(component.thumbnailBgColor).toBe('#FF9933');
     expect(component.nodeTitles).toEqual(['node1', 'node2', 'node3']);
+    expect(component.availableNodeCount).toBe(2);
+    expect(component.comingSoonNodeCount).toBe(1);
   });
 
   it('should not show thumbnail if thumbnail filename is not given', () => {
@@ -109,7 +213,7 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [],
     });
 
     expect(component.thumbnailUrl).toBe(null);
@@ -131,180 +235,370 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [],
     });
 
     expect(component.thumbnailUrl).toBe(null);
 
     component.ngOnInit();
 
-    expect(component.thumbnailUrl)
-      .toBe('/assetsdevhandler/story/storyId/assets/thumbnail/thumbnail.jpg');
+    expect(component.thumbnailUrl).toBe(
+      '/assetsdevhandler/story/storyId/assets/thumbnail/thumbnail.jpg'
+    );
   });
 
-  it('should display only 2 chapters if window width is less' +
-    ' than equal to 800px', () => {
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
-    spyOn(wds, 'getWidth').and.returnValue(790);
+  it(
+    'should display only 1 chapters if window width is less' +
+      ' than equal to 500px',
+    () => {
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+      });
+      spyOn(wds, 'getWidth').and.returnValue(460);
 
-    expect(component.chaptersDisplayed).toBe(undefined);
+      expect(component.chaptersDisplayed).toBe(undefined);
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.chaptersDisplayed).toBe(2);
+      expect(component.chaptersDisplayed).toBe(1);
+    }
+  );
+
+  it(
+    'should display only 2 chapters if window width is greater' +
+      ' than 500px and less than 768px',
+    () => {
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+      });
+      spyOn(wds, 'getWidth').and.returnValue(650);
+
+      expect(component.chaptersDisplayed).toBe(undefined);
+
+      component.ngOnInit();
+
+      expect(component.chaptersDisplayed).toBe(2);
+    }
+  );
+
+  it(
+    'should display 3 chapters if window width is greater' + ' than 768px',
+    () => {
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+      });
+      spyOn(wds, 'getWidth').and.returnValue(800);
+
+      expect(component.chaptersDisplayed).toBe(undefined);
+
+      component.ngOnInit();
+
+      expect(component.chaptersDisplayed).toBe(3);
+    }
+  );
+
+  it('should return correct story status', () => {
+    component.storyProgress = 0;
+    component.getStoryStatus();
+    expect(component.storyStatus).toBe('Not Started');
+    component.storyProgress = 67;
+    component.getStoryStatus();
+    expect(component.storyStatus).toBe('In Progress');
+    component.storyProgress = 100;
+    component.getStoryStatus();
+    expect(component.storyStatus).toBe('Completed');
   });
 
-  it('should display 3 chapters if window width is greater' +
-  ' than 800px', () => {
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
-    spyOn(wds, 'getWidth').and.returnValue(801);
+  it('should check if the view is tablet or not', () => {
+    var widthSpy = spyOn(wds, 'getWidth');
+    widthSpy.and.returnValue(700);
+    expect(component.checkTabletView()).toBe(true);
 
-    expect(component.chaptersDisplayed).toBe(undefined);
-
-    component.ngOnInit();
-
-    expect(component.chaptersDisplayed).toBe(3);
+    widthSpy.and.returnValue(800);
+    expect(component.checkTabletView()).toBe(false);
   });
 
-  it('should show \'View All\' button if number of nodes is not same as the' +
-    ' number of chapters displayed', () => {
-    // StorySummary with 3 nodes.
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
+  it(
+    "should show 'View All' button if number of nodes is not same as the" +
+      ' number of chapters displayed',
+    () => {
+      // StorySummary with 3 nodes.
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+      });
 
-    // We return width equal to 801 (greater than 800), so that 3 chapters are
-    // displayed instead of 2.
-    spyOn(wds, 'getWidth').and.returnValue(801);
+      // We return width equal to 801 (greater than 800), so that 3 chapters are
+      // displayed instead of 2.
+      spyOn(wds, 'getWidth').and.returnValue(801);
 
-    expect(component.showButton).toBe(false);
+      expect(component.showButton).toBe(false);
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.showButton).toBe(false);
+      expect(component.showButton).toBe(false);
 
-    // StorySummary with 5 nodes.
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3', 'node4', 'node5'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
+      // StorySummary with 5 nodes.
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3', 'node4', 'node5'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+      });
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    // Will show 'View All' button as number of nodes (5) is more than chapters
-    // displayed (3).
-    expect(component.showButton).toBe(true);
-  });
+      // Will show 'View All' button as number of nodes (5) is more than chapters
+      // displayed (3).
+      expect(component.showButton).toBe(true);
+    }
+  );
 
-  it('should show the number of completed chapters through' +
-    ' progress circle', () => {
-    // StorySummary with 1 node with 0 completed stories.
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: [],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
-    let circumference = (2 * 20 * Math.PI).toString();
+  it(
+    'should show the number of completed chapters through' + ' progress circle',
+    () => {
+      // StorySummary with 1 node with 0 completed stories.
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: [],
+        url_fragment: 'story1',
+        all_node_dicts: [
+          {
+            id: 'node_1',
+            title: 'node1',
+            description: 'This is node 1',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+        ],
+      });
+      let circumference = (2 * 20 * Math.PI).toString();
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.strokeDashArrayValues).toBe('');
-    expect(component.completedStrokeDashArrayValues).toBe('0 ' + circumference);
+      expect(component.strokeDashArrayValues).toBe('');
+      expect(component.completedStrokeDashArrayValues).toBe(
+        '0 ' + circumference
+      );
 
-    // StorySummary with 1 node with 1 completed stories.
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
+      // StorySummary with 1 node with 1 completed stories.
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [
+          {
+            id: 'node_1',
+            title: 'node1',
+            description: 'This is node 1',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+        ],
+      });
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.strokeDashArrayValues).toBe('');
-    expect(component.completedStrokeDashArrayValues).toBe('');
+      expect(component.strokeDashArrayValues).toBe('');
+      expect(component.completedStrokeDashArrayValues).toBe('');
 
-    // StorySummary with 5 node with 3 completed stories.
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3', 'node4', 'node5'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1', 'node2', 'node3'],
-      url_fragment: 'story1',
-      all_node_dicts: []
-    });
+      // StorySummary with 5 node with 3 completed stories.
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3', 'node4', 'node5'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1', 'node2', 'node3'],
+        url_fragment: 'story1',
+        all_node_dicts: [
+          {
+            id: 'node_1',
+            title: 'node1',
+            description: 'This is node 1',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+          {
+            id: 'node_2',
+            title: 'node2',
+            description: 'This is node 2',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+          {
+            id: 'node_3',
+            title: 'node3',
+            description: 'This is node 3',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+          {
+            id: 'node_4',
+            title: 'node4',
+            description: 'This is node 4',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+          {
+            id: 'node_5',
+            title: 'node5',
+            description: 'This is node 5',
+            destination_node_ids: [],
+            prerequisite_skill_ids: [],
+            acquired_skill_ids: [],
+            outline: '',
+            outline_is_finalized: true,
+            exploration_id: null,
+            thumbnail_bg_color: null,
+            thumbnail_filename: null,
+            status: 'Published',
+            planned_publication_date_msecs: null,
+            last_modified_msecs: null,
+            first_publication_date_msecs: null,
+            unpublishing_reason: null,
+          },
+        ],
+      });
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    // Here the value is calculated by the formula -> (circumference -
-    // (nodeCount * gapLength))/nodeCount = (2 * 20 * Math.PI - (5*5)) / 5
-    // = 20.132741228718345. Along with this value, gapLength (5) is also
-    // concatenated to the string.
-    expect(component.strokeDashArrayValues).toBe('20.132741228718345 5');
+      // Here the value is calculated by the formula -> (circumference -
+      // (nodeCount * gapLength))/nodeCount = (2 * 20 * Math.PI - (5*5)) / 5
+      // = 20.132741228718345. Along with this value, gapLength (5) is also
+      // concatenated to the string.
+      expect(component.strokeDashArrayValues).toBe('20.132741228718345 5');
 
-    // Here the value for completed nodes is calculated with the same formula.
-    // The last is calculated by subtracting the segment length (the value
-    // calculated using the formula above) from the circumference .
-    expect(component.completedStrokeDashArrayValues).toBe(
-      '20.132741228718345 5 20.132741228718345 5' +
-      ' 20.132741228718345 55.26548245743669');
-  });
+      // Here the value for completed nodes is calculated with the same formula.
+      // The last is calculated by subtracting the segment length (the value
+      // calculated using the formula above) from the circumference .
+      expect(component.completedStrokeDashArrayValues).toBe(
+        '20.132741228718345 5 20.132741228718345 5' +
+          ' 20.132741228718345 55.26548245743669'
+      );
+    }
+  );
 
   it('should return the chapter URL when the chapter title is provided', () => {
     component.storySummary = StorySummary.createFromBackendDict({
@@ -329,9 +623,14 @@ describe('StorySummaryTileComponent', () => {
           outline_is_finalized: true,
           exploration_id: null,
           thumbnail_bg_color: null,
-          thumbnail_filename: null
-        }
-      ]
+          thumbnail_filename: null,
+          status: 'Draft',
+          planned_publication_date_msecs: null,
+          last_modified_msecs: null,
+          first_publication_date_msecs: null,
+          unpublishing_reason: null,
+        },
+      ],
     });
 
     component.ngOnInit();
@@ -339,7 +638,8 @@ describe('StorySummaryTileComponent', () => {
     expect(component.getChapterUrl('Node which is not present')).toBe('');
     expect(component.getChapterUrl('Node 1')).toBe(
       '/explore/null?story_url_fragment=story1&topic_url_fragment=' +
-      'undefined&classroom_url_fragment=undefined&node_id=node1');
+        'undefined&classroom_url_fragment=undefined&node_id=node1'
+    );
   });
 
   it('should populate the story URL when URL fragments are set', () => {
@@ -355,7 +655,7 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [],
     });
 
     expect(component.getStoryLink()).toBe('/learn/math/fractions/story/story1');
@@ -372,7 +672,7 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [],
     });
 
     component.ngOnInit();
@@ -392,7 +692,7 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [],
     });
 
     component.ngOnInit();
@@ -403,8 +703,8 @@ describe('StorySummaryTileComponent', () => {
     expect(component.isPreviousChapterCompleted(2)).toBe(false);
   });
 
-  it('should show all chapters when user click on \'View All\' button', () => {
-    spyOn(wds, 'getWidth').and.returnValue(790);
+  it("should show all chapters when user click on 'View All' button", () => {
+    spyOn(wds, 'getWidth').and.returnValue(460);
     component.storySummary = StorySummary.createFromBackendDict({
       id: 'storyId',
       title: 'Story Title',
@@ -415,7 +715,7 @@ describe('StorySummaryTileComponent', () => {
       story_is_published: true,
       completed_node_titles: ['node1'],
       url_fragment: 'story1',
-      all_node_dicts: []
+      all_node_dicts: [],
     });
 
     expect(component.initialCount).toBe(undefined);
@@ -424,62 +724,124 @@ describe('StorySummaryTileComponent', () => {
     component.ngOnInit();
 
     expect(component.initialCount).toBe(undefined);
-    expect(component.chaptersDisplayed).toBe(2);
+    expect(component.chaptersDisplayed).toBe(1);
 
     component.showAllChapters();
 
-    expect(component.initialCount).toBe(2);
+    expect(component.initialCount).toBe(1);
     expect(component.chaptersDisplayed).toBe(3);
   });
 
-  it('should hide extra chapters when user click on \'View less\'' +
-    ' button', () => {
-    spyOn(wds, 'getWidth').and.returnValue(790);
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1', 'node2', 'node3'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
+  it(
+    "should hide extra chapters when user click on 'View less'" + ' button',
+    () => {
+      spyOn(wds, 'getWidth').and.returnValue(460);
+      component.storySummary = StorySummary.createFromBackendDict({
+        id: 'storyId',
+        title: 'Story Title',
+        node_titles: ['node1', 'node2', 'node3'],
+        thumbnail_filename: 'thumbnail.jpg',
+        thumbnail_bg_color: '#FF9933',
+        description: 'This is the story description',
+        story_is_published: true,
+        completed_node_titles: ['node1'],
+        url_fragment: 'story1',
+        all_node_dicts: [],
+      });
+
+      expect(component.chaptersDisplayed).toBe(undefined);
+
+      component.ngOnInit();
+
+      expect(component.chaptersDisplayed).toBe(1);
+
+      component.showAllChapters();
+
+      expect(component.chaptersDisplayed).toBe(3);
+
+      component.hideExtraChapters();
+
+      expect(component.chaptersDisplayed).toBe(1);
+    }
+  );
+
+  describe('when checking if new Label is visible', () => {
+    let storySummary: StorySummary;
+    const RECENT_PUB_DATE = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const OLD_PUB_DATE = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const CHAPTER_TITLE = 'The Chapter Title for Testing';
+    const ChapterDetails = {
+      id: 'node_1',
+      title: CHAPTER_TITLE,
+      description: 'desc',
+      destination_node_ids: [],
+      prerequisite_skill_ids: [],
+      acquired_skill_ids: [],
+      outline: '',
+      exploration_id: 'exp_1',
+      outline_is_finalized: true,
+      thumbnail_filename: '',
+      thumbnail_bg_color: '',
+      status: 'Published',
+      planned_publication_date_msecs: null,
+      last_modified_msecs: null,
+      first_publication_date_msecs: RECENT_PUB_DATE,
+      unpublishing_reason: null,
+    };
+
+    beforeEach(() => {
+      storySummary = jasmine.createSpyObj('StorySummary', [
+        'getVisitedChapterTitles',
+        'isNodeCompleted',
+      ]);
+      Object.setPrototypeOf(storySummary, StorySummary.prototype);
+
+      component.storySummary = storySummary as StorySummary;
+      component.nodes = [StoryNode.createFromBackendDict(ChapterDetails)];
+
+      (storySummary.getVisitedChapterTitles as jasmine.Spy).and.returnValue([
+        'Other Chapter Title',
+      ]);
     });
 
-    expect(component.chaptersDisplayed).toBe(undefined);
+    it('should return TRUE if chapter is new (less than 28 days) and NOT visited', () => {
+      component.nodes[0].setFirstPublicationDateMsecs(RECENT_PUB_DATE);
+      (storySummary.isNodeCompleted as jasmine.Spy).and.returnValue(false);
 
-    component.ngOnInit();
-
-    expect(component.chaptersDisplayed).toBe(2);
-
-    component.showAllChapters();
-
-    expect(component.chaptersDisplayed).toBe(3);
-
-    component.hideExtraChapters();
-
-    expect(component.chaptersDisplayed).toBe(2);
-  });
-
-  it('should return \'#\' for storyLink if UrlInterpolation' +
-    ' returns null', () => {
-    component.classroomUrlFragment = 'math';
-    component.topicUrlFragment = 'fractions';
-    spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(null);
-    component.storySummary = StorySummary.createFromBackendDict({
-      id: 'storyId',
-      title: 'Story Title',
-      node_titles: ['node1'],
-      thumbnail_filename: 'thumbnail.jpg',
-      thumbnail_bg_color: '#FF9933',
-      description: 'This is the story description',
-      story_is_published: true,
-      completed_node_titles: ['node1'],
-      url_fragment: 'story1',
-      all_node_dicts: []
+      const isVisible = component.isNewChapterLabelVisible(component.nodes[0]);
+      expect(isVisible).toBe(true);
     });
-    expect(component.getStoryLink()).toBe('#');
+
+    it('should return FALSE if chapter is OLD (28 or more days) but IS visited', () => {
+      component.nodes[0].setFirstPublicationDateMsecs(OLD_PUB_DATE);
+      (storySummary.isNodeCompleted as jasmine.Spy).and.returnValue(true);
+
+      const isVisible = component.isNewChapterLabelVisible(component.nodes[0]);
+      expect(isVisible).toBe(false);
+    });
+
+    it('should return FALSE if chapter is OLD (28 or more days) and NOT visited', () => {
+      component.nodes[0].setFirstPublicationDateMsecs(OLD_PUB_DATE);
+      (storySummary.isNodeCompleted as jasmine.Spy).and.returnValue(false);
+
+      const isVisible = component.isNewChapterLabelVisible(component.nodes[0]);
+      expect(isVisible).toBe(false);
+    });
+
+    it('should return FALSE if chapter is new (less than 28 days) but IS visited', () => {
+      component.nodes[0].setFirstPublicationDateMsecs(RECENT_PUB_DATE);
+      (storySummary.isNodeCompleted as jasmine.Spy).and.returnValue(true);
+
+      const isVisible = component.isNewChapterLabelVisible(component.nodes[0]);
+      expect(isVisible).toBe(false);
+    });
+
+    it('should return FALSE if publication date is null', () => {
+      component.nodes[0].setFirstPublicationDateMsecs(null);
+      (storySummary.isNodeCompleted as jasmine.Spy).and.returnValue(false);
+
+      const isVisible = component.isNewChapterLabelVisible(component.nodes[0]);
+      expect(isVisible).toBe(false);
+    });
   });
 });

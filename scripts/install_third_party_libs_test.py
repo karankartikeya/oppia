@@ -16,485 +16,975 @@
 
 """Unit tests for scripts/install_third_party_libs.py."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
+import builtins
+import collections
 import os
 import shutil
 import subprocess
-import tempfile
-import zipfile
+import sys
+import tarfile
+import types
 
-from core import python_utils
 from core.tests import test_utils
 
-from . import common
-from . import install_backend_python_libs
-from . import install_third_party
-from . import install_third_party_libs
-from . import pre_commit_hook
-from . import pre_push_hook
-from . import setup
-from . import setup_gae
+from typing import Dict, Final, List, Optional, Tuple, Type
 
-RELEASE_TEST_DIR = os.path.join('core', 'tests', 'release_sources', '')
+from . import (
+    clean,
+    common,
+    install_python_prod_dependencies,
+    install_third_party_libs,
+    pre_commit_hook,
+    pre_push_hook,
+)
+
+RELEASE_TEST_DIR: Final = os.path.join('core', 'tests', 'release_sources', '')
+MOCK_TMP_UNZIP_PATH: Final = os.path.join(RELEASE_TEST_DIR, 'tmp_unzip.zip')
+MOCK_TMP_UNTAR_PATH: Final = os.path.join(RELEASE_TEST_DIR, 'tmp_unzip.tar.gz')
+TEST_DATA_DIR: Final = os.path.join('core', 'tests', 'data', '')
+MOCK_YARN_PATH: Final = os.path.join(
+    TEST_DATA_DIR, 'yarn-v%s' % common.YARN_VERSION
+)
+
+
+class MockCD:
+    """Mock for context manager for changing the current working directory."""
+
+    def __init__(self, unused_new_path: str) -> None:
+        pass
+
+    def __enter__(self) -> None:
+        pass
+
+    def __exit__(
+        self, unused_arg1: str, unused_arg2: str, unused_arg3: str
+    ) -> None:
+        pass
+
+
+class Ret:
+    """Return object with required attributes."""
+
+    def __init__(
+        self,
+        returncode: int = 0,
+        communicate_val: Tuple[bytes, bytes] = (b'', b''),
+    ) -> None:
+        self.returncode = returncode
+        self.communicate_val = communicate_val
+        self.stdout = None
+        self.args: List[str] = []
+
+    def communicate(
+        self,
+        _input: Optional[bytes] = None,  # pylint: disable=unused-argument
+        timeout: Optional[float] = None,  # pylint: disable=unused-argument
+    ) -> Tuple[bytes, bytes]:
+        """Return required method."""
+        return self.communicate_val
+
+    def kill(self) -> None:
+        """Mock kill method."""
+        pass
+
+    def poll(self) -> int:
+        """Mock poll method."""
+        return self.returncode
+
+    def __enter__(self) -> 'Ret':
+        """Context manager enter."""
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: Optional[Type[BaseException]],
+        _exc_val: Optional[BaseException],
+        _exc_tb: Optional[types.TracebackType],
+    ) -> None:
+        """Context manager exit."""
+        pass
 
 
 class InstallThirdPartyLibsTests(test_utils.GenericTestBase):
     """Test the methods for installing third party libs."""
 
-    def setUp(self):
-        super(InstallThirdPartyLibsTests, self).setUp()
+    def setUp(self) -> None:
+        super().setUp()
 
         self.check_function_calls = {
             'check_call_is_called': False,
         }
-        self.print_arr = []
-        def mock_check_call(unused_cmd_tokens, *args, **kwargs):  # pylint: disable=unused-argument
+        self.print_arr: List[str] = []
+        self.all_cmd_tokens: List[List[str]] = []
+        self.all_envs: List[Optional[Dict[str, str]]] = []
+
+        def mock_check_call(
+            unused_cmd_tokens: List[str],
+            env: Optional[Dict[str, str]] = None,
+            **_kwargs: str,
+        ) -> Ret:
             self.check_function_calls['check_call_is_called'] = True
-            class Ret:
-                """Return object with required attributes."""
+            # The mock records every command that install_third_party_libs
+            # runs. Tests that only care about the yarn install command still
+            # receive all other commands here (e.g. the pre-commit hook setup
+            # and git-clang-format), so these records are unused by those
+            # tests and are looked up via self.all_cmd_tokens.index().
+            self.all_cmd_tokens.append(unused_cmd_tokens)
+            self.all_envs.append(env)
+            return Ret(0, (b'', b''))
 
-                def __init__(self):
-                    self.returncode = 0
-                def communicate(self):
-                    """Return required meathod."""
-                    return '', ''
-            return Ret()
-        def mock_popen_error_call(unused_cmd_tokens, *args, **kwargs):  # pylint: disable=unused-argument
-            class Ret:
-                """Return object that gives user-prefix error."""
+        def mock_check_call_error(*args: str) -> None:
+            """Raise the Exception resulting from a failed check_call()"""
+            self.check_function_calls['check_call_is_called'] = True
+            raise subprocess.CalledProcessError(-1, args[0])
 
-                def __init__(self):
-                    self.returncode = 1
-                def communicate(self):
-                    """Return user-prefix error as stderr."""
-                    return '', 'can\'t combine user with prefix'
-            return Ret()
-        def mock_print(msg, end=''):  # pylint: disable=unused-argument
+        def mock_popen_error_call(
+            unused_cmd_tokens: List[str], *_args: str, **_kwargs: str
+        ) -> Ret:
+            return Ret(1, (b'', b'can\'t combine user with prefix'))
+
+        def mock_print(msg: str) -> None:
             self.print_arr.append(msg)
 
         self.check_call_swap = self.swap(
-            subprocess, 'check_call', mock_check_call)
-        self.Popen_swap = self.swap(
-            subprocess, 'Popen', mock_check_call)
-        self.Popen_error_swap = self.swap(
-            subprocess, 'Popen', mock_popen_error_call)
-        self.print_swap = self.swap(python_utils, 'PRINT', mock_print)
+            subprocess, 'check_call', mock_check_call
+        )
 
-        def mock_ensure_directory_exists(unused_path):
+        def mock_popen(*_args: str, **_kwargs: str) -> Ret:
+            return Ret()
+
+        self.Popen_swap = self.swap(subprocess, 'Popen', mock_popen)
+        self.check_call_error_swap = self.swap(
+            subprocess, 'check_call', mock_check_call_error
+        )
+        self.Popen_error_swap = self.swap(
+            subprocess, 'Popen', mock_popen_error_call
+        )
+        self.print_swap = self.swap(builtins, 'print', mock_print)
+
+        def mock_ensure_directory_exists(unused_path: str) -> None:
             pass
 
         self.dir_exists_swap = self.swap(
-            common, 'ensure_directory_exists', mock_ensure_directory_exists)
+            common, 'ensure_directory_exists', mock_ensure_directory_exists
+        )
 
-    def test_tweak_yarn_executable(self):
-        def mock_is_file(unused_filename):
-            return True
-
-        def mock_rename(origin_name, new_name):
-            self.assertEqual(origin_name + '.sh', new_name)
-            mock_rename.called = True
-        mock_rename.called = False
-        isfile_swap = self.swap(os.path, 'isfile', mock_is_file)
-        rename_swap = self.swap(os, 'rename', mock_rename)
-        with isfile_swap, rename_swap:
-            install_third_party_libs.tweak_yarn_executable()
-        self.assertTrue(mock_rename.called)
-
-    def test_get_yarn_command_on_windows(self):
-        os_name_swap = self.swap(common, 'OS_NAME', 'Windows')
-        with os_name_swap:
-            command = install_third_party_libs.get_yarn_command()
-            self.assertEqual(command, 'yarn.cmd')
-
-    def test_get_yarn_command_on_linux(self):
-        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
-        with os_name_swap:
-            command = install_third_party_libs.get_yarn_command()
-            self.assertEqual(command, 'yarn')
-
-    def test_get_yarn_command_on_mac(self):
-        os_name_swap = self.swap(common, 'OS_NAME', 'Darwin')
-        with os_name_swap:
-            command = install_third_party_libs.get_yarn_command()
-            self.assertEqual(command, 'yarn')
-
-    def test_buf_installation_on_linux(self):
-        check_mock_function_calls = {
-            'url_retrieve_is_called': False,
-            'recursive_chmod_is_called': False,
-            'extractall_is_called': False,
-        }
-
-        class MockZipFile(zipfile.ZipFile):
-            def __init__(self, path, mode): # pylint: disable=unused-argument, super-init-not-called
-                pass
-            def extractall(self, path): # pylint: disable=unused-argument
-                check_mock_function_calls['extractall_is_called'] = True
-
-        def mock_url_retrieve(url, filename): # pylint: disable=unused-argument
-            # Check that correct platform is used bufbuild.
-            if 'bufbuild' in url:
-                self.assertTrue('Linux-x86_64' in url.split('/')[-1])
-                check_mock_function_calls['url_retrieve_is_called'] = True
-            elif 'protocolbuffers' in url:
-                self.assertTrue('linux' in url.split('/')[-1])
-                check_mock_function_calls['url_retrieve_is_called'] = True
-            else:
-                return
-        def mock_recursive_chmod(unused_fname, mode): # pylint: disable=unused-argument
-            self.assertEqual(mode, 0o744)
-            check_mock_function_calls['recursive_chmod_is_called'] = True
-        def mock_isfile(unused_fname):
-            return False
-        def mock_remove(unused_path):  # pylint: disable=unused-argument
-            return
-
-        url_retrieve_swap = self.swap(
-            python_utils, 'url_retrieve', mock_url_retrieve)
-        recursive_chmod_swap = self.swap(
-            common, 'recursive_chmod', mock_recursive_chmod)
-        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
-        isfile_swap = self.swap(os.path, 'isfile', mock_isfile)
-        zipfile_swap = self.swap(zipfile, 'ZipFile', MockZipFile)
-        remove_swap = self.swap(os, 'remove', mock_remove)
-
-        with os_name_swap, url_retrieve_swap, recursive_chmod_swap:
-            with self.dir_exists_swap, isfile_swap, zipfile_swap, remove_swap:
-                install_third_party_libs.install_buf_and_protoc()
-
-        self.assertTrue(
-            check_mock_function_calls['url_retrieve_is_called'])
-        self.assertTrue(check_mock_function_calls['extractall_is_called'])
-        self.assertTrue(
-            check_mock_function_calls['recursive_chmod_is_called'])
-
-    def test_buf_installation_on_mac(self):
-        check_mock_function_calls = {
-            'url_retrieve_is_called': False,
-            'recursive_chmod_is_called': False,
-            'extractall_is_called': False
-        }
-
-        class MockZipFile(zipfile.ZipFile):
-            def __init__(self, path, mode): # pylint: disable=unused-argument, super-init-not-called
-                pass
-            def extractall(self, path): # pylint: disable=unused-argument
-                check_mock_function_calls['extractall_is_called'] = True
-
-        def mock_url_retrieve(url, filename): # pylint: disable=unused-argument
-            if 'bufbuild' in url:
-                self.assertTrue('Darwin-x86_64' in url.split('/')[-1])
-                check_mock_function_calls['url_retrieve_is_called'] = True
-            elif 'protocolbuffers' in url:
-                self.assertTrue('osx' in url.split('/')[-1])
-                check_mock_function_calls['url_retrieve_is_called'] = True
-            else:
-                return
-        def mock_recursive_chmod(unused_fname, mode): # pylint: disable=unused-argument
-            self.assertEqual(mode, 0o744)
-            check_mock_function_calls['recursive_chmod_is_called'] = True
-        def mock_isfile(unused_fname):
-            return False
-        def mock_remove(unused_path):  # pylint: disable=unused-argument
-            return
-
-        url_retrieve_swap = self.swap(
-            python_utils, 'url_retrieve', mock_url_retrieve)
-        recursive_chmod_swap = self.swap(
-            common, 'recursive_chmod', mock_recursive_chmod)
-        os_name_swap = self.swap(common, 'OS_NAME', 'Darwin')
-        isfile_swap = self.swap(os.path, 'isfile', mock_isfile)
-        zipfile_swap = self.swap(zipfile, 'ZipFile', MockZipFile)
-        remove_swap = self.swap(os, 'remove', mock_remove)
-
-        with os_name_swap, url_retrieve_swap, recursive_chmod_swap:
-            with self.dir_exists_swap, isfile_swap, zipfile_swap, remove_swap:
-                install_third_party_libs.install_buf_and_protoc()
-
-        self.assertTrue(
-            check_mock_function_calls['url_retrieve_is_called'])
-        self.assertTrue(check_mock_function_calls['extractall_is_called'])
-        self.assertTrue(
-            check_mock_function_calls['recursive_chmod_is_called'])
-
-    def test_buf_is_not_reinstalled(self):
-        check_mock_functions_are_not_called = {
-            'url_retrieve_is_not_called': True,
-            'recursive_chmod_is_not_called': True,
-        }
-
-        def mock_url_retrieve(url, filename): # pylint: disable=unused-argument
-            check_mock_functions_are_not_called[
-                'url_retrieve_is_not_called'] = False
-        def mock_recursive_chmod(unused_fname, mode): # pylint: disable=unused-argument
-            check_mock_functions_are_not_called[
-                'recursive_chmod_is_not_called'] = False
-        def mock_exists(unused_fname):
-            return True
-
-        url_retrieve_swap = self.swap(
-            python_utils, 'url_retrieve', mock_url_retrieve)
-        recursive_chmod_swap = self.swap(
-            common, 'recursive_chmod', mock_recursive_chmod)
-        exists_swap = self.swap(os.path, 'exists', mock_exists)
-
-        with url_retrieve_swap, recursive_chmod_swap:
-            with self.dir_exists_swap, exists_swap:
-                install_third_party_libs.install_buf_and_protoc()
-
-        self.assertTrue(
-            check_mock_functions_are_not_called['url_retrieve_is_not_called'])
-        self.assertTrue(
-            check_mock_functions_are_not_called[
-                'recursive_chmod_is_not_called'])
-
-    def test_installing_protoc_raises_exception_if_fails_to_extract(self):
-        check_mock_function_calls = {
-            'url_retrieve_is_called': False,
-            'recursive_chmod_is_called': False,
-            'extractall_is_called': False
-        }
-
-        class MockZipFile(zipfile.ZipFile):
-            def __init__(self, path, mode): # pylint: disable=unused-argument, super-init-not-called
-                pass
-            def extractall(self, path): # pylint: disable=unused-argument
-                check_mock_function_calls['extractall_is_called'] = True
-                raise Exception()
-
-        def mock_url_retrieve(url, filename): # pylint: disable=unused-argument
-            check_mock_function_calls['url_retrieve_is_called'] = True
-        def mock_isfile(unused_fname):
-            return False
-
-        url_retrieve_swap = self.swap(
-            python_utils, 'url_retrieve', mock_url_retrieve)
-        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
-        isfile_swap = self.swap(os.path, 'isfile', mock_isfile)
-        zipfile_swap = self.swap(zipfile, 'ZipFile', MockZipFile)
-
-        with os_name_swap, url_retrieve_swap:
-            with self.dir_exists_swap, isfile_swap, zipfile_swap:
-                with self.assertRaisesRegexp(
-                    Exception, 'Error installing protoc binary'):
-                    install_third_party_libs.install_buf_and_protoc()
-
-        self.assertTrue(
-            check_mock_function_calls['url_retrieve_is_called'])
-        self.assertTrue(check_mock_function_calls['extractall_is_called'])
-
-    def test_proto_file_compilation(self):
-        with self.Popen_swap:
-            install_third_party_libs.compile_protobuf_files(['mock_path'])
-        self.assertTrue(self.check_function_calls['check_call_is_called'])
-
-    def test_proto_file_compilation_raises_exception_on_compile_errors(self):
-        with self.Popen_error_swap:
-            with self.assertRaisesRegexp(
-                Exception, 'Error compiling proto files at mock_path'):
-                install_third_party_libs.compile_protobuf_files(['mock_path'])
-
-    def test_ensure_pip_library_is_installed(self):
+    def test_install_third_party_main_also_installs_hooks(self) -> None:
         check_function_calls = {
-            'pip_install_is_called': False
-        }
-        def mock_exists(unused_path):
-            return False
-        def mock_pip_install(unused_versioned_package, unused_path):
-            check_function_calls['pip_install_is_called'] = True
-
-        exists_swap = self.swap(os.path, 'exists', mock_exists)
-        pip_install_swap = self.swap(
-            install_backend_python_libs, 'pip_install', mock_pip_install)
-
-        with exists_swap, pip_install_swap:
-            install_third_party_libs.ensure_pip_library_is_installed(
-                'package', 'version', 'path')
-        self.assertTrue(check_function_calls['pip_install_is_called'])
-
-    def test_function_calls(self):
-        check_function_calls = {
-            'ensure_pip_library_is_installed_is_called': False,
-            'install_third_party_main_is_called': False,
-            'setup_main_is_called': False,
-            'setup_gae_main_is_called': False,
             'pre_commit_hook_main_is_called': False,
             'pre_push_hook_main_is_called': False,
-            'tweak_yarn_executable_is_called': False
         }
         expected_check_function_calls = {
-            'ensure_pip_library_is_installed_is_called': True,
-            'install_third_party_main_is_called': True,
-            'setup_main_is_called': True,
-            'setup_gae_main_is_called': True,
             'pre_commit_hook_main_is_called': True,
             'pre_push_hook_main_is_called': True,
-            'tweak_yarn_executable_is_called': False
         }
-        def mock_ensure_pip_library_is_installed(
-                unused_package, unused_version, unused_path):
-            check_function_calls[
-                'ensure_pip_library_is_installed_is_called'] = True
-        def mock_check_call(unused_cmd_tokens):
-            pass
-        def mock_main_for_install_third_party(args):  # pylint: disable=unused-argument
-            check_function_calls['install_third_party_main_is_called'] = True
-        def mock_main_for_setup(args):  # pylint: disable=unused-argument
-            check_function_calls['setup_main_is_called'] = True
-        def mock_main_for_setup_gae(args):  # pylint: disable=unused-argument
-            check_function_calls['setup_gae_main_is_called'] = True
-        def mock_main_for_pre_commit_hook(args):  # pylint: disable=unused-argument
-            check_function_calls['pre_commit_hook_main_is_called'] = True
-        def mock_main_for_pre_push_hook(args):  # pylint: disable=unused-argument
-            check_function_calls['pre_push_hook_main_is_called'] = True
-        def mock_tweak_yarn_executable():
-            check_function_calls['tweak_yarn_executable_is_called'] = True
 
-        correct_google_path = os.path.join(
-            common.THIRD_PARTY_PYTHON_LIBS_DIR, 'google')
-        def mock_is_dir(path):
+        def mock_install_gcloud_sdk() -> None:
+            pass
+
+        def mock_install_redis_cli() -> None:
+            pass
+
+        def mock_install_playwright_node() -> None:
+            pass
+
+        def mock_external_script_call() -> None:
+            pass
+
+        def mock_mkdir(unused_path: str, unused_mode: int = 0o777) -> None:
+            pass
+
+        def mock_copytree(unused_src: str, unused_dst: str) -> None:
+            pass
+
+        def mock_main_for_pre_commit_hook(  # pylint: disable=unused-argument
+            args: List[str],
+        ) -> None:
+            check_function_calls['pre_commit_hook_main_is_called'] = True
+
+        def mock_main_for_pre_push_hook(  # pylint: disable=unused-argument
+            args: List[str],
+        ) -> None:
+            check_function_calls['pre_push_hook_main_is_called'] = True
+
+        def mock_isdir(path: str) -> bool:
+            correct_google_path = os.path.join(
+                common.THIRD_PARTY_PYTHON_LIBS_DIR, 'google'
+            )
             directories_that_do_not_exist = {
                 os.path.join(correct_google_path, 'appengine'),
-                os.path.join(correct_google_path, 'net'),
                 os.path.join(correct_google_path, 'pyglib'),
-                correct_google_path
+                correct_google_path,
             }
             if path in directories_that_do_not_exist:
                 return False
             return True
+
+        swap_install_gcloud_sdk = self.swap(
+            install_third_party_libs,
+            'install_gcloud_sdk',
+            mock_install_gcloud_sdk,
+        )
+        swap_install_redis_cli = self.swap(
+            install_third_party_libs,
+            'install_redis_cli',
+            mock_install_redis_cli,
+        )
+        swap_install_playwright_node = self.swap(
+            install_third_party_libs,
+            'install_playwright_node',
+            mock_install_playwright_node,
+        )
+        swap_install_json_deps_main = self.swap(
+            install_python_prod_dependencies,
+            'main',
+            mock_external_script_call,
+        )
+        swap_isdir = self.swap(os.path, 'isdir', mock_isdir)
+        swap_mkdir = self.swap(os, 'mkdir', mock_mkdir)
+        swap_copytree = self.swap(shutil, 'copytree', mock_copytree)
+        pre_commit_hook_main_swap = self.swap(
+            pre_commit_hook, 'main', mock_main_for_pre_commit_hook
+        )
+        pre_push_hook_main_swap = self.swap(
+            pre_push_hook, 'main', mock_main_for_pre_push_hook
+        )
+
+        with self.check_call_swap, self.Popen_swap, swap_install_redis_cli:
+            with swap_install_gcloud_sdk, swap_install_json_deps_main:
+                with pre_commit_hook_main_swap, pre_push_hook_main_swap:
+                    with swap_isdir, swap_mkdir, swap_copytree:
+                        with swap_install_playwright_node:
+                            install_third_party_libs.main()
+
+        self.assertEqual(check_function_calls, expected_check_function_calls)
+
+        yarn_install_command = ['yarn', 'install', '--pure-lockfile']
+        self.assertIn(yarn_install_command, self.all_cmd_tokens)
+        yarn_install_index = self.all_cmd_tokens.index(yarn_install_command)
+        self.assertNotIn(
+            '--ignore-engines', self.all_cmd_tokens[yarn_install_index]
+        )
+        yarn_install_env = self.all_envs[yarn_install_index]
+        self.assertIsNotNone(yarn_install_env)
+        assert yarn_install_env is not None
+        expected_node_20_bin_path = os.path.join(
+            common.LIGHTHOUSE_NODE_PATH, 'bin'
+        )
+        self.assertTrue(
+            yarn_install_env['PATH'].startswith(
+                '%s%s' % (expected_node_20_bin_path, os.pathsep)
+            )
+        )
+
+    def test_clean_pyc_files_removes_pyc_files(self) -> None:
+        check_file_removals = {'root/file1.js': False, 'root/file2.pyc': False}
+        expected_check_file_removals = {
+            'root/file1.js': False,
+            'root/file2.pyc': True,
+        }
+
+        def mock_walk(
+            unused_path: str,
+        ) -> List[Tuple[str, List[str], List[str]]]:
+            return [('root', ['dir1'], ['file1.js', 'file2.pyc'])]
+
+        def mock_remove(path: str) -> None:
+            check_file_removals[path] = True
+
+        def mock_exists(unused_path: str) -> bool:
+            return True
+
+        walk_swap = self.swap(os, 'walk', mock_walk)
+        remove_swap = self.swap(os, 'remove', mock_remove)
+        exists_swap = self.swap(os.path, 'exists', mock_exists)
+        with walk_swap, remove_swap, exists_swap:
+            install_third_party_libs.clean_pyc_files()
+        self.assertEqual(check_file_removals, expected_check_file_removals)
+
+
+class InstallRedisTests(test_utils.GenericTestBase):
+    """Test the methods for installing Redis."""
+
+    def test_install_redis_cli_function_calls(self) -> None:
+        check_function_calls = {
+            'subprocess_call_is_called': False,
+            'download_and_untar_files_is_called': False,
+        }
+        expected_check_function_calls = {
+            'subprocess_call_is_called': True,
+            'download_and_untar_files_is_called': True,
+        }
+
+        def mock_download_and_untar_files(
+            unused_source_url: str,
+            unused_target_parent_dir: str,
+            unused_tar_root_name: str,
+            unused_target_root_name: str,
+        ) -> None:
+            check_function_calls['download_and_untar_files_is_called'] = True
+
+        def mock_call(  # pylint: disable=unused-argument
+            unused_cmd_tokens: List[str], **kwargs: str
+        ) -> Ret:
+            check_function_calls['subprocess_call_is_called'] = True
+
+            # The first subprocess.call() in install_redis_cli needs to throw an
+            # exception so that the script can execute the installation pathway.
+            if unused_cmd_tokens == [common.REDIS_SERVER_PATH, '--version']:
+                raise OSError('redis-server: command not found')
+
+            return Ret()
+
+        swap_call = self.swap(subprocess, 'call', mock_call)
+        untar_files_swap = self.swap(
+            install_third_party_libs,
+            'download_and_untar_files',
+            mock_download_and_untar_files,
+        )
+        with swap_call, untar_files_swap:
+            install_third_party_libs.install_redis_cli()
+
+        self.assertEqual(check_function_calls, expected_check_function_calls)
+
+
+class SetupTests(test_utils.GenericTestBase):
+    """Test the methods for setup script."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.check_function_calls = {
+            'rename_is_called': False,
+        }
+        self.urls: List[str] = []
+
+        def mock_test_python_version() -> None:
+            self.check_function_calls['test_python_version_is_called'] = True
+
+        def mock_download_and_install_package(
+            url: str, unused_filename: str
+        ) -> None:
+            self.urls.append(url)
+
+        def mock_uname() -> List[str]:
+            return ['Linux']
+
+        def mock_rename(unused_path1: str, unused_path2: str) -> None:
+            self.check_function_calls['rename_is_called'] = True
+
+        def mock_isfile(unused_path: str) -> bool:
+            return True
+
+        def mock_delete_file(unused_path: str) -> None:
+            self.check_function_calls['delete_file_is_called'] = True
+
+        def mock_get(unused_var: str) -> None:
+            return None
+
+        self.test_py_swap = self.swap(
+            install_third_party_libs,
+            'test_python_version',
+            mock_test_python_version,
+        )
+        self.download_swap = self.swap(
+            install_third_party_libs,
+            'download_and_install_package',
+            mock_download_and_install_package,
+        )
+        self.exists_true_swap = self.swap_to_always_return(
+            os.path, 'exists', True
+        )
+        self.exists_false_swap = self.swap_to_always_return(
+            os.path, 'exists', False
+        )
+        self.is_x64_architecture_true_swap = self.swap_to_always_return(
+            common, 'is_x64_architecture', True
+        )
+        self.is_x64_architecture_false_swap = self.swap_to_always_return(
+            common, 'is_x64_architecture', False
+        )
+        self.uname_swap = self.swap(os, 'uname', mock_uname)
+        self.rename_swap = self.swap(os, 'rename', mock_rename)
+        self.isfile_swap = self.swap(os.path, 'isfile', mock_isfile)
+        self.delete_swap = self.swap(clean, 'delete_file', mock_delete_file)
+        self.get_swap = self.swap(os.environ, 'get', mock_get)
+        self.cd_swap = self.swap(common, 'CD', MockCD)
+        version_info = collections.namedtuple(
+            'version_info', ['major', 'minor', 'micro']
+        )
+        self.version_info_py3_12_13_swap = self.swap(
+            sys, 'version_info', version_info(major=3, minor=12, micro=13)
+        )
+
+    def test_python_version_testing_with_correct_version(self) -> None:
+        with self.version_info_py3_12_13_swap:
+            install_third_party_libs.test_python_version()
+
+    def test_python_version_testing_with_incorrect_version_and_linux_os(
+        self,
+    ) -> None:
+        print_arr: List[str] = []
+
+        def mock_print(msg_list: List[str]) -> None:
+            print_arr.extend(msg_list)
+
+        def mock_uname() -> List[str]:
+            return ['Linux']
+
+        print_swap = self.swap(
+            common, 'print_each_string_after_two_new_lines', mock_print
+        )
+        uname_swap = self.swap(os, 'uname', mock_uname)
+        version_info = collections.namedtuple(
+            'version_info', ['major', 'minor', 'micro']
+        )
+        version_swap = self.swap(
+            sys, 'version_info', version_info(major=3, minor=4, micro=12)
+        )
+        with print_swap, uname_swap, version_swap, self.assertRaisesRegex(
+            Exception, 'No suitable python version found.'
+        ):
+            install_third_party_libs.test_python_version()
+        self.assertEqual(print_arr, [])
+
+    def test_download_and_install_package(self) -> None:
+        check_function_calls = {
+            'url_retrieve_is_called': False,
+            'open_is_called': False,
+            'extractall_is_called': False,
+            'close_is_called': False,
+            'remove_is_called': False,
+        }
+        expected_check_function_calls = {
+            'url_retrieve_is_called': True,
+            'open_is_called': True,
+            'extractall_is_called': True,
+            'close_is_called': True,
+            'remove_is_called': True,
+        }
+
+        def mock_url_retrieve(  # pylint: disable=unused-argument
+            unused_url: str, filename: str
+        ) -> None:
+            check_function_calls['url_retrieve_is_called'] = True
+
+        temp_file = tarfile.open(name=MOCK_TMP_UNTAR_PATH)
+
+        def mock_open(  # pylint: disable=unused-argument
+            name: str,
+        ) -> tarfile.TarFile:
+            check_function_calls['open_is_called'] = True
+            return temp_file
+
+        def mock_extractall(*unused_args: str, **unused_kwargs: str) -> None:
+            check_function_calls['extractall_is_called'] = True
+
+        def mock_close(unused_self: str) -> None:
+            check_function_calls['close_is_called'] = True
+
+        def mock_remove(unused_path: str) -> None:
+            check_function_calls['remove_is_called'] = True
+
+        url_retrieve_swap = self.swap(common, 'url_retrieve', mock_url_retrieve)
+        open_swap = self.swap(tarfile, 'open', mock_open)
+        extract_swap = self.swap(tarfile.TarFile, 'extractall', mock_extractall)
+        close_swap = self.swap(tarfile.TarFile, 'close', mock_close)
+        remove_swap = self.swap(os, 'remove', mock_remove)
+
+        with url_retrieve_swap, open_swap, extract_swap, close_swap:
+            with remove_swap:
+                install_third_party_libs.download_and_install_package(
+                    'url', 'filename'
+                )
+        self.assertEqual(check_function_calls, expected_check_function_calls)
+
+    def test_rename_yarn_folder(self) -> None:
+        # Creates a dummy yarn folder and then checks if `v` was removed
+        # upon function call.
+        os.mkdir(MOCK_YARN_PATH)
+        install_third_party_libs.rename_yarn_folder(
+            'yarn-v%s' % common.YARN_VERSION, TEST_DATA_DIR
+        )
+        target = os.path.join(TEST_DATA_DIR, 'yarn-%s' % common.YARN_VERSION)
+        self.assertTrue(os.path.exists(target))
+        os.rmdir(target)
+
+    def test_invalid_dir(self) -> None:
+        def mock_getcwd() -> str:
+            return 'invalid'
+
+        print_arr: List[str] = []
+
+        def mock_print(msg: str) -> None:
+            print_arr.append(msg)
+
+        getcwd_swap = self.swap(os, 'getcwd', mock_getcwd)
+        print_swap = self.swap(builtins, 'print', mock_print)
+        with self.test_py_swap, getcwd_swap, print_swap:
+            with self.assertRaisesRegex(
+                Exception, 'Please run this script from the oppia/ directory.'
+            ):
+                install_third_party_libs.main()
+        self.assertFalse(
+            'WARNING   This script should be run from the oppia/ '
+            'root folder.' in print_arr
+        )
+
+    def test_install_on_windows_os_gives_failure(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Windows')
+
+        with os_name_swap:
+            with self.assertRaisesRegex(
+                Exception,
+                'Installation of Oppia is not supported on Windows OS.',
+            ):
+                install_third_party_libs.main()
+
+    def test_package_install_with_darwin_x64(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Darwin')
+
+        with self.test_py_swap, os_name_swap:
+            with self.download_swap, self.rename_swap, self.exists_false_swap:
+                with self.delete_swap, self.isfile_swap:
+                    with self.is_x64_architecture_true_swap:
+                        install_third_party_libs.install_node()
+
+        for item, status in self.check_function_calls.items():
+            self.assertTrue(status, msg='Failed check for %s' % item)
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s-darwin-x64.tar.gz'
+                % (common.NODE_VERSION, common.NODE_VERSION)
+            ],
+        )
+
+    def test_package_install_with_darwin_x86(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Darwin')
+        all_cmd_tokens: List[str] = []
+
+        def mock_check_call(cmd_tokens: List[str]) -> None:
+            all_cmd_tokens.extend(cmd_tokens)
+
+        check_call_swap = self.swap(subprocess, 'check_call', mock_check_call)
+
+        with self.test_py_swap, os_name_swap:
+            with self.download_swap, self.rename_swap, self.exists_false_swap:
+                with self.delete_swap, self.isfile_swap:
+                    with self.is_x64_architecture_false_swap, self.cd_swap:
+                        with check_call_swap:
+                            install_third_party_libs.install_node()
+        for item, status in self.check_function_calls.items():
+            self.assertTrue(status, msg='Failed check for %s' % item)
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s.tar.gz'
+                % (common.NODE_VERSION, common.NODE_VERSION)
+            ],
+        )
+        self.assertEqual(all_cmd_tokens, ['./configure', 'make'])
+
+    def test_package_install_with_linux_x64(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
+
+        with self.test_py_swap, os_name_swap:
+            with self.download_swap, self.rename_swap, self.exists_false_swap:
+                with self.delete_swap, self.isfile_swap:
+                    with self.is_x64_architecture_true_swap:
+                        install_third_party_libs.install_node()
+
+        for item, status in self.check_function_calls.items():
+            self.assertTrue(status, msg='Failed check for %s' % item)
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s-linux-x64.tar.gz'
+                % (common.NODE_VERSION, common.NODE_VERSION)
+            ],
+        )
+
+    def test_package_install_with_linux_x86(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
+
+        all_cmd_tokens: List[str] = []
+
+        def mock_check_call(cmd_tokens: List[str]) -> None:
+            all_cmd_tokens.extend(cmd_tokens)
+
+        check_call_swap = self.swap(subprocess, 'check_call', mock_check_call)
+
+        with self.test_py_swap, os_name_swap, check_call_swap:
+            with self.download_swap, self.rename_swap, self.cd_swap:
+                with self.delete_swap, self.isfile_swap:
+                    with self.is_x64_architecture_false_swap:
+                        with self.exists_false_swap:
+                            install_third_party_libs.install_node()
+
+        for item, status in self.check_function_calls.items():
+            self.assertTrue(status, msg='Failed check for %s' % item)
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s.tar.gz'
+                % (common.NODE_VERSION, common.NODE_VERSION)
+            ],
+        )
+        self.assertEqual(all_cmd_tokens, ['./configure', 'make'])
+
+    def test_package_install_with_incompatible_system_raises_error(
+        self,
+    ) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Solaris')
+
+        with self.test_py_swap, os_name_swap:
+            with self.rename_swap, self.exists_false_swap:
+                with self.assertRaisesRegex(
+                    Exception, 'System\'s Operating System is not compatible.'
+                ), self.is_x64_architecture_true_swap:
+                    install_third_party_libs.main()
+
+    def test_if_node_is_already_installed_then_skip_installation(self) -> None:
+
+        print_list = []
+
+        def mock_print(arg: str) -> None:
+            print_list.append(arg)
+
+        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
+        print_swap = self.swap(builtins, 'print', mock_print)
+
+        with self.test_py_swap, print_swap:
+            with self.rename_swap, self.exists_true_swap, os_name_swap:
+                install_third_party_libs.install_node()
+
+        print(print_list)
+        self.assertIn('Node is installed.', print_list)
+        self.assertNotIn('Installing Node.js', print_list)
+        self.assertNotIn('Removing package-lock.json', print_list)
+
+    def test_install_playwright_node_with_darwin_x64(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Darwin')
+
+        with self.test_py_swap, os_name_swap:
+            with self.download_swap, self.rename_swap, self.exists_false_swap:
+                with self.is_x64_architecture_true_swap:
+                    install_third_party_libs.install_playwright_node()
+
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s-darwin-x64.tar.gz'
+                % (
+                    common.PLAYWRIGHT_NODE_VERSION,
+                    common.PLAYWRIGHT_NODE_VERSION,
+                )
+            ],
+        )
+
+    def test_install_playwright_node_with_linux_x64(self) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Linux')
+
+        with self.test_py_swap, os_name_swap:
+            with self.download_swap, self.rename_swap, self.exists_false_swap:
+                with self.is_x64_architecture_true_swap:
+                    install_third_party_libs.install_playwright_node()
+
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s-linux-x64.tar.gz'
+                % (
+                    common.PLAYWRIGHT_NODE_VERSION,
+                    common.PLAYWRIGHT_NODE_VERSION,
+                )
+            ],
+        )
+
+    def test_install_playwright_node_with_unsupported_os_raises_exception(
+        self,
+    ) -> None:
+        os_name_swap = self.swap(common, 'OS_NAME', 'Solaris')
+
+        with self.exists_false_swap, self.is_x64_architecture_true_swap:
+            with os_name_swap, self.assertRaisesRegex(
+                Exception, 'Unsupported OS'
+            ):
+                install_third_party_libs.install_playwright_node()
+
+    def test_install_playwright_node_with_non_x64_architecture(
+        self,
+    ) -> None:
+        all_cmd_tokens: List[str] = []
+
+        def mock_check_call(cmd_tokens: List[str]) -> None:
+            all_cmd_tokens.extend(cmd_tokens)
+
+        check_call_swap = self.swap(subprocess, 'check_call', mock_check_call)
+
+        with self.download_swap, self.rename_swap, self.exists_false_swap:
+            with self.is_x64_architecture_false_swap, self.cd_swap:
+                with check_call_swap:
+                    install_third_party_libs.install_playwright_node()
+
+        self.assertEqual(
+            self.urls,
+            [
+                'https://nodejs.org/dist/v%s/node-v%s.tar.gz'
+                % (
+                    common.PLAYWRIGHT_NODE_VERSION,
+                    common.PLAYWRIGHT_NODE_VERSION,
+                )
+            ],
+        )
+        self.assertEqual(all_cmd_tokens, ['./configure', 'make'])
+
+    def test_install_playwright_node_skips_if_already_installed(
+        self,
+    ) -> None:
+        print_list: List[str] = []
+
+        def mock_print(arg: str) -> None:
+            print_list.append(arg)
+
+        print_swap = self.swap(builtins, 'print', mock_print)
+
+        with print_swap, self.exists_true_swap:
+            install_third_party_libs.install_playwright_node()
+
+        self.assertIn('Playwright Node is installed.', print_list)
+        self.assertNotIn(
+            'Playwright Node not found. Installing Node.js', print_list
+        )
+
+
+class GoogleCloudSdkInstallationTests(test_utils.GenericTestBase):
+    """Test the methods for installing the Google Cloud SDK."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.check_function_calls = {
+            'remove_is_called': False,
+            'makedirs_is_called': False,
+            'url_retrieve_is_called': False,
+        }
+        self.expected_check_function_calls = {
+            'remove_is_called': True,
+            'makedirs_is_called': True,
+            'url_retrieve_is_called': True,
+        }
+        self.raise_error = False
+
+        def mock_remove(unused_path: str) -> None:
+            self.check_function_calls['remove_is_called'] = True
+
+        def mock_makedirs(  # pylint: disable=unused-argument
+            unused_path: str, exist_ok: bool = False
+        ) -> None:
+            self.check_function_calls['makedirs_is_called'] = True
+
+        self.print_arr: List[str] = []
+
+        def mock_print(msg: str) -> None:
+            self.print_arr.append(msg)
+
+        def mock_url_retrieve(  # pylint: disable=unused-argument
+            unused_url: str, filename: str
+        ) -> None:
+            self.check_function_calls['url_retrieve_is_called'] = True
+            if self.raise_error:
+                raise Exception
+
+        self.remove_swap = self.swap(os, 'remove', mock_remove)
+        self.makedirs_swap = self.swap(os, 'makedirs', mock_makedirs)
+        self.print_swap = self.swap(builtins, 'print', mock_print)
+        self.url_retrieve_swap = self.swap(
+            common, 'url_retrieve', mock_url_retrieve
+        )
+
+    def test_gcloud_install_without_errors(self) -> None:
+        self.check_function_calls['open_is_called'] = False
+        self.check_function_calls['extractall_is_called'] = False
+        self.check_function_calls['close_is_called'] = False
+        self.check_function_calls['copytree_is_called'] = False
+        self.expected_check_function_calls['open_is_called'] = True
+        self.expected_check_function_calls['extractall_is_called'] = True
+        self.expected_check_function_calls['close_is_called'] = True
+        self.expected_check_function_calls['copytree_is_called'] = True
+
+        def mock_exists(path: str) -> bool:
+            if path == common.GOOGLE_CLOUD_SDK_HOME:
+                return False
+            return True
+
+        temp_file = tarfile.open(name=MOCK_TMP_UNTAR_PATH)
+
+        def mock_open(  # pylint: disable=unused-argument
+            name: str,
+        ) -> tarfile.TarFile:
+            self.check_function_calls['open_is_called'] = True
+            return temp_file
+
+        def mock_extractall(*unused_args: str, **unused_kwargs: str) -> None:
+            self.check_function_calls['extractall_is_called'] = True
+
+        def mock_close(unused_self: str) -> None:
+            self.check_function_calls['close_is_called'] = True
+
+        def mock_copytree(
+            unused_src: str, unused_dst: str
+        ) -> None:  # pylint: disable=unused-argument
+            self.check_function_calls['copytree_is_called'] = True
+
+        def mock_isdir(path: str) -> bool:
+            if path.endswith(('google/appengine', 'google/pyglib')):
+                return False
+            return True
+
+        exists_swap = self.swap(os.path, 'exists', mock_exists)
+        open_swap = self.swap(tarfile, 'open', mock_open)
+        extractall_swap = self.swap(
+            tarfile.TarFile, 'extractall', mock_extractall
+        )
+        close_swap = self.swap(tarfile.TarFile, 'close', mock_close)
+        copytree_swap = self.swap(shutil, 'copytree', mock_copytree)
+        isdir_swap = self.swap(os.path, 'isdir', mock_isdir)
+
+        with self.remove_swap, self.makedirs_swap, self.print_swap:
+            with self.url_retrieve_swap, exists_swap, isdir_swap:
+                with open_swap, extractall_swap, close_swap, copytree_swap:
+                    install_third_party_libs.install_gcloud_sdk()
+        self.assertEqual(
+            self.check_function_calls, self.expected_check_function_calls
+        )
+        self.assertTrue(
+            'Download complete. Installing Google Cloud SDK...'
+            in self.print_arr
+        )
+
+    def test_gcloud_install_with_errors(self) -> None:
+        self.expected_check_function_calls['remove_is_called'] = False
+        self.raise_error = True
+
+        def mock_exists(path: str) -> bool:
+            if path == common.GOOGLE_CLOUD_SDK_HOME:
+                return False
+            return True
+
+        exists_swap = self.swap(os.path, 'exists', mock_exists)
+
+        with self.remove_swap, self.makedirs_swap:
+            with self.print_swap, self.url_retrieve_swap, exists_swap:
+                with self.assertRaisesRegex(
+                    Exception, 'Error downloading Google Cloud SDK.'
+                ):
+                    install_third_party_libs.install_gcloud_sdk()
+        self.assertEqual(
+            self.check_function_calls, self.expected_check_function_calls
+        )
+        self.assertTrue(
+            'Error downloading Google Cloud SDK. Exiting.' in self.print_arr
+        )
+
+    def test_directory_copying(self) -> None:
+        correct_google_path = os.path.join(
+            common.THIRD_PARTY_PYTHON_LIBS_DIR, 'google'
+        )
+
+        def mock_check_call(unused_cmd_tokens: List[str]) -> None:
+            pass
+
+        def mock_isdir(path: str) -> bool:
+            directories_that_do_not_exist = {
+                os.path.join(correct_google_path, 'appengine'),
+                os.path.join(correct_google_path, 'pyglib'),
+                correct_google_path,
+            }
+            if path in directories_that_do_not_exist:
+                return False
+            return True
+
+        def mock_exists(path: str) -> bool:
+            if path == common.GOOGLE_CLOUD_SDK_HOME:
+                return False
+            return True
+
+        class MockProcess:
+            returncode = 0
+            stdout = 'No data to report.'
+            stderr = 'None'
+
+        def mock_subprocess_run(  # pylint: disable=unused-argument
+            *args: str, **kwargs: str
+        ) -> MockProcess:
+            return MockProcess()
+
+        temp_file = tarfile.open(name=MOCK_TMP_UNTAR_PATH)
+
+        def mock_open(  # pylint: disable=unused-argument
+            name: str,
+        ) -> tarfile.TarFile:
+            self.check_function_calls['open_is_called'] = True
+            return temp_file
+
+        def mock_extractall(*unused_args: str, **unused_kwargs: str) -> None:
+            self.check_function_calls['extractall_is_called'] = True
+
+        def mock_close(unused_self: str) -> None:
+            self.check_function_calls['close_is_called'] = True
+
+        def mock_remove(unused_self: str) -> None:
+            pass
+
+        open_swap = self.swap(tarfile, 'open', mock_open)
+        extractall_swap = self.swap(
+            tarfile.TarFile, 'extractall', mock_extractall
+        )
+        close_swap = self.swap(tarfile.TarFile, 'close', mock_close)
+
         initialized_directories = []
-        def mock_mk_dir(path):
+
+        def mock_mkdir(path: str, unused_mode: int = 0o777) -> None:
             initialized_directories.append(path)
 
         copied_src_dst_tuples = []
-        def mock_copy_tree(src, dst):
+
+        def mock_copytree(src: str, dst: str) -> None:
             copied_src_dst_tuples.append((src, dst))
 
         correct_copied_src_dst_tuples = [
             (
                 os.path.join(
-                    common.GOOGLE_APP_ENGINE_SDK_HOME, 'google', 'appengine'),
-                os.path.join(correct_google_path, 'appengine')),
+                    common.GOOGLE_APP_ENGINE_SDK_HOME, 'google', 'appengine'
+                ),
+                os.path.join(correct_google_path, 'appengine'),
+            ),
             (
                 os.path.join(
-                    common.GOOGLE_APP_ENGINE_SDK_HOME, 'google', 'net'),
-                os.path.join(correct_google_path, 'net')),
-            (
-                os.path.join(
-                    common.GOOGLE_APP_ENGINE_SDK_HOME, 'google', 'pyglib'),
-                os.path.join(correct_google_path, 'pyglib'))
+                    common.GOOGLE_APP_ENGINE_SDK_HOME, 'google', 'pyglib'
+                ),
+                os.path.join(correct_google_path, 'pyglib'),
+            ),
         ]
 
-        ensure_pip_install_swap = self.swap(
-            install_third_party_libs, 'ensure_pip_library_is_installed',
-            mock_ensure_pip_library_is_installed)
-        swap_is_dir = self.swap(os.path, 'isdir', mock_is_dir)
-        swap_mk_dir = self.swap(os, 'mkdir', mock_mk_dir)
-        swap_copy_tree = self.swap(shutil, 'copytree', mock_copy_tree)
+        swap_exists = self.swap(os.path, 'exists', mock_exists)
+        swap_isdir = self.swap(os.path, 'isdir', mock_isdir)
+        swap_mkdir = self.swap(os, 'mkdir', mock_mkdir)
+        swap_copytree = self.swap(shutil, 'copytree', mock_copytree)
+        swap_remove = self.swap(os, 'remove', mock_remove)
+        popen_swap = self.swap(subprocess, 'Popen', mock_check_call)
+        run_swap = self.swap(subprocess, 'run', mock_subprocess_run)
         check_call_swap = self.swap(subprocess, 'check_call', mock_check_call)
-        install_third_party_main_swap = self.swap(
-            install_third_party, 'main', mock_main_for_install_third_party)
-        setup_main_swap = self.swap(setup, 'main', mock_main_for_setup)
-        setup_gae_main_swap = self.swap(
-            setup_gae, 'main', mock_main_for_setup_gae)
-        pre_commit_hook_main_swap = self.swap(
-            pre_commit_hook, 'main', mock_main_for_pre_commit_hook)
-        pre_push_hook_main_swap = self.swap(
-            pre_push_hook, 'main', mock_main_for_pre_push_hook)
-        tweak_yarn_executable_swap = self.swap(
-            install_third_party_libs, 'tweak_yarn_executable',
-            mock_tweak_yarn_executable)
 
-        with ensure_pip_install_swap, check_call_swap, self.Popen_swap:
-            with install_third_party_main_swap, setup_main_swap:
-                with setup_gae_main_swap, pre_commit_hook_main_swap:
-                    with pre_push_hook_main_swap, tweak_yarn_executable_swap:
-                        with swap_is_dir, swap_mk_dir, swap_copy_tree:
-                            install_third_party_libs.main()
-        self.assertEqual(check_function_calls, expected_check_function_calls)
+        with check_call_swap, popen_swap, close_swap, run_swap, swap_remove:
+            with swap_isdir, swap_mkdir, swap_copytree, swap_exists:
+                with self.url_retrieve_swap, open_swap, extractall_swap:
+                    install_third_party_libs.install_gcloud_sdk()
 
-        self.assertEqual(
-            copied_src_dst_tuples, correct_copied_src_dst_tuples)
-
+        self.assertEqual(copied_src_dst_tuples, correct_copied_src_dst_tuples)
         self.assertEqual(
             initialized_directories,
-            [correct_google_path])
-
-    def test_function_calls_on_windows(self):
-        check_function_calls = {
-            'ensure_pip_library_is_installed_is_called': False,
-            'install_third_party_main_is_called': False,
-            'setup_main_is_called': False,
-            'setup_gae_main_is_called': False,
-            'pre_commit_hook_main_is_called': False,
-            'pre_push_hook_main_is_called': False,
-            'tweak_yarn_executable_is_called': False
-        }
-        expected_check_function_calls = {
-            'ensure_pip_library_is_installed_is_called': True,
-            'install_third_party_main_is_called': True,
-            'setup_main_is_called': True,
-            'setup_gae_main_is_called': True,
-            'pre_commit_hook_main_is_called': True,
-            'pre_push_hook_main_is_called': False,
-            'tweak_yarn_executable_is_called': True
-        }
-        def mock_ensure_pip_library_is_installed(
-                unused_package, unused_version, unused_path):
-            check_function_calls[
-                'ensure_pip_library_is_installed_is_called'] = True
-        def mock_check_call(unused_cmd_tokens):
-            pass
-        def mock_main_for_install_third_party(args):  # pylint: disable=unused-argument
-            check_function_calls['install_third_party_main_is_called'] = True
-        def mock_main_for_setup(args):  # pylint: disable=unused-argument
-            check_function_calls['setup_main_is_called'] = True
-        def mock_main_for_setup_gae(args):  # pylint: disable=unused-argument
-            check_function_calls['setup_gae_main_is_called'] = True
-        def mock_main_for_pre_commit_hook(args):  # pylint: disable=unused-argument
-            check_function_calls['pre_commit_hook_main_is_called'] = True
-        def mock_main_for_pre_push_hook(args):  # pylint: disable=unused-argument
-            check_function_calls['pre_push_hook_main_is_called'] = True
-        def mock_tweak_yarn_executable():
-            check_function_calls['tweak_yarn_executable_is_called'] = True
-
-        ensure_pip_install_swap = self.swap(
-            install_third_party_libs, 'ensure_pip_library_is_installed',
-            mock_ensure_pip_library_is_installed)
-        check_call_swap = self.swap(subprocess, 'check_call', mock_check_call)
-        install_third_party_main_swap = self.swap(
-            install_third_party, 'main', mock_main_for_install_third_party)
-        setup_main_swap = self.swap(setup, 'main', mock_main_for_setup)
-        setup_gae_main_swap = self.swap(
-            setup_gae, 'main', mock_main_for_setup_gae)
-        pre_commit_hook_main_swap = self.swap(
-            pre_commit_hook, 'main', mock_main_for_pre_commit_hook)
-        pre_push_hook_main_swap = self.swap(
-            pre_push_hook, 'main', mock_main_for_pre_push_hook)
-        tweak_yarn_executable_swap = self.swap(
-            install_third_party_libs, 'tweak_yarn_executable',
-            mock_tweak_yarn_executable)
-        os_name_swap = self.swap(common, 'OS_NAME', 'Windows')
-
-        py_actual_text = (
-            'ConverterMapping,\nLine ending with '
-            '"ConverterMapping",\nOther Line\n')
-        temp_py_config_file = tempfile.NamedTemporaryFile(prefix='py').name
-        with python_utils.open_file(temp_py_config_file, 'w') as f:
-            f.write(py_actual_text)
-
-        pq_actual_text = (
-            'ConverterMapping,\n"ConverterMapping",\nOther Line\n')
-        temp_pq_config_file = tempfile.NamedTemporaryFile(prefix='pq').name
-        with python_utils.open_file(temp_pq_config_file, 'w') as f:
-            f.write(pq_actual_text)
-
-        with ensure_pip_install_swap, check_call_swap, self.Popen_swap:
-            with install_third_party_main_swap, setup_main_swap:
-                with setup_gae_main_swap, pre_commit_hook_main_swap:
-                    with pre_push_hook_main_swap, tweak_yarn_executable_swap:
-                        with os_name_swap:
-                            install_third_party_libs.main()
-        self.assertEqual(check_function_calls, expected_check_function_calls)
+            [common.GOOGLE_CLOUD_SDK_HOME, correct_google_path],
+        )

@@ -16,13 +16,18 @@
  * @fileoverview Unit tests for the blog dashboard navbar breadcrumb.
  */
 
-import { ComponentFixture, TestBed, fakeAsync, waitForAsync, tick } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { BlogDashboardNavbarBreadcrumbComponent } from 'pages/blog-dashboard-page/navbar/navbar-breadcrumb/blog-dashboard-navbar-breadcrumb.component';
-import { BlogDashboardPageService } from 'pages/blog-dashboard-page/services/blog-dashboard-page.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { EventEmitter } from '@angular/core';
-
+import {
+  ComponentFixture,
+  TestBed,
+  fakeAsync,
+  waitForAsync,
+  tick,
+} from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {BlogDashboardNavbarBreadcrumbComponent} from 'pages/blog-dashboard-page/navbar/navbar-breadcrumb/blog-dashboard-navbar-breadcrumb.component';
+import {BlogDashboardPageService} from 'pages/blog-dashboard-page/services/blog-dashboard-page.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {EventEmitter} from '@angular/core';
 
 describe('Blog Dashboard Page Component', () => {
   let blogDashboardPageService: BlogDashboardPageService;
@@ -34,9 +39,10 @@ describe('Blog Dashboard Page Component', () => {
     nativeWindow = {
       location: {
         href: '',
-        hash: '/'
+        hash: '/',
+        _hashChange: null,
       },
-      open: (url) => { },
+      open: (url: string) => {},
       onhashchange() {
         return this.location._hashChange;
       },
@@ -45,25 +51,20 @@ describe('Blog Dashboard Page Component', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-      ],
-      declarations: [
-        BlogDashboardNavbarBreadcrumbComponent,
-      ],
+      imports: [HttpClientTestingModule],
+      declarations: [BlogDashboardNavbarBreadcrumbComponent],
       providers: [
         BlogDashboardPageService,
         {
           provide: WindowRef,
-          useClass: MockWindowRef
+          useClass: MockWindowRef,
         },
       ],
     }).compileComponents();
   }));
 
   beforeEach(() => {
-    fixture = TestBed.createComponent(
-      BlogDashboardNavbarBreadcrumbComponent);
+    fixture = TestBed.createComponent(BlogDashboardNavbarBreadcrumbComponent);
     component = fixture.componentInstance;
     mockWindowRef = TestBed.inject(WindowRef) as unknown as MockWindowRef;
     blogDashboardPageService = TestBed.inject(BlogDashboardPageService);
@@ -72,7 +73,6 @@ describe('Blog Dashboard Page Component', () => {
   afterEach(() => {
     component.ngOnDestroy();
   });
-
 
   it('should create', () => {
     expect(component).toBeDefined();
@@ -90,8 +90,10 @@ describe('Blog Dashboard Page Component', () => {
   }));
 
   it('should set title when title change event is emitted', fakeAsync(() => {
-    spyOn(blogDashboardPageService, 'updateNavTitleEventEmitter')
-      .and.returnValue(new EventEmitter());
+    spyOn(
+      blogDashboardPageService,
+      'updateNavTitleEventEmitter'
+    ).and.returnValue(new EventEmitter());
 
     component.ngOnInit();
     blogDashboardPageService.updateNavTitleEventEmitter.emit('new title');
@@ -106,9 +108,19 @@ describe('Blog Dashboard Page Component', () => {
 
     component.ngOnInit();
 
-    expect(blogDashboardPageService.updateViewEventEmitter.subscribe)
-      .toHaveBeenCalled();
-    expect(blogDashboardPageService.updateNavTitleEventEmitter.subscribe)
-      .toHaveBeenCalled();
+    expect(
+      blogDashboardPageService.updateViewEventEmitter.subscribe
+    ).toHaveBeenCalled();
+    expect(
+      blogDashboardPageService.updateNavTitleEventEmitter.subscribe
+    ).toHaveBeenCalled();
+  });
+
+  it('should navigate to main tab', () => {
+    spyOn(blogDashboardPageService, 'navigateToMainTab');
+
+    component.navigateToMainTab();
+
+    expect(blogDashboardPageService.navigateToMainTab).toHaveBeenCalled();
   });
 });

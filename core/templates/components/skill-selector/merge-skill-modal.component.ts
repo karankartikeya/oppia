@@ -16,35 +16,43 @@
  * @fileoverview Component for merge skill modal.
  */
 
-import { Component } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ConfirmOrCancelModal } from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
-import { AugmentedSkillSummary } from 'domain/skill/augmented-skill-summary.model';
-import { SkillSummary } from 'domain/skill/skill-summary.model';
-import { SkillsCategorizedByTopics } from 'pages/topics-and-skills-dashboard-page/skills-list/skills-list.component';
+import {Component} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {ConfirmOrCancelModal} from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
+import {AugmentedSkillSummary} from 'domain/skill/augmented-skill-summary.model';
+import {SkillSummary} from 'domain/skill/skill-summary.model';
+import {GroupedSkillSummaries} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {CategorizedSkills} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
 
 @Component({
   selector: 'oppia-merge-skill',
-  templateUrl: './merge-skill-modal.component.html'
+  templateUrl: './merge-skill-modal.component.html',
+  styleUrls: ['./merge-skill-modal.component.css'],
 })
 export class MergeSkillModalComponent extends ConfirmOrCancelModal {
-  categorizedSkills: SkillsCategorizedByTopics;
-  skill: AugmentedSkillSummary;
-  skillSummaries: AugmentedSkillSummary[];
-  untriagedSkillSummaries: SkillSummary[];
+  // These properties below are initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  categorizedSkills!: CategorizedSkills;
+  skill!: AugmentedSkillSummary;
+  skillSummaries!: AugmentedSkillSummary[];
+  untriagedSkillSummaries!: SkillSummary[];
+  selectedSkillId!: string;
   allowSkillsFromOtherTopics: boolean = true;
-  selectedSkillId: string;
 
-  constructor(
-    private ngbActiveModal: NgbActiveModal
-  ) {
+  groupedSkillSummaries: GroupedSkillSummaries = {
+    current: [],
+    others: [],
+  };
+
+  constructor(private ngbActiveModal: NgbActiveModal) {
     super(ngbActiveModal);
   }
 
   confirm(): void {
     this.ngbActiveModal.close({
       skill: this.skill,
-      supersedingSkillId: this.selectedSkillId
+      supersedingSkillId: this.selectedSkillId,
     });
   }
 

@@ -16,26 +16,28 @@
  * @fileoverview Service that handles data and routing on blog dashboard page.
  */
 
-import { Injectable, EventEmitter } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { AlertsService } from 'services/alerts.service';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { UrlService } from 'services/contextual/url.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { BlogDashboardPageConstants } from 'pages/blog-dashboard-page/blog-dashboard-page.constants';
-import { BlogPostEditorBackendApiService } from 'domain/blog/blog-post-editor-backend-api.service';
-import { PreventPageUnloadEventService } from 'services/prevent-page-unload-event.service';
-import { BlogPostData } from 'domain/blog/blog-post.model';
+import {Injectable, EventEmitter} from '@angular/core';
+import {AlertsService} from 'services/alerts.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {UrlService} from 'services/contextual/url.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {BlogDashboardPageConstants} from 'pages/blog-dashboard-page/blog-dashboard-page.constants';
+import {BlogPostEditorBackendApiService} from 'domain/blog/blog-post-editor-backend-api.service';
+import {PreventPageUnloadEventService} from 'services/prevent-page-unload-event.service';
+import {BlogPostData} from 'domain/blog/blog-post.model';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class BlogDashboardPageService {
+  // This property is initialized using getters and setters
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  private _blogPostData!: BlogPostData;
   private _blogPostId: string = '';
-  private _authorPictureUrl: string = '';
-  private _blogPostData: null | BlogPostData = null;
-  private _BLOG_POST_EDITOR_URL_TEMPLATE = (
-    BlogDashboardPageConstants.BLOG_DASHBOARD_TAB_URLS.BLOG_POST_EDITOR);
+  private _BLOG_POST_EDITOR_URL_TEMPLATE =
+    BlogDashboardPageConstants.BLOG_DASHBOARD_TAB_URLS.BLOG_POST_EDITOR;
+
   private _activeTab = 'main';
   private _blogPostAction: string = '';
   private _updateViewEventEmitter = new EventEmitter<void>();
@@ -48,7 +50,7 @@ export class BlogDashboardPageService {
     private urlInterpolationService: UrlInterpolationService,
     private urlService: UrlService,
     private windowRef: WindowRef,
-    private preventPageUnloadEventService: PreventPageUnloadEventService,
+    private preventPageUnloadEventService: PreventPageUnloadEventService
   ) {
     let currentHash: string = this.windowRef.nativeWindow.location.hash;
     this._setActiveTab(currentHash);
@@ -75,9 +77,11 @@ export class BlogDashboardPageService {
 
   navigateToEditorTabWithId(blogPostId: string): void {
     let blogPostEditorUrl = this.urlInterpolationService.interpolateUrl(
-      this._BLOG_POST_EDITOR_URL_TEMPLATE, {
-        blog_post_id: blogPostId
-      });
+      this._BLOG_POST_EDITOR_URL_TEMPLATE,
+      {
+        blog_post_id: blogPostId,
+      }
+    );
     this.windowRef.nativeWindow.location.hash = blogPostEditorUrl;
   }
 
@@ -105,20 +109,12 @@ export class BlogDashboardPageService {
     this._blogPostId = id;
   }
 
-  set blogPostData(data: BlogPostData | null) {
+  set blogPostData(data: BlogPostData) {
     this._blogPostData = data;
   }
 
-  get blogPostData(): BlogPostData | null {
+  get blogPostData(): BlogPostData {
     return this._blogPostData;
-  }
-
-  get authorPictureUrl(): string {
-    return this._authorPictureUrl;
-  }
-
-  set authorPictureUrl(url: string) {
-    this._authorPictureUrl = url;
   }
 
   set imageUploaderIsNarrow(value: boolean) {
@@ -138,22 +134,25 @@ export class BlogDashboardPageService {
   }
 
   deleteBlogPost(): void {
-    this.blogPostEditorBackendService.deleteBlogPostAsync(this._blogPostId)
+    this.blogPostEditorBackendService
+      .deleteBlogPostAsync(this._blogPostId)
       .then(
         () => {
           this.alertsService.addSuccessMessage(
-            'Blog Post Deleted Successfully.', 5000);
+            'Blog Post Deleted Successfully.',
+            10000
+          );
           if (this.activeTab === 'editor_tab') {
             this.navigateToMainTab();
           }
-        }, (errorResponse) => {
+        },
+        errorResponse => {
           this.alertsService.addWarning('Failed to delete blog post.');
         }
       );
   }
 
-  setNavTitle(
-      blogPostIsPublished: boolean, title: string): void {
+  setNavTitle(blogPostIsPublished: boolean, title: string): void {
     if (title) {
       if (blogPostIsPublished) {
         return this.updateNavTitleEventEmitter.emit(`Published - ${title}`);
@@ -165,6 +164,3 @@ export class BlogDashboardPageService {
     }
   }
 }
-
-angular.module('oppia').factory('BlogDashboardPageService',
-  downgradeInjectable(BlogDashboardPageService));

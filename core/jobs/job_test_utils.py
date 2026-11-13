@@ -16,17 +16,15 @@
 
 """Utilities for running Apache Beam tests."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import ast
 import contextlib
 import datetime
 import re
 
-from core import python_utils
-from core.jobs import base_jobs
-from core.jobs import job_options
+from core import utils
+from core.jobs import base_jobs, job_options
 from core.jobs.types import job_run_result
 from core.platform import models
 from core.tests import test_utils
@@ -35,15 +33,13 @@ import apache_beam as beam
 from apache_beam import runners
 from apache_beam.testing import test_pipeline
 from apache_beam.testing import util as beam_testing_util
-
 from typing import Any, Iterator, Optional, Sequence, Type
 
 MYPY = False
 if MYPY:  # pragma: no cover
-    from mypy_imports import base_models
-    from mypy_imports import datastore_services
+    from mypy_imports import base_models, datastore_services
 
-(base_models,) = models.Registry.import_models([models.NAMES.base_model])
+(base_models,) = models.Registry.import_models([models.Names.BASE_MODEL])
 
 datastore_services = models.Registry.import_datastore_services()
 
@@ -57,19 +53,26 @@ class PipelinedTestBase(test_utils.AppEngineTestBase):
     RUNTIME_TYPE_CHECK = True
 
     # Helpful constants used by tests to create models.
-    NOW = datetime.datetime.utcnow()
+    NOW = utils.get_current_utc_datetime()
     YEAR_AGO = NOW - datetime.timedelta(weeks=52)
     YEAR_LATER = NOW + datetime.timedelta(weeks=52)
 
+    # Here we use type Any because we need to match the behavior of super
+    # class's constructor and super class's constructor can accept arbitrary
+    # number of arguments with different types of values.
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super(PipelinedTestBase, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.pipeline = test_pipeline.TestPipeline(
             runner=runners.DirectRunner(),
-            options=job_options.JobOptions(namespace=self.namespace))
+            options=job_options.JobOptions(
+                namespace=self.namespace,
+                oppia_project_id='dev-project-id',
+            ),
+        )
         self._pipeline_context_stack: Optional[contextlib.ExitStack] = None
 
     def setUp(self) -> None:
-        super(PipelinedTestBase, self).setUp()
+        super().setUp()
         with contextlib.ExitStack() as pipeline_context_stack:
             pipeline_context_stack.enter_context(decorate_beam_errors())
             pipeline_context_stack.enter_context(self.pipeline)
@@ -79,7 +82,7 @@ class PipelinedTestBase(test_utils.AppEngineTestBase):
         try:
             self._exit_pipeline_context()
         finally:
-            super(PipelinedTestBase, self).tearDown()
+            super().tearDown()
 
     def assert_pcoll_equal(
         self, actual: beam.PCollection, expected: beam.PCollection
@@ -100,7 +103,8 @@ class PipelinedTestBase(test_utils.AppEngineTestBase):
         """
         self._assert_pipeline_context_is_acquired()
         beam_testing_util.assert_that(
-            actual, beam_testing_util.equal_to(expected))
+            actual, beam_testing_util.equal_to(expected)
+        )
         self._exit_pipeline_context()
 
     def assert_pcoll_empty(self, actual: beam.PCollection) -> None:
@@ -121,10 +125,11 @@ class PipelinedTestBase(test_utils.AppEngineTestBase):
         beam_testing_util.assert_that(actual, beam_testing_util.is_empty())
         self._exit_pipeline_context()
 
+    # Here we use type Any because this method can accept different properties
+    # of models and those properties can be of type str, int, bool, Dict and
+    # other types too. So, to allow every type of property we used Any here.
     def create_model(
-        self,
-        model_class: Type[base_models.SELF_BASE_MODEL],
-        **properties: Any
+        self, model_class: Type[base_models.SELF_BASE_MODEL], **properties: Any
     ) -> base_models.SELF_BASE_MODEL:
         """Helper method for creating valid models with common default values.
 
@@ -141,8 +146,9 @@ class PipelinedTestBase(test_utils.AppEngineTestBase):
             ValueError. A required property's default value is invalid.
         """
         property_values = {
-            p._name: p._default for p in model_class._properties.values() # pylint: disable=protected-access
-            if p._required # pylint: disable=protected-access
+            p._name: p._default  # pylint: disable=protected-access
+            for p in model_class._properties.values()  # pylint: disable=protected-access
+            if p._required  # pylint: disable=protected-access
         }
         property_values['created_on'] = self.YEAR_AGO
         property_values['last_updated'] = self.YEAR_AGO
@@ -165,7 +171,8 @@ class PipelinedTestBase(test_utils.AppEngineTestBase):
                 'for it to finish processing all of its data, after which '
                 'there is nothing left to inspect. If you need to make '
                 'multiple assertions, then split them into separate test '
-                'cases.')
+                'cases.'
+            )
 
     def _exit_pipeline_context(self) -> None:
         """Flushes the pipeline and waits for it to finish running."""
@@ -182,8 +189,11 @@ class JobTestBase(PipelinedTestBase):
     # NOTE: run() raises a NotImplementedError.
     JOB_CLASS: Type[base_jobs.JobBase] = base_jobs.JobBase
 
+    # Here we use type Any because we need to match the behavior of super
+    # class's constructor and super class's constructor can accept arbitrary
+    # number of arguments with different types of values.
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super(JobTestBase, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.job = self.JOB_CLASS(self.pipeline)
 
     def run_job(self) -> beam.PCollection[job_run_result.JobRunResult]:
@@ -198,7 +208,13 @@ class JobTestBase(PipelinedTestBase):
         Returns:
             PCollection. The output of the job.
         """
-        return self.job.run()
+        job_results = self.job.run()
+        # NDB operations in Beam do not properly update the context cache
+        # (this cache is separate for every application thread), thus we clear
+        # it ourselves.
+        with datastore_services.get_ndb_context() as ndb_context:
+            ndb_context.clear_cache()
+        return job_results
 
     def put_multi(self, model_list: Sequence[base_models.BaseModel]) -> None:
         """Puts the input models into the datastore.
@@ -207,7 +223,8 @@ class JobTestBase(PipelinedTestBase):
             model_list: list(Model). The NDB models to put into the datastore.
         """
         datastore_services.update_timestamps_multi(
-            model_list, update_last_updated_time=False)
+            model_list, update_last_updated_time=False
+        )
         datastore_services.put_multi(model_list)
 
     def assert_job_output_is(self, expected: beam.PCollection) -> None:
@@ -243,51 +260,57 @@ def decorate_beam_errors() -> Iterator[None]:
     try:
         yield
     except beam_testing_util.BeamAssertException as exception:
-        exception_message = python_utils.UNICODE(exception)
+        exception_message = str(exception)
         match = (
             re.match(
                 r'.*'
                 r', unexpected elements (?P<unexpected>.*)'
                 r', missing elements (?P<missing>.*)'
                 r' \[(?P<context>while running .*)\]',
-                exception_message)
+                exception_message,
+            )
             or re.match(
                 r'.*'
                 r', unexpected elements (?P<unexpected>.*)'
                 r' \[(?P<context>while running .*)\]',
-                exception_message)
+                exception_message,
+            )
             or re.match(
                 r'.*'
                 r', missing elements (?P<missing>.*)'
                 r' \[(?P<context>while running .*)\]',
-                exception_message)
+                exception_message,
+            )
             or re.match(
                 r'.*'
                 r'\[\] == (?P<unexpected>.*)'
                 r' \[(?P<context>while running .*)\]',
-                exception_message)
+                exception_message,
+            )
         )
 
         if match:
             groupdict = match.groupdict()
         else:
-            raise AssertionError(exception_message)
+            raise AssertionError(exception_message) from exception
 
         unexpected_elements = groupdict.get('unexpected', None)
         try:
             unexpected_elements = (
                 ast.literal_eval(unexpected_elements)
-                if unexpected_elements else None)
-        except (SyntaxError, ValueError):
-            raise AssertionError(exception_message)
+                if unexpected_elements
+                else None
+            )
+        except (SyntaxError, ValueError) as e:
+            raise AssertionError(exception_message) from e
 
         missing_elements = groupdict.get('missing', None)
         try:
             missing_elements = (
-                ast.literal_eval(missing_elements)
-                if missing_elements else None)
-        except (SyntaxError, ValueError):
-            raise AssertionError(exception_message)
+                ast.literal_eval(missing_elements) if missing_elements else None
+            )
+        except (SyntaxError, ValueError) as e:
+            raise AssertionError(exception_message) from e
 
         error_lines = [
             'failed %s' % match.group('context'),
@@ -302,4 +325,4 @@ def decorate_beam_errors() -> Iterator[None]:
             error_lines.append('Missing:')
             error_lines.extend('    %r' % e for e in missing_elements)
         error_lines.append('')
-        raise AssertionError('\n'.join(error_lines))
+        raise AssertionError('\n'.join(error_lines)) from exception

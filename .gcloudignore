@@ -1,4 +1,4 @@
-# Various compiled, temporary, and hidden files
+# Various compiled, temporary, and hidden files.
 *~
 *.pyc
 *.pyo
@@ -6,23 +6,33 @@
 *.swo
 *.bak
 .*
-# Typescript files in core
-core/**.ts
-# Typescript output log file
-tsc_output_log.txt
-# Python test files
+__pycache__/
+
+# Markdown files.
+*.md
+
+# Typescript files in core and extension are not needed as
+# we use the Angular CLI build which compiles these files.
+core/**/*.ts
+extensions/**/*.ts
+
+# Python test files.
 *_test.py
-# Other folders to ignore
+
+# Other folders to ignore.
 core/tests/
+local_compiled_js_for_test/
 node_modules/
 scripts/
-third_party/python3_libs/
+stubs/
+third_party/python_libs/
+typings/
 # Some third_party static scripts are directly imported, namely: jquery,
 # jqueryui, angularjs, jqueryui-touch-punch, MathJax, code-mirror,
-# ui-codemirror, d3js, midi-js, ui-map, guppy, skulpt, math-expressions.
+# ui-codemirror, d3js, midi-js, ui-map, skulpt, math-expressions.
 # We exclude some of the scripts that are not directly imported in order to
 # reduce deployed file count.
-# TODO(sll): Find a more structured way of doing this.
+# TODO(#20275): Find a more structured way of doing this.
 #
 # Please do not remove line below this, as it is used for testing purpose.
 # Third party files:
@@ -34,11 +44,8 @@ third_party/static/bower-angular-translate-interpolation-messageformat-2.18.1/
 third_party/static/bower-angular-translate-loader-partial-2.18.1/
 third_party/static/bower-angular-translate-loader-static-files-2.18.1/
 third_party/static/bower-angular-translate-storage-cookie-2.18.1/
-third_party/static/bower-material-1.1.19/
-third_party/python_libs/google/appengine/
-third_party/python_libs/google/net/
-third_party/python_libs/google/pyglib/
-third_party/python_libs/grpc/
+third_party/static/bower-material-1.1.19/layouts/
+third_party/static/bower-material-1.1.19/modules/
 # CKEditor-4.12.1 plugins in the download from the CKEditor website include
 # only a11yhelp, about, clipboard, colordialog, copyformatting, dialog, div,
 # find, flash, forms, iframe, image, link, liststyle, magicline, pagebreak,
@@ -112,8 +119,6 @@ third_party/static/ckeditor-bootstrapck-1.0.0/skins/ckbuilder.jar/
 third_party/static/ckeditor-bootstrapck-1.0.0/skins/bootstrapck/sample/
 third_party/static/ckeditor-bootstrapck-1.0.0/skins/bootstrapck/scss/
 third_party/static/fontawesome-free-5.9.0-web/
-third_party/static/guppy-f509e1/site/
-third_party/static/guppy-f509e1/test/
 third_party/static/MathJax-2.7.5/docs/
 third_party/static/MathJax-2.7.5/fonts/HTML-CSS/Gyre-Pagella/
 third_party/static/MathJax-2.7.5/fonts/HTML-CSS/Gyre-Termes/

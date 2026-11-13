@@ -19,18 +19,20 @@
 
 import cloneDeep from 'lodash/cloneDeep';
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
-import { RevertChangeList, ExplorationChange } from 'domain/exploration/exploration-draft.model';
+import {
+  RevertChangeList,
+  ExplorationChange,
+} from 'domain/exploration/exploration-draft.model';
 
 export interface ExplorationSnapshot {
-  'commit_message': string;
-  'committer_id': string;
-  'commit_type': string;
-  'version_number': number;
-  'created_on_ms': number;
-  'commit_cmds': ExplorationChange[];
+  commit_message: string;
+  committer_id: string;
+  commit_type: string;
+  version_number: number;
+  created_on_ms: number;
+  commit_cmds: ExplorationChange[];
 }
 
 interface ExplorationSnapshots {
@@ -38,11 +40,11 @@ interface ExplorationSnapshots {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class VersionTreeService {
   // These properties are initialized using init method
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   private _snapshots!: ExplorationSnapshots;
   private _treeParents!: Record<number, number>;
@@ -61,12 +63,17 @@ export class VersionTreeService {
     for (var versionNum = 2; versionNum <= numberOfVersions; versionNum++) {
       if (this._snapshots[versionNum].commit_type === 'revert') {
         for (
-          var i = 0; i < this._snapshots[versionNum].commit_cmds.length; i++) {
-          if (this._snapshots[versionNum].commit_cmds[i].cmd ===
-              'AUTO_revert_version_number') {
-            this._treeParents[versionNum] =
-              (<RevertChangeList> this._snapshots[versionNum].commit_cmds[i])
-                .version_number;
+          var i = 0;
+          i < this._snapshots[versionNum].commit_cmds.length;
+          i++
+        ) {
+          if (
+            this._snapshots[versionNum].commit_cmds[i].cmd ===
+            'AUTO_revert_version_number'
+          ) {
+            this._treeParents[versionNum] = (
+              this._snapshots[versionNum].commit_cmds[i] as RevertChangeList
+            ).version_number;
           }
         }
       } else {
@@ -82,7 +89,7 @@ export class VersionTreeService {
    * in general or reverted version if commit is a reversion.
    * The parent of the root (version 1) is -1.
    */
-  getVersionTree(): {} {
+  getVersionTree(): Record<number, number> {
     if (this._treeParents === undefined) {
       throw new Error('version tree not initialized.');
     }
@@ -157,6 +164,3 @@ export class VersionTreeService {
     return cloneDeep(this._snapshots[version].commit_cmds);
   }
 }
-
-angular.module('oppia').factory(
-  'VersionTreeService', downgradeInjectable(VersionTreeService));

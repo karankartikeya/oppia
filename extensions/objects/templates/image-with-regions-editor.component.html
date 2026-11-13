@@ -1,25 +1,26 @@
-<div class="image-with-regions-editor">
+<div class="image-with-regions-editor" *ngIf="value">
   <div *ngIf="value.imagePath === ''">
     <schema-based-editor [localValue]="value.imagePath"
                          (localValueChange)="imageValueChanged($event)"
-                         [schema]="getSchema.bind(this)">
+                         [schema]="getSchema()">
     </schema-based-editor>
   </div>
   <div class="position-relative" *ngIf="value.imagePath !== ''">
     <div>Add new regions by clicking on the image and dragging:</div>
-    <svg class="oppia-image-with-regions-editor-svg"
+    <svg class="oppia-image-with-regions-editor-svg e2e-test-svg"
          width="100%"
          attr.style="cursor: {{getCursorStyle()}};"
          attr.height="{{getImageHeight()}}"
          (mousedown)="onSvgMouseDown($event)"
          (mousemove)="onSvgMouseMove($event)"
-         (mouseup)="onSvgMouseUp($event)">
+         (mouseup)="onSvgMouseUp()">
       <image [attr.href]="getPreviewUrl(value.imagePath)"
              xlink:href=""
              x="0"
              y="0"
              [attr.height]="getImageHeight()"
-             [attr.width]="getImageWidth()">
+             [attr.width]="getImageWidth()"
+             class="e2e-test-image-interaction-image">
       </image>
       <rect *ngIf="userIsCurrentlyDrawing"
             [attr.x]="rectX"
@@ -37,18 +38,19 @@
             (mouseover)="onMouseoverRegion(idx)"
             (mouseout)="onMouseoutRegion(idx)"
             (mousemove)="onMouseMoveRegion(idx)"
-            (mousedown)="onMousedownRegion(idx)">
+            (mousedown)="onMousedownRegion()">
       </rect>
       <a *ngFor="let labeledRegion of value.labeledRegions; let idx = index"
          (click)="deleteRegion(idx)"
          target="_blank" rel="noopener">
-        <text font-family="Material Icons"
+        <text class="fas fa-trash"
+              font-family="Font Awesome 5 Free"
               font-size="20px"
               text-decoration="none"
               [attr.style]="getRegionTrashStyle(idx)"
-              [attr.x]="labeledRegion.region.area[1][0] * getImageWidth() - 25"
-              [attr.y]="labeledRegion.region.area[1][1] * getImageHeight() - 5">
-              &#xE872;
+              [attr.x]="labeledRegion.region.area[1][0] * getImageWidth() - 20"
+              [attr.y]="labeledRegion.region.area[1][1] * getImageHeight() - 6">
+              &#xF1F8;
         </text>
       </a>
       <text *ngFor="let labeledRegion of value.labeledRegions; let idx = index"
@@ -64,25 +66,9 @@
            [attr.style]="getRegionLabelEditorStyle()"
            (mouseup)="regionLabelEditorMouseUp()"
            [(ngModel)]="value.labeledRegions[selectedRegion].label"
-           (ngModelChange)="regionLabelSetter()">
+           (ngModelChange)="regionLabelSetter($event)">
 
     <div class="text-danger oppia-error-text">{{errorText}}</div>
     <button type="button" class="btn btn-danger" (click)="resetEditor()">Clear Image and Regions</button>
   </div>
 </div>
-<style>
-  input.oppia-image-with-regions-region-label-editor {
-    background-color: rgba(0, 0, 0, 0.5);
-    border: none;
-    color: white;
-    display: block;
-    font-size: 14px;
-    margin: 0;
-    padding: 0 6px;
-    position: absolute;
-  }
-
-  .image-with-regions-editor .oppia-error-text {
-    margin-bottom: 4px;
-  }
-</style>

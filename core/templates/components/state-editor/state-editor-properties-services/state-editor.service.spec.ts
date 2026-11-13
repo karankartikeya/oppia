@@ -16,32 +16,26 @@
  * @fileoverview Unit test for the Editor state service.
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { StateEditorService } from
+import {
+  StateEditorService,
   // eslint-disable-next-line max-len
-  'components/state-editor/state-editor-properties-services/state-editor.service';
-import { AnswerGroupObjectFactory } from 'domain/exploration/AnswerGroupObjectFactory';
-import { HintObjectFactory } from 'domain/exploration/HintObjectFactory';
-import { Interaction, InteractionObjectFactory } from 'domain/exploration/InteractionObjectFactory';
-import { OutcomeObjectFactory } from 'domain/exploration/OutcomeObjectFactory';
-import { SolutionObjectFactory } from 'domain/exploration/SolutionObjectFactory';
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
-import { SubtitledUnicodeObjectFactory } from 'domain/exploration/SubtitledUnicodeObjectFactory';
-import { SolutionValidityService } from 'pages/exploration-editor-page/editor-tab/services/solution-validity.service';
-import { Subscription } from 'rxjs';
+} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {AnswerGroup} from 'domain/exploration/answer-group.model';
+import {Hint} from 'domain/exploration/hint-object.model';
+import {Interaction} from 'domain/exploration/interaction.model';
+import {Solution} from 'domain/exploration/solution.model';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {SubtitledUnicode} from 'domain/exploration/subtitled-unicode.model.ts';
+import {SolutionValidityService} from 'pages/exploration-editor-page/editor-tab/services/solution-validity.service';
+import {Subscription} from 'rxjs';
 
 describe('Editor state service', () => {
   let ecs: StateEditorService;
-  let suof: SubtitledUnicodeObjectFactory;
-  let sof: SolutionObjectFactory;
-  let hof: HintObjectFactory;
-  let interactionObjectFactory: InteractionObjectFactory;
-  let answerGroupObjectFactory: AnswerGroupObjectFactory;
-  let outcomeObjectFactory: OutcomeObjectFactory;
   let solutionValidityService: SolutionValidityService;
   let mockInteraction: Interaction;
-
   let stateEditorInitializedSpy: jasmine.Spy<jasmine.Func>;
   let stateEditorDirectiveInitializedSpy: jasmine.Spy<jasmine.Func>;
   let interactionEditorInitializedSpy: jasmine.Spy<jasmine.Func>;
@@ -55,27 +49,22 @@ describe('Editor state service', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [StateEditorService]
+      providers: [StateEditorService],
     });
 
     ecs = TestBed.inject(StateEditorService);
-    suof = TestBed.inject(SubtitledUnicodeObjectFactory);
-    sof = TestBed.inject(SolutionObjectFactory);
-    hof = TestBed.inject(HintObjectFactory);
-    interactionObjectFactory = TestBed.inject(InteractionObjectFactory);
-    answerGroupObjectFactory = TestBed.inject(AnswerGroupObjectFactory);
-    outcomeObjectFactory = TestBed.inject(OutcomeObjectFactory);
     solutionValidityService = TestBed.inject(SolutionValidityService);
 
     // Here, mockInteraction consists of an TextInput interaction with an
     // answer group leading to 'State' state and a default outcome leading to
     // 'Hola' state.
-    mockInteraction = interactionObjectFactory.createFromBackendDict({
+    mockInteraction = Interaction.createFromBackendDict({
       id: 'TextInput',
       answer_groups: [
         {
           outcome: {
             dest: 'State',
+            dest_if_really_stuck: null,
             feedback: {
               html: '',
               content_id: 'This is a new feedback text',
@@ -92,6 +81,7 @@ describe('Editor state service', () => {
       ],
       default_outcome: {
         dest: 'Hola',
+        dest_if_really_stuck: null,
         feedback: {
           content_id: '',
           html: '',
@@ -106,12 +96,15 @@ describe('Editor state service', () => {
         placeholder: {
           value: {
             content_id: 'cid',
-            unicode_str: '1'
-          }
+            unicode_str: '1',
+          },
         },
         rows: {
-          value: 1
-        }
+          value: 1,
+        },
+        catchMisspellings: {
+          value: false,
+        },
       },
       hints: [],
       solution: {
@@ -128,11 +121,14 @@ describe('Editor state service', () => {
   beforeEach(() => {
     stateEditorInitializedSpy = jasmine.createSpy('stateEditorInitialized');
     stateEditorDirectiveInitializedSpy = jasmine.createSpy(
-      'stateEditorDirectiveInitialized');
+      'stateEditorDirectiveInitialized'
+    );
     interactionEditorInitializedSpy = jasmine.createSpy(
-      'interactionEditorInitialized');
+      'interactionEditorInitialized'
+    );
     showTranslationTabBusyModalSpy = jasmine.createSpy(
-      'showTranslationTabBusyModal');
+      'showTranslationTabBusyModal'
+    );
     refreshStateTranslationSpy = jasmine.createSpy('refreshStateTranslation');
     updateAnswerChoicesSpy = jasmine.createSpy('updateAnswerChoices');
     saveOutcomeDestDetailsSpy = jasmine.createSpy('saveOutcomeDestDetails');
@@ -141,24 +137,39 @@ describe('Editor state service', () => {
 
     testSubscriptions = new Subscription();
 
-    testSubscriptions.add(ecs.onStateEditorInitialized.subscribe(
-      stateEditorInitializedSpy));
-    testSubscriptions.add(ecs.onStateEditorDirectiveInitialized.subscribe(
-      stateEditorDirectiveInitializedSpy));
-    testSubscriptions.add(ecs.onInteractionEditorInitialized.subscribe(
-      interactionEditorInitializedSpy));
-    testSubscriptions.add(ecs.onShowTranslationTabBusyModal.subscribe(
-      showTranslationTabBusyModalSpy));
-    testSubscriptions.add(ecs.onRefreshStateTranslation.subscribe(
-      refreshStateTranslationSpy));
-    testSubscriptions.add(ecs.onUpdateAnswerChoices.subscribe(
-      updateAnswerChoicesSpy));
-    testSubscriptions.add(ecs.onSaveOutcomeDestDetails.subscribe(
-      saveOutcomeDestDetailsSpy));
-    testSubscriptions.add(ecs.onHandleCustomArgsUpdate.subscribe(
-      handleCustomArgsUpdateSpy));
-    testSubscriptions.add(ecs.onObjectFormValidityChange.subscribe(
-      objectFormValidityChangeSpy));
+    testSubscriptions.add(
+      ecs.onStateEditorInitialized.subscribe(stateEditorInitializedSpy)
+    );
+    testSubscriptions.add(
+      ecs.onStateEditorDirectiveInitialized.subscribe(
+        stateEditorDirectiveInitializedSpy
+      )
+    );
+    testSubscriptions.add(
+      ecs.onInteractionEditorInitialized.subscribe(
+        interactionEditorInitializedSpy
+      )
+    );
+    testSubscriptions.add(
+      ecs.onShowTranslationTabBusyModal.subscribe(
+        showTranslationTabBusyModalSpy
+      )
+    );
+    testSubscriptions.add(
+      ecs.onRefreshStateTranslation.subscribe(refreshStateTranslationSpy)
+    );
+    testSubscriptions.add(
+      ecs.onUpdateAnswerChoices.subscribe(updateAnswerChoicesSpy)
+    );
+    testSubscriptions.add(
+      ecs.onSaveOutcomeDestDetails.subscribe(saveOutcomeDestDetailsSpy)
+    );
+    testSubscriptions.add(
+      ecs.onHandleCustomArgsUpdate.subscribe(handleCustomArgsUpdateSpy)
+    );
+    testSubscriptions.add(
+      ecs.onObjectFormValidityChange.subscribe(objectFormValidityChangeSpy)
+    );
   });
 
   afterAll(() => {
@@ -176,25 +187,25 @@ describe('Editor state service', () => {
   });
 
   it('should correctly set and get solicitAnswerDetails', () => {
-    expect(ecs.getSolicitAnswerDetails()).toBeFalse();
+    expect(ecs.getSolicitAnswerDetails()).toBe(false);
     ecs.setSolicitAnswerDetails(false);
-    expect(ecs.getSolicitAnswerDetails()).toBeFalse();
+    expect(ecs.getSolicitAnswerDetails()).toBe(false);
     ecs.setSolicitAnswerDetails(true);
     expect(ecs.getSolicitAnswerDetails()).toEqual(true);
   });
 
   it('should correctly set and get cardIsCheckpoint', () => {
-    expect(ecs.getCardIsCheckpoint()).toBeFalse();
+    expect(ecs.getCardIsCheckpoint()).toBe(false);
     expect(ecs.setCardIsCheckpoint(false));
-    expect(ecs.getCardIsCheckpoint()).toBeFalse();
+    expect(ecs.getCardIsCheckpoint()).toBe(false);
     expect(ecs.setCardIsCheckpoint(true));
-    expect(ecs.getCardIsCheckpoint()).toBeTrue();
+    expect(ecs.getCardIsCheckpoint()).toBe(true);
   });
 
   it('should correctly set and get misconceptionsBySkill', () => {
     const misconceptionsBySkill = {
       skillId1: [0],
-      skillId2: [1, 2]
+      skillId2: [1, 2],
     };
     expect(ecs.getMisconceptionsBySkill()).toEqual({});
     ecs.setMisconceptionsBySkill(misconceptionsBySkill);
@@ -213,142 +224,169 @@ describe('Editor state service', () => {
       choices: {
         value: [
           new SubtitledHtml('Choice 1', ''),
-          new SubtitledHtml('Choice 2', '')
-        ]
-      }
+          new SubtitledHtml('Choice 2', ''),
+        ],
+      },
     };
     expect(
       ecs.getAnswerChoices(
-        'MultipleChoiceInput', customizationArgsForMultipleChoiceInput)
-    ).toEqual([{
-      val: 0,
-      label: 'Choice 1',
-    }, {
-      val: 1,
-      label: 'Choice 2',
-    }]);
+        'MultipleChoiceInput',
+        customizationArgsForMultipleChoiceInput
+      )
+    ).toEqual([
+      {
+        val: 0,
+        label: 'Choice 1',
+      },
+      {
+        val: 1,
+        label: 'Choice 2',
+      },
+    ]);
 
     const customizationArgsForImageClickInput = {
       imageAndRegions: {
         value: {
-          labeledRegions: [{
-            label: 'Label 1'
-          }, {
-            label: 'Label 2'
-          }]
-        }
-      }
+          labeledRegions: [
+            {
+              label: 'Label 1',
+            },
+            {
+              label: 'Label 2',
+            },
+          ],
+        },
+      },
     };
     expect(
       ecs.getAnswerChoices(
-        'ImageClickInput', customizationArgsForImageClickInput)
-    ).toEqual([{
-      val: 'Label 1',
-      label: 'Label 1',
-    }, {
-      val: 'Label 2',
-      label: 'Label 2',
-    }]);
+        'ImageClickInput',
+        customizationArgsForImageClickInput
+      )
+    ).toEqual([
+      {
+        val: 'Label 1',
+        label: 'Label 1',
+      },
+      {
+        val: 'Label 2',
+        label: 'Label 2',
+      },
+    ]);
 
     const customizationArgsForItemSelectionAndDragAndDropInput = {
       choices: {
         value: [
           new SubtitledHtml('Choice 1', 'ca_choices_0'),
-          new SubtitledHtml('Choice 2', 'ca_choices_1')
-        ]
-      }
+          new SubtitledHtml('Choice 2', 'ca_choices_1'),
+        ],
+      },
     };
     expect(
       ecs.getAnswerChoices(
         'ItemSelectionInput',
-        customizationArgsForItemSelectionAndDragAndDropInput)
-    ).toEqual([{
-      val: 'ca_choices_0',
-      label: 'Choice 1',
-    }, {
-      val: 'ca_choices_1',
-      label: 'Choice 2',
-    }]);
+        customizationArgsForItemSelectionAndDragAndDropInput
+      )
+    ).toEqual([
+      {
+        val: 'ca_choices_0',
+        label: 'Choice 1',
+      },
+      {
+        val: 'ca_choices_1',
+        label: 'Choice 2',
+      },
+    ]);
     expect(
       ecs.getAnswerChoices(
         'DragAndDropSortInput',
-        customizationArgsForItemSelectionAndDragAndDropInput)
-    ).toEqual([{
-      val: 'ca_choices_0',
-      label: 'Choice 1',
-    }, {
-      val: 'ca_choices_1',
-      label: 'Choice 2',
-    }]);
+        customizationArgsForItemSelectionAndDragAndDropInput
+      )
+    ).toEqual([
+      {
+        val: 'ca_choices_0',
+        label: 'Choice 1',
+      },
+      {
+        val: 'ca_choices_1',
+        label: 'Choice 2',
+      },
+    ]);
     expect(
       ecs.getAnswerChoices(
-        'NotDragAndDropSortInput',
-        customizationArgsForItemSelectionAndDragAndDropInput)
+        'TextInput',
+        customizationArgsForItemSelectionAndDragAndDropInput
+      )
     ).toEqual(null);
   });
 
-  it('should return null when getting answer choices' +
-    ' if interactionID is empty', () => {
-    expect(ecs.getAnswerChoices('', {
-      choices: {
-        value: [
-          new SubtitledHtml('Choice 1', ''),
-          new SubtitledHtml('Choice 2', '')
-        ]
-      }
-    })).toBeNull();
-  });
+  it(
+    'should return null when getting answer choices' +
+      ' if interactionID is empty',
+    () => {
+      expect(
+        ecs.getAnswerChoices(null, {
+          choices: {
+            value: [
+              new SubtitledHtml('Choice 1', ''),
+              new SubtitledHtml('Choice 2', ''),
+            ],
+          },
+        })
+      ).toBeNull();
+    }
+  );
 
-  it('should return if exploration is whitelisted or not', () => {
-    expect(ecs.isExplorationWhitelisted()).toBeFalse();
-    ecs.explorationIsWhitelisted = true;
-    expect(ecs.isExplorationWhitelisted()).toBeTrue();
-    ecs.explorationIsWhitelisted = false;
-    expect(ecs.isExplorationWhitelisted()).toBeFalse();
+  it('should return if exploration is curated or not', () => {
+    expect(ecs.isExplorationCurated()).toBe(false);
+    ecs.explorationIsCurated = true;
+    expect(ecs.isExplorationCurated()).toBe(true);
+    ecs.explorationIsCurated = false;
+    expect(ecs.isExplorationCurated()).toBe(false);
   });
 
   it('should initialise state content editor', () => {
-    expect(ecs.stateContentEditorInitialised).toBeFalse();
+    expect(ecs.stateContentEditorInitialised).toBe(false);
     ecs.updateStateContentEditorInitialised();
-    expect(ecs.stateContentEditorInitialised).toBeTrue();
+    expect(ecs.stateContentEditorInitialised).toBe(true);
   });
 
   it('should initialise state interaction editor', () => {
-    expect(ecs.stateInteractionEditorInitialised).toBeFalse();
+    expect(ecs.stateInteractionEditorInitialised).toBe(false);
     ecs.updateStateInteractionEditorInitialised();
-    expect(ecs.stateInteractionEditorInitialised).toBeTrue();
+    expect(ecs.stateInteractionEditorInitialised).toBe(true);
   });
 
   it('should initialise state responses initialised', () => {
-    expect(ecs.stateResponsesInitialised).toBeFalse();
+    expect(ecs.stateResponsesInitialised).toBe(false);
     ecs.updateStateResponsesInitialised();
-    expect(ecs.stateResponsesInitialised).toBeTrue();
+    expect(ecs.stateResponsesInitialised).toBe(true);
   });
 
   it('should initialise state hints editor', () => {
-    expect(ecs.stateHintsEditorInitialised).toBeFalse();
+    expect(ecs.stateHintsEditorInitialised).toBe(false);
     ecs.updateStateHintsEditorInitialised();
-    expect(ecs.stateHintsEditorInitialised).toBeTrue();
+    expect(ecs.stateHintsEditorInitialised).toBe(true);
   });
 
   it('should initialise state solution editor', () => {
-    expect(ecs.stateSolutionEditorInitialised).toBeFalse();
+    expect(ecs.stateSolutionEditorInitialised).toBe(false);
     ecs.updateStateSolutionEditorInitialised();
-    expect(ecs.stateSolutionEditorInitialised).toBeTrue();
+    expect(ecs.stateSolutionEditorInitialised).toBe(true);
   });
 
   it('should initialise state editor', () => {
-    expect(ecs.stateEditorDirectiveInitialised).toBeFalse();
+    expect(ecs.stateEditorDirectiveInitialised).toBe(false);
     ecs.updateStateEditorDirectiveInitialised();
-    expect(ecs.stateEditorDirectiveInitialised).toBeTrue();
+    expect(ecs.stateEditorDirectiveInitialised).toBe(true);
   });
 
   it('should update current rule input is valid', () => {
-    expect(ecs.checkCurrentRuleInputIsValid()).toBeFalse();
+    expect(ecs.checkCurrentRuleInputIsValid()).toBe(false);
     ecs.updateCurrentRuleInputIsValid(true);
-    expect(ecs.checkCurrentRuleInputIsValid()).toBeTrue();
+    expect(ecs.checkCurrentRuleInputIsValid()).toBe(true);
     ecs.updateCurrentRuleInputIsValid(false);
-    expect(ecs.checkCurrentRuleInputIsValid()).toBeFalse();
+    expect(ecs.checkCurrentRuleInputIsValid()).toBe(false);
   });
 
   it('should get and set state names', () => {
@@ -363,39 +401,31 @@ describe('Editor state service', () => {
     // Registration status is true only when,
     // stateInteractionEditorInitialised, stateResponsesInitialised and
     // stateEditorDirectiveInitialised are true.
-    expect(ecs.stateInteractionEditorInitialised).toBeFalse();
-    expect(ecs.stateResponsesInitialised).toBeFalse();
-    expect(ecs.stateEditorDirectiveInitialised).toBeFalse();
-    expect(ecs.checkEventListenerRegistrationStatus()).toBeFalse();
+    expect(ecs.stateInteractionEditorInitialised).toBe(false);
+    expect(ecs.stateResponsesInitialised).toBe(false);
+    expect(ecs.stateEditorDirectiveInitialised).toBe(false);
+    expect(ecs.checkEventListenerRegistrationStatus()).toBe(false);
 
     // Set stateInteractionEditorInitialised as true.
     ecs.updateStateInteractionEditorInitialised();
-    expect(ecs.stateInteractionEditorInitialised).toBeTrue();
-    expect(ecs.stateResponsesInitialised).toBeFalse();
-    expect(ecs.stateEditorDirectiveInitialised).toBeFalse();
-    expect(ecs.checkEventListenerRegistrationStatus()).toBeFalse();
+    expect(ecs.stateInteractionEditorInitialised).toBe(true);
+    expect(ecs.stateResponsesInitialised).toBe(false);
+    expect(ecs.stateEditorDirectiveInitialised).toBe(false);
+    expect(ecs.checkEventListenerRegistrationStatus()).toBe(false);
 
     // Set stateResponsesInitialised as true.
     ecs.updateStateResponsesInitialised();
-    expect(ecs.stateInteractionEditorInitialised).toBeTrue();
-    expect(ecs.stateResponsesInitialised).toBeTrue();
-    expect(ecs.stateEditorDirectiveInitialised).toBeFalse();
-    expect(ecs.checkEventListenerRegistrationStatus()).toBeFalse();
+    expect(ecs.stateInteractionEditorInitialised).toBe(true);
+    expect(ecs.stateResponsesInitialised).toBe(true);
+    expect(ecs.stateEditorDirectiveInitialised).toBe(false);
+    expect(ecs.checkEventListenerRegistrationStatus()).toBe(false);
 
     // Set stateEditorDirectiveInitialised as true.
     ecs.updateStateEditorDirectiveInitialised();
-    expect(ecs.stateInteractionEditorInitialised).toBeTrue();
-    expect(ecs.stateResponsesInitialised).toBeTrue();
-    expect(ecs.stateEditorDirectiveInitialised).toBeTrue();
-    expect(ecs.checkEventListenerRegistrationStatus()).toBeTrue();
-  });
-
-  it('should update exploration whitelisted status', () => {
-    expect(ecs.isExplorationWhitelisted()).toBeFalse();
-    ecs.updateExplorationWhitelistedStatus(true);
-    expect(ecs.isExplorationWhitelisted()).toBeTrue();
-    ecs.updateExplorationWhitelistedStatus(false);
-    expect(ecs.isExplorationWhitelisted()).toBeFalse();
+    expect(ecs.stateInteractionEditorInitialised).toBe(true);
+    expect(ecs.stateResponsesInitialised).toBe(true);
+    expect(ecs.stateEditorDirectiveInitialised).toBe(true);
+    expect(ecs.checkEventListenerRegistrationStatus()).toBe(true);
   });
 
   it('should set interaction', () => {
@@ -414,43 +444,40 @@ describe('Editor state service', () => {
   it('should set interaction ID', () => {
     ecs.setInteraction(mockInteraction);
     expect(ecs.interaction.id).toBe('TextInput');
-    ecs.setInteractionId('ChangedTextInput');
-    expect(ecs.interaction.id).toBe('ChangedTextInput');
+    ecs.setInteractionId('MultipleChoiceInput');
+    expect(ecs.interaction.id).toBe('MultipleChoiceInput');
   });
 
   it('should set interaction answer groups', () => {
     let newAnswerGroups = [
-      answerGroupObjectFactory.createNew(
+      AnswerGroup.createNew(
         [],
-        outcomeObjectFactory.createNew('Hola', '1', 'Feedback text', []),
+        Outcome.createNew('Hola', '1', 'Feedback text', []),
         ['Training data text'],
         '0'
       ),
     ];
 
     ecs.setInteraction(mockInteraction);
-    expect(ecs.interaction.answerGroups).toEqual(
-      [
-        answerGroupObjectFactory.createNew(
-          [],
-          outcomeObjectFactory.createNew(
-            'State', 'This is a new feedback text', '', []),
-          [],
-          ''
-        ),
-      ]
-    );
+    expect(ecs.interaction.answerGroups).toEqual([
+      AnswerGroup.createNew(
+        [],
+        Outcome.createNew('State', 'This is a new feedback text', '', []),
+        [],
+        ''
+      ),
+    ]);
     ecs.setInteractionAnswerGroups(newAnswerGroups);
     expect(ecs.interaction.answerGroups).toEqual(newAnswerGroups);
   });
 
   it('should set interaction default outcome', () => {
-    let newDefaultOutcome = outcomeObjectFactory.createNew(
-      'Hola1', '', 'Feedback text', []);
+    let newDefaultOutcome = Outcome.createNew('Hola1', '', 'Feedback text', []);
 
     ecs.setInteraction(mockInteraction);
     expect(ecs.interaction.defaultOutcome).toEqual(
-      outcomeObjectFactory.createNew('Hola', '', '', []));
+      Outcome.createNew('Hola', '', '', [])
+    );
     ecs.setInteractionDefaultOutcome(newDefaultOutcome);
     expect(ecs.interaction.defaultOutcome).toEqual(newDefaultOutcome);
   });
@@ -461,24 +488,27 @@ describe('Editor state service', () => {
         value: 2,
       },
       placeholder: {
-        value: suof.createDefault('2', ''),
+        value: SubtitledUnicode.createDefault('2', ''),
       },
     };
     ecs.setInteraction(mockInteraction);
     expect(ecs.interaction.customizationArgs).toEqual({
       placeholder: {
-        value: suof.createDefault('1', 'cid'),
+        value: SubtitledUnicode.createDefault('1', 'cid'),
       },
       rows: {
-        value: 1
-      }
+        value: 1,
+      },
+      catchMisspellings: {
+        value: false,
+      },
     });
     ecs.setInteractionCustomizationArgs(newCustomizationArgs);
     expect(ecs.interaction.customizationArgs).toEqual(newCustomizationArgs);
   });
 
   it('should set interaction solution', () => {
-    let newSolution = sof.createFromBackendDict({
+    let newSolution = Solution.createFromBackendDict({
       answer_is_exclusive: true,
       correct_answer: 'test_answer_new',
       explanation: {
@@ -487,25 +517,29 @@ describe('Editor state service', () => {
       },
     });
     ecs.setInteraction(mockInteraction);
-    expect(ecs.interaction.solution).toEqual(sof.createFromBackendDict({
-      answer_is_exclusive: true,
-      correct_answer: 'test_answer',
-      explanation: {
-        content_id: '2',
-        html: 'test_explanation1',
-      },
-    }));
+    expect(ecs.interaction.solution).toEqual(
+      Solution.createFromBackendDict({
+        answer_is_exclusive: true,
+        correct_answer: 'test_answer',
+        explanation: {
+          content_id: '2',
+          html: 'test_explanation1',
+        },
+      })
+    );
     ecs.setInteractionSolution(newSolution);
     expect(ecs.interaction.solution).toEqual(newSolution);
   });
 
   it('should set interaction hints', () => {
-    let newHints = [hof.createFromBackendDict({
-      hint_content: {
-        content_id: '',
-        html: 'This is a hint'
-      }
-    })];
+    let newHints = [
+      Hint.createFromBackendDict({
+        hint_content: {
+          content_id: '',
+          html: 'This is a hint',
+        },
+      }),
+    ];
     ecs.setInteraction(mockInteraction);
     expect(ecs.interaction.hints).toEqual([]);
     ecs.setInteractionHints(newHints);
@@ -513,19 +547,11 @@ describe('Editor state service', () => {
   });
 
   it('should set in question mode', () => {
-    expect(ecs.isInQuestionMode()).toBeFalse();
+    expect(ecs.isInQuestionMode()).toBe(false);
     ecs.setInQuestionMode(true);
-    expect(ecs.isInQuestionMode()).toBeTrue();
+    expect(ecs.isInQuestionMode()).toBe(true);
     ecs.setInQuestionMode(false);
-    expect(ecs.isInQuestionMode()).toBeFalse();
-  });
-
-  it('should set correctness feedback enabled', () => {
-    expect(ecs.getCorrectnessFeedbackEnabled()).toBeFalse();
-    ecs.setCorrectnessFeedbackEnabled(true);
-    expect(ecs.getCorrectnessFeedbackEnabled()).toBeTrue();
-    ecs.setCorrectnessFeedbackEnabled(false);
-    expect(ecs.getCorrectnessFeedbackEnabled()).toBeFalse();
+    expect(ecs.isInQuestionMode()).toBe(false);
   });
 
   it('should set inapplicable skill misconception ids', () => {
@@ -540,27 +566,37 @@ describe('Editor state service', () => {
     // At present, we are not keeping track of the solution's validity. So, we
     // initialize the Solution Validity Service with the state. Upon,
     // initialization the solution validity is set as true.
-    expect(ecs.isCurrentSolutionValid()).toBeFalse();
+    expect(ecs.isCurrentSolutionValid()).toBe(false);
     solutionValidityService.init(['Hola']);
-    expect(ecs.isCurrentSolutionValid()).toBeTrue();
+    expect(ecs.isCurrentSolutionValid()).toBe(true);
   });
 
   it('should delete current solution validity', () => {
     ecs.activeStateName = 'Hola';
-    expect(ecs.isCurrentSolutionValid()).toBeFalse();
+    expect(ecs.isCurrentSolutionValid()).toBe(false);
     solutionValidityService.init(['Hola']);
-    expect(ecs.isCurrentSolutionValid()).toBeTrue();
+    expect(ecs.isCurrentSolutionValid()).toBe(true);
     ecs.deleteCurrentSolutionValidity();
-    expect(ecs.isCurrentSolutionValid()).toBeFalse();
+    expect(ecs.isCurrentSolutionValid()).toBe(false);
   });
 
-  it('should throw error on deletion of current solution validity' +
-     ' if activeStateName is null', () => {
-    ecs.activeStateName = null;
-    expect(ecs.isCurrentSolutionValid()).toBeFalse();
-    expect(() => {
-      ecs.deleteCurrentSolutionValidity();
-    }).toThrowError('Active State for this solution is not set');
-    expect(ecs.isCurrentSolutionValid()).toBeFalse();
+  it(
+    'should throw error on deletion of current solution validity' +
+      ' if activeStateName is null',
+    () => {
+      ecs.activeStateName = null;
+      expect(ecs.isCurrentSolutionValid()).toBe(false);
+      expect(() => {
+        ecs.deleteCurrentSolutionValidity();
+      }).toThrowError('Active State for this solution is not set');
+      expect(ecs.isCurrentSolutionValid()).toBe(false);
+    }
+  );
+
+  it('should correctly set and get initActiveContentId', () => {
+    ecs.setInitActiveContentId('content_id');
+    const initActiveContentId = ecs.getInitActiveContentId();
+
+    expect(initActiveContentId).toBe('content_id');
   });
 });

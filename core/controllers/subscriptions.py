@@ -14,64 +14,91 @@
 
 """Controllers related to user subscriptions."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core import feconf
-from core.controllers import acl_decorators
-from core.controllers import base
-from core.domain import subscription_services
-from core.domain import user_services
+from core.controllers import acl_decorators, base
+from core.domain import subscription_services, user_services
+
+from typing import Dict, TypedDict
 
 
-class SubscribeHandler(base.BaseHandler):
+class SubscribeHandlerNormalizedPayloadDict(TypedDict):
+    """Dict representation of SubscribeHandler's
+    normalized_payload dictionary.
+    """
+
+    creator_username: str
+
+
+class SubscribeHandler(
+    base.BaseHandler[SubscribeHandlerNormalizedPayloadDict, Dict[str, str]]
+):
     """Handles operations relating to new subscriptions."""
 
     POST_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
-    URL_PATH_ARGS_SCHEMAS = {}
+    URL_PATH_ARGS_SCHEMAS: Dict[str, str] = {}
     HANDLER_ARGS_SCHEMAS = {
         'POST': {
             'creator_username': {
                 'schema': {
                     'type': 'basestring',
-                    'validators': [{
-                        'id': 'is_valid_username_string'
-                    }]
+                    'validators': [{'id': 'is_valid_username_string'}],
                 }
             }
         }
     }
 
     @acl_decorators.can_subscribe_to_users
-    def post(self):
+    def post(self) -> None:
+        """Subscribes the current user to another user."""
+        assert self.user_id is not None
+        assert self.normalized_payload is not None
+        creator_username = self.normalized_payload['creator_username']
         creator_id = user_services.get_user_id_from_username(
-            self.normalized_payload.get('creator_username'))
+            creator_username, strict=True
+        )
         subscription_services.subscribe_to_creator(self.user_id, creator_id)
         self.render_json(self.values)
 
 
-class UnsubscribeHandler(base.BaseHandler):
+class UnsubscribeHandlerNormalizedPayloadDict(TypedDict):
+    """Dict representation of UnsubscribeHandler's
+    normalized_payload dictionary.
+    """
+
+    creator_username: str
+
+
+class UnsubscribeHandler(
+    base.BaseHandler[UnsubscribeHandlerNormalizedPayloadDict, Dict[str, str]]
+):
     """Handles operations related to unsubscriptions."""
 
     POST_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
-    URL_PATH_ARGS_SCHEMAS = {}
+    URL_PATH_ARGS_SCHEMAS: Dict[str, str] = {}
     HANDLER_ARGS_SCHEMAS = {
         'POST': {
             'creator_username': {
                 'schema': {
                     'type': 'basestring',
-                    'validators': [{
-                        'id': 'is_valid_username_string'
-                    }]
+                    'validators': [{'id': 'is_valid_username_string'}],
                 }
             }
         }
     }
 
     @acl_decorators.can_subscribe_to_users
-    def post(self):
-        creator_id = user_services.get_user_id_from_username(
-            self.normalized_payload.get('creator_username'))
-        subscription_services.unsubscribe_from_creator(
-            self.user_id, creator_id)
+    def post(self) -> None:
+        """Unsubscribes the current user from another user."""
+        assert self.user_id is not None
+        assert self.normalized_payload is not None
+        creator_username = self.normalized_payload['creator_username']
+        creator_id = user_services.get_user_id_from_username(creator_username)
+        if creator_id is None:
+            raise Exception(
+                'No creator user_id found for the given creator username: %s'
+                % creator_username
+            )
+        subscription_services.unsubscribe_from_creator(self.user_id, creator_id)
         self.render_json(self.values)

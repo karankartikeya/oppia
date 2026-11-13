@@ -34,23 +34,28 @@
  * value.
  */
 
-import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {
+  Component,
+  Input,
+  OnChanges,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 
 export interface TabContent {
-  title: string,
+  title: string;
   content: string;
 }
 
 @Component({
   selector: 'oppia-noninteractive-tabs',
   templateUrl: './tabs.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class NoninteractiveTabs implements OnInit, OnChanges {
   // This property is initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() tabContentsWithValue!: string;
   tabContents: TabContent[] = [];
@@ -62,7 +67,8 @@ export class NoninteractiveTabs implements OnInit, OnChanges {
       return;
     }
     this.tabContents = this.htmlEscaperService.escapedJsonToObj(
-      this.tabContentsWithValue) as TabContent[];
+      this.tabContentsWithValue
+    ) as TabContent[];
   }
 
   ngOnInit(): void {
@@ -75,8 +81,3 @@ export class NoninteractiveTabs implements OnInit, OnChanges {
     }
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaNoninteractiveTabs', downgradeComponent({
-    component: NoninteractiveTabs
-  }) as angular.IDirectiveFactory);

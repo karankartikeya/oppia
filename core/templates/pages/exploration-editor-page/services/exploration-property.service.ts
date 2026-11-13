@@ -18,51 +18,73 @@
  * with base class as ExplorationPropertyService.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { EventEmitter, Output } from '@angular/core';
-import { Injectable } from '@angular/core';
+import {EventEmitter} from '@angular/core';
+import {Injectable} from '@angular/core';
 import cloneDeep from 'lodash/cloneDeep';
 
-import { ChangeListService } from 'pages/exploration-editor-page/services/change-list.service';
-import { AlertsService } from 'services/alerts.service';
-import { LoggerService } from 'services/contextual/logger.service';
+import {ChangeListService} from 'pages/exploration-editor-page/services/change-list.service';
+import {AlertsService} from 'services/alerts.service';
+import {LoggerService} from 'services/contextual/logger.service';
+import {
+  ParamChange,
+  ParamChangeBackendDict,
+} from 'domain/exploration/param-change.model';
+import {ParamSpecs} from 'domain/exploration/param-specs.model';
+import isEqual from 'lodash/isEqual';
+
+export type ExplorationPropertyValues =
+  | null
+  | number
+  | string
+  | string[]
+  | boolean
+  | ParamChange
+  | ParamChange[]
+  | ParamSpecs
+  | ParamChangeBackendDict
+  | ParamChangeBackendDict[];
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ExplorationPropertyService {
-  public displayed: string;
-  savedMemento: string;
+  // These properties are initialized using private methods and we need to do
+  // non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  public displayed!: ExplorationPropertyValues;
+  savedMemento!: ExplorationPropertyValues;
 
   // The backend name for this property. THIS MUST BE SPECIFIED BY
   // SUBCLASSES.
-  propertyName: string = null;
+  // Null if this property is not saved to the backend.
+  propertyName: string | null = null;
 
-  @Output() _explorationPropertyChangedEventEmitter = new EventEmitter();
+  _explorationPropertyChangedEventEmitter = new EventEmitter();
   constructor(
     protected alertsService: AlertsService,
     protected changeListService: ChangeListService,
-    protected loggerService: LoggerService,
+    protected loggerService: LoggerService
   ) {}
 
   private BACKEND_CONVERSIONS = {
-    param_changes: (paramChanges) => {
+    param_changes: (paramChanges: ParamChange[]) => {
       return paramChanges.map(paramChange => {
         return paramChange.toBackendDict();
       });
     },
-    param_specs: (paramSpecs) => {
+    param_specs: (paramSpecs: ParamChange) => {
       return paramSpecs.toBackendDict();
     },
   };
 
-  init(value: string): void {
+  init(value: string | number | boolean | ParamChange[] | ParamSpecs): void {
     if (!this.propertyName) {
       throw new Error('Exploration property name cannot be null.');
     }
 
     this.loggerService.info(
-      'Initializing exploration ' + this.propertyName + ': ' + value);
+      'Initializing exploration ' + this.propertyName + ': ' + value
+    );
 
     // The current value of the property (which may not have been saved to
     // the frontend yet). In general, this will be bound directly to the UI.
@@ -78,19 +100,19 @@ export class ExplorationPropertyService {
 
   // Returns whether the current value has changed from the memento.
   hasChanged(): boolean {
-    return !angular.equals(this.savedMemento, this.displayed);
+    return !isEqual(this.savedMemento, this.displayed);
   }
 
   // Transforms the given value into a normalized form. THIS CAN BE
   // OVERRIDDEN BY SUBCLASSES. The default behavior is to do nothing.
-  _normalize(value: string): string {
+  _normalize(value: ExplorationPropertyValues): ExplorationPropertyValues {
     return value;
   }
 
   // Validates the given value and returns a boolean stating whether it
   // is valid or not. THIS CAN BE OVERRIDDEN BY SUBCLASSES. The default
   // behavior is to always return true.
-  _isValid(value: string): boolean {
+  _isValid(value: ExplorationPropertyValues): boolean {
     return true;
   }
 
@@ -113,16 +135,21 @@ export class ExplorationPropertyService {
 
     let newBackendValue = cloneDeep(this.displayed);
     let oldBackendValue = cloneDeep(this.savedMemento);
-
+    const that = this;
     if (this.BACKEND_CONVERSIONS.hasOwnProperty(this.propertyName)) {
-      newBackendValue =
-        this.BACKEND_CONVERSIONS[this.propertyName](this.displayed);
-      oldBackendValue =
-        this.BACKEND_CONVERSIONS[this.propertyName](this.savedMemento);
+      newBackendValue = this.BACKEND_CONVERSIONS[
+        this.propertyName as keyof typeof that.BACKEND_CONVERSIONS
+      ](this.displayed as ParamChange[] & ParamChange);
+      oldBackendValue = this.BACKEND_CONVERSIONS[
+        this.propertyName as keyof typeof that.BACKEND_CONVERSIONS
+      ](this.savedMemento as ParamChange[] & ParamChange);
     }
 
     this.changeListService.editExplorationProperty(
-      this.propertyName, newBackendValue, oldBackendValue);
+      this.propertyName,
+      newBackendValue as string,
+      oldBackendValue as string
+    );
     this.savedMemento = cloneDeep(this.displayed);
 
     this._explorationPropertyChangedEventEmitter.emit();
@@ -137,7 +164,3 @@ export class ExplorationPropertyService {
     return this._explorationPropertyChangedEventEmitter;
   }
 }
-
-angular.module('oppia').factory(
-  'ExplorationPropertyService', downgradeInjectable(
-    ExplorationPropertyService));

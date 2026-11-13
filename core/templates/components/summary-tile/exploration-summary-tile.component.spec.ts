@@ -16,46 +16,49 @@
  * @fileoverview Unit tests for for ExplorationSummaryTileComponent.
  */
 
-import { async, ComponentFixture, fakeAsync, TestBed, tick } from
-  '@angular/core/testing';
-import { Component, NO_ERRORS_SCHEMA, Pipe } from '@angular/core';
-import { MaterialModule } from 'modules/material.module';
-import { FormsModule } from '@angular/forms';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {NO_ERRORS_SCHEMA, Pipe, PipeTransform} from '@angular/core';
+import {MaterialModule} from 'modules/material.module';
+import {FormsModule} from '@angular/forms';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
 
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { ExplorationSummaryTileComponent } from './exploration-summary-tile.component';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { DateTimeFormatService } from 'services/date-time-format.service';
-import { UserService } from 'services/user.service';
-import { WindowDimensionsService } from 'services/contextual/window-dimensions.service';
-import { of } from 'rxjs';
-import { UrlParamsType, UrlService } from 'services/contextual/url.service';
-import { RatingComputationService } from 'components/ratings/rating-computation/rating-computation.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { UserInfo } from 'domain/user/user-info.model';
-
-@Component({selector: 'learner-dashboard-icons', template: ''})
-class LearnerDashboardIconsComponentStub {
-}
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {ExplorationSummaryTileComponent} from './exploration-summary-tile.component';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {DateTimeFormatService} from 'services/date-time-format.service';
+import {UserService} from 'services/user.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {of} from 'rxjs';
+import {UrlParamsType, UrlService} from 'services/contextual/url.service';
+import {RatingComputationService} from 'components/ratings/rating-computation/rating-computation.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {UserInfo} from 'domain/user/user-info.model';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {TranslatableExplorationMetadataField} from 'domain/summary/learner-exploration-summary.model';
 
 @Pipe({name: 'truncateAndCapitalize'})
-class MockTruncteAndCapitalizePipe {
+class MockTruncateAndCapitalizePipe implements PipeTransform {
   transform(value: string, params: Object | undefined): string {
     return value;
   }
 }
 
 @Pipe({name: 'truncate'})
-class MockTruncatePipe {
+class MockTruncatePipe implements PipeTransform {
   transform(value: string, params: Object | undefined): string {
     return value;
   }
 }
 
 @Pipe({name: 'summarizeNonnegativeNumber'})
-class MockSummarizeNonnegativeNumberPipe {
+class MockSummarizeNonnegativeNumberPipe implements PipeTransform {
   transform(value: string, params: Object | undefined): string {
     return value;
   }
@@ -82,7 +85,7 @@ class MockWindowRef {
       set href(val) {
         this._href = val;
       },
-      reload: (val: string) => val
+      reload: (val: string) => val,
     },
     get onhashchange() {
       return this.location._hashChange;
@@ -90,8 +93,9 @@ class MockWindowRef {
 
     set onhashchange(val) {
       this.location._hashChange = val;
-    }
+    },
   };
+
   get nativeWindow() {
     return this._window;
   }
@@ -101,8 +105,13 @@ class MockUrlService {
   addField(url: string, fieldName: string, fieldValue: string): string {
     let encodedFieldValue = fieldValue;
     let encodedFieldName = fieldName;
-    return url + (url.indexOf('?') !== -1 ? '&' : '?') + encodedFieldName +
-        '=' + encodedFieldValue;
+    return (
+      url +
+      (url.indexOf('?') !== -1 ? '&' : '?') +
+      encodedFieldName +
+      '=' +
+      encodedFieldValue
+    );
   }
 
   getPathname(): string {
@@ -133,28 +142,36 @@ describe('Exploration Summary Tile Component', () => {
   let windowDimensionsService: WindowDimensionsService;
   let resizeEvent = new Event('resize');
   let windowRef: MockWindowRef;
+  let i18nLanguageCodeService: I18nLanguageCodeService;
 
   let userInfo = new UserInfo(
-    ['USER_ROLE'], true, false, false, false, true,
-    'en', 'username1', 'tester@example.com', true
+    ['USER_ROLE'],
+    true,
+    false,
+    false,
+    false,
+    true,
+    'en',
+    'username1',
+    'tester@example.com',
+    true
   );
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     windowRef = new MockWindowRef();
     TestBed.configureTestingModule({
       imports: [
         BrowserAnimationsModule,
         MaterialModule,
         FormsModule,
-        HttpClientTestingModule
+        HttpClientTestingModule,
       ],
       declarations: [
         ExplorationSummaryTileComponent,
         MockTruncatePipe,
-        MockTruncteAndCapitalizePipe,
+        MockTruncateAndCapitalizePipe,
         MockSummarizeNonnegativeNumberPipe,
         MockTranslatePipe,
-        LearnerDashboardIconsComponentStub,
       ],
       providers: [
         DateTimeFormatService,
@@ -163,21 +180,21 @@ describe('Exploration Summary Tile Component', () => {
         RatingComputationService,
         {
           provide: UrlService,
-          useClass: MockUrlService
+          useClass: MockUrlService,
         },
         {
           provide: WindowDimensionsService,
           useValue: {
             getWidth: () => 1000,
-            getResizeEvent: () => of(resizeEvent)
-          }
+            getResizeEvent: () => of(resizeEvent),
+          },
         },
         {
           provide: WindowRef,
-          useValue: windowRef
-        }
+          useValue: windowRef,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -190,12 +207,12 @@ describe('Exploration Summary Tile Component', () => {
     windowDimensionsService = TestBed.inject(WindowDimensionsService);
     ratingComputationService = TestBed.inject(RatingComputationService);
     urlService = TestBed.inject(UrlService);
+    i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
 
     component.collectionId = '1';
     component.explorationId = '1';
     component.explorationTitle = 'Title';
-    component.storyNodeId = '1';
-    component.numViews = '100';
+    component.numViews = 100;
     component.objective = 'objective';
     component.category = 'category';
     component.contributorsSummary = {
@@ -204,7 +221,7 @@ describe('Exploration Summary Tile Component', () => {
       },
       username2: {
         num_commits: 2,
-      }
+      },
     };
     component.thumbnailIconUrl = '/subjects/Welcome';
     component.thumbnailBgColor = 'blue';
@@ -212,8 +229,7 @@ describe('Exploration Summary Tile Component', () => {
     component.isCommunityOwned = true;
     component.isCollectionPreviewTile = true;
     component.isPlaylistTile = true;
-    component.parentExplorationIds = '123';
-    component.showLearnerDashboardIconsIfPossible = 'true';
+    component.parentExplorationIds = ['1', '2', '3'];
     component.isContainerNarrow = true;
     component.isOwnedByCurrentUser = true;
     fixture.detectChanges();
@@ -221,12 +237,25 @@ describe('Exploration Summary Tile Component', () => {
 
   it('should intialize the component and set values', fakeAsync(() => {
     const userServiceSpy = spyOn(
-      userService, 'getUserInfoAsync')
-      .and.returnValue(Promise.resolve(userInfo));
+      userService,
+      'getUserInfoAsync'
+    ).and.returnValue(Promise.resolve(userInfo));
     const windowResizeSpy = spyOn(
-      windowDimensionsService, 'getResizeEvent').and.callThrough();
+      windowDimensionsService,
+      'getResizeEvent'
+    ).and.callThrough();
     const windowWidthSpy = spyOn(
-      windowDimensionsService, 'getWidth').and.callThrough();
+      windowDimensionsService,
+      'getWidth'
+    ).and.callThrough();
+    component.mobileCutoffPx = 536;
+    spyOn(
+      i18nLanguageCodeService,
+      'getExplorationTranslationKey'
+    ).and.returnValues(
+      'I18N_EXPLORATION_123ab_TITLE',
+      'I18N_EXPLORATION_123ab_DESCRIPTION'
+    );
 
     component.ngOnInit();
     tick();
@@ -235,45 +264,143 @@ describe('Exploration Summary Tile Component', () => {
     expect(component.activityType).toBe('exploration');
     expect(component.isRefresherExploration).toBe(true);
     expect(component.isWindowLarge).toBe(true);
+    expect(component.expTitleTranslationKey).toBe(
+      'I18N_EXPLORATION_123ab_TITLE'
+    );
+    expect(component.expObjectiveTranslationKey).toBe(
+      'I18N_EXPLORATION_123ab_DESCRIPTION'
+    );
 
     expect(userServiceSpy).toHaveBeenCalled();
     expect(windowResizeSpy).toHaveBeenCalled();
     expect(windowWidthSpy).toHaveBeenCalled();
   }));
 
-  it('should intialize the component and set mobileCutoffPx to 0' +
-    ' if it is undefined', fakeAsync(() => {
+  it('should check whether hacky translations are displayed or not', fakeAsync(() => {
     const userServiceSpy = spyOn(
-      userService, 'getUserInfoAsync')
-      .and.returnValue(Promise.resolve(userInfo));
+      userService,
+      'getUserInfoAsync'
+    ).and.returnValue(Promise.resolve(userInfo));
     const windowResizeSpy = spyOn(
-      windowDimensionsService, 'getResizeEvent').and.callThrough();
+      windowDimensionsService,
+      'getResizeEvent'
+    ).and.callThrough();
     const windowWidthSpy = spyOn(
-      windowDimensionsService, 'getWidth').and.callThrough();
+      windowDimensionsService,
+      'getWidth'
+    ).and.callThrough();
+    spyOn(
+      i18nLanguageCodeService,
+      'isHackyTranslationAvailable'
+    ).and.returnValues(false, true);
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageEnglish').and.returnValues(
+      false,
+      false
+    );
 
     component.ngOnInit();
     tick();
     fixture.detectChanges();
 
-    expect(component.mobileCutoffPx).toBe(0);
-
     expect(userServiceSpy).toHaveBeenCalled();
     expect(windowResizeSpy).toHaveBeenCalled();
     expect(windowWidthSpy).toHaveBeenCalled();
+    let hackyTranslationIsDisplayed =
+      component.isHackyExpTitleTranslationDisplayed();
+    expect(hackyTranslationIsDisplayed).toBe(false);
+    hackyTranslationIsDisplayed =
+      component.isHackyExpObjectiveTranslationDisplayed();
+    expect(hackyTranslationIsDisplayed).toBe(true);
   }));
 
-  it('should remove all subscriptions when calling ngOnDestroy',
+  it('should not display hacky translation when backend translated the field', () => {
+    component.translatedMetadataFields = [
+      TranslatableExplorationMetadataField.TITLE,
+      TranslatableExplorationMetadataField.OBJECTIVE,
+    ];
+    spyOn(
+      i18nLanguageCodeService,
+      'isHackyTranslationAvailable'
+    ).and.returnValue(true);
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageEnglish').and.returnValue(
+      false
+    );
+
+    expect(component.isHackyExpTitleTranslationDisplayed()).toBe(false);
+    expect(component.isHackyExpObjectiveTranslationDisplayed()).toBe(false);
+  });
+
+  it(
+    'should intialize the component and set mobileCutoffPx to 0' +
+      ' if it is undefined',
     fakeAsync(() => {
-      component.resizeSubscription = of(resizeEvent).subscribe();
+      const userServiceSpy = spyOn(
+        userService,
+        'getUserInfoAsync'
+      ).and.returnValue(Promise.resolve(userInfo));
+      const windowResizeSpy = spyOn(
+        windowDimensionsService,
+        'getResizeEvent'
+      ).and.callThrough();
+      const windowWidthSpy = spyOn(
+        windowDimensionsService,
+        'getWidth'
+      ).and.callThrough();
+
+      component.ngOnInit();
       tick();
       fixture.detectChanges();
 
-      component.ngOnDestroy();
+      expect(component.mobileCutoffPx).toBe(0);
 
-      tick();
-      fixture.detectChanges();
-      expect(component.resizeSubscription.closed).toBe(true);
-    }));
+      expect(userServiceSpy).toHaveBeenCalled();
+      expect(windowResizeSpy).toHaveBeenCalled();
+      expect(windowWidthSpy).toHaveBeenCalled();
+    })
+  );
+
+  it('should remove all subscriptions when calling ngOnDestroy', fakeAsync(() => {
+    component.resizeSubscription = of(resizeEvent).subscribe();
+    tick();
+    fixture.detectChanges();
+
+    component.ngOnDestroy();
+
+    tick();
+    fixture.detectChanges();
+    expect(component.resizeSubscription.closed).toBe(true);
+  }));
+
+  it('should check if mobile card is to be shown', () => {
+    const urlPathSpy = spyOn(urlService, 'getPathname').and.returnValue(
+      '/community-library'
+    );
+    component.isWindowLarge = false;
+
+    component.checkIfMobileCardToBeShown();
+
+    expect(urlPathSpy).toHaveBeenCalled();
+    expect(component.mobileCardToBeShown).toBe(true);
+
+    urlPathSpy.and.returnValue('/create');
+
+    component.checkIfMobileCardToBeShown();
+
+    expect(component.mobileCardToBeShown).toBe(true);
+
+    urlPathSpy.and.returnValue('/not-community-library');
+
+    component.checkIfMobileCardToBeShown();
+
+    expect(component.mobileCardToBeShown).toBe(false);
+
+    component.isWindowLarge = true;
+    urlPathSpy.and.returnValue('/create');
+
+    component.checkIfMobileCardToBeShown();
+
+    expect(component.mobileCardToBeShown).toBe(false);
+  });
 
   it('should set the hover state to true', () => {
     component.setHoverState(true);
@@ -290,13 +417,21 @@ describe('Exploration Summary Tile Component', () => {
   });
 
   it('should navigate to parent exploration', fakeAsync(() => {
-    const explorationLinkSpy = spyOn(component, 'getExplorationLink')
-      .and.returnValue('/parent/id/1');
+    const explorationLinkSpy = spyOn(
+      component,
+      'getExplorationLink'
+    ).and.returnValue('/parent/id/1');
 
     spyOnProperty(windowRef, 'nativeWindow').and.returnValue({
       location: {
-        href: '/parent/id/1'
-      }
+        _hash: '',
+        _hashChange: null,
+        _href: '',
+        hash: '',
+        href: '/parent/id/1',
+        reload: (val: string) => '',
+      },
+      onhashchange: null,
     });
 
     component.loadParentExploration();
@@ -315,11 +450,12 @@ describe('Exploration Summary Tile Component', () => {
       2: 0,
       3: 0,
       4: 0,
-      5: 1
+      5: 1,
     };
     const ratingsSpy = spyOn(
-      ratingComputationService, 'computeAverageRating')
-      .and.returnValue(3);
+      ratingComputationService,
+      'computeAverageRating'
+    ).and.returnValue(3);
 
     let averageRatings = component.getAverageRating();
     tick();
@@ -329,24 +465,37 @@ describe('Exploration Summary Tile Component', () => {
     expect(averageRatings).toBe(3);
   }));
 
-  it('should fail to get the average ratings of the exploration' +
-    ' if rating are undefined', fakeAsync(() => {
-    const ratingsSpy = spyOn(
-      ratingComputationService, 'computeAverageRating')
-      .and.returnValue(null);
+  it(
+    'should return a null average rating when the exploration has no' +
+      ' ratings',
+    fakeAsync(() => {
+      // An exploration that nobody has rated yet has all-zero rating counts,
+      // which is what the tile falls back to when 'ratings' is not supplied.
+      const ratingsSpy = spyOn(
+        ratingComputationService,
+        'computeAverageRating'
+      ).and.returnValue(null);
 
-    let averageRatings = component.getAverageRating();
-    tick();
-    fixture.detectChanges();
+      let averageRatings = component.getAverageRating();
+      tick();
+      fixture.detectChanges();
 
-    expect(ratingsSpy).not.toHaveBeenCalled();
-    expect(averageRatings).toBeNull();
-  }));
+      expect(ratingsSpy).toHaveBeenCalledWith({
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0,
+        5: 0,
+      });
+      expect(averageRatings).toBeNull();
+    })
+  );
 
   it('should get last updated Date & time', () => {
     const dateTimeSpy = spyOn(
-      dateTimeFormatService, 'getLocaleAbbreviatedDatetimeString')
-      .and.returnValue('1:30 am');
+      dateTimeFormatService,
+      'getLocaleAbbreviatedDatetimeString'
+    ).and.returnValue('1:30 am');
 
     component.lastUpdatedMsec = 1000;
     let dateTime = component.getLastUpdatedDatetime();
@@ -363,10 +512,37 @@ describe('Exploration Summary Tile Component', () => {
     expect(dateTime).toBeNull();
   });
 
+  it('should get relative last updated Date & time', () => {
+    const dateTimeSpy = spyOn(
+      dateTimeFormatService,
+      'getRelativeTimeFromNow'
+    ).and.returnValue('a few seconds ago');
+
+    component.lastUpdatedMsec = Date.now();
+    let relativeLastUpdatedDateTime =
+      component.getRelativeLastUpdatedDateTime();
+    fixture.detectChanges();
+
+    expect(dateTimeSpy).toHaveBeenCalled();
+    expect(relativeLastUpdatedDateTime).toBe('a few seconds ago');
+  });
+
+  it('should fail to get relative last updated Date & time', () => {
+    const dateTimeSpy = spyOn(dateTimeFormatService, 'getRelativeTimeFromNow');
+
+    let relativeLastUpdatedDateTime =
+      component.getRelativeLastUpdatedDateTime();
+    fixture.detectChanges();
+
+    expect(dateTimeSpy).not.toHaveBeenCalled();
+    expect(relativeLastUpdatedDateTime).toBeNull();
+  });
+
   it('should get the thumbnail url', () => {
     const urlSpy = spyOn(
-      urlInterpolationService, 'getStaticImageUrl')
-      .and.returnValue('thumbnailUrl');
+      urlInterpolationService,
+      'getStaticImageUrl'
+    ).and.returnValue('thumbnailUrl');
 
     component.thumbnailIconUrl = 'thumbnailUrl';
     component.getCompleteThumbnailIconUrl();
@@ -383,65 +559,22 @@ describe('Exploration Summary Tile Component', () => {
     expect(result).toBe('#');
   });
 
-  it('should return the url for the exploration' +
-    ' given collectionId and explorationId', fakeAsync(() => {
-    const urlParamsSpy = spyOn(urlService, 'getUrlParams').and.returnValue({
-      collection_id: '1',
-    });
-    const addFieldSpy = spyOn(urlService, 'addField').and.callThrough();
-    const result = component.getExplorationLink();
+  it(
+    'should return the url for the exploration' +
+      ' given collectionId and explorationId',
+    fakeAsync(() => {
+      const urlParamsSpy = spyOn(urlService, 'getUrlParams').and.returnValue({
+        collection_id: '1',
+      });
+      const addFieldSpy = spyOn(urlService, 'addField').and.callThrough();
+      const result = component.getExplorationLink();
 
-    tick();
-    fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
 
-    expect(result).toBe('/explore/1?collection_id=1&parent=1&parent=2');
-    expect(urlParamsSpy).toHaveBeenCalled();
-    expect(addFieldSpy).toHaveBeenCalled();
-  }));
-
-
-  it('should return the url for the exploration' +
-    ' given explorationId and storyId', fakeAsync(() => {
-    const urlParamsSpy = spyOn(urlService, 'getUrlParams').and.returnValue({
-    });
-    const urlPathSpy = spyOn(urlService, 'getPathname').and.returnValue(
-      '/story/fhfhvhgvhvvh');
-    const storyIdSpy = spyOn(urlService, 'getStoryIdFromViewerUrl')
-      .and.returnValue('1');
-    const addFieldSpy = spyOn(urlService, 'addField').and.callThrough();
-
-    const result = component.getExplorationLink();
-
-    tick();
-    fixture.detectChanges();
-
-    expect(result).toBe(
-      '/explore/1?collection_id=1&parent=1&parent=2&story_id=1&node_id=1');
-    expect(urlParamsSpy).toHaveBeenCalled();
-    expect(urlPathSpy).toHaveBeenCalled();
-    expect(storyIdSpy).toHaveBeenCalled();
-    expect(addFieldSpy).toHaveBeenCalled();
-  }));
-
-  it('should return the url for the exploration' +
-    ' given nodeId and storyId', fakeAsync(() => {
-    const urlParamsSpy = spyOn(urlService, 'getUrlParams').and.returnValue({
-      story_id: '1',
-      node_id: '1',
-    });
-    const urlPathSpy = spyOn(urlService, 'getPathname').and.returnValue(
-      '/story/fhfhvhgvhvvh');
-    const addFieldSpy = spyOn(urlService, 'addField').and.callThrough();
-
-    component.storyNodeId = '';
-    const result = component.getExplorationLink();
-
-    tick();
-    fixture.detectChanges();
-
-    expect(result).toBe('/explore/1?collection_id=1&parent=1&parent=2');
-    expect(urlParamsSpy).toHaveBeenCalled();
-    expect(urlPathSpy).toHaveBeenCalled();
-    expect(addFieldSpy).toHaveBeenCalled();
-  }));
+      expect(result).toBe('/explore/1?collection_id=1&parent=1&parent=2');
+      expect(urlParamsSpy).toHaveBeenCalled();
+      expect(addFieldSpy).toHaveBeenCalled();
+    })
+  );
 });

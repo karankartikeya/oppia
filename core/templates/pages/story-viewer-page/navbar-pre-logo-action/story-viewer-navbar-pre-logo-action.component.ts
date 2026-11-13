@@ -17,24 +17,28 @@
  *  of the story viewer.
  */
 
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { StoryViewerBackendApiService } from 'domain/story_viewer/story-viewer-backend-api.service';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { Subscription } from 'rxjs';
-import { UrlService } from 'services/contextual/url.service';
-import { ClassroomDomainConstants } from 'domain/classroom/classroom-domain.constants';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {StoryViewerBackendApiService} from 'domain/story_viewer/story-viewer-backend-api.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {Subscription} from 'rxjs';
+import {UrlService} from 'services/contextual/url.service';
+import {ClassroomDomainConstants} from 'domain/classroom/classroom-domain.constants';
 
 @Component({
   selector: 'oppia-story-viewer-navbar-pre-logo-action',
-  templateUrl: './story-viewer-navbar-pre-logo-action.component.html'
+  templateUrl: './story-viewer-navbar-pre-logo-action.component.html',
+  styleUrls: ['./story-viewer-navbar-pre-logo-action.component.css'],
 })
 export class StoryViewerNavbarPreLogoActionComponent
-implements OnInit, OnDestroy {
-  topicName: string;
-  topicUrlFragment: string;
-  classroomUrlFragment: string;
-  storyUrlFragment: string;
+  implements OnInit, OnDestroy
+{
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  topicName!: string;
+  topicUrlFragment!: string;
+  classroomUrlFragment!: string;
+  storyUrlFragment!: string;
   constructor(
     private storyViewerBackendApiService: StoryViewerBackendApiService,
     private urlInterpolationService: UrlInterpolationService,
@@ -44,30 +48,36 @@ implements OnInit, OnDestroy {
   directiveSubscriptions = new Subscription();
   getTopicUrl(): string {
     return this.urlInterpolationService.interpolateUrl(
-      ClassroomDomainConstants.TOPIC_VIEWER_STORY_URL_TEMPLATE, {
+      ClassroomDomainConstants.TOPIC_VIEWER_STORY_URL_TEMPLATE,
+      {
         topic_url_fragment: this.topicUrlFragment,
         classroom_url_fragment: this.classroomUrlFragment,
-        story_url_fragment: this.storyUrlFragment
-      });
+        story_url_fragment: this.storyUrlFragment,
+      }
+    );
   }
 
   ngOnInit(): void {
     this.topicUrlFragment = this.urlService.getTopicUrlFragmentFromLearnerUrl();
     this.classroomUrlFragment =
-     this.urlService.getClassroomUrlFragmentFromLearnerUrl();
-    this.storyUrlFragment =
-     this.urlService.getStoryUrlFragmentFromLearnerUrl();
-    this.storyViewerBackendApiService.fetchStoryDataAsync(
-      this.topicUrlFragment,
-      this.classroomUrlFragment,
-      this.storyUrlFragment).then(
-      (storyDataObject) => {
+      this.urlService.getClassroomUrlFragmentFromLearnerUrl();
+    let storyUrlFragment = this.urlService.getStoryUrlFragmentFromLearnerUrl();
+    if (storyUrlFragment === null) {
+      throw new Error('Story url fragment is null');
+    }
+    this.storyUrlFragment = storyUrlFragment;
+    this.storyViewerBackendApiService
+      .fetchStoryDataAsync(
+        this.topicUrlFragment,
+        this.classroomUrlFragment,
+        this.storyUrlFragment
+      )
+      .then(storyDataObject => {
         this.topicName = storyDataObject.topicName;
       });
   }
+
   ngOnDestroy(): void {
     return this.directiveSubscriptions.unsubscribe();
   }
 }
-angular.module('oppia').directive('oppiaStoryViewerNavbarPreLogoAction',
-  downgradeComponent({component: StoryViewerNavbarPreLogoActionComponent}));

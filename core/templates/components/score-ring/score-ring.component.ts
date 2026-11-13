@@ -16,55 +16,73 @@
  * @fileoverview Component for the animated score ring.
  */
 
-angular.module('oppia').component('scoreRing', {
-  bindings: {
-    getScore: '&score',
-    testIsPassed: '&testIsPassed'
-  },
-  template: require('./score-ring.component.html'),
-  controllerAs: '$ctrl',
-  controller: ['$scope', 'COLORS_FOR_PASS_FAIL_MODE',
-    function($scope, COLORS_FOR_PASS_FAIL_MODE) {
-      var ctrl = this;
-      let circle, radius, circumference;
+import {
+  Component,
+  Input,
+  OnChanges,
+  AfterViewInit,
+  ViewChild,
+  ElementRef,
+  SimpleChanges,
+} from '@angular/core';
+import {QuestionPlayerConstants} from '../question-directives/question-player/question-player.constants';
 
-      var setScore = function(percent) {
-        const offset = circumference - percent / 100 * circumference;
-        circle.style.strokeDashoffset = offset.toString();
-      };
+@Component({
+  selector: 'oppia-score-ring',
+  templateUrl: './score-ring.component.html',
+  styleUrls: ['./score-ring.component.css'],
+})
+export class ScoreRingComponent implements AfterViewInit, OnChanges {
+  constructor() {}
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() score!: number;
+  @ViewChild('scoreRing') scoreRingElement!: ElementRef<SVGCircleElement>;
+  circle!: SVGCircleElement;
+  radius!: number;
+  circumference!: number;
+  SCORE_COLORS = QuestionPlayerConstants.SCORE_COLORS;
 
-      ctrl.getScoreRingColor = function() {
-        if (ctrl.testIsPassed()) {
-          return COLORS_FOR_PASS_FAIL_MODE.PASSED_COLOR;
-        } else {
-          return COLORS_FOR_PASS_FAIL_MODE.FAILED_COLOR;
-        }
-      };
+  setScore(percent: number): void {
+    setTimeout(() => {
+      const offset = this.circumference - (percent / 100) * this.circumference;
+      this.circle.style.strokeDashoffset = offset.toString();
+    }, 2000);
+  }
 
-      ctrl.getScoreOuterRingColor = function() {
-        if (ctrl.testIsPassed()) {
-          // Return color green when passed.
-          return COLORS_FOR_PASS_FAIL_MODE.PASSED_COLOR_OUTER;
-        } else {
-          // Return color orange when failed.
-          return COLORS_FOR_PASS_FAIL_MODE.FAILED_COLOR_OUTER;
-        }
-      };
-      ctrl.$onInit = function() {
-        circle = <SVGCircleElement>(
-          document.querySelector('.score-ring-circle'));
-        radius = circle.r.baseVal.value;
-        circumference = (radius * 2 * Math.PI);
-        circle.style.strokeDasharray = `${circumference} ${circumference}`;
-        circle.style.strokeDashoffset = circumference.toString();
-        $scope.$watch(function() {
-          return ctrl.getScore();
-        }, function(newScore) {
-          if (newScore && newScore > 0) {
-            setScore(newScore);
-          }
-        });
-      };
+  getScoreRingColor(): string {
+    return this.SCORE_COLORS.PASSED_COLOR;
+  }
+
+  getScoreOuterRingColor(): string {
+    return this.SCORE_COLORS.PASSED_COLOR_OUTER;
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (
+      changes.score &&
+      changes.score.currentValue !== changes.score.previousValue &&
+      changes.score.currentValue > 0
+    ) {
+      this.setScore(changes.score.currentValue);
     }
-  ]
-});
+  }
+
+  ngAfterViewInit(): void {
+    this.circle = this.scoreRingElement.nativeElement;
+    this.radius = this.circle.r.baseVal.value;
+    this.circumference = this.radius * 2 * Math.PI;
+
+    this.circle.style.strokeDasharray = `${this.circumference} ${this.circumference}`;
+    this.circle.style.strokeDashoffset = this.circumference.toString();
+    // A reflow needs to be triggered so that the browser picks up the
+    // assigned starting values of stroke-dashoffset and stroke-dasharray before
+    // setting the transition-duration value to '5s', else the ring can be seen
+    // animating down to the starting position.
+    // clientHeight property triggers a reflow.
+    this.circle.clientHeight;
+    this.circle.style.transitionDuration = '5s';
+    this.setScore(this.score);
+  }
+}

@@ -16,16 +16,16 @@
  * @fileoverview Unit tests for boolean editor.
  */
 
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { BooleanEditorComponent } from './boolean-editor.component';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {BooleanEditorComponent} from './boolean-editor.component';
 
 describe('BooleanEditorComponent', () => {
   let component: BooleanEditorComponent;
   let fixture: ComponentFixture<BooleanEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [BooleanEditorComponent]
+      declarations: [BooleanEditorComponent],
     }).compileComponents();
   }));
 
@@ -40,7 +40,7 @@ describe('BooleanEditorComponent', () => {
 
     component.setValue(true);
 
-    expect(component.value).toBeTrue();
+    expect(component.value).toBe(true);
   });
 
   it('should set value as false when the user unchecks the checkbox', () => {
@@ -48,6 +48,22 @@ describe('BooleanEditorComponent', () => {
 
     component.setValue(false);
 
-    expect(component.value).toBeFalse();
+    expect(component.value).toBe(false);
+  });
+
+  it('should set value from the checkbox change event', () => {
+    spyOn(component.valueChanged, 'emit');
+    component.value = false;
+
+    const inputElement = document.createElement('input');
+    inputElement.type = 'checkbox';
+    inputElement.checked = true;
+    const event = new Event('change');
+    Object.defineProperty(event, 'target', {value: inputElement});
+
+    component.onValueChange(event);
+
+    expect(component.value).toBe(true);
+    expect(component.valueChanged.emit).toHaveBeenCalledWith(true);
   });
 });

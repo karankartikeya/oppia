@@ -23,16 +23,15 @@
  * Credits to Peter Woolley and Brett Zamir.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ServicesConstants } from 'services/services.constants';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ServicesConstants} from 'services/services.constants';
 
 type RTEComponentSpecsKey = keyof typeof ServicesConstants.RTE_COMPONENT_SPECS;
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class SpeechSynthesisChunkerService {
   constructor(private htmlEscaper: HtmlEscaperService) {}
@@ -51,6 +50,7 @@ export class SpeechSynthesisChunkerService {
     Video: '',
     Skillreview: '',
     Svgdiagram: '',
+    Workedexample: '',
   };
 
   // Punctuation marks that should result in an audible pause when playing
@@ -73,25 +73,37 @@ export class SpeechSynthesisChunkerService {
    *    chunked utterance finishes playing.
    */
   _speechUtteranceChunker(
-      utterance: SpeechSynthesisUtterance, offset: number,
-      callback: () => void): void {
+    utterance: SpeechSynthesisUtterance,
+    offset: number,
+    callback: () => void
+  ): void {
     var newUtterance: SpeechSynthesisUtterance;
-    var text = (
-    offset !== undefined ? utterance.text.substring(offset) : utterance.text);
+    var text =
+      offset !== undefined ? utterance.text.substring(offset) : utterance.text;
 
     // This regex pattern finds the next string at most 160
     // characters in length that ends on a punctuation mark in
     // PUNCTUATION_MARKS_TO_END_CHUNKS.
     var delimitChunkRegex = new RegExp(
-      '^[\\s\\S]{' + Math.floor(this.CHUNK_LENGTH / 4) + ',' +
-      this.CHUNK_LENGTH + '}[' + this.PUNCTUATION_MARKS_TO_END_CHUNKS +
-      ']{1}|^[\\s\\S]{1,' + this.CHUNK_LENGTH + '}$|^[\\s\\S]{1,' +
-      this.CHUNK_LENGTH + '} ');
+      '^[\\s\\S]{' +
+        Math.floor(this.CHUNK_LENGTH / 4) +
+        ',' +
+        this.CHUNK_LENGTH +
+        '}[' +
+        this.PUNCTUATION_MARKS_TO_END_CHUNKS +
+        ']{1}|^[\\s\\S]{1,' +
+        this.CHUNK_LENGTH +
+        '}$|^[\\s\\S]{1,' +
+        this.CHUNK_LENGTH +
+        '} '
+    );
     var chunkArray = text.match(delimitChunkRegex);
 
-    if (chunkArray === null ||
-        chunkArray[0] === undefined ||
-        chunkArray[0].length <= 2) {
+    if (
+      chunkArray === null ||
+      chunkArray[0] === undefined ||
+      chunkArray[0].length <= 2
+    ) {
       // Call once all text has been spoken.
       if (callback !== undefined) {
         callback();
@@ -105,26 +117,20 @@ export class SpeechSynthesisChunkerService {
     // excluding the text being spoken.
     for (var property in utterance) {
       const _property = property as keyof SpeechSynthesisUtterance;
-      if (_property !== 'text') {
-        Object.defineProperty(
-          newUtterance, _property, {
-            value: utterance[_property]
-          }
-        );
+      if (_property !== 'text' && _property !== 'addEventListener') {
+        Object.defineProperty(newUtterance, _property, {
+          value: utterance[_property],
+        });
       }
     }
-    Object.defineProperty(
-      newUtterance, 'onend', {
-        value: () => {
-          if (this.cancelRequested) {
-            this.cancelRequested = false;
-            return;
-          }
-          offset += chunk.length;
-          this._speechUtteranceChunker(utterance, offset, callback);
-        }
+    newUtterance.addEventListener('end', () => {
+      if (this.cancelRequested) {
+        this.cancelRequested = false;
+        return;
       }
-    );
+      offset += chunk.length;
+      this._speechUtteranceChunker(utterance, offset, callback);
+    });
 
     // IMPORTANT!! Do not remove: Logging the object out fixes some onend
     // firing issues. Placing the speak invocation inside a callback
@@ -137,116 +143,119 @@ export class SpeechSynthesisChunkerService {
   }
 
   _formatLatexToSpeakableText(latex: string): string {
-    return latex
-      .replace(/&quot;/g, '')
-      .replace(/\\/g, '')
-      .replace(/\s+/, ' ')
-      // Separate consecutive characters with spaces so that 'ab'
-      // is pronounced 'a' followed by 'b'.
-      .split('').join(' ')
-      .replace(/\s*(\d+)\s*/g, '$1')
-      // Replace dashes with 'minus'.
-      .replace(/-/g, ' minus ')
-      // Ensure that 'x^2' is pronounced 'x squared' rather than
-      // 'x caret 2'.
-      .replace(/\s*\^\s*/g, '^')
-      // Speak 'x^y' as 'x to the power of y' unless the exponent is two or
-      // three, in which case Web Speech will read 'squared' and 'cubed'
-      // respectively.
-      .replace(/(.*)\^(\{*[0-9].+|[0-14-9]\}*)/g, '$1 to the power of $2')
-      // Handle simple fractions.
-      .replace(
-        /f\sr\sa\sc\s\{\s*(.+)\s*\}\s\{\s*(.+)\s*\}/g, '$1/$2')
-      // If a fraction contains a variable, then say (numerator) 'over'
-      // (denominator).
-      .replace(/(\d*\D+)\/(\d*\D*)|(\d*\D*)\/(\d*\D+)/g, '$1 over $2')
-      // Handle basic trigonometric functions.
-      .replace(/t\sa\sn/g, 'the tangent of')
-      .replace(/s\si\sn/g, 'the sine of')
-      .replace(/c\so\ss/g, 'the cosine of')
-      // Handle square roots.
-      .replace(/s\sq\sr\st\s\{\s*(.+)\s*\}/g, 'the square root of $1')
-      // Remove brackets.
-      .replace(/[\}\{]/g, '')
-      // Replace multiple spaces with single space.
-      .replace(/\s\s+/g, ' ')
-      .trim();
+    return (
+      latex
+        .replace(/&quot;/g, '')
+        .replace(/\\/g, '')
+        .replace(/\s+/, ' ')
+        // Separate consecutive characters with spaces so that 'ab'
+        // is pronounced 'a' followed by 'b'.
+        .split('')
+        .join(' ')
+        .replace(/\s*(\d+)\s*/g, '$1')
+        // Replace dashes with 'minus'.
+        .replace(/-/g, ' minus ')
+        // Ensure that 'x^2' is pronounced 'x squared' rather than
+        // 'x caret 2'.
+        .replace(/\s*\^\s*/g, '^')
+        // Speak 'x^y' as 'x to the power of y' unless the exponent is two or
+        // three, in which case Web Speech will read 'squared' and 'cubed'
+        // respectively.
+        .replace(/(.*)\^(\{*[0-9].+|[0-14-9]\}*)/g, '$1 to the power of $2')
+        // Handle simple fractions.
+        .replace(/f\sr\sa\sc\s\{\s*(.+)\s*\}\s\{\s*(.+)\s*\}/g, '$1/$2')
+        // If a fraction contains a variable, then say (numerator) 'over'
+        // (denominator).
+        .replace(/(\d*\D+)\/(\d*\D*)|(\d*\D*)\/(\d*\D+)/g, '$1 over $2')
+        // Handle basic trigonometric functions.
+        .replace(/t\sa\sn/g, 'the tangent of')
+        .replace(/s\si\sn/g, 'the sine of')
+        .replace(/c\so\ss/g, 'the cosine of')
+        // Handle square roots.
+        .replace(/s\sq\sr\st\s\{\s*(.+)\s*\}/g, 'the square root of $1')
+        // Remove brackets.
+        .replace(/[\}\{]/g, '')
+        // Replace multiple spaces with single space.
+        .replace(/\s\s+/g, ' ')
+        .trim()
+    );
   }
 
   _convertToSpeakableText(html: string): string {
-    const rteCompSpecsKeys = <RTEComponentSpecsKey[]> Object.keys(
-      ServicesConstants.RTE_COMPONENT_SPECS);
-    rteCompSpecsKeys.forEach(
-      (componentSpec) => {
-        this.RTE_COMPONENT_NAMES[componentSpec] =
+    const rteCompSpecsKeys = Object.keys(
+      ServicesConstants.RTE_COMPONENT_SPECS
+    ) as RTEComponentSpecsKey[];
+
+    rteCompSpecsKeys.forEach(componentSpec => {
+      this.RTE_COMPONENT_NAMES[componentSpec] =
         ServicesConstants.RTE_COMPONENT_SPECS[componentSpec].frontend_id;
-      });
+    });
+
     interface MathExpressionContent {
-      'raw_latex': string,
-      'svg_filename': string
+      raw_latex: string;
+      svg_filename: string;
     }
-    var elt = $('<div>' + html + '</div>');
-    // Convert links into speakable text by extracting the readable value.
-    elt.find('oppia-noninteractive-' + this.RTE_COMPONENT_NAMES.Link)
-      .replaceWith(function() {
-        var element = <HTMLElement> this;
-        const _newTextAttr = element.attributes[
-          <keyof NamedNodeMap> 'text-with-value'] as Attr;
-        // 'Node.textContent' only returns 'null' if the Node is a
-        // 'document' or a 'DocType'. '_newTextAttr' is neither.
-        const newTextContent = _newTextAttr.textContent?.replace(
-          /&quot;/g, '');
-          // Variable newTextContent ends with a " character, so this is being
-          // ignored in the condition below.
-        return (
-          newTextContent && newTextContent !== '"' ?
-          newTextContent + ' ' : ''
+
+    const parser = new DOMParser();
+    const containerDoc = parser.parseFromString(html, 'text/html');
+    const container = containerDoc.body;
+
+    const linkElements = Array.from(
+      container.querySelectorAll(
+        `oppia-noninteractive-${this.RTE_COMPONENT_NAMES.Link}`
+      )
+    );
+    for (const element of linkElements) {
+      const attr = element.getAttribute('text-with-value');
+      const newTextContent = attr?.replace(/&quot;/g, '');
+      const replacementText =
+        newTextContent && newTextContent !== '"' ? newTextContent + ' ' : '';
+      element.replaceWith(replacementText);
+    }
+
+    const mathElements = Array.from(
+      container.querySelectorAll(
+        `oppia-noninteractive-${this.RTE_COMPONENT_NAMES.Math}`
+      )
+    );
+    for (const element of mathElements) {
+      const attr = element.getAttribute('math_content-with-value');
+      if (attr) {
+        const mathContent = this.htmlEscaper.escapedJsonToObj(
+          attr
+        ) as MathExpressionContent;
+        const latexSpeakableText = this._formatLatexToSpeakableText(
+          mathContent.raw_latex
         );
-      });
+        element.replaceWith(
+          latexSpeakableText.length > 0 ? latexSpeakableText + ' ' : ''
+        );
+      }
+    }
+    const serializer = new XMLSerializer();
+    let processedHtml = Array.from(container.childNodes)
+      .map(node => serializer.serializeToString(node))
+      .join('');
+    processedHtml = processedHtml.replace(/<\/li>/g, '.').trim();
 
-    var _this = this;
-    // Convert LaTeX to speakable text.
-    elt.find('oppia-noninteractive-' + this.RTE_COMPONENT_NAMES.Math)
-      .replaceWith(function() {
-        var element = <HTMLElement> this;
-        const _mathContentAttr = element.attributes[
-          <keyof NamedNodeMap> 'math_content-with-value'] as Attr;
-        var mathContent = (
-          <MathExpressionContent>(_this.htmlEscaper.escapedJsonToObj(
-            // 'Node.textContent' only returns 'null' if the Node is a
-            // 'document' or a 'DocType'. '_mathContentAttr' is neither.
-            <string> _mathContentAttr.textContent)));
-        const latexSpeakableText = _this._formatLatexToSpeakableText(
-          mathContent.raw_latex);
-        return latexSpeakableText.length > 0 ? latexSpeakableText + ' ' : '';
-      });
+    const processedDoc = parser.parseFromString(processedHtml, 'text/html');
+    const textToSpeakWithoutPauses = processedDoc.body.textContent || '';
 
-    html = elt.html();
-    // Replace certain HTML elements with periods to indicate
-    // pauses in speaking. Also, for some reason, there's a lot
-    // of whitespace (like hundreds of characters) so we trim
-    // it off to avoid blank chunks.
-    html = html.replace(new RegExp('</li>', 'g'), '.').trim();
-    // Strip away HTML tags.
-    var tmp = $('<div></div>');
-    tmp.html(html);
-    var textToSpeakWithoutPauses = tmp.text();
-    var textToSpeak = '';
-    // Insert a space after punctuation marks to ensure that chunking will
-    // end on the desired punctuation marks so that SpeechSynthesis will
-    // pause more naturally. Remove any punctuation marks that have no
-    // effect on speaking.
-    for (var i = 0; i < textToSpeakWithoutPauses.length; i++) {
-      if (this.PUNCTUATION_MARKS_TO_IGNORE.indexOf(
-        textToSpeakWithoutPauses.charAt(i)) > -1) {
+    let textToSpeak = '';
+
+    for (let i = 0; i < textToSpeakWithoutPauses.length; i++) {
+      const char = textToSpeakWithoutPauses.charAt(i);
+      if (this.PUNCTUATION_MARKS_TO_IGNORE.includes(char)) {
         continue;
       }
-      textToSpeak += textToSpeakWithoutPauses.charAt(i);
-      if (this.PUNCTUATION_MARKS_TO_END_CHUNKS.indexOf(
-        textToSpeakWithoutPauses.charAt(i)) > -1) {
+
+      textToSpeak += char;
+
+      if (this.PUNCTUATION_MARKS_TO_END_CHUNKS.includes(char)) {
         textToSpeak += ' ';
       }
     }
+
     return textToSpeak;
   }
 
@@ -270,7 +279,3 @@ export class SpeechSynthesisChunkerService {
     return this._formatLatexToSpeakableText(latex);
   }
 }
-
-angular.module('oppia').factory(
-  'SpeechSynthesisChunkerService',
-  downgradeInjectable(SpeechSynthesisChunkerService));

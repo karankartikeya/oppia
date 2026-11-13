@@ -19,23 +19,30 @@
 // Every editor directive should implement an alwaysEditable option. There
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
-import { ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
 interface NonnegativeIntSchema {
-  type: string;
+  type: 'int';
   validators: {
     id: string;
-    'min_value'?: number;
+    min_value?: number;
   }[];
 }
 @Component({
   selector: 'nonnegative-int-editor',
-  templateUrl: './nonnegative-int-editor.component.html'
+  templateUrl: './nonnegative-int-editor.component.html',
 })
 export class NonnegativeIntEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   @Input() value!: number;
@@ -43,14 +50,18 @@ export class NonnegativeIntEditorComponent implements OnInit {
   @Output() valueChanged: EventEmitter<number> = new EventEmitter<number>();
   SCHEMA: NonnegativeIntSchema = {
     type: 'int',
-    validators: [{
-      id: 'is_at_least',
-      min_value: 0
-    }, {
-      id: 'is_integer'
-    }]
+    validators: [
+      {
+        id: 'is_at_least',
+        min_value: 0,
+      },
+      {
+        id: 'is_integer',
+      },
+    ],
   };
-  constructor(private changeDetectorRef: ChangeDetectorRef) { }
+
+  constructor(private changeDetectorRef: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     if (!this.value) {
@@ -63,7 +74,12 @@ export class NonnegativeIntEditorComponent implements OnInit {
     return this.SCHEMA;
   }
 
-  updateValue(value: number): void {
+  updateValue(value: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only numbers are accepted.
+    if (typeof value !== 'number') {
+      return;
+    }
     if (value === this.value) {
       return;
     }
@@ -72,6 +88,3 @@ export class NonnegativeIntEditorComponent implements OnInit {
     this.changeDetectorRef.detectChanges();
   }
 }
-angular.module('oppia').directive('nonnegativeIntEditor', downgradeComponent({
-  component: NonnegativeIntEditorComponent
-}) as angular.IDirectiveFactory);

@@ -16,28 +16,25 @@
  * @fileoverview Module for the splash page.
  */
 
-import { NgModule } from '@angular/core';
-import { HttpClientModule } from '@angular/common/http';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { SplashPageComponent } from './splash-page.component';
-import { SplashPageRootComponent } from './splash-page-root.component';
-import { CommonModule } from '@angular/common';
-import { SplashPageRoutingModule } from './splash-page-routing.module';
+import {CommonModule} from '@angular/common';
+import {HttpClientModule} from '@angular/common/http';
+import {NgModule} from '@angular/core';
+
+import {BaseModule} from 'base-components/base.module';
+import {SplashPageComponent} from './splash-page.component';
+import {SplashPageRootComponent} from './splash-page-root.component';
+import {SplashPageRoutingModule} from './splash-page-routing.module';
+import {CampaignBannerModule} from 'components/campaign-banner/campaign-banner-module';
 
 @NgModule({
   imports: [
+    BaseModule,
     CommonModule,
     HttpClientModule,
-    SharedComponentsModule,
-    SplashPageRoutingModule
+    SplashPageRoutingModule,
+    CampaignBannerModule,
   ],
-  declarations: [
-    SplashPageComponent,
-    SplashPageRootComponent,
-  ],
-  entryComponents: [
-    SplashPageComponent,
-    SplashPageRootComponent,
-  ]
+  declarations: [SplashPageComponent, SplashPageRootComponent],
+  entryComponents: [SplashPageComponent, SplashPageRootComponent],
 })
 export class SplashPageModule {}

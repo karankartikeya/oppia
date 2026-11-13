@@ -16,21 +16,22 @@
  * @fileoverview Root component for library page.
  */
 
-import { Component } from '@angular/core';
-import { AppConstants } from 'app.constants';
-import { PageHeadService } from 'services/page-head.service';
+import {Component} from '@angular/core';
+
+import {AppConstants} from 'app.constants';
+import {PageHeadService} from 'services/page-head.service';
 
 @Component({
   selector: 'oppia-library-page-root',
-  templateUrl: './library-page-root.component.html'
+  templateUrl: './library-page-root.component.html',
 })
 export class LibraryPageRootComponent {
-  constructor(
-    private pageHeadService: PageHeadService
-  ) {}
+  constructor(private pageHeadService: PageHeadService) {}
 
   ngOnInit(): void {
     this.pageHeadService.updateTitleAndMetaTags(
-      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.LIBRARY_INDEX);
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.LIBRARY_INDEX.TITLE,
+      AppConstants.PAGES_REGISTERED_WITH_FRONTEND.LIBRARY_INDEX.META
+    );
   }
 }

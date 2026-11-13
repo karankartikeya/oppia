@@ -16,18 +16,16 @@
  * @fileoverview Unit tests for the Hints/Solution Manager service.
  */
 
-import { EventEmitter } from '@angular/core';
-import { TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
+import {EventEmitter} from '@angular/core';
+import {TestBed, fakeAsync, flush, tick} from '@angular/core/testing';
 
-import { Hint, HintObjectFactory } from 'domain/exploration/HintObjectFactory';
-import { Solution, SolutionObjectFactory } from 'domain/exploration/SolutionObjectFactory';
-import { HintsAndSolutionManagerService } from 'pages/exploration-player-page/services/hints-and-solution-manager.service';
-import { PlayerPositionService } from 'pages/exploration-player-page/services/player-position.service';
+import {Hint} from 'domain/exploration/hint-object.model';
+import {Solution} from 'domain/exploration/solution.model';
+import {HintsAndSolutionManagerService} from 'pages/exploration-player-page/services/hints-and-solution-manager.service';
+import {PlayerPositionService} from 'pages/exploration-player-page/services/player-position.service';
 
 describe('HintsAndSolutionManager service', () => {
   let hasms: HintsAndSolutionManagerService;
-  let hof: HintObjectFactory;
-  let sof: SolutionObjectFactory;
   let firstHint: Hint;
   let secondHint: Hint;
   let thirdHint: Hint;
@@ -39,41 +37,40 @@ describe('HintsAndSolutionManager service', () => {
   const ACCELERATED_HINT_WAIT_TIME_MSEC: number = 10000;
   const WAIT_FOR_FIRST_HINT_MSEC: number = 60000;
   const WAIT_FOR_SUBSEQUENT_HINTS_MSEC: number = 30000;
-  const WAIT_FOR_TOOLTIP_TO_BE_SHOWN_MSEC: number = 60000;
+  const WAIT_FOR_TOOLTIP_TO_BE_SHOWN_MSEC: number = 500;
 
   beforeEach(fakeAsync(() => {
     pps = TestBed.inject(PlayerPositionService);
     spyOnProperty(pps, 'onNewCardAvailable').and.returnValue(
-      mockNewCardAvailableEmitter);
+      mockNewCardAvailableEmitter
+    );
     hasms = TestBed.inject(HintsAndSolutionManagerService);
-    hof = TestBed.inject(HintObjectFactory);
-    sof = TestBed.inject(SolutionObjectFactory);
 
-    firstHint = hof.createFromBackendDict({
+    firstHint = Hint.createFromBackendDict({
       hint_content: {
         content_id: 'one',
         html: 'one',
-      }
+      },
     });
-    secondHint = hof.createFromBackendDict({
+    secondHint = Hint.createFromBackendDict({
       hint_content: {
         content_id: 'two',
         html: 'two',
-      }
+      },
     });
-    thirdHint = hof.createFromBackendDict({
+    thirdHint = Hint.createFromBackendDict({
       hint_content: {
         content_id: 'three',
         html: 'three',
-      }
+      },
     });
-    solution = sof.createFromBackendDict({
+    solution = Solution.createFromBackendDict({
       answer_is_exclusive: false,
       correct_answer: 'This is a correct answer!',
       explanation: {
         content_id: 'sol-one',
         html: 'This is the explanation to the answer',
-      }
+      },
     });
   }));
 
@@ -85,6 +82,7 @@ describe('HintsAndSolutionManager service', () => {
     expect(hasms.isHintViewable(0)).toBe(false);
     expect(hasms.isHintViewable(1)).toBe(false);
     expect(hasms.isSolutionViewable()).toBe(false);
+    expect(hasms.isSolutionTooltipOpen()).toBe(false);
     expect(hasms.isHintConsumed(0)).toBe(false);
     expect(hasms.isHintConsumed(1)).toBe(false);
 
@@ -97,6 +95,7 @@ describe('HintsAndSolutionManager service', () => {
     expect(hasms.isHintViewable(0)).toBe(true);
     expect(hasms.isHintViewable(1)).toBe(false);
     expect(hasms.isSolutionViewable()).toBe(false);
+    expect(hasms.isSolutionTooltipOpen()).toBe(false);
     expect(hasms.displayHint(0)?.html).toBe('one');
     expect(hasms.isHintConsumed(0)).toBe(true);
     expect(hasms.isHintConsumed(1)).toBe(false);
@@ -108,48 +107,65 @@ describe('HintsAndSolutionManager service', () => {
     expect(hasms.isHintViewable(0)).toBe(true);
     expect(hasms.isHintViewable(1)).toBe(true);
     expect(hasms.isSolutionViewable()).toBe(false);
+    expect(hasms.isSolutionTooltipOpen()).toBe(false);
     expect(hasms.displayHint(0)?.html).toBe('one');
     expect(hasms.displayHint(1)?.html).toBe('two');
     expect(hasms.displayHint(3)).toBeNull();
     expect(hasms.isHintConsumed(0)).toBe(true);
     expect(hasms.isHintConsumed(1)).toBe(true);
-
-    tick(WAIT_FOR_SUBSEQUENT_HINTS_MSEC);
-
-    expect(hasms.isSolutionViewable()).toBe(true);
   }));
 
-  it('should not continue to display hints after after a correct answer is' +
-     'submitted', fakeAsync(() => {
-    // Initialize the service with two hints and a solution.
-    hasms.reset([firstHint, secondHint], solution);
+  it('should correctly show release solution and show tooltip', fakeAsync(() => {
+    hasms.solutionDiscovered = false;
+    let mockSetTimeout = setTimeout(() => {});
+    hasms.solutionTooltipTimeout = mockSetTimeout;
+    hasms.reset([], solution);
 
-    expect(hasms.isHintViewable(0)).toBe(false);
-    expect(hasms.isHintViewable(1)).toBe(false);
     expect(hasms.isSolutionViewable()).toBe(false);
-    expect(hasms.isHintConsumed(0)).toBe(false);
-    expect(hasms.isHintConsumed(1)).toBe(false);
+    expect(hasms.isSolutionTooltipOpen()).toBe(false);
 
-    tick(WAIT_FOR_FIRST_HINT_MSEC);
+    hasms.releaseSolution();
 
-    expect(hasms.isHintViewable(0)).toBe(true);
-    expect(hasms.isHintViewable(1)).toBe(false);
-    expect(hasms.isSolutionViewable()).toBe(false);
-    expect(hasms.displayHint(0)?.html).toBe('one');
-    expect(hasms.isHintConsumed(0)).toBe(true);
-    expect(hasms.isHintConsumed(1)).toBe(false);
-
-    mockNewCardAvailableEmitter.emit();
-    tick(WAIT_FOR_SUBSEQUENT_HINTS_MSEC);
-
-    expect(hasms.isHintViewable(0)).toBe(true);
-    expect(hasms.isHintViewable(1)).toBe(false);
-    expect(hasms.displayHint(0)?.html).toBe('one');
-    expect(hasms.displayHint(1)).toBeNull();
-    expect(hasms.isHintConsumed(0)).toBe(true);
-    expect(hasms.isHintConsumed(1)).toBe(false);
-    expect(hasms.isSolutionViewable()).toBe(false);
+    tick(1000);
+    expect(hasms.solutionReleased).toBe(true);
+    expect(hasms.solutionDiscovered).toBe(true);
+    expect(hasms.solutionTooltipIsOpen).toBe(true);
   }));
+
+  it(
+    'should not continue to display hints after after a correct answer is' +
+      'submitted',
+    fakeAsync(() => {
+      // Initialize the service with two hints and a solution.
+      hasms.reset([firstHint, secondHint], solution);
+
+      expect(hasms.isHintViewable(0)).toBe(false);
+      expect(hasms.isHintViewable(1)).toBe(false);
+      expect(hasms.isSolutionViewable()).toBe(false);
+      expect(hasms.isHintConsumed(0)).toBe(false);
+      expect(hasms.isHintConsumed(1)).toBe(false);
+
+      tick(WAIT_FOR_FIRST_HINT_MSEC);
+
+      expect(hasms.isHintViewable(0)).toBe(true);
+      expect(hasms.isHintViewable(1)).toBe(false);
+      expect(hasms.isSolutionViewable()).toBe(false);
+      expect(hasms.displayHint(0)?.html).toBe('one');
+      expect(hasms.isHintConsumed(0)).toBe(true);
+      expect(hasms.isHintConsumed(1)).toBe(false);
+
+      mockNewCardAvailableEmitter.emit();
+      tick(WAIT_FOR_SUBSEQUENT_HINTS_MSEC);
+
+      expect(hasms.isHintViewable(0)).toBe(true);
+      expect(hasms.isHintViewable(1)).toBe(false);
+      expect(hasms.displayHint(0)?.html).toBe('one');
+      expect(hasms.displayHint(1)).toBeNull();
+      expect(hasms.isHintConsumed(0)).toBe(true);
+      expect(hasms.isHintConsumed(1)).toBe(false);
+      expect(hasms.isSolutionViewable()).toBe(false);
+    })
+  );
 
   it('should show the correct number of hints', () => {
     // Initialize the service with two hints and a solution.
@@ -160,13 +176,13 @@ describe('HintsAndSolutionManager service', () => {
 
   it('should correctly retrieve the solution', fakeAsync(() => {
     // Initialize the service with two hints and a solution.
-    hasms.reset([firstHint, secondHint], solution);
-
-    tick(WAIT_FOR_FIRST_HINT_MSEC);
-
+    hasms.reset([], solution);
+    let mockSetTimeout = setTimeout(() => {});
+    hasms.solutionTooltipTimeout = mockSetTimeout;
     expect(hasms.isSolutionConsumed()).toBe(false);
     expect(hasms.displaySolution()?.correctAnswer).toBe(
-      'This is a correct answer!');
+      'This is a correct answer!'
+    );
     expect(hasms.isSolutionConsumed()).toBe(true);
   }));
 
@@ -208,57 +224,52 @@ describe('HintsAndSolutionManager service', () => {
     expect(hasms.displayHint(0)?.html).toBe('one');
     expect(hasms.displayHint(1)?.html).toBe('two');
     expect(hasms.displayHint(2)?.html).toBe('three');
-
-    tick(WAIT_FOR_SUBSEQUENT_HINTS_MSEC);
-
-    expect(hasms.isSolutionViewable()).toBe(true);
   }));
 
-  it('should reset the service when timeouts was called before',
-    fakeAsync(() => {
-      // Initialize the service with two hints and a solution.
-      hasms.reset([firstHint, secondHint], solution);
+  it('should reset the service when timeouts was called before', fakeAsync(() => {
+    // Initialize the service with two hints and a solution.
+    hasms.reset([firstHint, secondHint], solution);
 
-      // Set timeout.
-      tick(WAIT_FOR_FIRST_HINT_MSEC);
-      // Set tooltipTimeout.
-      tick(WAIT_FOR_TOOLTIP_TO_BE_SHOWN_MSEC);
+    // Set timeout.
+    tick(WAIT_FOR_FIRST_HINT_MSEC);
+    // Set tooltipTimeout.
+    tick(WAIT_FOR_TOOLTIP_TO_BE_SHOWN_MSEC);
+    tick(2000);
 
-      // Reset service to 0 solutions so releaseHint timeout won't be called.
-      hasms.reset([], solution);
+    // Reset service to 0 hints so releaseHint timeout won't be called.
+    hasms.reset([], solution);
 
-      // There is no timeout to flush. timeout and tooltipTimeout variables
-      // were cleaned.
-      expect(flush()).toBe(0);
-    }));
+    // There is no timeout to flush. timeout and tooltipTimeout variables
+    // were cleaned.
+    expect(flush()).toBe(0);
+  }));
 
-  it('should not record the wrong answer when a hint is already released',
-    fakeAsync(() => {
-      // Initialize the service with two hints and a solution.
-      hasms.reset([firstHint, secondHint], solution);
+  it('should not record the wrong answer when a hint is already released', fakeAsync(() => {
+    // Initialize the service with two hints and a solution.
+    hasms.reset([firstHint, secondHint], solution);
 
-      expect(hasms.isHintTooltipOpen()).toBe(false);
-      expect(hasms.isHintViewable(0)).toBe(false);
-      expect(hasms.isHintViewable(1)).toBe(false);
-      expect(hasms.isSolutionViewable()).toBe(false);
+    expect(hasms.isHintTooltipOpen()).toBe(false);
+    expect(hasms.isHintViewable(0)).toBe(false);
+    expect(hasms.isHintViewable(1)).toBe(false);
+    expect(hasms.isSolutionViewable()).toBe(false);
 
-      tick(WAIT_FOR_FIRST_HINT_MSEC);
-      tick(WAIT_FOR_TOOLTIP_TO_BE_SHOWN_MSEC);
+    tick(WAIT_FOR_FIRST_HINT_MSEC);
+    tick(WAIT_FOR_TOOLTIP_TO_BE_SHOWN_MSEC);
 
-      expect(hasms.isHintTooltipOpen()).toBe(true);
-      // It only changes hint visibility.
-      expect(hasms.isHintViewable(0)).toBe(true);
-      expect(hasms.isHintViewable(1)).toBe(false);
-      expect(hasms.isHintViewable(2)).toBe(false);
-      expect(hasms.isSolutionViewable()).toBe(false);
+    expect(hasms.isHintTooltipOpen()).toBe(true);
+    // It only changes hint visibility.
+    expect(hasms.isHintViewable(0)).toBe(true);
+    expect(hasms.isHintViewable(1)).toBe(false);
+    expect(hasms.isHintViewable(2)).toBe(false);
+    expect(hasms.isSolutionViewable()).toBe(false);
 
-      hasms.recordWrongAnswer();
+    hasms.recordWrongAnswer();
 
-      expect(hasms.isHintTooltipOpen()).toBe(true);
-      expect(hasms.isHintViewable(0)).toBe(true);
-      expect(hasms.isHintViewable(1)).toBe(false);
-      expect(hasms.isSolutionViewable()).toBe(false);
-    }));
+    expect(hasms.isHintTooltipOpen()).toBe(true);
+    expect(hasms.isHintViewable(0)).toBe(true);
+    expect(hasms.isHintViewable(1)).toBe(false);
+    expect(hasms.isSolutionViewable()).toBe(false);
+  }));
 
   it('should record the wrong answer twice', fakeAsync(() => {
     // Initialize the service with two hints and a solution.
@@ -286,16 +297,47 @@ describe('HintsAndSolutionManager service', () => {
     expect(hasms.isHintViewable(0)).toBe(true);
     expect(hasms.isHintViewable(1)).toBe(true);
     expect(hasms.isSolutionViewable()).toBe(false);
+
+    hasms.displayHint(1);
+    hasms.recordWrongAnswer();
+    hasms.recordWrongAnswer();
+    hasms.recordWrongAnswer();
+    expect(hasms.wrongAnswersAfterHintsExhausted).toEqual(3);
   }));
+
+  it('should ensure that solution is released', () => {
+    expect(hasms.solutionReleased).toEqual(false);
+    hasms.releaseSolution();
+    expect(hasms.solutionReleased).toEqual(true);
+  });
 
   it('should send the solution viewed event emitter', () => {
     let mockSolutionViewedEventEmitter = new EventEmitter();
     expect(hasms.onSolutionViewedEventEmitter).toEqual(
-      mockSolutionViewedEventEmitter);
+      mockSolutionViewedEventEmitter
+    );
   });
 
   it('should fetch EventEmitter for consumption of hint', () => {
     let mockHintConsumedEvent = new EventEmitter();
     expect(hasms.onHintConsumed).toEqual(mockHintConsumedEvent);
+  });
+
+  it('should fetch EventEmitter for exhaustion of hints', () => {
+    let mockOnHintsExhausted = new EventEmitter();
+    expect(hasms.onHintsExhausted).toEqual(mockOnHintsExhausted);
+  });
+
+  it('should send the learner really stuck event emitter', () => {
+    let mockOnLearnerGetsReallyStuck = new EventEmitter();
+    expect(hasms.onLearnerReallyStuck).toEqual(mockOnLearnerGetsReallyStuck);
+  });
+
+  it('should throw if solution is absent and asked to display solution', () => {
+    hasms.reset([], null);
+
+    expect(() => hasms.displaySolution()).toThrowError(
+      'Solution must be not null to be displayed.'
+    );
   });
 });

@@ -14,22 +14,36 @@
 
 """Image validation service."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-import imghdr
+import base64
 
-from core import feconf
-from core import utils
+from core import feconf, utils
 from core.domain import html_validation_service
 
+import filetype
+from typing import Optional, Union
 
-def validate_image_and_filename(raw_image, filename):
+HUNDRED_KB_IN_BYTES = 100 * 1024
+ONE_MB_IN_BYTES = 1 * 1024 * 1024
+ENTITY_TYPES_WITH_MAX_SIZE_ONE_MB = [
+    feconf.ENTITY_TYPE_BLOG_POST,
+    feconf.ENTITY_TYPE_CLASSROOM,
+    feconf.ENTITY_TYPE_FEEDBACK,
+]
+
+
+def validate_image_and_filename(
+    raw_image: Union[str, bytes],
+    filename: str,
+    entity_type: Optional[str] = None,
+) -> str:
     """Validates the image data and its filename.
 
     Args:
-        raw_image: str. The image content.
+        raw_image: Union[str, bytes]. The image content.
         filename: str. The filename for the image.
+        entity_type: str. The type of the entity.
 
     Returns:
         str. The file format of the image.
@@ -38,36 +52,59 @@ def validate_image_and_filename(raw_image, filename):
         ValidationError. Image or filename supplied fails one of the
             validation checks.
     """
-    hundred_kb_in_bytes = 100 * 1024
+    if entity_type in ENTITY_TYPES_WITH_MAX_SIZE_ONE_MB:
+        max_file_size = ONE_MB_IN_BYTES
+    else:
+        max_file_size = HUNDRED_KB_IN_BYTES
 
     if not raw_image:
         raise utils.ValidationError('No image supplied')
-    if len(raw_image) > hundred_kb_in_bytes:
+    if isinstance(raw_image, str) and utils.is_base64_encoded(raw_image):
+        raw_image = base64.decodebytes(raw_image.encode('utf-8'))
+
+    if len(raw_image) > max_file_size:
         raise utils.ValidationError(
-            'Image exceeds file size limit of 100 KB.')
+            'Image exceeds file size limit of %i KB.' % (max_file_size / 1024)
+        )
     allowed_formats = ', '.join(
-        list(feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS.keys()))
+        list(feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS.keys())
+    )
+    # Ruling out the possibility of str for mypy type checking.
+    assert isinstance(raw_image, bytes)
     if html_validation_service.is_parsable_as_xml(raw_image):
         file_format = 'svg'
         invalid_tags, invalid_attrs = (
-            html_validation_service.get_invalid_svg_tags_and_attrs(raw_image))
+            html_validation_service.get_invalid_svg_tags_and_attrs(raw_image)
+        )
         if invalid_tags or invalid_attrs:
             invalid_tags_message = (
-                'tags: %s' % invalid_tags if invalid_tags else '')
+                'tags: %s' % invalid_tags if invalid_tags else ''
+            )
             invalid_attrs_message = (
-                'attributes: %s' % invalid_attrs if invalid_attrs else '')
+                'attributes: %s' % invalid_attrs if invalid_attrs else ''
+            )
             raise utils.ValidationError(
-                'Unsupported tags/attributes found in the SVG:\n%s\n%s' % (
-                    invalid_tags_message, invalid_attrs_message))
+                'Unsupported tags/attributes found in the SVG:\n%s\n%s'
+                % (invalid_tags_message, invalid_attrs_message)
+            )
         if not html_validation_service.does_svg_tag_contains_xmlns_attribute(
-                raw_image):
+            raw_image
+        ):
             raise utils.ValidationError(
-                'The svg tag does not contains the \'xmlns\' attribute.')
+                'The svg tag does not contains the \'xmlns\' attribute.'
+            )
     else:
         # Verify that the data is recognized as an image.
-        file_format = imghdr.what(None, h=raw_image)
-        if file_format not in feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS:
+        file_details = filetype.guess(raw_image)
+        if not file_details:
             raise utils.ValidationError('Image not recognized')
+        if (
+            file_details.extension
+            not in feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS
+        ):
+            raise utils.ValidationError('Image uses unsupported format')
+
+        file_format = file_details.extension
 
     # Verify that the file type matches the supplied extension.
     if not filename:
@@ -77,18 +114,23 @@ def validate_image_and_filename(raw_image, filename):
     if '/' in filename or '..' in filename:
         raise utils.ValidationError(
             'Filenames should not include slashes (/) or consecutive '
-            'dot characters.')
+            'dot characters.'
+        )
     if '.' not in filename:
         raise utils.ValidationError(
             'Image filename with no extension: it should have '
-            'one of the following extensions: %s.' % allowed_formats)
+            'one of the following extensions: %s.' % allowed_formats
+        )
 
     dot_index = filename.rfind('.')
-    extension = filename[dot_index + 1:].lower()
-    if (extension not in
-            feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS[file_format]):
+    extension = filename[dot_index + 1 :].lower()
+    if (
+        extension
+        not in feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS[file_format]
+    ):
         raise utils.ValidationError(
-            'Expected a filename ending in .%s, received %s' %
-            (file_format, filename))
+            'Expected a filename ending in .%s, received %s'
+            % (file_format, filename)
+        )
 
     return file_format

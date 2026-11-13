@@ -16,18 +16,63 @@
  * @fileoverview Component for warning and alerts.
  */
 
-import { Component } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AlertsService, Message, Warning } from 'services/alerts.service';
+import {Component, OnInit, OnDestroy} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {Subscription} from 'rxjs';
+import {AlertsService, Message, Warning} from 'services/alerts.service';
+import {ErrorModalComponent} from 'components/common-layout-directives/common-elements/error-modal.component';
 
 @Component({
   selector: 'oppia-warnings-and-alerts',
-  templateUrl: './warnings-and-alerts.component.html'
+  templateUrl: './warnings-and-alerts.component.html',
+  styleUrls: ['./warnings-and-alerts.component.css'],
 })
-export class WarningsAndAlertsComponent {
+export class WarningsAndAlertsComponent implements OnInit, OnDestroy {
+  private directiveSubscriptions = new Subscription();
+  isErrorModalOpen = false;
+
   constructor(
-    private alertsService: AlertsService
+    private alertsService: AlertsService,
+    private modalService: NgbModal
   ) {}
+
+  ngOnInit(): void {
+    if (this.alertsService.warnings.length > 0) {
+      this.openErrorModal(this.alertsService.warnings[0].content);
+    }
+
+    this.directiveSubscriptions.add(
+      this.alertsService.onWarningAdded.subscribe((warningMessage: string) => {
+        this.openErrorModal(warningMessage);
+      })
+    );
+  }
+
+  openErrorModal(warningMessage: string): void {
+    if (this.isErrorModalOpen) {
+      return;
+    }
+    this.isErrorModalOpen = true;
+    const modalRef = this.modalService.open(ErrorModalComponent, {
+      backdropClass: 'oppia-error-modal-backdrop',
+      windowClass: 'oppia-error-modal-window',
+      backdrop: 'static',
+    });
+    modalRef.componentInstance.errorMessage = warningMessage;
+
+    const handleModalFinished = () => {
+      this.isErrorModalOpen = false;
+      if (this.alertsService.warnings.length > 0) {
+        this.alertsService.deleteWarning(this.alertsService.warnings[0]);
+      }
+
+      if (this.alertsService.warnings.length > 0) {
+        this.openErrorModal(this.alertsService.warnings[0].content);
+      }
+    };
+
+    modalRef.result.then(handleModalFinished, handleModalFinished);
+  }
 
   getWarnings(): Warning[] {
     return this.alertsService.warnings;
@@ -40,9 +85,8 @@ export class WarningsAndAlertsComponent {
   getMessages(): Message[] {
     return this.alertsService.messages;
   }
-}
 
-angular.module('oppia').directive('oppiaWarningsAndAlerts',
-  downgradeComponent({
-    component: WarningsAndAlertsComponent
-  }) as angular.IDirectiveFactory);
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

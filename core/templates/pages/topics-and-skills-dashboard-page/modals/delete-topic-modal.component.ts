@@ -16,20 +16,22 @@
  * @fileoverview Component for Delete Topic Modal.
  */
 
-import { Component } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ConfirmOrCancelModal } from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
+import {Component} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {ConfirmOrCancelModal} from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
 
 @Component({
   selector: 'oppia-delete-topic-modal',
-  templateUrl: './delete-topic-modal.component.html'
+  templateUrl: './delete-topic-modal.component.html',
+  styleUrls: ['./delete-topic-modal.component.css'],
 })
 export class DeleteTopicModalComponent extends ConfirmOrCancelModal {
-  topicName: string;
+  // This property is initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  topicName!: string;
 
-  constructor(
-    private ngbActiveModal: NgbActiveModal
-  ) {
+  constructor(private ngbActiveModal: NgbActiveModal) {
     super(ngbActiveModal);
   }
 }

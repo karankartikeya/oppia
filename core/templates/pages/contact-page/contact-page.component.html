@@ -1,63 +1,50 @@
 <div class="oppia-static-header">
-  <h1 [innerHTML]="'I18N_CONTACT_PAGE_HEADING' | translate"></h1>
+  <h1 tabindex="0" [innerHTML]="'I18N_CONTACT_PAGE_HEADING' | translate"></h1>
 </div>
 <background-banner></background-banner>
-<div class="oppia-page-card oppia-static-content oppia-static-content-below-banner">
-  <div class="oppia-static-card-content oppia-static-card-content-narrow protractor-test-contact-page">
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_1' | translate"></p>
+<div class="oppia-page-card oppia-static-full-content oppia-static-content-contact-page-below-banner">
+  <div class="oppia-static-card-full-content oppia-static-card-content-full-wide e2e-test-contact-page">
+    <h2 class="e2e-test-contact-subheading" [innerHTML]="'I18N_CONTACT_PAGE_GREETING_HEADING' | translate" tabindex="0"></h2>
 
-    <h2 class="oppia-contact-h2"
-        [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_2_HEADING' | translate">
-    </h2>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_2' | translate"></p>
-
-    <h2 class="oppia-contact-h2"
-        [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_3_HEADING' | translate">
-    </h2>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_3' | translate"></p>
-
-    <h2 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_4_HEADING' | translate"></h2>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_4' | translate"></p>
-
-    <a name="testing"></a>
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_5_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_5' | translate"></p>
-
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_6' | translate"></p>
-
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_7_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_7' | translate"></p>
-
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_8' | translate"></p>
-
-    <a name="suggest"></a>
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_9_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_9' | translate"></p>
-
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_10_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_10' | translate"></p>
-
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_11_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_11' | translate"></p>
-
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_12' | translate"></p>
-
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_13_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_13' | translate"></p>
-
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_14_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_14' | translate"></p>
-
-    <h3 [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_15_HEADING' | translate"></h3>
-    <p [innerHTML]="'I18N_CONTACT_PAGE_PARAGRAPH_15' | translate"></p>
+    <div class="oppia-contact-page flex">
+      <div class="oppia-contact-page-content e2e-test-contact-page-content" tabindex="0">
+        <img id="donate" src="assets/images/contact_page/Donate img.svg" alt="">
+        <h2 [innerHTML]="'I18N_CONTACT_PAGE_DONATE_HEADING' | translate"></h2>
+        <p [innerHTML]="'I18N_CONTACT_PAGE_DONATE_PARAGRAPH' | translate"></p>
+        <oppia-primary-button
+          buttonHref="/donate"
+          [customClasses]="['contact-page-button']"
+          buttonText="{{ 'I18N_CONTACT_PAGE_DONATE_TODAY_BUTTON' | translate }}">
+        </oppia-primary-button>
+      </div>
+      <div class="oppia-contact-page-content e2e-test-contact-page-content" tabindex="0">
+        <img id="Partner" src="assets/images/contact_page/Partner img.svg" alt="">
+        <h2 [innerHTML]="'I18N_CONTACT_PAGE_PARTNER_HEADING' | translate"></h2>
+        <p [innerHTML]="'I18N_CONTACT_PAGE_PARTNER_PARAGRAPH' | translate"></p>
+        <oppia-primary-button
+          buttonHref="/partnerships"
+          [customClasses]="['contact-page-button']"
+          buttonText="{{ 'I18N_CONTACT_PAGE_BECOME_A_PARTNER_BUTTON' | translate }}">
+        </oppia-primary-button>
+      </div>
+      <div class="oppia-contact-page-content e2e-test-contact-page-content" tabindex="0">
+        <img id="volunteer" src="assets/images/contact_page/Volunteer img.svg" alt="">
+        <h2 [innerHTML]="'I18N_CONTACT_PAGE_VOLUNTEER_HEADING' | translate"></h2>
+        <p [innerHTML]="'I18N_CONTACT_PAGE_VOLUNTEER_PARAGRAPH' | translate"></p>
+        <oppia-primary-button
+          buttonHref="/volunteer"
+          [customClasses]="['contact-page-button']"
+          buttonText="{{ 'I18N_CONTACT_PAGE_BECOME_A_VOLUNTEER_BUTTON' | translate }}">
+        </oppia-primary-button>
+      </div>
+      <div class="oppia-contact-page-content e2e-test-contact-page-content" tabindex="0">
+        <img id="other_inquiries" src="assets/images/contact_page/Other inquiries img.svg" alt="">
+        <h2 [innerHTML]="'I18N_CONTACT_PAGE_OTHER_INQUIRIES_HEADING' | translate"></h2>
+        <p [innerHTML]="'I18N_CONTACT_PAGE_OTHER_INQUIRIES_PARAGRAPH_1' | translate"></p>
+        <p [innerHTML]="'I18N_CONTACT_PAGE_OTHER_INQUIRIES_PARAGRAPH_2' | translate"></p>
+      </div>
+    </div>
 
   </div>
 </div>
-<div class="oppia-footer-padding-below-banner"></div>
-<style>
-  h2.oppia-contact-h2 {
-    font-size: 1.17em;
-    font-weight: bold;
-    text-align: left;
-  }
-</style>
+<div class="oppia-footer-padding-contact-page-below-banner"></div>

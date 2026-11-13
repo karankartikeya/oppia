@@ -16,14 +16,15 @@
  * @fileoverview Unit tests for Merge Skill Modal.
  */
 
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { FormsModule } from '@angular/forms';
-import { MatCardModule } from '@angular/material/card';
-import { MatCheckboxModule } from '@angular/material/checkbox';
-import { MatRadioModule } from '@angular/material/radio';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { MergeSkillModalComponent } from './merge-skill-modal.component';
-import { SkillSelectorComponent } from './skill-selector.component';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {FormsModule} from '@angular/forms';
+import {MatCardModule} from '@angular/material/card';
+import {MatCheckboxModule} from '@angular/material/checkbox';
+import {MatRadioModule} from '@angular/material/radio';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {MergeSkillModalComponent} from './merge-skill-modal.component';
+import {SkillSelectorComponent} from './skill-selector.component';
 
 describe('Merge Skill Modal', () => {
   let fixture: ComponentFixture<MergeSkillModalComponent>;
@@ -36,23 +37,18 @@ describe('Merge Skill Modal', () => {
         MatCardModule,
         MatRadioModule,
         MatCheckboxModule,
-        FormsModule
+        FormsModule,
+        HttpClientTestingModule,
       ],
-      declarations: [
-        MergeSkillModalComponent,
-        SkillSelectorComponent
-      ],
-      providers: [
-        NgbActiveModal
-      ]
+      declarations: [MergeSkillModalComponent, SkillSelectorComponent],
+      providers: [NgbActiveModal],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(MergeSkillModalComponent);
     componentInstance = fixture.componentInstance;
-    ngbActiveModal = (TestBed.inject(NgbActiveModal) as unknown) as
-      jasmine.SpyObj<NgbActiveModal>;
+    ngbActiveModal = TestBed.inject(NgbActiveModal);
   });
 
   it('should be defined', () => {
@@ -64,12 +60,19 @@ describe('Merge Skill Modal', () => {
     componentInstance.confirm();
     expect(ngbActiveModal.close).toHaveBeenCalledWith({
       skill: componentInstance.skill,
-      supersedingSkillId: componentInstance.selectedSkillId
+      supersedingSkillId: componentInstance.selectedSkillId,
     });
   });
 
   it('should set selected skill id', () => {
     componentInstance.setSelectedSkillId('skill_id');
     expect(componentInstance.selectedSkillId).toEqual('skill_id');
+  });
+
+  it('should get empty grouped skill summaries', () => {
+    expect(componentInstance.groupedSkillSummaries).toEqual({
+      current: [],
+      others: [],
+    });
   });
 });

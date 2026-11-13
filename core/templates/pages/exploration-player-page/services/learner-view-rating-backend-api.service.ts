@@ -17,16 +17,16 @@
  * in the learner view.
  */
 
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { ExplorationEngineService } from './exploration-engine.service';
+import {HttpClient} from '@angular/common/http';
+import {Injectable} from '@angular/core';
+import {PageContextService} from 'services/page-context.service';
 
 interface LearnerViewRatingBackendResponse {
-  'user_rating': number
+  user_rating: number;
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class LearnerViewRatingBackendApiService {
   explorationId: string;
@@ -34,22 +34,25 @@ export class LearnerViewRatingBackendApiService {
 
   constructor(
     private httpClient: HttpClient,
-    private explorationEngineService: ExplorationEngineService
+    private pageContextService: PageContextService
   ) {
-    this.explorationId = this.explorationEngineService.getExplorationId();
+    this.explorationId = this.pageContextService.getExplorationId();
     this.ratingsUrl = '/explorehandler/rating/' + this.explorationId;
   }
 
   async getUserRatingAsync(): Promise<LearnerViewRatingBackendResponse> {
-    return this.httpClient.get<LearnerViewRatingBackendResponse>(
-      this.ratingsUrl).toPromise();
+    return this.httpClient
+      .get<LearnerViewRatingBackendResponse>(this.ratingsUrl)
+      .toPromise();
   }
 
-  async submitUserRatingAsync(ratingValue: number):
-  Promise<LearnerViewRatingBackendResponse> {
-    return this.httpClient.put<LearnerViewRatingBackendResponse>(
-      this.ratingsUrl, {
-        user_rating: ratingValue
-      }).toPromise();
+  async submitUserRatingAsync(
+    ratingValue: number
+  ): Promise<LearnerViewRatingBackendResponse> {
+    return this.httpClient
+      .put<LearnerViewRatingBackendResponse>(this.ratingsUrl, {
+        user_rating: ratingValue,
+      })
+      .toPromise();
   }
 }

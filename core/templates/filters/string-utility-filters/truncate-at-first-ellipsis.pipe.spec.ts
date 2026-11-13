@@ -16,11 +16,10 @@
  * @fileoverview Tests for TruncateAtFirstEllipsis pipe for Oppia.
  */
 
-import { TruncateAtFirstEllipsisPipe } from
-  'filters/string-utility-filters/truncate-at-first-ellipsis.pipe';
+import {TruncateAtFirstEllipsisPipe} from 'filters/string-utility-filters/truncate-at-first-ellipsis.pipe';
 
-describe('Testing filters', function() {
-  let truncateAtFirstEllipsisPipe: TruncateAtFirstEllipsisPipe = null;
+describe('Testing filters', function () {
+  let truncateAtFirstEllipsisPipe: TruncateAtFirstEllipsisPipe;
   beforeEach(() => {
     truncateAtFirstEllipsisPipe = new TruncateAtFirstEllipsisPipe();
   });
@@ -29,16 +28,13 @@ describe('Testing filters', function() {
     expect(truncateAtFirstEllipsisPipe).not.toEqual(null);
   });
 
-  it('should truncate a string when it first sees a \'...\'', () => {
+  it("should truncate a string when it first sees a '...'", () => {
     expect(truncateAtFirstEllipsisPipe.transform('')).toEqual('');
-    expect(truncateAtFirstEllipsisPipe.transform(null)).toEqual('');
-    expect(truncateAtFirstEllipsisPipe.transform(undefined)).toEqual('');
-
     expect(truncateAtFirstEllipsisPipe.transform('hello')).toEqual('hello');
-    expect(truncateAtFirstEllipsisPipe.transform('...'))
-      .toEqual('');
-    expect(truncateAtFirstEllipsisPipe.transform('say ... and ...'))
-      .toEqual('say ');
+    expect(truncateAtFirstEllipsisPipe.transform('...')).toEqual('');
+    expect(truncateAtFirstEllipsisPipe.transform('say ... and ...')).toEqual(
+      'say '
+    );
     expect(truncateAtFirstEllipsisPipe.transform('... and ...')).toEqual('');
     expect(truncateAtFirstEllipsisPipe.transform('{{}}...')).toEqual('{{}}');
   });

@@ -1,155 +1,154 @@
-<div class="donate-page">
-  <div class="oppia-page-card oppia-static-content protractor-test-donate-page">
-    <div class="oppia-donation-card-content-wide">
-      <div class="oppia-donate-options">
-        <div *ngIf="windowIsNarrow">
-          <h1 class="oppia-donate-h1"><span [innerHTML]="'I18N_DONATE_PAGE_TITLE' | translate"></span></h1>
+<div class="donate-page-container">
+  <div class="donate-page">
+    <div class="donate-content-container">
+      <div class="donate-content">
+        <div class="donate-content-1">
+          <picture>
+            <source type="image/webp" [srcset]="getStaticImageUrl('/donate/content-1-head.webp')">
+            <source type="image/png" [srcset]="getStaticImageUrl('/donate/content-1-head.png')">
+            <img [src]="getStaticImageUrl('/donate/content-1-head.png')" alt="Photo of a classroom with children">
+          </picture>
+          <div class="donate-content-padding">
+            <div class="donate-message-1 donate-message-1-border">
+              <p class="donate-heading-1">{{ 'I18N_DONATE_PAGE_CONTENT_HEADING_1' | translate }}</p>
+              <p class="donate-text-1">
+                <span class="donate-font-weight-700">{{
+                  'I18N_DONATE_PAGE_CONTENT_TEXT_1_BOLD' | translate
+                }}</span>
+                <span> {{ 'I18N_DONATE_PAGE_CONTENT_TEXT_1_NORMAL' | translate }} </span>
+              </p>
+            </div>
+            <div class="donate-message-1 donate-message-1-border" *ngFor="let donationValue of donationValues">
+              <p class="donate-heading-1 donate-font-green donate-font-weight-600">
+                {{
+                  'I18N_DONATE_PAGE_CONTENT_DONATION_AMOUNT'
+                    | translate : { amount: donationValue.amount }
+                }}
+              </p>
+              <p class="donate-text-1">
+                {{ donationValue.description | translate }}
+              </p>
+            </div>
+          </div>
         </div>
-        <div *ngIf="!windowIsNarrow">
-          <h1 class="oppia-donate-h1"><span [innerHTML]="'I18N_DONATE_PAGE_TITLE' | translate"></span></h1>
+        <div class="donate-content-2 e2e-test-dp-our-impact-section">
+          <picture>
+            <source type="image/webp" [srcset]="getStaticImageUrl('/donate/content-2-head.webp')">
+            <source type="image/png" [srcset]="getStaticImageUrl('/donate/content-2-head.png')">
+            <img [src]="getStaticImageUrl('/donate/content-2-head.png')" alt="Photo of a classroom with children">
+          </picture>
+          <div class="donate-content-padding">
+            <div class="donate-message-1">
+              <p class="donate-heading-1 donate-font-white donate-font-weight-600 e2e-test-donate-heading">
+                {{ 'I18N_DONATE_PAGE_CONTENT_HEADING_2' | translate }}
+              </p>
+              <p class="donate-text-1 donate-font-white">
+                {{ 'I18N_DONATE_PAGE_CONTENT_TEXT_2' | translate }}
+              </p>
+            </div>
+            <div class="donate-stats-container" *ngFor="let impactStatRow of impactStats; index as i">
+              <div class="donate-stat" *ngFor="let impactStat of impactStatRow">
+                <div>
+                  <div class="donate-stat-svg-container" [ngClass]="{'donate-stat-svg-container-sm': i > 0 }">
+                    <img [src]="getStaticImageUrl(impactStat.imageUrl)" *ngIf="impactStat.imageUrl !== null" loading="lazy" alt="Graphic for the statistic">
+                    <div *ngIf="impactStat.stat !== null">{{ impactStat.stat }}</div>
+                  </div>
+                  <p [ngClass]="{'donate-stat-text-sm': i > 0 , 'donate-stat-text-lg' : i !== 0}">{{ impactStat.text | translate }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="text-center">
-          <form ngNoForm action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
-            <input type="hidden" name="cmd" value="_s-xclick">
-            <input type="hidden" name="hosted_button_id" value="UWKTY87SYU766">
-            <button type="submit" class="btn oppia-donate-options-button protractor-test-paypal-donate-button" tabindex="0" (click)="onDonateThroughPayPal()">
-              PayPal
-            </button>
-          </form>
+        <div class="donate-content-1 no-border e2e-test-dp-our-network-section">
+          <div class="donate-content-padding">
+            <div class="donate-heading-1 donate-font-weight-600 e2e-test-dp-our-network-heading">
+              {{ 'I18N_DONATE_PAGE_CONTENT_HEADING_3' | translate }}
+            </div>
+            <p class="donate-text-1">
+              {{ 'I18N_DONATE_PAGE_CONTENT_TEXT_3' | translate }}
+            </p>
+            <div class="donate-highlights e2e-test-donate-highlights">
+              <p>{{ 'I18N_DONATE_PAGE_CONTENT_HIGHLIGHTS' | translate }}</p>
+              <div>
+                <div class="donate-hightlights-tile" *ngFor="let highlight of highlights">
+                  <picture>
+                    <source type="image/webp" [srcset]="getStaticImageUrl(highlight.imageUrl + '.webp')">
+                    <source type="image/png" [srcset]="getStaticImageUrl(highlight.imageUrl + '.png')">
+                    <img class="highlight-tile-img" [src]="getStaticImageUrl(highlight.imageUrl + '.png')" loading="lazy" alt="Photo of the hightlight's partners">
+                  </picture>
+                  <div>
+                    <p>{{ highlight.heading | translate }}</p>
+                    <p>{{ highlight.text | translate }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="donate-learners-section e2e-test-donate-our-learners">
+              <p> {{ 'I18N_DONATE_PAGE_CONTENT_HEADING_4' | translate }} </p>
+              <div class="donate-learner-container e2e-donate-page-learner-carousel">
+                <button class="donate-learner-carousel-prev-btn e2e-test-donate-page-learner-carousel-prev-btn"
+                        (click)="moveLearnerCarouselToPreviousSlide()">
+                  <i class="donate-learner-testimonial-carousel-prev-icon fas"
+                      [ngClass]="{'fa-chevron-left': !isLanguageRTL(), 'fa-chevron-right': isLanguageRTL()}">
+                  </i>
+                  <span class="visually-hidden">Previous</span>
+                </button>
+                <ngb-carousel #learnerCarousel [interval]="0" [showNavigationArrows]="false" [animation]="false">
+                  <ng-template ngbSlide *ngFor="let learner of learners">
+                    <div class="donate-learners-tile">
+                      <picture>
+                        <source class="donate-learners-img" type="image/webp" [srcset]="getStaticImageUrl(learner.webpUrl)">
+                        <source class="donate-learners-img" type="image/png" [srcset]="getStaticImageUrl(learner.imageUrl)">
+                        <img class="donate-learners-img" [src]="getStaticImageUrl(learner.imageUrl)" loading="lazy" alt="Photo of learner">
+                      </picture>
+                    </div>
+                    <div class="donate-learners-content">
+                      <p class="donate-learners-country">{{ learner.country | translate }}</p>
+                      <div class="donate-learners-text">
+                        <p>{{ learner.text | translate }}</p>
+                      </div>
+                      <p class="donate-learners-name">- {{ learner.name | translate }} </p>
+                    </div>
+                  </ng-template>
+                </ngb-carousel>
+                <button class="donate-learner-carousel-next-btn e2e-test-donate-page-learner-carousel-next-btn"
+                        (click)="moveLearnerCarouselToNextSlide()">
+                  <i class="donate-learner-testimonial-carousel-next-icon fas"
+                    [ngClass]="{'fa-chevron-right': !isLanguageRTL(), 'fa-chevron-left': isLanguageRTL()}">
+                  </i>
+                  <span class="visually-hidden">Next</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="text-center">
-          <form ngNoForm action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
-            <input type="hidden" name="cmd" value="_s-xclick">
-            <input type="hidden" name="hosted_button_id" value="UWKTY87SYU766">
-            <button class="btn oppia-donate-options-button protractor-test-credit-card-donate-button" tabindex="0" (click)="onDonateThroughPayPal()">
-              Credit Card
-            </button>
-          </form>
-        </div>
-        <div class="text-center">
-          <a (click)="onDonateThroughAmazon()" class="btn oppia-donate-options-button" tabindex="0">Amazon Smile</a>
-        </div>
-        <h2 class="oppia-gift-funds-text">
-          <span [innerHTML]="'I18N_DONATE_PAGE_IMAGE_TITLE' | translate"></span>
-        </h2>
-        <div class="oppia-donate-img-container text-center">
-          <img [src]="donateImgUrl" alt="Server costs, student outreach, marketing">
+        <div class="donate-content-1">
+          <div class="donate-content-padding donate-today-content">
+            <p class="e2e-test-ready-to-donate-title">
+              {{ 'I18N_DONATE_PAGE_CONTENT_DONATE_NOW_HEADING_1' | translate }}
+            </p>
+            <p>{{ 'I18N_DONATE_PAGE_CONTENT_DONATE_NOW_HEADING_2' | translate }}</p>
+            <p>{{ 'I18N_DONATE_PAGE_CONTENT_DONATE_NOW_CONTENT_1' | translate }}</p>
+            <p>{{ 'I18N_DONATE_PAGE_CONTENT_DONATE_NOW_CONTENT_2' | translate }}</p>
+          </div>
+          <picture>
+            <source type="image/webp" [srcset]="getStaticImageUrl('/donate/donate-today.webp')">
+            <source type="image/png" [srcset]="getStaticImageUrl('/donate/donate-today.png')">
+            <img [src]="getStaticImageUrl('/donate/donate-today.png')" alt="Photo of Oppia's learners" loading="lazy">
+          </picture>
         </div>
       </div>
-      <div class="oppia-donate-info">
-        <div class="position-relative oppia-meet-contributors-iframe-container">
-          <iframe title="Meet Oppia's Contributors"
-                  width="100%"
-                  height="100%"
-                  src="https://www.youtube.com/embed/OConyxG7HaM?rel=0&cc_lang_pref=en&cc_load_policy=1"
-                  frameborder="0"
-                  allowfullscreen
-                  class="position-absolute w-100 h-100 oppia-meet-contributors-iframe">
-          </iframe>
-        </div>
-        <h3 class="oppia-donate-h3">
-          <em>
-            <span [innerHTML]="'I18N_DONATE_PAGE_VIDEO_SUBTITLE' | translate"></span>
-          </em>
-        </h3>
-        <div class="oppia-vision-text-container">
-          <p class="oppia-vision-text">
-            <span [innerHTML]="'I18N_DONATE_PAGE_VISION_TEXT_ONE' | translate"></span>
-          </p>
-          <p class="oppia-vision-text">
-            <span [innerHTML]="'I18N_DONATE_PAGE_VISION_TEXT_TWO' | translate"></span>
-          </p>
+    </div>
+    <button class="donate-modal-button" (click)="openDonationBoxModal()">
+      <img [src]="getStaticImageUrl('/donate/donate-button-heart.svg')" alt="Graphic of a white heart">
+      <span>{{ 'I18N_DONATE_PAGE_BREADCRUMB' | translate }}</span>
+    </button>
+    <div class="donation-box-container">
+      <div class="donation-box">
+        <div class="donation-box-iframe">
+          <donation-box></donation-box>
         </div>
       </div>
-
     </div>
   </div>
 </div>
-<style>
-  h1.oppia-donate-h1 {
-    color: #fff;
-    font-size: 1.5em;
-    line-height: 1.7em;
-    margin-top: 60px;
-    text-align: center;
-  }
-  h3.oppia-donate-h3 {
-    font-size: .80em;
-    font-weight: normal;
-    margin: 2.33em 0;
-    text-align: center;
-  }
-  .donate-page .oppia-donation-card-content-wide {
-    margin: 40px auto 80px;
-    min-height: 670px;
-    overflow: auto;
-  }
-  .donate-page .oppia-donate-options {
-    background-color: #009688;
-    display: block;
-    float: right;
-    font-family: "Capriola", "Roboto", Arial, sans-serif;
-    padding: 10px 10px 35px 10px;
-    width: 340px;
-  }
-  .donate-page .btn.oppia-donate-options-button {
-    background-color: #00645c;
-    border-radius: 4px;
-    color: rgba(255,255,255,1.0);
-    font-family: "Roboto", Arial, sans-serif;
-    font-size: 16px;
-    font-weight: 500;
-    height: 40px;
-    letter-spacing: 0.7px;
-    margin: 10px auto;
-    width: 180px;
-  }
-  .donate-page .btn.oppia-donate-options-button:hover,
-  .donate-page .btn.oppia-donate-options-button:focus {
-    background-color: #3d9991;
-    color: rgba(255,255,255,1);
-  }
-  .donate-page .oppia-donate-info {
-    float: left;
-    padding-bottom: 30px;
-    width: calc(100% - 340px);
-  }
-  .donate-page .oppia-gift-funds-text {
-    color: #fff;
-    font-size: 24px;
-    margin-bottom: 20px;
-    margin-top: 20px;
-  }
-  .donate-page .oppia-donate-img-container {
-    margin-bottom: 16px;
-  }
-  .donate-page .oppia-meet-contributors-iframe-container {
-    height: 0;
-    margin: 60px auto 0 auto;
-    padding-bottom: 56.25%;
-    width: 70%;
-  }
-  .donate-page .oppia-meet-contributors-iframe {
-    left: 0;
-    top: 0;
-  }
-  .donate-page .oppia-vision-text-container {
-    margin: 0 auto;
-    width: 70%;
-  }
-  .donate-page .oppia-vision-text {
-    font-size: 0.825em;
-  }
-
-  @media only screen and (max-width: 1160px) {
-    .oppia-donation-card-content-wide {
-      display: flex;
-      flex-direction: row-reverse;
-      width: 100%;
-    }
-
-    .oppia-donate-info, .oppia-donate-options {
-      flex: 1;
-    }
-  }
-</style>

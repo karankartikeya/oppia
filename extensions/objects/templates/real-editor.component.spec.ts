@@ -16,31 +16,44 @@
  * @fileoverview Unit tests for real editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ChangeDetectorRef } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { RealEditorComponent } from './real-editor.component';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {ChangeDetectorRef} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {FormControl} from '@angular/forms';
+import {RealEditorComponent} from './real-editor.component';
 
 describe('RealEditorComponent', () => {
   let component: RealEditorComponent;
   let fixture: ComponentFixture<RealEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [RealEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(RealEditorComponent);
     component = fixture.componentInstance;
+
+    component.ngOnInit();
+    component.writeValue(0);
+    component.registerOnTouched(() => void 0);
+    component.registerOnChange(() => void 0);
+    if (component.registerOnValidatorChange !== undefined) {
+      component.registerOnValidatorChange(() => void 0);
+    }
   });
 
   it('should initialise component when user edits a number', () => {
     component.ngOnInit();
 
     expect(component.value).toBe(0.0);
+  });
+
+  it('should get empty object on validating', () => {
+    expect(component.validate(new FormControl(2))).toEqual({});
   });
 
   it('should initialise with old value if present', () => {
@@ -53,15 +66,17 @@ describe('RealEditorComponent', () => {
 
   it('should not get schema when called', () => {
     expect(component.getSchema()).toEqual({
-      type: 'float'
+      type: 'float',
     });
   });
 
   it('should update value when user enters a new value', () => {
     const changeDetectorRef =
       fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     spyOn(component.valueChanged, 'emit');
     component.ngOnInit();
 
@@ -77,8 +92,10 @@ describe('RealEditorComponent', () => {
   it('should reset the value as zero when changes to a new rule', () => {
     const changeDetectorRef =
       fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     spyOn(component.valueChanged, 'emit');
     component.value = 3;
 
@@ -89,27 +106,34 @@ describe('RealEditorComponent', () => {
     expect(detectChangesSpy).toHaveBeenCalled();
   });
 
-  it('should not reset the value as zero when changes to a new rule and' +
-  'the value is already zero', () => {
-    const changeDetectorRef =
-      fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
-    spyOn(component.valueChanged, 'emit');
-    component.value = 0;
+  it(
+    'should not reset the value as zero when changes to a new rule and' +
+      'the value is already zero',
+    () => {
+      const changeDetectorRef =
+        fixture.debugElement.injector.get(ChangeDetectorRef);
+      const detectChangesSpy = spyOn(
+        changeDetectorRef.constructor.prototype,
+        'detectChanges'
+      );
+      spyOn(component.valueChanged, 'emit');
+      component.value = 0;
 
-    component.updateValue('');
+      component.updateValue('');
 
-    expect(component.value).toBe(0);
-    expect(component.valueChanged.emit).not.toHaveBeenCalledWith(0);
-    expect(detectChangesSpy).not.toHaveBeenCalled();
-  });
+      expect(component.value).toBe(0);
+      expect(component.valueChanged.emit).not.toHaveBeenCalledWith(0);
+      expect(detectChangesSpy).not.toHaveBeenCalled();
+    }
+  );
 
   it('should not update value when user does not change value', () => {
     const changeDetectorRef =
       fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     spyOn(component.valueChanged, 'emit');
     component.value = 3;
 
@@ -117,6 +141,23 @@ describe('RealEditorComponent', () => {
 
     expect(component.value).toBe(3);
     expect(component.valueChanged.emit).not.toHaveBeenCalledWith(0.0);
+    expect(detectChangesSpy).not.toHaveBeenCalled();
+  });
+
+  it('should not update value when the input is not a number or string', () => {
+    const changeDetectorRef =
+      fixture.debugElement.injector.get(ChangeDetectorRef);
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
+    spyOn(component.valueChanged, 'emit');
+    component.value = 3;
+
+    component.updateValue(['invalid']);
+
+    expect(component.value).toBe(3);
+    expect(component.valueChanged.emit).not.toHaveBeenCalled();
     expect(detectChangesSpy).not.toHaveBeenCalled();
   });
 });

@@ -16,18 +16,17 @@
  * @fileoverview Component for drag and drop positive int editor.
  */
 
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, EventEmitter, Input, OnInit, Output} from '@angular/core';
 
 @Component({
   selector: 'drag-and-drop-positive-int-editor',
-  templateUrl: './drag-and-drop-positive-int-editor.component.html'
+  templateUrl: './drag-and-drop-positive-int-editor.component.html',
 })
 export class DragAndDropPositiveIntEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() initArgs!: { choices: string[] };
+  @Input() initArgs!: {choices: string[]};
   @Input() value!: string | number;
   @Output() valueChanged = new EventEmitter();
   selectedRank!: string;
@@ -35,7 +34,7 @@ export class DragAndDropPositiveIntEditorComponent implements OnInit {
   choices!: string[];
 
   ngOnInit(): void {
-    if (!parseInt(<string> this.value)) {
+    if (!parseInt(this.value as string)) {
       this.value = 1;
       this.valueChanged.emit(this.value);
     }
@@ -53,8 +52,10 @@ export class DragAndDropPositiveIntEditorComponent implements OnInit {
     this.value = +selectedRank;
     this.valueChanged.emit(this.value);
   }
+
+  // The select change event emits an Event object, so the chosen value is read
+  // from the select element before delegating to selection.
+  onSelectionChange(e: Event): void {
+    this.selection((e.target as HTMLSelectElement).value);
+  }
 }
-angular.module('oppia').directive(
-  'dragAndDropPositiveIntEditor', downgradeComponent({
-    component: DragAndDropPositiveIntEditorComponent
-  }) as angular.IDirectiveFactory);

@@ -16,21 +16,18 @@
  * @fileoverview Validator service for the interaction.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { AnswerGroup } from
-  'domain/exploration/AnswerGroupObjectFactory';
-import { AppConstants } from 'app.constants';
-import { Warning, baseInteractionValidationService } from
-  'interactions/base-interaction-validation.service';
-import { SetInputCustomizationArgs } from
-  'interactions/customization-args-defs';
-import { Outcome } from
-  'domain/exploration/OutcomeObjectFactory';
-import { Rule } from
-  'domain/exploration/RuleObjectFactory';
-import { TranslatableSetOfUnicodeString } from 'interactions/rule-input-defs';
+import {AnswerGroup} from 'domain/exploration/answer-group.model';
+import {AppConstants} from 'app.constants';
+import {
+  Warning,
+  BaseInteractionValidationService,
+} from 'interactions/base-interaction-validation.service';
+import {SetInputCustomizationArgs} from 'interactions/customization-args-defs';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {Rule} from 'domain/exploration/rule.model';
+import {TranslatableSetOfUnicodeString} from 'interactions/rule-input-defs';
 
 interface PreviousRule {
   answerGroupIndex: number;
@@ -39,12 +36,12 @@ interface PreviousRule {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class SetInputValidationService {
   constructor(
-    private baseInteractionValidationServiceInstance:
-      baseInteractionValidationService) {}
+    private baseInteractionValidationServiceInstance: BaseInteractionValidationService
+  ) {}
 
   /**
    * Checks if the two sets are identical.
@@ -82,27 +79,42 @@ export class SetInputValidationService {
    * @return {boolean} True if the two rules are identical.
    */
   private areSameRule(ruleA: Rule, ruleB: Rule): boolean {
-    return ruleA.type === ruleB.type &&
+    return (
+      ruleA.type === ruleB.type &&
       this.areSameSet(
-        (<TranslatableSetOfUnicodeString>ruleA.inputs.x).unicodeStrSet,
-        (<TranslatableSetOfUnicodeString>ruleB.inputs.x).unicodeStrSet);
+        (ruleA.inputs.x as TranslatableSetOfUnicodeString).unicodeStrSet,
+        (ruleB.inputs.x as TranslatableSetOfUnicodeString).unicodeStrSet
+      )
+    );
   }
 
   getCustomizationArgsWarnings(
-      customizationArgs: SetInputCustomizationArgs): Warning[] {
+    customizationArgs: SetInputCustomizationArgs
+  ): Warning[] {
     let warningsList = [];
 
-    let buttonText = (
-      customizationArgs.buttonText && customizationArgs.buttonText.value);
-    if (!buttonText || !angular.isString(buttonText.unicode)) {
+    let buttonText =
+      customizationArgs.buttonText && customizationArgs.buttonText.value;
+    if (!buttonText || typeof buttonText.unicode !== 'string') {
       warningsList.push({
         type: AppConstants.WARNING_TYPES.ERROR,
-        message: 'Button text must be a string.'
+        message: 'Button text must be a string',
       });
     } else if (buttonText.unicode.length === 0) {
       warningsList.push({
-        message: 'Label for this button should not be empty.',
-        type: AppConstants.WARNING_TYPES.ERROR
+        message: 'Label for this button should not be empty',
+        type: AppConstants.WARNING_TYPES.ERROR,
+      });
+    } else if (
+      buttonText.unicode.length >
+      AppConstants.MAX_CHARS_IN_SET_INPUT_BUTTON_TEXT
+    ) {
+      warningsList.push({
+        message:
+          'Label for this button should be at most ' +
+          AppConstants.MAX_CHARS_IN_SET_INPUT_BUTTON_TEXT +
+          ' characters',
+        type: AppConstants.WARNING_TYPES.ERROR,
       });
     }
 
@@ -127,10 +139,11 @@ export class SetInputValidationService {
           if (this.areSameRule(prevRule.rule, rule)) {
             warningsList.push({
               type: AppConstants.WARNING_TYPES.ERROR,
-              message: `Rule ${ruleIndex + 1} from answer group ` +
+              message:
+                `Learner answer ${ruleIndex + 1} from Oppia response ` +
                 `${answerGroupIndex + 1} is the same as ` +
-                `rule ${prevRule.ruleIndex + 1} from ` +
-                `answer group ${prevRule.answerGroupIndex + 1}`
+                `answer ${prevRule.ruleIndex + 1} from ` +
+                `Oppia response ${prevRule.answerGroupIndex + 1}`,
             });
           } else if (prevRule.rule.type === rule.type) {
             /*
@@ -142,9 +155,9 @@ export class SetInputValidationService {
                 depending on their rule types.
             */
             let isRuleCoveredByAnyPrevRule = false;
-            let ruleInput = <TranslatableSetOfUnicodeString>rule.inputs.x;
-            let prevRuleInput = (
-              <TranslatableSetOfUnicodeString>prevRule.rule.inputs.x);
+            let ruleInput = rule.inputs.x as TranslatableSetOfUnicodeString;
+            let prevRuleInput = prevRule.rule.inputs
+              .x as TranslatableSetOfUnicodeString;
             switch (rule.type) {
               case 'Equals':
                 // An 'Equals' rule is made redundant by another only when
@@ -173,10 +186,11 @@ export class SetInputValidationService {
             if (isRuleCoveredByAnyPrevRule) {
               warningsList.push({
                 type: AppConstants.WARNING_TYPES.ERROR,
-                message: `Rule ${ruleIndex + 1} from answer group ` +
+                message:
+                  `Learner answer ${ruleIndex + 1} from Oppia response ` +
                   `${answerGroupIndex + 1} will never be matched because it ` +
-                  `is made redundant by rule ${prevRule.ruleIndex + 1}` +
-                  ` from answer group ${prevRule.answerGroupIndex + 1}.`
+                  `is made redundant by answer ${prevRule.ruleIndex + 1} ` +
+                  `from Oppia response ${prevRule.answerGroupIndex + 1}`,
               });
             }
           }
@@ -185,7 +199,7 @@ export class SetInputValidationService {
         previousRules.push({
           rule,
           ruleIndex,
-          answerGroupIndex
+          answerGroupIndex,
         });
       }
     }
@@ -194,16 +208,19 @@ export class SetInputValidationService {
   }
 
   getAllWarnings(
-      stateName: string, customizationArgs: SetInputCustomizationArgs,
-      answerGroups: AnswerGroup[], defaultOutcome: Outcome): Warning[] {
+    stateName: string,
+    customizationArgs: SetInputCustomizationArgs,
+    answerGroups: AnswerGroup[],
+    defaultOutcome: Outcome
+  ): Warning[] {
     return [
       ...this.getCustomizationArgsWarnings(customizationArgs),
       ...this.getRedundantRuleWarnings(answerGroups),
       ...this.baseInteractionValidationServiceInstance.getAllOutcomeWarnings(
-        answerGroups, defaultOutcome, stateName)
+        answerGroups,
+        defaultOutcome,
+        stateName
+      ),
     ];
   }
 }
-
-angular.module('oppia').factory(
-  'SetInputValidationService', downgradeInjectable(SetInputValidationService));

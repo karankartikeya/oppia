@@ -16,25 +16,26 @@
  * @fileoverview Controller for embed exploration modal.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
 
 @Component({
   selector: 'exploration-embed-button-modal',
   templateUrl: './exploration-embed-button-modal.component.html',
-  styleUrls: []
+  styleUrls: ['./exploration-embed-button-modal.component.css'],
 })
 export class ExplorationEmbedButtonModalComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() explorationId!: string;
   @Input() serverName!: string;
 
   constructor(
     private activeModal: NgbActiveModal,
-    private siteAnalyticsService: SiteAnalyticsService) {}
+    private siteAnalyticsService: SiteAnalyticsService
+  ) {}
 
   ngOnInit(): void {
     this.siteAnalyticsService.registerOpenEmbedInfoEvent(this.explorationId);
@@ -50,8 +51,8 @@ export class ExplorationEmbedButtonModalComponent implements OnInit {
       throw new Error('No CodeDiv was found!');
     }
     const range = document.createRange();
-    range.setStartBefore((<HTMLDivElement>codeDiv).firstChild as Node);
-    range.setEndAfter((<HTMLDivElement>codeDiv).lastChild as Node);
+    range.setStartBefore((codeDiv as HTMLDivElement).firstChild as Node);
+    range.setEndAfter((codeDiv as HTMLDivElement).lastChild as Node);
     const selection = window.getSelection();
     if (selection === null) {
       throw new Error('Unable to Select!');

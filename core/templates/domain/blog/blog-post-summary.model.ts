@@ -18,20 +18,23 @@
  */
 
 export interface BlogPostSummaryBackendDict {
-  'id': string;
-  'title': string;
-  'summary': string;
-  'author_username': string;
-  'tags': string[];
-  'url_fragment': string;
-  'thumbnail_filename': string | null;
-  'published_on'?: string;
-  'last_updated': string;
+  id: string;
+  title: string;
+  summary: string;
+  author_username: string;
+  displayed_author_name: string;
+  tags: string[];
+  url_fragment: string;
+  thumbnail_filename: string | null;
+  published_on?: string;
+  last_updated: string;
+  profile_pic_url?: string;
 }
 
 export class BlogPostSummary {
   _id: string;
   _authorUsername: string;
+  _displayedAuthorName: string;
   _title: string;
   _summary: string;
   _tags: string[];
@@ -39,18 +42,23 @@ export class BlogPostSummary {
   _urlFragment: string;
   _lastUpdated?: string;
   _publishedOn?: string;
+  _authorProfilePicUrl?: string;
   constructor(
-      id: string,
-      authorUsername: string,
-      title: string,
-      summary: string,
-      tags: string[],
-      thumbnailFilename: string | null,
-      urlFragment: string,
-      lastUpdated?: string,
-      publishedOn?: string) {
+    id: string,
+    authorUsername: string,
+    displayedAuthorName: string,
+    title: string,
+    summary: string,
+    tags: string[],
+    thumbnailFilename: string | null,
+    urlFragment: string,
+    lastUpdated?: string,
+    publishedOn?: string,
+    authorProfilePicUrl?: string
+  ) {
     this._id = id;
     this._authorUsername = authorUsername;
+    this._displayedAuthorName = displayedAuthorName;
     this._title = title;
     this._summary = summary;
     this._tags = tags;
@@ -58,6 +66,7 @@ export class BlogPostSummary {
     this._urlFragment = urlFragment;
     this._lastUpdated = lastUpdated;
     this._publishedOn = publishedOn;
+    this._authorProfilePicUrl = authorProfilePicUrl;
   }
 
   get id(): string {
@@ -68,12 +77,20 @@ export class BlogPostSummary {
     return this._authorUsername;
   }
 
+  get displayedAuthorName(): string {
+    return this._displayedAuthorName;
+  }
+
   get lastUpdated(): string | undefined {
     return this._lastUpdated;
   }
 
   get publishedOn(): string | undefined {
     return this._publishedOn;
+  }
+
+  get authorProfilePicUrl(): string | undefined {
+    return this._authorProfilePicUrl;
   }
 
   get title(): string {
@@ -97,18 +114,20 @@ export class BlogPostSummary {
   }
 
   static createFromBackendDict(
-      blogPostSummaryBackendDict: BlogPostSummaryBackendDict
+    blogPostSummaryBackendDict: BlogPostSummaryBackendDict
   ): BlogPostSummary {
-    return new BlogPostSummary (
+    return new BlogPostSummary(
       blogPostSummaryBackendDict.id,
       blogPostSummaryBackendDict.author_username,
+      blogPostSummaryBackendDict.displayed_author_name,
       blogPostSummaryBackendDict.title,
       blogPostSummaryBackendDict.summary,
       blogPostSummaryBackendDict.tags,
       blogPostSummaryBackendDict.thumbnail_filename,
       blogPostSummaryBackendDict.url_fragment,
       blogPostSummaryBackendDict.last_updated,
-      blogPostSummaryBackendDict.published_on
+      blogPostSummaryBackendDict.published_on,
+      blogPostSummaryBackendDict.profile_pic_url
     );
   }
 }

@@ -16,594 +16,893 @@
  * @fileoverview Component containing the exploration material to be translated.
  */
 
-require(
-  'components/state-directives/response-header/response-header.component.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/audio-translation-bar/' +
-  'audio-translation-bar.directive.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/state-translation-editor/' +
-  'state-translation-editor.component.ts'
-);
-
-require('components/ck-editor-helpers/ck-editor-copy-content.service.ts');
-require('domain/utilities/url-interpolation.service.ts');
-require('filters/format-rte-preview.filter.ts');
-require('filters/string-utility-filters/convert-to-plain-text.filter.ts');
-require('filters/parameterize-rule-description.filter.ts');
-require('filters/string-utility-filters/truncate.filter.ts');
-require('filters/string-utility-filters/wrap-text-with-ellipsis.filter.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-correctness-feedback.service.ts');
-require(
-  'pages/exploration-editor-page/services/' +
-  'exploration-init-state-name.service.ts');
-require('pages/exploration-editor-page/services/exploration-states.service.ts');
-require('pages/exploration-editor-page/services/router.service.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/services/' +
-  'translation-status.service.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/services/' +
-  'translation-tab-active-content-id.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-editor.service.ts');
-require('services/exploration-html-formatter.service.ts');
-
-require(
-  'pages/exploration-editor-page/exploration-editor-page.constants.ajs.ts');
-
-import { Subscription } from 'rxjs';
-
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
-import { SubtitledUnicode } from
-  'domain/exploration/SubtitledUnicodeObjectFactory';
+import {Component, Input, OnDestroy, OnInit} from '@angular/core';
+import {Subscription} from 'rxjs';
+import {AppConstants} from 'app.constants';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {SubtitledUnicode} from 'domain/exploration/subtitled-unicode.model';
 import {
   TRANSLATION_DATA_FORMAT_HTML,
   TRANSLATION_DATA_FORMAT_UNICODE,
   TRANSLATION_DATA_FORMAT_SET_OF_NORMALIZED_STRING,
-  TRANSLATION_DATA_FORMAT_SET_OF_UNICODE_STRING
-} from 'domain/exploration/WrittenTranslationObjectFactory';
-import { InteractionCustomizationArgs } from
-  'interactions/customization-args-defs';
-import { Rule } from 'domain/exploration/RuleObjectFactory';
+  TRANSLATION_DATA_FORMAT_SET_OF_UNICODE_STRING,
+} from 'domain/exploration/written-translation.model';
+import {InteractionCustomizationArgs} from 'interactions/customization-args-defs';
+import {Rule} from 'domain/exploration/rule.model';
+import {CkEditorCopyContentService} from 'components/ck-editor-helpers/ck-editor-copy-content.service';
+import {
+  AnswerChoice,
+  StateEditorService,
+} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {ExplorationStatesService} from 'pages/exploration-editor-page/services/exploration-states.service';
+import {RouterService} from 'pages/exploration-editor-page/services/router.service';
+import {ExplorationHtmlFormatterService} from 'services/exploration-html-formatter.service';
+import {TranslationStatusService} from '../services/translation-status.service';
+import {TranslationTabActiveContentIdService} from '../services/translation-tab-active-content-id.service';
+import {TranslationTabActiveModeService} from '../services/translation-tab-active-mode.service';
+import {FormatRtePreviewPipe} from 'filters/format-rte-preview.pipe';
+import INTERACTION_SPECS from 'interactions/interaction_specs.json';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {ConvertToPlainTextPipe} from 'filters/string-utility-filters/convert-to-plain-text.pipe';
+import {TruncatePipe} from 'filters/string-utility-filters/truncate.pipe';
+import {WrapTextWithEllipsisPipe} from 'filters/string-utility-filters/wrap-text-with-ellipsis.pipe';
+import {ParameterizeRuleDescriptionPipe} from 'filters/parameterize-rule-description.pipe';
+import {AnswerGroup} from 'domain/exploration/answer-group.model';
+import {
+  BaseTranslatableObject,
+  InteractionRuleInputs,
+  TranslatableSetOfNormalizedString,
+  TranslatableSetOfUnicodeString,
+} from 'interactions/rule-input-defs';
+import {Hint} from 'domain/exploration/hint-object.model';
+import {Solution} from 'domain/exploration/solution.model';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {TranslatedContent} from 'domain/exploration/translated-content.model';
+import {TranslationLanguageService} from '../services/translation-language.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
 
-angular.module('oppia').component('stateTranslation', {
-  bindings: {
-    isTranslationTabBusy: '='
-  },
-  template: require('./state-translation.component.html'),
-  controller: [
-    '$filter', '$scope', 'CkEditorCopyContentService',
-    'ExplorationCorrectnessFeedbackService',
-    'ExplorationHtmlFormatterService', 'ExplorationLanguageCodeService',
-    'ExplorationStatesService', 'RouterService', 'StateEditorService',
-    'TranslationLanguageService', 'TranslationStatusService',
-    'TranslationTabActiveContentIdService',
-    'TranslationTabActiveModeService', 'COMPONENT_NAME_CONTENT',
-    'COMPONENT_NAME_FEEDBACK', 'COMPONENT_NAME_HINT',
-    'COMPONENT_NAME_INTERACTION_CUSTOMIZATION_ARGS',
-    'COMPONENT_NAME_RULE_INPUT',
-    'COMPONENT_NAME_SOLUTION', 'INTERACTION_SPECS',
-    'RULE_SUMMARY_WRAP_CHARACTER_COUNT',
-    function(
-        $filter, $scope, CkEditorCopyContentService,
-        ExplorationCorrectnessFeedbackService,
-        ExplorationHtmlFormatterService, ExplorationLanguageCodeService,
-        ExplorationStatesService, RouterService, StateEditorService,
-        TranslationLanguageService, TranslationStatusService,
-        TranslationTabActiveContentIdService,
-        TranslationTabActiveModeService, COMPONENT_NAME_CONTENT,
-        COMPONENT_NAME_FEEDBACK, COMPONENT_NAME_HINT,
-        COMPONENT_NAME_INTERACTION_CUSTOMIZATION_ARGS,
-        COMPONENT_NAME_RULE_INPUT,
-        COMPONENT_NAME_SOLUTION, INTERACTION_SPECS,
-        RULE_SUMMARY_WRAP_CHARACTER_COUNT
-    ) {
-      // A map from translatable rule input types to their corresponding data
-      // formats.
-      var RULE_INPUT_TYPES_TO_DATA_FORMATS = {
-        TranslatableSetOfNormalizedString: (
-          TRANSLATION_DATA_FORMAT_SET_OF_NORMALIZED_STRING),
-        TranslatableSetOfUnicodeString: (
-          TRANSLATION_DATA_FORMAT_SET_OF_UNICODE_STRING),
-      };
+@Component({
+  selector: 'oppia-state-translation',
+  templateUrl: './state-translation.component.html',
+  styleUrls: ['./state-translation.component.css'],
+})
+export class StateTranslationComponent implements OnInit, OnDestroy {
+  @Input() isTranslationTabBusy!: boolean;
 
-      var ctrl = this;
-      ctrl.directiveSubscriptions = new Subscription();
-      $scope.isVoiceoverModeActive = function() {
-        return (TranslationTabActiveModeService.isVoiceoverModeActive());
-      };
-      var isTranslatedTextRequired = function() {
-        return (
-          TranslationTabActiveModeService.isVoiceoverModeActive() &&
-          TranslationLanguageService.getActiveLanguageCode() !== (
-            ExplorationLanguageCodeService.displayed));
-      };
-      $scope.getRequiredHtml = function(subtitledHtml) {
-        var html = null;
-        if (isTranslatedTextRequired()) {
-          var contentId = subtitledHtml.contentId;
-          var activeLanguageCode = (
-            TranslationLanguageService.getActiveLanguageCode());
-          var writtenTranslations = (
-            ExplorationStatesService.getWrittenTranslationsMemento(
-              $scope.stateName));
-          if (writtenTranslations.hasWrittenTranslation(
-            contentId, activeLanguageCode)) {
-            var writtenTranslation = (
-              writtenTranslations.getWrittenTranslation(
-                contentId, activeLanguageCode));
-            html = writtenTranslation.getTranslation();
-          }
-        } else {
-          html = subtitledHtml.html;
-        }
-        return html;
-      };
+  activatedTabId!: string;
+  activeAnswerGroupIndex!: number | null;
+  directiveSubscriptions = new Subscription();
+  INTERACTION_SPECS = INTERACTION_SPECS;
+  stateAnswerGroups!: AnswerGroup[];
+  RULE_INPUT_TYPES_TO_DATA_FORMATS!: Record<string, string>;
+  TAB_ID_RULE_INPUTS!: string;
+  stateContent!: SubtitledHtml;
+  stateSolution!: Solution | SubtitledHtml;
+  interactionPreviewHtml!: string;
+  stateInteractionCustomizationArgs!: InteractionCustomizationArgs;
+  activeCustomizationArgContentIndex!: number;
+  activeRuleContentIndex!: number;
+  activeHintIndex!: number | null;
+  stateHints!: Hint[];
+  stateName!: string;
+  needsUpdateTooltipMessage!: string;
+  stateInteractionId!: InteractionSpecsKey | null;
+  TAB_ID_CUSTOMIZATION_ARGS!: string;
+  TAB_ID_SOLUTION!: string;
+  TAB_ID_FEEDBACK!: string;
+  TAB_ID_HINTS!: string;
+  TAB_ID_CONTENT!: string;
+  stateDefaultOutcome!: Outcome;
+  answerChoices!: AnswerChoice[];
+  activeTranslatedContent!: TranslatedContent;
+  activeTab!: string;
+  initActiveContentId!: string | null;
+  initActiveIndex!: number;
+  interactionRuleTranslatableContents!: {
+    rule: Rule;
+    inputName: string;
+    contentId: string;
+  }[];
 
-      $scope.getEmptyContentMessage = function() {
-        if (TranslationTabActiveModeService.isVoiceoverModeActive()) {
-          return (
-            'The translation for this section has not been created yet. ' +
-            'Switch to translation mode to add a text translation.');
-        } else {
-          return 'There is no text available to translate.';
-        }
-      };
+  interactionCustomizationArgTranslatableContent!: {
+    name: string;
+    content: SubtitledUnicode | SubtitledHtml;
+  }[];
+  voiceoverContributionIsEnabled: boolean = true;
 
-      $scope.isActive = function(tabId) {
-        return ($scope.activatedTabId === tabId);
-      };
+  constructor(
+    private ckEditorCopyContentService: CkEditorCopyContentService,
+    private explorationHtmlFormatterService: ExplorationHtmlFormatterService,
+    private explorationStatesService: ExplorationStatesService,
+    private routerService: RouterService,
+    private stateEditorService: StateEditorService,
+    private entityTranslationsService: EntityTranslationsService,
+    private translationLanguageService: TranslationLanguageService,
+    private translationStatusService: TranslationStatusService,
+    private translationTabActiveContentIdService: TranslationTabActiveContentIdService,
+    private translationTabActiveModeService: TranslationTabActiveModeService,
+    private formatRtePreviewPipe: FormatRtePreviewPipe,
+    private ConvertToPlainTextPipe: ConvertToPlainTextPipe,
+    private truncatePipe: TruncatePipe,
+    private wrapTextWithEllipsisPipe: WrapTextWithEllipsisPipe,
+    private parameterizeRuleDescriptionPipe: ParameterizeRuleDescriptionPipe,
+    private platformFeatureService: PlatformFeatureService,
+    private i18nLanguageCodeService: I18nLanguageCodeService
+  ) {}
 
-      $scope.navigateToState = function(stateName) {
-        RouterService.navigateToMainTab(stateName);
-      };
+  isVoiceoverModeActive(): boolean {
+    return this.translationTabActiveModeService.isVoiceoverModeActive();
+  }
 
-      $scope.onContentClick = function($event) {
-        if ($scope.isCopyModeActive()) {
-          $event.stopPropagation();
-        }
-        CkEditorCopyContentService.broadcastCopy($event.target);
-      };
-
-      $scope.isCopyModeActive = function() {
-        return CkEditorCopyContentService.copyModeActive;
-      };
-
-      $scope.onTabClick = function(tabId) {
-        if (ctrl.isTranslationTabBusy) {
-          StateEditorService.onShowTranslationTabBusyModal.emit();
-          return;
-        }
-        let activeContentId = null;
-        let activeDataFormat = TRANSLATION_DATA_FORMAT_HTML;
-
-        if (tabId === $scope.TAB_ID_CONTENT) {
-          activeContentId = $scope.stateContent.contentId;
-        } else if (tabId === $scope.TAB_ID_FEEDBACK) {
-          $scope.activeAnswerGroupIndex = 0;
-          if ($scope.stateAnswerGroups.length > 0) {
-            activeContentId = (
-              $scope.stateAnswerGroups[0].outcome.feedback.contentId);
-          } else {
-            activeContentId = (
-              $scope.stateDefaultOutcome.feedback.contentId);
-          }
-        } else if (tabId === $scope.TAB_ID_HINTS) {
-          $scope.activeHintIndex = 0;
-          activeContentId = (
-            $scope.stateHints[0].hintContent.contentId);
-        } else if (tabId === $scope.TAB_ID_SOLUTION) {
-          activeContentId = $scope.stateSolution.explanation.contentId;
-        } else if (tabId === $scope.TAB_ID_CUSTOMIZATION_ARGS) {
-          $scope.activeCustomizationArgContentIndex = 0;
-          const activeContent = (
-            $scope.interactionCustomizationArgTranslatableContent[0].content
-          );
-          activeContentId = activeContent.contentId;
-          if (activeContent instanceof SubtitledUnicode) {
-            activeDataFormat = TRANSLATION_DATA_FORMAT_UNICODE;
-          }
-        } else if (tabId === $scope.TAB_ID_RULE_INPUTS) {
-          if ($scope.interactionRuleTranslatableContents.length === 0) {
-            throw new Error(
-              'Accessed rule input translation tab when there are no rules');
-          }
-
-          // Note that only 'TextInput' and 'SetInput' have translatable rule
-          // types. The rules tab is disabled for other interactions.
-          const {
-            rule, inputName, contentId
-          } = $scope.interactionRuleTranslatableContents[0];
-          activeContentId = contentId;
-          const inputType = rule.inputTypes[inputName];
-          activeDataFormat = RULE_INPUT_TYPES_TO_DATA_FORMATS[inputType];
-          $scope.activeRuleContentIndex = 0;
-        }
-        TranslationTabActiveContentIdService.setActiveContent(
-          activeContentId, activeDataFormat);
-        $scope.activatedTabId = tabId;
-      };
-
-      $scope.getHumanReadableRuleInputValues = function(inputValue, inputType) {
-        if (inputType === 'TranslatableSetOfNormalizedString') {
-          return ('[' + inputValue.normalizedStrSet.join(', ') + ']');
-        } else if (inputType === 'TranslatableSetOfUnicodeString') {
-          return ('[' + inputValue.unicodeStrSet.join(', ') + ']');
-        } else {
-          throw new Error(`The ${inputType} type is not implemented.`);
-        }
-      };
-
-      $scope.summarizeDefaultOutcome = function(
-          defaultOutcome, interactionId, answerGroupCount, shortenRule) {
-        if (!defaultOutcome) {
-          return '';
-        }
-
-        var summary = '';
-        var hasFeedback = defaultOutcome.hasNonemptyFeedback();
-
-        if (interactionId && INTERACTION_SPECS[interactionId].is_linear) {
-          summary =
-            INTERACTION_SPECS[interactionId].default_outcome_heading;
-        } else if (answerGroupCount > 0) {
-          summary = 'All other answers';
-        } else {
-          summary = 'All answers';
-        }
-
-        if (hasFeedback && shortenRule) {
-          summary = $filter('wrapTextWithEllipsis')(
-            summary, RULE_SUMMARY_WRAP_CHARACTER_COUNT);
-        }
-        summary = '[' + summary + '] ';
-
-        if (hasFeedback) {
-          summary +=
-            $filter(
-              'convertToPlainText'
-            )(defaultOutcome.feedback.html);
-        }
-        return summary;
-      };
-
-      $scope.summarizeAnswerGroup = function(
-          answerGroup, interactionId, answerChoices, shortenRule) {
-        var summary = '';
-        var outcome = answerGroup.outcome;
-        var hasFeedback = outcome.hasNonemptyFeedback();
-
-        if (answerGroup.rules) {
-          var firstRule = $filter('convertToPlainText')(
-            $filter('parameterizeRuleDescription')(
-              answerGroup.rules[0], interactionId, answerChoices));
-          summary = 'Answer ' + firstRule;
-
-          if (hasFeedback && shortenRule) {
-            summary = $filter('wrapTextWithEllipsis')(
-              summary, RULE_SUMMARY_WRAP_CHARACTER_COUNT);
-          }
-          summary = '[' + summary + '] ';
-        }
-
-        if (hasFeedback) {
-          summary += (
-            shortenRule ?
-              $filter('truncate')(outcome.feedback.html, 30) :
-              $filter('convertToPlainText')(outcome.feedback.html));
-        }
-        return summary;
-      };
-
-      $scope.isDisabled = function(tabId) {
-        if (tabId === $scope.TAB_ID_CONTENT) {
-          return false;
-        }
-        // This is used to prevent users from adding unwanted audio for
-        // default_outcome and hints in Continue and EndExploration
-        // interaction. An exception is if the interaction contains
-        // translatable customization arguments -- e.g. Continue
-        // interaction's placeholder.
-        if (
-          tabId !== $scope.TAB_ID_CUSTOMIZATION_ARGS && (
-            !$scope.stateInteractionId ||
-            INTERACTION_SPECS[$scope.stateInteractionId].is_linear ||
-            INTERACTION_SPECS[$scope.stateInteractionId].is_terminal
-          )
-        ) {
-          return true;
-        } else if (tabId === $scope.TAB_ID_FEEDBACK) {
-          if (!$scope.stateDefaultOutcome) {
-            return true;
-          } else {
-            return false;
-          }
-        } else if (tabId === $scope.TAB_ID_HINTS) {
-          if ($scope.stateHints.length <= 0) {
-            return true;
-          } else {
-            return false;
-          }
-        } else if (tabId === $scope.TAB_ID_SOLUTION) {
-          if (!$scope.stateSolution) {
-            return true;
-          } else {
-            return false;
-          }
-        } else if (tabId === $scope.TAB_ID_CUSTOMIZATION_ARGS) {
-          return (
-            $scope.interactionCustomizationArgTranslatableContent.length === 0);
-        } else if (tabId === $scope.TAB_ID_RULE_INPUTS) {
-          return $scope.interactionRuleTranslatableContents.length === 0;
-        }
-      };
-
-      $scope.changeActiveHintIndex = function(newIndex) {
-        if (ctrl.isTranslationTabBusy) {
-          StateEditorService.onShowTranslationTabBusyModal.emit();
-          return;
-        }
-        if ($scope.activeHintIndex === newIndex) {
-          return;
-        }
-        $scope.activeHintIndex = newIndex;
-        var activeContentId = (
-          $scope.stateHints[newIndex].hintContent.contentId);
-        TranslationTabActiveContentIdService.setActiveContent(
-          activeContentId, TRANSLATION_DATA_FORMAT_HTML);
-      };
-
-      $scope.changeActiveRuleContentIndex = function(newIndex) {
-        if (ctrl.isTranslationTabBusy) {
-          StateEditorService.onShowTranslationTabBusyModal.emit();
-          return;
-        }
-        if ($scope.activeRuleContentIndex === newIndex) {
-          return;
-        }
-        const {
-          rule, inputName, contentId
-        } = $scope.interactionRuleTranslatableContents[newIndex];
-        const activeContentId = contentId;
-        const inputType = rule.inputTypes[inputName];
-        const activeDataFormat = RULE_INPUT_TYPES_TO_DATA_FORMATS[inputType];
-        TranslationTabActiveContentIdService.setActiveContent(
-          activeContentId, activeDataFormat);
-        $scope.activeRuleContentIndex = newIndex;
-      };
-
-      $scope.changeActiveCustomizationArgContentIndex = function(newIndex) {
-        if (ctrl.isTranslationTabBusy) {
-          StateEditorService.onShowTranslationTabBusyModal.emit();
-          return;
-        }
-        if ($scope.activeCustomizationArgContentIndex === newIndex) {
-          return;
-        }
-        const activeContent = (
-          $scope.interactionCustomizationArgTranslatableContent[
-            newIndex].content
-        );
-        const activeContentId = activeContent.contentId;
-        let activeDataFormat = null;
-        if (activeContent instanceof SubtitledUnicode) {
-          activeDataFormat = TRANSLATION_DATA_FORMAT_UNICODE;
-        } else if (activeContent instanceof SubtitledHtml) {
-          activeDataFormat = TRANSLATION_DATA_FORMAT_HTML;
-        }
-        TranslationTabActiveContentIdService.setActiveContent(
-          activeContentId, activeDataFormat);
-        $scope.activeCustomizationArgContentIndex = newIndex;
-      };
-
-      $scope.changeActiveAnswerGroupIndex = function(newIndex) {
-        if (ctrl.isTranslationTabBusy) {
-          StateEditorService.onShowTranslationTabBusyModal.emit();
-          return;
-        }
-        if ($scope.activeAnswerGroupIndex !== newIndex) {
-          var activeContentId = null;
-          $scope.activeAnswerGroupIndex = newIndex;
-          if (newIndex === $scope.stateAnswerGroups.length) {
-            activeContentId = (
-              $scope.stateDefaultOutcome.feedback.contentId);
-          } else {
-            activeContentId = (
-              $scope.stateAnswerGroups[newIndex]
-                .outcome.feedback.contentId);
-          }
-          TranslationTabActiveContentIdService.setActiveContent(
-            activeContentId, TRANSLATION_DATA_FORMAT_HTML);
-        }
-      };
-
-      $scope.tabStatusColorStyle = function(tabId) {
-        if (!$scope.isDisabled(tabId)) {
-          var color = TranslationStatusService
-            .getActiveStateComponentStatusColor(tabId);
-          return {'border-top-color': color};
-        }
-      };
-
-      $scope.tabNeedUpdatesStatus = function(tabId) {
-        if (!$scope.isDisabled(tabId)) {
-          return TranslationStatusService
-            .getActiveStateComponentNeedsUpdateStatus(tabId);
-        }
-      };
-      $scope.contentIdNeedUpdates = function(contentId) {
-        return TranslationStatusService
-          .getActiveStateContentIdNeedsUpdateStatus(contentId);
-      };
-      $scope.contentIdStatusColorStyle = function(contentId) {
-        var color = TranslationStatusService
-          .getActiveStateContentIdStatusColor(contentId);
-        return {'border-left': '3px solid ' + color};
-      };
-
-      $scope.getSubtitledContentSummary = function(subtitledContent) {
-        if (subtitledContent instanceof SubtitledHtml) {
-          return $filter('formatRtePreview')(subtitledContent.html);
-        } else if (subtitledContent instanceof SubtitledUnicode) {
-          return subtitledContent.unicode;
-        }
-      };
-
-      const getInteractionRuleTranslatableContents = (): {
-        rule: Rule, inputName: string, contentId: string
-      }[] => {
-        const allRules = $scope.stateAnswerGroups.map(
-          answerGroup => answerGroup.rules).flat();
-
-        const interactionRuleTranslatableContent = [];
-        allRules.forEach(rule => {
-          Object.keys(rule.inputs).forEach(inputName => {
-            if (rule.inputTypes[inputName].indexOf('Translatable') === 0) {
-              const contentId = rule.inputs[inputName].contentId;
-              interactionRuleTranslatableContent.push({
-                rule, inputName, contentId
-              });
-            }
-          });
-        });
-
-        return interactionRuleTranslatableContent;
-      };
-
-      $scope.getInteractionCustomizationArgTranslatableContents = function(
-          customizationArgs: InteractionCustomizationArgs
-      ): {name: string, content: SubtitledUnicode|SubtitledHtml}[] {
-        const translatableContents = [];
-
-        const camelCaseToSentenceCase = (s) => {
-          // Lowercase the first letter (edge case for UpperCamelCase).
-          s = s.charAt(0).toLowerCase() + s.slice(1);
-          // Add a space in front of capital letters.
-          s = s.replace(/([A-Z])/g, ' $1');
-          // Captialize first letter.
-          s = s.charAt(0).toUpperCase() + s.slice(1);
-          return s;
-        };
-
-        const traverseValueAndRetrieveSubtitledContent = (
-            name: string,
-            value: Object[] | Object,
-        ): void => {
-          if (value instanceof SubtitledUnicode ||
-              value instanceof SubtitledHtml
-          ) {
-            translatableContents.push({
-              name, content: value
-            });
-          } else if (value instanceof Array) {
-            value.forEach(
-              (element, index) => traverseValueAndRetrieveSubtitledContent(
-                `${name} (${index})`,
-                element)
-            );
-          } else if (value instanceof Object) {
-            Object.keys(value).forEach(
-              key => traverseValueAndRetrieveSubtitledContent(
-                `${name} > ${camelCaseToSentenceCase(key)}`,
-                value[key]
-              )
-            );
-          }
-        };
-
-        Object.keys(customizationArgs).forEach(
-          caName => traverseValueAndRetrieveSubtitledContent(
-            camelCaseToSentenceCase(caName),
-            customizationArgs[caName].value));
-
-        return translatableContents;
-      };
-
-      $scope.initStateTranslation = function() {
-        $scope.stateName = StateEditorService.getActiveStateName();
-        $scope.stateContent = ExplorationStatesService
-          .getStateContentMemento($scope.stateName);
-        $scope.stateSolution = ExplorationStatesService
-          .getSolutionMemento($scope.stateName);
-        $scope.stateHints = ExplorationStatesService
-          .getHintsMemento($scope.stateName);
-        $scope.stateAnswerGroups = ExplorationStatesService
-          .getInteractionAnswerGroupsMemento($scope.stateName);
-        $scope.stateDefaultOutcome = ExplorationStatesService
-          .getInteractionDefaultOutcomeMemento($scope.stateName);
-        $scope.stateInteractionId = ExplorationStatesService
-          .getInteractionIdMemento($scope.stateName);
-        $scope.stateInteractionCustomizationArgs = ExplorationStatesService
-          .getInteractionCustomizationArgsMemento($scope.stateName);
-        $scope.activeHintIndex = null;
-        $scope.activeAnswerGroupIndex = null;
-        var currentCustomizationArgs = ExplorationStatesService
-          .getInteractionCustomizationArgsMemento($scope.stateName);
-        $scope.answerChoices = StateEditorService.getAnswerChoices(
-          $scope.stateInteractionId, currentCustomizationArgs);
-        $scope.interactionPreviewHtml = (
-          $scope.stateInteractionId ? (
-            ExplorationHtmlFormatterService.getInteractionHtml(
-              $scope.stateInteractionId,
-              $scope.stateInteractionCustomizationArgs, false, undefined, null)
-          ) : '');
-        $scope.interactionCustomizationArgTranslatableContent = (
-          $scope.getInteractionCustomizationArgTranslatableContents(
-            $scope.stateInteractionCustomizationArgs)
-        );
-        $scope.interactionRuleTranslatableContents = (
-          getInteractionRuleTranslatableContents());
-
-        if (TranslationTabActiveModeService.isVoiceoverModeActive()) {
-          $scope.needsUpdateTooltipMessage = 'Audio needs update to ' +
-            'match text. Please record new audio.';
-        } else {
-          $scope.needsUpdateTooltipMessage = 'Translation needs update ' +
-            'to match text. Please re-translate the content.';
-        }
-        $scope.onTabClick($scope.TAB_ID_CONTENT);
-      };
-      ctrl.$onInit = function() {
-        // Define tab constants.
-        $scope.TAB_ID_CONTENT = COMPONENT_NAME_CONTENT;
-        $scope.TAB_ID_FEEDBACK = COMPONENT_NAME_FEEDBACK;
-        $scope.TAB_ID_HINTS = COMPONENT_NAME_HINT;
-        $scope.TAB_ID_RULE_INPUTS = COMPONENT_NAME_RULE_INPUT;
-        $scope.TAB_ID_SOLUTION = COMPONENT_NAME_SOLUTION;
-        $scope.TAB_ID_CUSTOMIZATION_ARGS = (
-          COMPONENT_NAME_INTERACTION_CUSTOMIZATION_ARGS);
-
-        $scope.INTERACTION_SPECS = INTERACTION_SPECS;
-        $scope.ExplorationCorrectnessFeedbackService =
-          ExplorationCorrectnessFeedbackService;
-
-        // Activates Content tab by default.
-        $scope.activatedTabId = $scope.TAB_ID_CONTENT;
-
-        $scope.activeHintIndex = null;
-        $scope.activeAnswerGroupIndex = null;
-        $scope.activeCustomizationArgContentIndex = null;
-        $scope.activeRuleContentIndex = null;
-        $scope.stateContent = null;
-        $scope.stateInteractionId = null;
-        $scope.stateAnswerGroups = [];
-        $scope.stateDefaultOutcome = null;
-        $scope.stateHints = [];
-        $scope.stateSolution = null;
-        ctrl.directiveSubscriptions.add(
-          StateEditorService.onRefreshStateTranslation.subscribe(
-            () => $scope.initStateTranslation())
-        );
-        $scope.initStateTranslation();
-      };
-
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
+  getRequiredHtml(
+    subtitledHtml: SubtitledHtml | SubtitledUnicode | null
+  ): string {
+    if (!(subtitledHtml instanceof SubtitledHtml)) {
+      return '';
     }
-  ]
-});
+
+    if (this.translationTabActiveModeService.isTranslationModeActive()) {
+      return subtitledHtml.html;
+    }
+
+    let langCode = this.translationLanguageService.getActiveLanguageCode();
+    if (
+      !this.entityTranslationsService.languageCodeToLatestEntityTranslations.hasOwnProperty(
+        langCode
+      )
+    ) {
+      return subtitledHtml.html;
+    }
+
+    if (!subtitledHtml.contentId) {
+      return subtitledHtml.html;
+    }
+
+    let translationContent =
+      this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+        langCode
+      ].getWrittenTranslation(subtitledHtml.contentId);
+    if (!translationContent) {
+      return subtitledHtml.html;
+    }
+
+    return translationContent.translation as string;
+  }
+
+  getHtmlOrNull(content: SubtitledHtml | SubtitledUnicode): string | null {
+    return content instanceof SubtitledHtml ? content.html : null;
+  }
+
+  getUnicodeOrNull(content: SubtitledHtml | SubtitledUnicode): string | null {
+    return content instanceof SubtitledUnicode ? content.unicode : null;
+  }
+
+  getSolutionExplanation(
+    solution: Solution | SubtitledHtml
+  ): SubtitledHtml | null {
+    return solution instanceof Solution ? solution.explanation : null;
+  }
+
+  getRequiredUnicode(
+    subtitledUnicode: SubtitledHtml | SubtitledUnicode | null
+  ): string {
+    if (!(subtitledUnicode instanceof SubtitledUnicode)) {
+      return '';
+    }
+
+    if (this.translationTabActiveModeService.isTranslationModeActive()) {
+      return subtitledUnicode.unicode;
+    }
+
+    let langCode = this.translationLanguageService.getActiveLanguageCode();
+
+    if (
+      !this.entityTranslationsService.languageCodeToLatestEntityTranslations.hasOwnProperty(
+        langCode
+      )
+    ) {
+      return subtitledUnicode.unicode;
+    }
+
+    if (!subtitledUnicode.contentId) {
+      return subtitledUnicode.unicode;
+    }
+
+    let translationContent =
+      this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+        langCode
+      ].getWrittenTranslation(subtitledUnicode.contentId);
+
+    if (!translationContent) {
+      return subtitledUnicode.unicode;
+    }
+
+    return translationContent.translation as string;
+  }
+
+  getEmptyContentMessage(): string {
+    if (this.translationTabActiveModeService.isVoiceoverModeActive()) {
+      return (
+        'The translation for this section has not been created yet. ' +
+        'Switch to translation mode to add a text translation.'
+      );
+    } else {
+      return 'There is no text available to translate.';
+    }
+  }
+
+  isActive(tabId: string): boolean {
+    return this.activatedTabId === tabId;
+  }
+
+  navigateToState(stateName: string): void {
+    this.routerService.navigateToMainTab(stateName);
+  }
+
+  onContentClick(event: Event): void {
+    if (this.isCopyModeActive()) {
+      event.stopPropagation();
+    }
+
+    this.ckEditorCopyContentService.broadcastCopy(event.target as HTMLElement);
+  }
+
+  isCopyModeActive(): boolean {
+    return this.ckEditorCopyContentService.copyModeActive;
+  }
+
+  onTabClick(tabId: string): void {
+    if (this.isDisabled(tabId)) {
+      return;
+    }
+
+    if (this.isTranslationTabBusy) {
+      this.stateEditorService.onShowTranslationTabBusyModal.emit();
+      return;
+    }
+
+    let activeContentId = null;
+    let activeDataFormat = TRANSLATION_DATA_FORMAT_HTML;
+
+    if (tabId === this.TAB_ID_CONTENT) {
+      activeContentId = this.stateContent.contentId;
+    } else if (tabId === this.TAB_ID_FEEDBACK) {
+      this.activeAnswerGroupIndex = this.initActiveIndex;
+      if (this.stateAnswerGroups.length > 0) {
+        activeContentId = this.stateAnswerGroups[0].outcome.feedback.contentId;
+      } else {
+        activeContentId = this.stateDefaultOutcome.feedback.contentId;
+      }
+    } else if (tabId === this.TAB_ID_HINTS) {
+      this.activeHintIndex = this.initActiveIndex;
+      activeContentId = this.stateHints[0].hintContent.contentId;
+    } else if (tabId === this.TAB_ID_SOLUTION) {
+      activeContentId = (this.stateSolution as Solution).explanation.contentId;
+    } else if (tabId === this.TAB_ID_CUSTOMIZATION_ARGS) {
+      this.activeCustomizationArgContentIndex = this.initActiveIndex;
+      const activeContent =
+        this.interactionCustomizationArgTranslatableContent[0].content;
+      activeContentId = activeContent.contentId;
+      if (activeContent instanceof SubtitledUnicode) {
+        activeDataFormat = TRANSLATION_DATA_FORMAT_UNICODE;
+      }
+    } else if (tabId === this.TAB_ID_RULE_INPUTS) {
+      if (this.interactionRuleTranslatableContents.length === 0) {
+        throw new Error(
+          'Accessed rule input translation tab when there are no rules'
+        );
+      }
+
+      // Note that only 'TextInput' and 'SetInput' have translatable rule
+      // types. The rules tab is disabled for other interactions.
+      const {rule, inputName, contentId} =
+        this.interactionRuleTranslatableContents[0];
+      activeContentId = contentId;
+      const inputType = rule.inputTypes[inputName];
+      activeDataFormat = this.RULE_INPUT_TYPES_TO_DATA_FORMATS[inputType];
+      this.activeRuleContentIndex = 0;
+    }
+    if (!activeContentId) {
+      return;
+    }
+
+    this.translationTabActiveContentIdService.setActiveContent(
+      activeContentId,
+      activeDataFormat
+    );
+    this.activatedTabId = tabId;
+    this.updateTranslatedContent();
+  }
+
+  updateTranslatedContent(): void {
+    if (!this.translationTabActiveModeService.isVoiceoverModeActive()) {
+      const langCode = this.translationLanguageService.getActiveLanguageCode();
+
+      const entityTranslations =
+        this.entityTranslationsService.languageCodeToLatestEntityTranslations[
+          langCode
+        ];
+
+      if (!entityTranslations) {
+        return;
+      }
+
+      const activeContentId =
+        this.translationTabActiveContentIdService.getActiveContentId();
+
+      if (!activeContentId) {
+        return;
+      }
+
+      const translatedContent =
+        entityTranslations.getWrittenTranslation(activeContentId);
+
+      if (translatedContent) {
+        this.activeTranslatedContent = translatedContent;
+      }
+    }
+  }
+
+  getHumanReadableRuleInputValues(
+    inputValue:
+      | InteractionRuleInputs
+      | TranslatableSetOfNormalizedString
+      | TranslatableSetOfUnicodeString,
+    inputType: string
+  ): string {
+    if (inputType === 'TranslatableSetOfNormalizedString') {
+      return (
+        '[' +
+        (inputValue as TranslatableSetOfNormalizedString).normalizedStrSet.join(
+          ', '
+        ) +
+        ']'
+      );
+    } else if (inputType === 'TranslatableSetOfUnicodeString') {
+      return (
+        '[' +
+        (inputValue as TranslatableSetOfUnicodeString).unicodeStrSet.join(
+          ', '
+        ) +
+        ']'
+      );
+    } else {
+      throw new Error(`The ${inputType} type is not implemented.`);
+    }
+  }
+
+  summarizeDefaultOutcome(
+    defaultOutcome: Outcome | null,
+    interactionId: string,
+    answerGroupCount: number,
+    shortenRule: boolean
+  ): string {
+    if (!defaultOutcome) {
+      return '';
+    }
+
+    let summary = '';
+    let hasFeedback = defaultOutcome.hasNonemptyFeedback();
+    if (!interactionId) {
+      return summary;
+    }
+    let interactionSpec =
+      INTERACTION_SPECS[interactionId as keyof typeof INTERACTION_SPECS];
+
+    if (interactionSpec && interactionSpec.is_linear) {
+      summary = interactionSpec.default_outcome_heading || '';
+    } else if (answerGroupCount > 0) {
+      summary = 'All other answers';
+    } else {
+      summary = 'All answers';
+    }
+
+    if (hasFeedback && shortenRule) {
+      summary = this.wrapTextWithEllipsisPipe.transform(
+        summary,
+        AppConstants.RULE_SUMMARY_WRAP_CHARACTER_COUNT
+      );
+    }
+    summary = '[' + summary + '] ';
+
+    if (hasFeedback) {
+      summary += this.ConvertToPlainTextPipe.transform(
+        defaultOutcome.feedback.html
+      );
+    }
+
+    return summary;
+  }
+
+  summarizeAnswerGroup(
+    answerGroup: AnswerGroup,
+    interactionId: string,
+    answerChoices: AnswerChoice[],
+    shortenRule: boolean
+  ): string {
+    let summary = '';
+    let outcome = answerGroup.outcome;
+    let hasFeedback = outcome.hasNonemptyFeedback();
+
+    if (answerGroup.rules) {
+      let firstRule = this.ConvertToPlainTextPipe.transform(
+        this.parameterizeRuleDescriptionPipe.transform(
+          answerGroup.rules[0],
+          interactionId,
+          answerChoices
+        )
+      );
+      summary = 'Answer ' + firstRule;
+
+      if (hasFeedback && shortenRule) {
+        summary = this.wrapTextWithEllipsisPipe.transform(
+          summary,
+          AppConstants.RULE_SUMMARY_WRAP_CHARACTER_COUNT
+        );
+      }
+      summary = '[' + summary + '] ';
+    }
+
+    if (hasFeedback) {
+      summary += shortenRule
+        ? this.truncatePipe.transform(outcome.feedback.html, 30)
+        : this.ConvertToPlainTextPipe.transform(outcome.feedback.html);
+    }
+    return summary;
+  }
+
+  isDisabled(tabId: string): boolean {
+    if (tabId === this.TAB_ID_CONTENT) {
+      return false;
+    }
+    // This is used to prevent users from adding unwanted audio for
+    // default_outcome and hints in Continue and EndExploration
+    // interaction. An exception is if the interaction contains
+    // translatable customization arguments -- e.g. Continue
+    // interaction's placeholder.
+    if (
+      tabId !== this.TAB_ID_CUSTOMIZATION_ARGS &&
+      (!this.stateInteractionId ||
+        INTERACTION_SPECS[
+          this.stateInteractionId as keyof typeof INTERACTION_SPECS
+        ].is_linear ||
+        INTERACTION_SPECS[
+          this.stateInteractionId as keyof typeof INTERACTION_SPECS
+        ].is_terminal)
+    ) {
+      return true;
+    } else if (tabId === this.TAB_ID_FEEDBACK) {
+      if (!this.stateDefaultOutcome) {
+        return true;
+      } else {
+        return false;
+      }
+    } else if (tabId === this.TAB_ID_HINTS) {
+      if (this.stateHints.length <= 0) {
+        return true;
+      } else {
+        return false;
+      }
+    } else if (tabId === this.TAB_ID_SOLUTION) {
+      if (!this.stateSolution) {
+        return true;
+      } else {
+        return false;
+      }
+    } else if (tabId === this.TAB_ID_CUSTOMIZATION_ARGS) {
+      return this.interactionCustomizationArgTranslatableContent.length === 0;
+    } else if (tabId === this.TAB_ID_RULE_INPUTS) {
+      return this.interactionRuleTranslatableContents.length === 0;
+    }
+    return false;
+  }
+
+  changeActiveHintIndex(newIndex: number): void {
+    if (this.isTranslationTabBusy) {
+      this.stateEditorService.onShowTranslationTabBusyModal.emit();
+      return;
+    }
+
+    if (this.activeHintIndex === newIndex) {
+      return;
+    }
+
+    this.activeHintIndex = newIndex;
+    let activeContentId = this.stateHints[newIndex].hintContent.contentId;
+    if (!activeContentId) {
+      return;
+    }
+
+    this.translationTabActiveContentIdService.setActiveContent(
+      activeContentId,
+      TRANSLATION_DATA_FORMAT_HTML
+    );
+    this.updateTranslatedContent();
+  }
+
+  changeActiveRuleContentIndex(newIndex: number): void {
+    if (this.isTranslationTabBusy) {
+      this.stateEditorService.onShowTranslationTabBusyModal.emit();
+      return;
+    }
+    if (this.activeRuleContentIndex === newIndex) {
+      return;
+    }
+    const {rule, inputName, contentId} =
+      this.interactionRuleTranslatableContents[newIndex];
+    const activeContentId = contentId;
+    const inputType = rule.inputTypes[inputName];
+    const activeDataFormat = this.RULE_INPUT_TYPES_TO_DATA_FORMATS[inputType];
+
+    this.translationTabActiveContentIdService.setActiveContent(
+      activeContentId,
+      activeDataFormat
+    );
+    this.activeRuleContentIndex = newIndex;
+    this.updateTranslatedContent();
+  }
+
+  changeActiveCustomizationArgContentIndex(newIndex: number): void {
+    if (this.isTranslationTabBusy) {
+      this.stateEditorService.onShowTranslationTabBusyModal.emit();
+      return;
+    }
+
+    if (this.activeCustomizationArgContentIndex === newIndex) {
+      return;
+    }
+
+    const activeContent =
+      this.interactionCustomizationArgTranslatableContent[newIndex].content;
+
+    const activeContentId = activeContent.contentId;
+
+    if (!activeContentId) {
+      return;
+    }
+
+    let activeDataFormat: string;
+
+    if (activeContent instanceof SubtitledUnicode) {
+      activeDataFormat = TRANSLATION_DATA_FORMAT_UNICODE;
+    } else {
+      activeDataFormat = TRANSLATION_DATA_FORMAT_HTML;
+    }
+
+    this.translationTabActiveContentIdService.setActiveContent(
+      activeContentId,
+      activeDataFormat
+    );
+
+    this.activeCustomizationArgContentIndex = newIndex;
+    this.updateTranslatedContent();
+  }
+
+  changeActiveAnswerGroupIndex(newIndex: number): void {
+    if (this.isTranslationTabBusy) {
+      this.stateEditorService.onShowTranslationTabBusyModal.emit();
+      return;
+    }
+
+    if (this.activeAnswerGroupIndex !== newIndex) {
+      let activeContentId =
+        newIndex === this.stateAnswerGroups.length
+          ? this.stateDefaultOutcome.feedback.contentId
+          : this.stateAnswerGroups[newIndex].outcome.feedback.contentId;
+
+      if (!activeContentId) {
+        return;
+      }
+
+      this.activeAnswerGroupIndex = newIndex;
+
+      this.translationTabActiveContentIdService.setActiveContent(
+        activeContentId,
+        TRANSLATION_DATA_FORMAT_HTML
+      );
+    }
+
+    this.updateTranslatedContent();
+  }
+
+  tabStatusColorStyle(tabId: string): object {
+    if (!this.isDisabled(tabId)) {
+      const color =
+        this.translationStatusService.getActiveStateComponentStatusColor(tabId);
+      return {'border-top-color': color};
+    }
+
+    return {};
+  }
+
+  tabNeedUpdatesStatus(tabId: string): boolean {
+    if (!this.isDisabled(tabId)) {
+      return this.translationStatusService.getActiveStateComponentNeedsUpdateStatus(
+        tabId
+      );
+    }
+
+    return false;
+  }
+
+  contentIdNeedUpdates(contentId: string): boolean {
+    return this.translationStatusService.getActiveStateContentIdNeedsUpdateStatus(
+      contentId
+    );
+  }
+
+  contentIdStatusColorStyle(contentId: string): object {
+    let color =
+      this.translationStatusService.getActiveStateContentIdStatusColor(
+        contentId
+      );
+
+    return {'border-left': '3px solid ' + color};
+  }
+
+  getSubtitledContentSummary(
+    subtitledContent: SubtitledHtml | SubtitledUnicode
+  ): string {
+    if (subtitledContent instanceof SubtitledHtml) {
+      return this.formatRtePreviewPipe.transform(subtitledContent.html);
+    } else if (subtitledContent instanceof SubtitledUnicode) {
+      return subtitledContent.unicode;
+    }
+
+    return '';
+  }
+
+  getInteractionRuleTranslatableContents(): {
+    rule: Rule;
+    inputName: string;
+    contentId: string;
+  }[] {
+    const allRules = this.stateAnswerGroups
+      .map(answerGroup => answerGroup.rules)
+      .flat();
+
+    const interactionRuleTranslatableContent: {
+      rule: Rule;
+      inputName: string;
+      contentId: string;
+    }[] = [];
+
+    allRules.forEach(rule => {
+      Object.keys(rule.inputs).forEach(inputName => {
+        const ruleInput = rule.inputs[inputName];
+
+        if (ruleInput && ruleInput.hasOwnProperty('contentId')) {
+          const base = ruleInput as BaseTranslatableObject;
+          const contentId = base.contentId;
+
+          if (!contentId) {
+            return;
+          }
+
+          interactionRuleTranslatableContent.push({
+            rule,
+            inputName,
+            contentId,
+          });
+        }
+      });
+    });
+
+    return interactionRuleTranslatableContent;
+  }
+
+  getInteractionCustomizationArgTranslatableContents(
+    customizationArgs: InteractionCustomizationArgs
+  ): {name: string; content: SubtitledUnicode | SubtitledHtml}[] {
+    const translatableContents: {
+      name: string;
+      content: SubtitledUnicode | SubtitledHtml;
+    }[] = [];
+
+    const camelCaseToSentenceCase = (s: string): string => {
+      // Lowercase the first letter (edge case for UpperCamelCase).
+      s = s.charAt(0).toLowerCase() + s.slice(1);
+      // Add a space in front of capital letters.
+      s = s.replace(/([A-Z])/g, ' $1');
+      // Capitalize first letter.
+      s = s.charAt(0).toUpperCase() + s.slice(1);
+      return s;
+    };
+
+    const traverseValueAndRetrieveSubtitledContent = (
+      name: string,
+      value: unknown
+    ): void => {
+      if (value instanceof SubtitledUnicode || value instanceof SubtitledHtml) {
+        translatableContents.push({
+          name,
+          content: value,
+        });
+      } else if (Array.isArray(value)) {
+        value.forEach((element, index) =>
+          traverseValueAndRetrieveSubtitledContent(
+            `${name} (${index})`,
+            element
+          )
+        );
+      } else if (value && typeof value === 'object') {
+        Object.keys(value as Record<string, unknown>).forEach(key =>
+          traverseValueAndRetrieveSubtitledContent(
+            `${name} > ${camelCaseToSentenceCase(key)}`,
+            (value as Record<string, unknown>)[key]
+          )
+        );
+      }
+    };
+
+    Object.keys(customizationArgs).forEach(caName =>
+      traverseValueAndRetrieveSubtitledContent(
+        camelCaseToSentenceCase(caName),
+        (
+          customizationArgs as Record<
+            string,
+            {
+              value: unknown;
+            }
+          >
+        )[caName].value
+      )
+    );
+
+    return translatableContents;
+  }
+
+  getActiveTab(): string {
+    this.initActiveContentId = this.stateEditorService.getInitActiveContentId();
+    if (!this.initActiveContentId) {
+      return this.TAB_ID_CONTENT;
+    }
+
+    const tabName = this.initActiveContentId.split('_')[0];
+
+    return tabName === 'default' ? this.TAB_ID_FEEDBACK : tabName;
+  }
+
+  getIndexOfActiveCard(): number {
+    if (!this.stateEditorService.getInitActiveContentId()) {
+      return 0;
+    }
+
+    const tabName = this.activeTab;
+    switch (tabName) {
+      case this.TAB_ID_FEEDBACK:
+        return this.stateAnswerGroups.findIndex(
+          card => card.outcome.feedback.contentId === this.initActiveContentId
+        );
+      case this.TAB_ID_HINTS:
+        return this.stateHints.findIndex(
+          card => card.hintContent.contentId === this.initActiveContentId
+        );
+      case this.TAB_ID_CUSTOMIZATION_ARGS:
+        return this.interactionCustomizationArgTranslatableContent.findIndex(
+          card => card.content.contentId === this.initActiveContentId
+        );
+      default:
+        return 0;
+    }
+  }
+
+  initStateTranslation(): void {
+    const stateName = this.stateEditorService.getActiveStateName();
+    if (!stateName) {
+      return;
+    }
+    this.stateName = stateName;
+    this.stateContent = this.explorationStatesService.getStateContentMemento(
+      this.stateName
+    );
+    this.stateSolution = this.explorationStatesService.getSolutionMemento(
+      this.stateName
+    );
+    this.stateHints = this.explorationStatesService.getHintsMemento(
+      this.stateName
+    );
+    this.stateAnswerGroups =
+      this.explorationStatesService.getInteractionAnswerGroupsMemento(
+        this.stateName
+      );
+    this.stateDefaultOutcome =
+      this.explorationStatesService.getInteractionDefaultOutcomeMemento(
+        this.stateName
+      );
+    this.stateInteractionId =
+      this.explorationStatesService.getInteractionIdMemento(this.stateName);
+    this.stateInteractionCustomizationArgs =
+      this.explorationStatesService.getInteractionCustomizationArgsMemento(
+        this.stateName
+      );
+    this.activeHintIndex = null;
+    this.activeAnswerGroupIndex = null;
+    let currentCustomizationArgs =
+      this.explorationStatesService.getInteractionCustomizationArgsMemento(
+        this.stateName
+      );
+    this.answerChoices =
+      this.stateEditorService.getAnswerChoices(
+        this.stateInteractionId,
+        currentCustomizationArgs
+      ) || [];
+    this.interactionPreviewHtml = this.stateInteractionId
+      ? this.explorationHtmlFormatterService.getInteractionHtml(
+          this.stateInteractionId,
+          this.stateInteractionCustomizationArgs,
+          false,
+          null,
+          null
+        )
+      : '';
+    this.interactionCustomizationArgTranslatableContent =
+      this.getInteractionCustomizationArgTranslatableContents(
+        this.stateInteractionCustomizationArgs
+      );
+    this.interactionRuleTranslatableContents =
+      this.getInteractionRuleTranslatableContents();
+
+    if (this.translationTabActiveModeService.isVoiceoverModeActive()) {
+      this.needsUpdateTooltipMessage =
+        'Audio needs update to ' + 'match text. Please add new audio.';
+    } else {
+      this.needsUpdateTooltipMessage =
+        'Translation needs update ' +
+        'to match text. Please re-translate the content.';
+    }
+    this.isDisabled(this.activatedTabId) || !this.activatedTabId
+      ? this.onTabClick(this.TAB_ID_CONTENT)
+      : this.onTabClick(this.activatedTabId);
+
+    this.updateTranslatedContent();
+  }
+
+  ngOnInit(): void {
+    // A map from translatable rule input types to their corresponding data
+    // formats.
+    this.RULE_INPUT_TYPES_TO_DATA_FORMATS = {
+      TranslatableSetOfNormalizedString:
+        TRANSLATION_DATA_FORMAT_SET_OF_NORMALIZED_STRING,
+      TranslatableSetOfUnicodeString:
+        TRANSLATION_DATA_FORMAT_SET_OF_UNICODE_STRING,
+    };
+
+    // Define tab constants.
+    this.TAB_ID_CONTENT = AppConstants.COMPONENT_NAME_CONTENT;
+    this.TAB_ID_FEEDBACK = AppConstants.COMPONENT_NAME_FEEDBACK;
+    this.TAB_ID_HINTS = AppConstants.COMPONENT_NAME_HINT;
+    this.TAB_ID_RULE_INPUTS = AppConstants.COMPONENT_NAME_RULE_INPUT;
+    this.TAB_ID_SOLUTION = AppConstants.COMPONENT_NAME_SOLUTION;
+    this.TAB_ID_CUSTOMIZATION_ARGS =
+      AppConstants.COMPONENT_NAME_INTERACTION_CUSTOMIZATION_ARGS;
+
+    // Activates Content tab by default.
+    this.activatedTabId = this.TAB_ID_CONTENT;
+    this.stateHints = [];
+    this.stateAnswerGroups = [];
+
+    this.activeTab = this.getActiveTab();
+
+    this.directiveSubscriptions.add(
+      this.stateEditorService.onRefreshStateTranslation.subscribe(() =>
+        this.initStateTranslation()
+      )
+    );
+
+    this.initStateTranslation();
+    this.initActiveIndex = this.getIndexOfActiveCard();
+    this.stateEditorService.setInitActiveContentId(null);
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+
+  isTranslationLanguageRTL(): boolean {
+    let languageCode = this.translationLanguageService.getActiveLanguageCode();
+    return this.i18nLanguageCodeService.isLanguageRTL(languageCode);
+  }
+}

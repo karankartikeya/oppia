@@ -16,32 +16,33 @@
  * @fileoverview Unit tests for the TextInput short response.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ShortResponseTextInputComponent } from './oppia-short-response-text-input.component';
-import { TruncateAtFirstLinePipe } from 'filters/string-utility-filters/truncate-at-first-line.pipe';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ShortResponseTextInputComponent} from './oppia-short-response-text-input.component';
+import {TruncateAtFirstLinePipe} from 'filters/string-utility-filters/truncate-at-first-line.pipe';
+import {TextInputAnswer} from 'interactions/answer-defs';
 
 describe('ShortResponseTextInputComponent', () => {
   let component: ShortResponseTextInputComponent;
   let fixture: ComponentFixture<ShortResponseTextInputComponent>;
 
   let mockHtmlEscaperService = {
-    escapedJsonToObj: function(answer) {
+    escapedJsonToObj: function (answer: TextInputAnswer) {
       return answer;
-    }
+    },
   };
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [ShortResponseTextInputComponent, TruncateAtFirstLinePipe],
       providers: [
         {
           provide: HtmlEscaperService,
-          useValue: mockHtmlEscaperService
-        }
+          useValue: mockHtmlEscaperService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -49,7 +50,7 @@ describe('ShortResponseTextInputComponent', () => {
     fixture = TestBed.createComponent(ShortResponseTextInputComponent);
     component = fixture.componentInstance;
 
-    component.answerWithValue = 'answer';
+    component.answer = 'answer';
   });
 
   it('should initialise when users submits answer', () => {

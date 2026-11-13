@@ -16,24 +16,30 @@
  * @fileoverview Controller for delete misconception modal.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ConfirmOrCancelModal } from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
-import { Skill } from 'domain/skill/SkillObjectFactory';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {Component, OnInit} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {ConfirmOrCancelModal} from 'components/common-layout-directives/common-elements/confirm-or-cancel-modal.component';
+import {Skill} from 'domain/skill/skill.model.ts';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
 
 @Component({
   selector: 'delete-misconception-modal',
   templateUrl: './delete-misconception-modal.component.html',
-  styleUrls: []
-}) export class DeleteMisconceptionModalComponent
-  extends ConfirmOrCancelModal implements OnInit {
-  skill: Skill;
-  index: number;
+  styleUrls: [],
+})
+export class DeleteMisconceptionModalComponent
+  extends ConfirmOrCancelModal
+  implements OnInit
+{
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  index!: number;
+  skill!: Skill;
 
   constructor(
     private skillEditorStateService: SkillEditorStateService,
-    protected modalInstance: NgbActiveModal
+    public modalInstance: NgbActiveModal
   ) {
     super(modalInstance);
   }
@@ -44,7 +50,7 @@ import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-
 
   confirm(): void {
     this.modalInstance.close({
-      id: this.skill.getMisconceptionAtIndex(this.index).getId()
+      id: this.skill.getMisconceptionAtIndex(this.index).getId(),
     });
   }
 }

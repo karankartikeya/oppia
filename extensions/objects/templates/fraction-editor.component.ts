@@ -16,46 +16,43 @@
  * @fileoverview Component for fraction editor.
  */
 
-
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { Fraction } from 'domain/objects/fraction.model';
-import { EventBusGroup, EventBusService } from 'app-events/event-bus.service';
-import { ObjectFormValidityChangeEvent } from 'app-events/app-events';
-import { FractionAnswer } from 'interactions/answer-defs';
+import {Component, EventEmitter, Input, OnInit, Output} from '@angular/core';
+import {Fraction} from 'domain/objects/fraction.model';
+import {EventBusGroup, EventBusService} from 'app-events/event-bus.service';
+import {FractionAnswer} from 'interactions/answer-defs';
 
 @Component({
   selector: 'fraction-editor',
   templateUrl: './fraction-editor.component.html',
-  styleUrls: []
+  styleUrls: ['./fraction-editor.component.css'],
 })
 export class FractionEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() modalId!: symbol;
   @Input() value!: FractionAnswer;
   @Output() valueChanged = new EventEmitter();
-  errorMessage: string = '';
+  errorMessageI18nKey: string = '';
   fractionString: string = '0';
   currentFractionValueIsValid = false;
   eventBus: EventBusGroup;
+  @Output() validityChange = new EventEmitter();
 
-  constructor(
-    private eventBusService: EventBusService) {
+  constructor(private eventBusService: EventBusService) {
     this.eventBus = new EventBusGroup(this.eventBusService);
   }
 
   ngOnInit(): void {
-    if (this.value !== null) {
+    if (this.value) {
       this.fractionString = Fraction.fromDict(this.value).toString();
     }
   }
 
   validateFraction(newFraction: string): void {
     if (newFraction.length === 0) {
-      this.errorMessage = 'Please enter a non-empty fraction value.';
+      this.errorMessageI18nKey = 'I18N_INTERACTIONS_FRACTIONS_NON_EMPTY';
       this.currentFractionValueIsValid = false;
+      this.validityChange.emit({error: false});
       return;
     }
     try {
@@ -64,21 +61,19 @@ export class FractionEditorComponent implements OnInit {
         this.value = Fraction.fromRawInputString(newFraction);
         this.valueChanged.emit(this.value);
       }
-      this.errorMessage = '';
+      this.errorMessageI18nKey = '';
       this.currentFractionValueIsValid = true;
+      // We use unknown type because we are unsure of the type of error
+      // that was thrown. Since the catch block cannot identify the
+      // specific type of error, we are unable to further optimise the
+      // code by introducing more types of errors.
     } catch (parsingError: unknown) {
       if (parsingError instanceof Error) {
-        this.errorMessage = parsingError.message;
+        this.errorMessageI18nKey = parsingError.message;
       }
       this.currentFractionValueIsValid = false;
     } finally {
-      this.eventBus.emit(new ObjectFormValidityChangeEvent(
-        {value: !this.currentFractionValueIsValid, modalId: this.modalId}));
+      this.validityChange.emit({error: this.currentFractionValueIsValid});
     }
   }
 }
-
-angular.module('oppia').directive(
-  'fractionEditor', downgradeComponent({
-    component: FractionEditorComponent
-  }) as angular.IDirectiveFactory);

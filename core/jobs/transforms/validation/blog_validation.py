@@ -16,35 +16,39 @@
 
 """Beam DoFns and PTransforms to provide validation of blog post models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-import datetime
-
+from core import utils
 from core.domain import blog_domain
 from core.jobs import job_utils
 from core.jobs.decorators import validation_decorators
 from core.jobs.transforms.validation import base_validation
-from core.jobs.types import blog_validation_errors
+from core.jobs.types import blog_validation_errors, model_property
 from core.platform import models
 
 import apache_beam as beam
+from typing import Iterator, List, Tuple, Type, Union
 
 MYPY = False
-if MYPY: # pragma: no cover
-    from mypy_imports import blog_models
-    from mypy_imports import user_models
+if MYPY:  # pragma: no cover
+    from mypy_imports import blog_models, user_models
 
 (blog_models, user_models) = models.Registry.import_models(
-    [models.NAMES.blog, models.NAMES.user])
+    [models.Names.BLOG, models.Names.USER]
+)
 
 
 @validation_decorators.AuditsExisting(blog_models.BlogPostModel)
 class ValidateBlogPostModelDomainObjectsInstances(
-        base_validation.ValidateModelDomainObjectInstances):
+    base_validation.ValidateModelDomainObjectInstances[
+        blog_models.BlogPostModel
+    ]
+):
     """Provides the validation type for validating blog post objects."""
 
-    def _get_model_domain_object_instance(self, blog_post_model):
+    def _get_model_domain_object_instance(
+        self, blog_post_model: blog_models.BlogPostModel
+    ) -> blog_domain.BlogPost:
         """Returns blog post domain object instance created from the model.
 
         Args:
@@ -62,37 +66,58 @@ class ValidateBlogPostModelDomainObjectsInstances(
             blog_post_model.tags,
             blog_post_model.thumbnail_filename,
             blog_post_model.last_updated,
-            blog_post_model.published_on
+            blog_post_model.published_on,
         )
 
-    def _get_domain_object_validation_type(self, unused_item):
+    def _get_domain_object_validation_type(
+        self, blog_post_model: blog_models.BlogPostModel
+    ) -> base_validation.ValidationModes:
         """Returns the type of domain object validation to be performed.
 
         Args:
-            unused_item: datastore_services.Model. Entity to validate.
+            blog_post_model: datastore_services.Model. Entity to validate.
 
         Returns:
             str. The type of validation mode: strict or non strict.
         """
-        # TODO(#13397): Write a custom job to avoid applying strict validation
-        # to private blog posts. We can't determine public/private without
-        # performing an NDB get() operation, which are forbidden in Apache Beam
-        # jobs.
-        return base_validation.VALIDATION_MODES.strict
+        if blog_post_model.published_on is None:
+            return base_validation.ValidationModes.NON_STRICT
+
+        return base_validation.ValidationModes.STRICT
 
 
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that DoFn class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'DoFn' (has type 'Any')), we added an ignore here.
 @validation_decorators.AuditsExisting(
-    blog_models.BlogPostModel,
-    blog_models.BlogPostSummaryModel)
-class ValidateModelPublishTimestamps(beam.DoFn):
-    """DoFn to check whether created_on and last_updated timestamps are valid.
+    blog_models.BlogPostModel, blog_models.BlogPostSummaryModel
+)
+class ValidateBlogModelTimestamps(beam.DoFn):  # type: ignore[misc]
+    """DoFn to check whether created_on, last_updated and published_on
+    timestamps are valid for both blog post models and blog post summary models.
     """
 
-    def process(self, input_model):
-        """Function that validates that the published timestamp of the blog post
-        models is either None or is greater than created on time, is less than
-        current datetime and is equal to or greater than the last updated
-        timestamp.
+    def process(
+        self,
+        input_model: Union[
+            blog_models.BlogPostModel, blog_models.BlogPostSummaryModel
+        ],
+    ) -> Iterator[
+        Union[
+            blog_validation_errors.InconsistentLastUpdatedTimestampsError,
+            blog_validation_errors.ModelMutatedDuringJobErrorForLastUpdated,
+            blog_validation_errors.ModelMutatedDuringJobErrorForPublishedOn,
+            blog_validation_errors.InconsistentPublishLastUpdatedTimestampsError,
+        ]
+    ]:
+        """Function that validates that the last updated timestamp of the blog
+        post models is greater than created on time, is less than current
+        datetime and is equal to or greater than the published on timestamp.
+        For blog posts migrated from 'Medium', published_on will be less than
+        created_on time and last_updated time. Therefore published_on can be
+        less than or greater than created_on time and less than or equal to
+        last_updated time for blog posts.
 
         Args:
             input_model: datastore_services.Model. Entity to validate.
@@ -103,32 +128,46 @@ class ValidateModelPublishTimestamps(beam.DoFn):
             timestamps.
         """
         model = job_utils.clone_model(input_model)
-        if model.published_on is None:
-            return
+        max_clock_skew_duration = base_validation.MAX_CLOCK_SKEW_DURATION
 
-        if model.created_on > (
-                model.published_on + base_validation.MAX_CLOCK_SKEW_SECS):
-            yield blog_validation_errors.InconsistentPublishTimestampsError(
-                model)
+        if model.created_on > (model.last_updated + max_clock_skew_duration):
+            yield blog_validation_errors.InconsistentLastUpdatedTimestampsError(
+                model
+            )
 
-        current_datetime = datetime.datetime.utcnow()
-        if (model.published_on - base_validation.MAX_CLOCK_SKEW_SECS) > (
-                current_datetime):
-            yield blog_validation_errors.ModelMutatedDuringJobError(
-                model)
+        current_datetime = utils.get_current_utc_datetime()
+        if model.published_on:
+            if (model.published_on - max_clock_skew_duration) > (
+                current_datetime
+            ):
+                yield blog_validation_errors.ModelMutatedDuringJobErrorForPublishedOn(
+                    model
+                )  # pylint: disable=line-too-long
 
-        if (model.published_on - base_validation.MAX_CLOCK_SKEW_SECS) > (
-                model.last_updated):
-            yield blog_validation_errors.InconsistentPublishLastUpdatedTimestampsError(model) # pylint: disable=line-too-long
+            if (model.published_on - max_clock_skew_duration) > (
+                model.last_updated
+            ):
+                yield blog_validation_errors.InconsistentPublishLastUpdatedTimestampsError(
+                    model
+                )  # pylint: disable=line-too-long
+
+        if (model.last_updated - max_clock_skew_duration) > (current_datetime):
+            yield blog_validation_errors.ModelMutatedDuringJobErrorForLastUpdated(
+                model
+            )  # pylint: disable=line-too-long
 
 
-@validation_decorators.AuditsExisting(
-    blog_models.BlogPostSummaryModel)
+@validation_decorators.AuditsExisting(blog_models.BlogPostSummaryModel)
 class ValidateBlogSummaryModelDomainObjectsInstances(
-        base_validation.ValidateModelDomainObjectInstances):
+    base_validation.ValidateModelDomainObjectInstances[
+        blog_models.BlogPostSummaryModel
+    ]
+):
     """Provides the validation type for validating blog post objects."""
 
-    def _get_model_domain_object_instance(self, summary_model):
+    def _get_model_domain_object_instance(
+        self, summary_model: blog_models.BlogPostSummaryModel
+    ) -> blog_domain.BlogPostSummary:
         """Returns blog post domain object instance created from the model.
 
         Args:
@@ -146,47 +185,102 @@ class ValidateBlogSummaryModelDomainObjectsInstances(
             summary_model.tags,
             summary_model.thumbnail_filename,
             summary_model.last_updated,
-            summary_model.published_on
+            summary_model.published_on,
         )
 
-    def _get_domain_object_validation_type(self, unused_item):
+    def _get_domain_object_validation_type(
+        self, blog_post_summary: blog_models.BlogPostSummaryModel
+    ) -> base_validation.ValidationModes:
         """Returns the type of domain object validation to be performed.
 
         Args:
-            unused_item: datastore_services.Model. Entity to validate.
+            blog_post_summary: datastore_services.Model. Entity to validate.
 
         Returns:
             str. The type of validation mode: strict or non strict.
         """
-        # TODO(#13397): Write a custom job to avoid applying strict validation
-        # to private blog posts. We can't determine public/private without
-        # performing an NDB get() operation, which are forbidden in Apache Beam
-        # jobs.
-        return base_validation.VALIDATION_MODES.strict
+        if blog_post_summary.published_on is None:
+            return base_validation.ValidationModes.NON_STRICT
+
+        return base_validation.ValidationModes.STRICT
 
 
-@validation_decorators.RelationshipsOf(
-    blog_models.BlogPostModel)
-def blog_post_model_relationships(model):
+@validation_decorators.RelationshipsOf(blog_models.BlogPostModel)
+def blog_post_model_relationships(
+    model: Type[blog_models.BlogPostModel],
+) -> Iterator[
+    Tuple[
+        model_property.PropertyType,
+        List[
+            Type[
+                Union[
+                    blog_models.BlogPostSummaryModel,
+                    blog_models.BlogPostRightsModel,
+                    user_models.UserSettingsModel,
+                ]
+            ]
+        ],
+    ]
+]:
     """Yields how the properties of the model relates to the ID of others."""
-    yield model.id, [blog_models.BlogPostSummaryModel]
-    yield model.id, [blog_models.BlogPostRightsModel]
-    yield model.author_id, [user_models.UserSettingsModel]
+    yield (model.id, [blog_models.BlogPostSummaryModel])
+    yield (model.id, [blog_models.BlogPostRightsModel])
+    yield (model.author_id, [user_models.UserSettingsModel])
 
 
-@validation_decorators.RelationshipsOf(
-    blog_models.BlogPostSummaryModel)
-def blog_post_summary_model_relationships(model):
+@validation_decorators.RelationshipsOf(blog_models.BlogPostSummaryModel)
+def blog_post_summary_model_relationships(
+    model: Type[blog_models.BlogPostSummaryModel],
+) -> Iterator[
+    Tuple[
+        model_property.PropertyType,
+        List[
+            Type[
+                Union[
+                    blog_models.BlogPostModel,
+                    blog_models.BlogPostRightsModel,
+                    user_models.UserSettingsModel,
+                ]
+            ]
+        ],
+    ]
+]:
     """Yields how the properties of the model relates to the ID of others."""
-    yield model.id, [blog_models.BlogPostModel]
-    yield model.id, [blog_models.BlogPostRightsModel]
-    yield model.author_id, [user_models.UserSettingsModel]
+    yield (model.id, [blog_models.BlogPostModel])
+    yield (model.id, [blog_models.BlogPostRightsModel])
+    yield (model.author_id, [user_models.UserSettingsModel])
 
 
-@validation_decorators.RelationshipsOf(
-    blog_models.BlogPostRightsModel)
-def blog_post_rights_model_relationships(model):
+@validation_decorators.RelationshipsOf(blog_models.BlogPostRightsModel)
+def blog_post_rights_model_relationships(
+    model: Type[blog_models.BlogPostRightsModel],
+) -> Iterator[
+    Tuple[
+        model_property.PropertyType,
+        List[
+            Type[
+                Union[
+                    blog_models.BlogPostModel,
+                    blog_models.BlogPostSummaryModel,
+                    user_models.UserSettingsModel,
+                ]
+            ]
+        ],
+    ]
+]:
     """Yields how the properties of the model relates to the ID of others."""
     yield model.id, [blog_models.BlogPostModel]
     yield model.id, [blog_models.BlogPostSummaryModel]
     yield model.editor_ids, [user_models.UserSettingsModel]
+
+
+@validation_decorators.RelationshipsOf(blog_models.BlogAuthorDetailsModel)
+def blog_author_details_model_relationships(
+    model: Type[blog_models.BlogAuthorDetailsModel],
+) -> Iterator[
+    Tuple[
+        model_property.PropertyType, List[Type[user_models.UserSettingsModel]]
+    ]
+]:
+    """Yields how the properties of the model relates to the ID of others."""
+    yield model.author_id, [user_models.UserSettingsModel]

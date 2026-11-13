@@ -16,92 +16,135 @@
  * @fileoverview Unit tests for donate page.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { DonatePageComponent } from './donate-page.component';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { WindowDimensionsService } from
-  'services/contextual/window-dimensions.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {CUSTOM_ELEMENTS_SCHEMA} from '@angular/core';
+
+import {DonatePageComponent} from './donate-page.component';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {DonationBoxModalComponent} from './donation-box/donation-box-modal.component';
+import {ThanksForDonatingModalComponent} from './thanks-for-donating-modal.component';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+
+class MockWindowRef {
+  _window = {
+    location: {
+      _href: '',
+      search: '',
+      get href() {
+        return this._href;
+      },
+      set href(val) {
+        this._href = val;
+      },
+      replace: (val: string) => {},
+    },
+    gtag: () => {},
+    onhashchange: () => {},
+  };
+
+  get nativeWindow() {
+    return this._window;
+  }
+}
 
 describe('Donate page', () => {
-  const siteAnalyticsServiceStub = new SiteAnalyticsService(
-    new WindowRef());
+  let fixture: ComponentFixture<DonatePageComponent>;
+  let component: DonatePageComponent;
+  let windowRef: MockWindowRef;
+  let ngbModal: NgbModal;
+  let urlInterpolationService: UrlInterpolationService;
+  let i18nLanguageCodeService: I18nLanguageCodeService;
 
-  beforeEach(async() => {
+  beforeEach(() => {
+    windowRef = new MockWindowRef();
     TestBed.configureTestingModule({
-      declarations: [
-        DonatePageComponent,
-        MockTranslatePipe
-      ],
+      declarations: [DonatePageComponent, MockTranslatePipe],
       providers: [
-        {provide: SiteAnalyticsService, useValue: siteAnalyticsServiceStub},
         UrlInterpolationService,
-        {
-          provide: WindowDimensionsService,
-          useValue: {
-            isWindowNarrow: () => true
-          }
-        },
-        {
-          provide: WindowRef,
-          useValue: {
-            nativeWindow: {
-              location: {
-                href: ''
-              },
-              gtag: () => {}
-            }
-          }
-        }
-      ]
+        {provide: WindowRef, useValue: windowRef},
+        I18nLanguageCodeService,
+      ],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
   });
 
-  let component;
-
   beforeEach(() => {
-    const donatePageComponent = TestBed.createComponent(DonatePageComponent);
-    component = donatePageComponent.componentInstance;
+    fixture = TestBed.createComponent(DonatePageComponent);
+    component = fixture.componentInstance;
+    ngbModal = TestBed.inject(NgbModal);
+    urlInterpolationService = TestBed.inject(UrlInterpolationService);
+    i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
+    spyOn(ngbModal, 'open');
   });
 
-  it('should successfully instantiate the component from beforeEach block',
-    () => {
-      expect(component).toBeDefined();
-    });
+  it('should get image path', () => {
+    spyOn(urlInterpolationService, 'getStaticImageUrl');
 
-  it('should set component properties when ngOnInit() is called', () => {
+    component.getStaticImageUrl('abc.webp');
+
+    expect(urlInterpolationService.getStaticImageUrl).toHaveBeenCalledWith(
+      'abc.webp'
+    );
+  });
+
+  it('should show thank you modal on query parameters change', () => {
+    windowRef.nativeWindow.location.search = '';
     component.ngOnInit();
+    expect(ngbModal.open).not.toHaveBeenCalled();
 
-    expect(component.windowIsNarrow).toBe(true);
-    expect(component.donateImgUrl).toBe(
-      '/assets/images/general/opp_donate_text.svg');
+    windowRef.nativeWindow.location.search = '?random';
+    component.ngOnInit();
+    expect(ngbModal.open).not.toHaveBeenCalled();
+
+    windowRef.nativeWindow.location.search = '?thanks';
+    component.ngOnInit();
+    expect(ngbModal.open).toHaveBeenCalledWith(
+      ThanksForDonatingModalComponent,
+      {
+        backdrop: 'static',
+        size: 'xl',
+      }
+    );
   });
 
-  it('should donate throught amazon sucessfully', (done) => {
-    spyOn(siteAnalyticsServiceStub, 'registerGoToDonationSiteEvent')
-      .and.callThrough();
+  it('should open donation box modal', () => {
+    component.openDonationBoxModal();
 
-    component.onDonateThroughAmazon();
-    expect(siteAnalyticsServiceStub.registerGoToDonationSiteEvent)
-      .toHaveBeenCalledWith('Amazon');
-
-    setTimeout(() => {
-      expect(component.windowRef.nativeWindow.location.href).toBe(
-        'https://smile.amazon.com/ch/81-1740068');
-
-      done();
-    }, 150);
+    expect(ngbModal.open).toHaveBeenCalledWith(DonationBoxModalComponent, {
+      backdrop: 'static',
+      size: 'xl',
+      windowClass: 'donation-box-modal',
+    });
   });
 
-  it('should donate throught paypal sucessfully', () => {
-    spyOn(siteAnalyticsServiceStub, 'registerGoToDonationSiteEvent')
-      .and.callThrough();
+  it('should move the correct testimonials carousel to the previous slide', () => {
+    component.learnerCarousel = jasmine.createSpyObj('NgbCarousel', ['prev']);
 
-    component.onDonateThroughPayPal();
-    expect(siteAnalyticsServiceStub.registerGoToDonationSiteEvent)
-      .toHaveBeenCalledWith('PayPal');
+    component.moveLearnerCarouselToPreviousSlide();
+    expect(component.learnerCarousel.prev).toHaveBeenCalled();
+  });
+
+  it('should move the correct testimonials carousel to the next slide', () => {
+    component.learnerCarousel = jasmine.createSpyObj('NgbCarousel', ['next']);
+
+    component.moveLearnerCarouselToNextSlide();
+    expect(component.learnerCarousel.next).toHaveBeenCalled();
+  });
+
+  it('should get the correct RTL status if the current language is RTL', () => {
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageRTL').and.returnValue(
+      true
+    );
+    expect(component.isLanguageRTL()).toBeTrue();
+  });
+
+  it('should get the correct RTL status if the current language is not RTL', () => {
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageRTL').and.returnValue(
+      false
+    );
+    expect(component.isLanguageRTL()).toBeFalse();
   });
 });

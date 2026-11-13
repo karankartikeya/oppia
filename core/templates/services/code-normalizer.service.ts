@@ -17,22 +17,24 @@
  * and pencil code interactions.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CodeNormalizerService {
   removeLeadingWhitespace(str: string): string {
     return str.replace(/^\s+/g, '');
   }
+
   removeTrailingWhitespace(str: string): string {
     return str.replace(/\s+$/g, '');
   }
+
   removeIntermediateWhitespace(str: string): string {
     return str.replace(/\s+/g, ' ');
   }
+
   getNormalizedCode(codeString: string): string {
     /*
      * Normalizes a code string (which is assumed not to contain tab
@@ -52,8 +54,8 @@ export class CodeNormalizerService {
     var FOUR_SPACES = '    ';
     // Maps the number of spaces at the beginning of a line to an int
     // specifying the desired indentation level.
-    var numSpacesToDesiredIndentLevel: { [key: number]: number } = {
-      0: 0
+    var numSpacesToDesiredIndentLevel: {[key: number]: number} = {
+      0: 0,
     };
 
     var codeLines = this.removeTrailingWhitespace(codeString).split('\n');
@@ -69,9 +71,9 @@ export class CodeNormalizerService {
 
       var numSpaces = line.length - this.removeLeadingWhitespace(line).length;
 
-      var existingNumSpaces = Object.keys(
-        numSpacesToDesiredIndentLevel
-      ).map(Number);
+      var existingNumSpaces = Object.keys(numSpacesToDesiredIndentLevel).map(
+        Number
+      );
       var maxNumSpaces = Math.max.apply(null, existingNumSpaces);
       if (numSpaces > maxNumSpaces) {
         // Add a new indentation level.
@@ -96,9 +98,9 @@ export class CodeNormalizerService {
       }
 
       if (isShortfallLine) {
-        existingNumSpaces = Object.keys(
-          numSpacesToDesiredIndentLevel
-        ).map(Number);
+        existingNumSpaces = Object.keys(numSpacesToDesiredIndentLevel).map(
+          Number
+        );
         numSpaces = Math.max.apply(null, existingNumSpaces);
       }
 
@@ -107,12 +109,10 @@ export class CodeNormalizerService {
         normalizedLine += FOUR_SPACES;
       }
       normalizedLine += this.removeIntermediateWhitespace(
-        this.removeLeadingWhitespace(line));
+        this.removeLeadingWhitespace(line)
+      );
       normalizedCodeLines.push(normalizedLine);
     });
     return normalizedCodeLines.join('\n');
   }
 }
-
-angular.module('oppia').factory(
-  'CodeNormalizerService', downgradeInjectable(CodeNormalizerService));

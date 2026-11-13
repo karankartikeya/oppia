@@ -16,56 +16,141 @@
  * @fileoverview Unit tests for error page root.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { PageTitleService } from 'services/page-title.service';
-import { ErrorPageRootComponent } from './error-page-root.component';
+import {CUSTOM_ELEMENTS_SCHEMA} from '@angular/core';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {TranslateModule, TranslateService} from '@ngx-translate/core';
+import {ActivatedRoute} from '@angular/router';
+
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {ErrorPageRootComponent} from './error-page-root.component';
+import {BaseRootComponent} from 'pages/base-root.component';
+import {PageHeadService} from 'services/page-head.service';
 
 class MockWindowRef {
+  bodyErrorCode: string | null = '401';
+
   nativeWindow = {
     document: {
-      getElementsByTagName(tagName: string) {
-        return [{
-          getAttribute(attr: string) {
-            return '401';
-          }
-        }];
-      }
-    }
+      getElementsByTagName: (tagName: string) => [
+        {
+          getAttribute: (attr: string) => this.bodyErrorCode,
+        },
+      ],
+    },
   };
 }
 
-describe('Error page root component', () => {
-  let fixture: ComponentFixture<ErrorPageRootComponent>;
-  let componentInstance: ErrorPageRootComponent;
-  let pageTitleService: PageTitleService;
+class MockActivatedRoute {
+  snapshot = {
+    paramMap: {
+      get: (key: string) => {
+        return '500';
+      },
+    },
+    url: [],
+  };
+}
 
-  beforeEach(waitForAsync(() => {
-    TestBed.configureTestingModule({
-      declarations: [ErrorPageRootComponent],
-      providers: [
-        PageTitleService,
-        {
-          provide: WindowRef,
-          useClass: MockWindowRef
-        }
-      ],
-      schemas: [NO_ERRORS_SCHEMA]
-    }).compileComponents();
-  }));
+describe('ErrorPageRootComponent', () => {
+  let fixture: ComponentFixture<ErrorPageRootComponent>;
+  let component: ErrorPageRootComponent;
+  let mockWindowRef: MockWindowRef;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [TranslateModule.forRoot()],
+      declarations: [ErrorPageRootComponent],
+      providers: [
+        PageHeadService,
+        TranslateService,
+        MockWindowRef,
+        {
+          provide: WindowRef,
+          useExisting: MockWindowRef,
+        },
+        {
+          provide: ActivatedRoute,
+          useClass: MockActivatedRoute,
+        },
+      ],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    }).compileComponents();
+
     fixture = TestBed.createComponent(ErrorPageRootComponent);
-    componentInstance = fixture.componentInstance;
-    pageTitleService = TestBed.inject(PageTitleService);
-    fixture.detectChanges();
+    component = fixture.componentInstance;
+    mockWindowRef = TestBed.inject(MockWindowRef);
   });
 
-  it('should initialize', () => {
-    spyOn(pageTitleService, 'setDocumentTitle');
-    componentInstance.ngOnInit();
-    expect(pageTitleService.setDocumentTitle).toHaveBeenCalled();
-    expect(componentInstance.statusCode).toEqual('401');
+  it('should return title interpolation params', () => {
+    const parentNgOnInitSpy = spyOn(BaseRootComponent.prototype, 'ngOnInit');
+
+    component.ngOnInit();
+
+    expect(component.statusCode).toEqual('500');
+    expect(parentNgOnInitSpy).toHaveBeenCalledTimes(1);
+    expect(component.titleInterpolationParams).toEqual({
+      statusCode: component.statusCode,
+    });
+  });
+
+  it('should obtain status code from activated router', () => {
+    const parentNgOnInitSpy = spyOn(BaseRootComponent.prototype, 'ngOnInit');
+
+    component.ngOnInit();
+
+    expect(component.statusCode).toEqual('500');
+    expect(parentNgOnInitSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should obtain status code from body tag', () => {
+    const parentNgOnInitSpy = spyOn(BaseRootComponent.prototype, 'ngOnInit');
+    spyOn(component.activatedRoute.snapshot.paramMap, 'get').and.returnValue(
+      null
+    );
+    const getElementsByTagNameSpy = spyOn(
+      component.windowRef.nativeWindow.document,
+      'getElementsByTagName'
+    ).and.callThrough();
+
+    component.ngOnInit();
+
+    expect(component.statusCode).toEqual('401');
+    expect(parentNgOnInitSpy).toHaveBeenCalledTimes(1);
+    expect(getElementsByTagNameSpy).toHaveBeenCalledWith('body');
+  });
+
+  it('should default to 404 in case of invalid param', () => {
+    const parentNgOnInitSpy = spyOn(BaseRootComponent.prototype, 'ngOnInit');
+    spyOn(component.activatedRoute.snapshot.paramMap, 'get').and.returnValue(
+      'invalid_value'
+    );
+    const getElementsByTagNameSpy = spyOn(
+      component.windowRef.nativeWindow.document,
+      'getElementsByTagName'
+    );
+
+    component.ngOnInit();
+
+    expect(component.statusCode).toEqual('404');
+    expect(parentNgOnInitSpy).toHaveBeenCalledTimes(1);
+    expect(getElementsByTagNameSpy).not.toHaveBeenCalled();
+  });
+
+  it('should default to 404 when no valid status code is present', () => {
+    const parentNgOnInitSpy = spyOn(BaseRootComponent.prototype, 'ngOnInit');
+    spyOn(component.activatedRoute.snapshot.paramMap, 'get').and.returnValue(
+      null
+    );
+    mockWindowRef.bodyErrorCode = null;
+    const getElementsByTagNameSpy = spyOn(
+      component.windowRef.nativeWindow.document,
+      'getElementsByTagName'
+    ).and.callThrough();
+
+    component.ngOnInit();
+
+    expect(component.statusCode).toEqual('404');
+    expect(parentNgOnInitSpy).toHaveBeenCalledTimes(1);
+    expect(getElementsByTagNameSpy).toHaveBeenCalledWith('body');
   });
 });

@@ -16,24 +16,20 @@
  * @fileoverview Modal and functionality for the create collection button.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { AlertsService } from 'services/alerts.service';
-import { CollectionCreationBackendService } from
-  'components/entity-creation-services/collection-creation-backend-api.service';
-import { LoaderService } from 'services/loader.service';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
+import {AlertsService} from 'services/alerts.service';
+import {CollectionCreationBackendService} from 'components/entity-creation-services/collection-creation-backend-api.service';
+import {LoaderService} from 'services/loader.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CollectionCreationService {
-  // TODO(#9154): Remove static when migration is complete.
-  static collectionCreationInProgress: boolean = false;
+  collectionCreationInProgress: boolean = false;
 
   constructor(
     private collectionCreationBackendService: CollectionCreationBackendService,
@@ -41,43 +37,43 @@ export class CollectionCreationService {
     private siteAnalyticsService: SiteAnalyticsService,
     private urlInterpolationService: UrlInterpolationService,
     private loaderService: LoaderService,
-    private windowRef: WindowRef) {
-  }
+    private windowRef: WindowRef
+  ) {}
 
-  CREATE_NEW_COLLECTION_URL_TEMPLATE = (
-      '/collection_editor/create/<collection_id>');
+  CREATE_NEW_COLLECTION_URL_TEMPLATE =
+    '/collection_editor/create/<collection_id>';
 
   createNewCollection(): void {
-    if (CollectionCreationService.collectionCreationInProgress) {
+    if (this.collectionCreationInProgress) {
       return;
     }
 
-    CollectionCreationService.collectionCreationInProgress = true;
+    this.collectionCreationInProgress = true;
     this.alertsService.clearWarnings();
 
     this.loaderService.showLoadingScreen('Creating collection');
 
-    this.collectionCreationBackendService.createCollectionAsync()
-      .then(response => {
+    this.collectionCreationBackendService.createCollectionAsync().then(
+      (response: {collectionId: string}) => {
         this.siteAnalyticsService.registerCreateNewCollectionEvent(
-          response.collectionId);
+          response.collectionId
+        );
 
         setTimeout(() => {
           this.windowRef.nativeWindow.location.href =
             this.urlInterpolationService.interpolateUrl(
-              this.CREATE_NEW_COLLECTION_URL_TEMPLATE, {
-                collection_id: response.collectionId
+              this.CREATE_NEW_COLLECTION_URL_TEMPLATE,
+              {
+                collection_id: response.collectionId,
               }
             );
-          CollectionCreationService.collectionCreationInProgress = false;
+          this.collectionCreationInProgress = false;
         }, 150);
-      }, () => {
+      },
+      () => {
         this.loaderService.hideLoadingScreen();
-        CollectionCreationService.collectionCreationInProgress = false;
-      });
+        this.collectionCreationInProgress = false;
+      }
+    );
   }
 }
-
-angular.module('oppia').factory(
-  'CollectionCreationService',
-  downgradeInjectable(CollectionCreationService));

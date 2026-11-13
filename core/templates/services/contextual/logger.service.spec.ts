@@ -15,14 +15,14 @@
 /**
  * @fileoverview Unit tests for LoggerService.
  */
-import { TestBed } from '@angular/core/testing';
-import { LoggerService } from 'services/contextual/logger.service';
+import {TestBed} from '@angular/core/testing';
+import {LoggerService} from 'services/contextual/logger.service';
 
 describe('Logger Service', () => {
   let ls: LoggerService;
 
   beforeEach(() => {
-    ls = TestBed.get(LoggerService);
+    ls = TestBed.inject(LoggerService);
   });
 
   it('should display debug message on the console', () => {

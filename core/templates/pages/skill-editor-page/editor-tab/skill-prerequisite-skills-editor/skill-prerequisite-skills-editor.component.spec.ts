@@ -12,90 +12,156 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /**
- * @fileoverview Unit tests for the skill editor main tab directive.
+ * @fileoverview Unit tests for the skill prerequisite skills editor.
  */
 
-// TODO(#7222): Remove the following block of unnnecessary imports once
-// the code corresponding to the spec is upgraded to Angular 8.
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
-import { SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { TopicsAndSkillsDashboardBackendApiService } from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
-import { SkillUpdateService } from 'domain/skill/skill-update.service';
-import { AlertsService } from 'services/alerts.service';
-// ^^^ This block is to be removed.
-
-describe('Skill editor main tab directive', function() {
-  let $scope = null;
-  let ctrl = null;
-  let $rootScope = null;
-  let ngbModal: NgbModal = null;
-  let skillEditorStateService: SkillEditorStateService = null;
-  let skillObjectFactory: SkillObjectFactory = null;
-  let topicsAndSkillsDashboardBackendApiService:
-    TopicsAndSkillsDashboardBackendApiService = null;
-  let skillUpdateService: SkillUpdateService = null;
-  let alertsService: AlertsService = null;
-
-  let sampleSkill = null;
-  let skillSummaryDict = null;
-  let topicAndSkillsDashboardDataBackendDict = null;
-  let windowDimensionsService = null;
-
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
-    });
-  });
-
-
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
-    ngbModal = TestBed.inject(NgbModal);
-
-    skillEditorStateService = $injector.get('SkillEditorStateService');
-    skillObjectFactory = $injector.get('SkillObjectFactory');
-    topicsAndSkillsDashboardBackendApiService = $injector.get(
-      'TopicsAndSkillsDashboardBackendApiService');
-    skillUpdateService = $injector.get('SkillUpdateService');
-    windowDimensionsService = $injector.get(
-      'WindowDimensionsService');
-    alertsService = $injector.get('AlertsService');
-
-    let misconceptionDict1 = {
-      id: '2',
-      name: 'test name',
-      notes: 'test notes',
-      feedback: 'test feedback',
-      must_be_addressed: true
-    };
-
-    let rubricDict = {
-      difficulty: 'medium',
-      explanations: ['explanation']
-    };
-
-    let skillContentsDict = {
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {SkillPrerequisiteSkillsEditorComponent} from './skill-prerequisite-skills-editor.component';
+import {SkillUpdateService} from 'domain/skill/skill-update.service';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {SkillBackendApiService} from 'domain/skill/skill-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
+import {
+  TopicsAndSkillsDashboardBackendApiService,
+  TopicsAndSkillDashboardData,
+} from 'domain/topics_and_skills_dashboard/topics-and-skills-dashboard-backend-api.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {Skill} from 'domain/skill/skill.model';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ShortSkillSummary} from 'domain/skill/short-skill-summary.model';
+import {
+  SkillSummary,
+  SkillSummaryBackendDict,
+} from 'domain/skill/skill-summary.model';
+import {of} from 'rxjs';
+import {FetchSkillResponse} from 'domain/skill/skill-backend-api.service';
+const createSkillWithId = (
+  skillId: string,
+  // The backend sends null when a skill has no superseding skill, but
+  // SkillBackendDict declares the field as string (see line 170 in this file).
+  supersedingSkillId: string | null = null
+): Skill =>
+  Skill.createFromBackendDict({
+    id: skillId,
+    description: 'Dummy Skill',
+    misconceptions: [],
+    rubrics: [],
+    skill_contents: {
       explanation: {
         html: 'test explanation',
         content_id: 'explanation',
       },
-      worked_examples: [],
       recorded_voiceovers: {
-        voiceovers_mapping: {}
-      }
+        voiceovers_mapping: {},
+      },
+    },
+    language_code: 'en',
+    version: 1,
+    next_misconception_id: 0,
+    prerequisite_skill_ids: [],
+    superseding_skill_id: supersedingSkillId as string,
+    all_questions_merged: false,
+  });
+const createFetchSkillResponse = (skill: Skill): FetchSkillResponse => ({
+  skill: skill,
+  assignedSkillTopicData: {},
+  groupedSkillSummaries: {},
+});
+
+describe('Skill editor main tab Component', () => {
+  let component: SkillPrerequisiteSkillsEditorComponent;
+  let fixture: ComponentFixture<SkillPrerequisiteSkillsEditorComponent>;
+  let skillUpdateService: SkillUpdateService;
+  let skillEditorStateService: SkillEditorStateService;
+  let alertsService: AlertsService;
+  let topicsAndSkillsDashboardBackendApiService: TopicsAndSkillsDashboardBackendApiService;
+  let windowDimensionsService: WindowDimensionsService;
+  let ngbModal: NgbModal;
+
+  let topicAndSkillsDashboardDataBackendDict: TopicsAndSkillDashboardData;
+  let sampleSkill: Skill;
+  let skillWithSupersedingSkill: Skill;
+  let skillSummaryDict: SkillSummaryBackendDict;
+  let resizeEvent = new Event('resize');
+  let mockEventEmitter = new EventEmitter();
+
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [SkillPrerequisiteSkillsEditorComponent],
+      providers: [
+        SkillUpdateService,
+        SkillEditorStateService,
+        AlertsService,
+        {
+          provide: WindowDimensionsService,
+          useValue: {
+            isWindowNarrow: () => true,
+            getResizeEvent: () => of(resizeEvent),
+          },
+        },
+        NgbModal,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  }));
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(SkillPrerequisiteSkillsEditorComponent);
+    component = fixture.componentInstance;
+
+    skillUpdateService = TestBed.inject(SkillUpdateService);
+    skillEditorStateService = TestBed.inject(SkillEditorStateService);
+    alertsService = TestBed.inject(AlertsService);
+    topicsAndSkillsDashboardBackendApiService = TestBed.inject(
+      TopicsAndSkillsDashboardBackendApiService
+    );
+    windowDimensionsService = TestBed.inject(WindowDimensionsService);
+    ngbModal = TestBed.inject(NgbModal);
+
+    skillSummaryDict = {
+      id: 'skillId1',
+      description: 'description1',
+      language_code: 'en',
+      version: 1,
+      misconception_count: 3,
+      skill_model_created_on: 1593138898626.193,
+      skill_model_last_updated: 1593138898626.193,
     };
 
-    sampleSkill = skillObjectFactory.createFromBackendDict({
+    let misconceptionDict1 = {
+      id: 2,
+      name: 'test name',
+      notes: 'test notes',
+      feedback: 'test feedback',
+      must_be_addressed: true,
+    };
+
+    const rubricDict = {
+      difficulty: 'medium',
+      explanations: ['explanation'],
+    };
+
+    const skillContentsDict = {
+      explanation: {
+        html: 'test explanation',
+        content_id: 'explanation',
+      },
+      recorded_voiceovers: {
+        voiceovers_mapping: {},
+      },
+    };
+
+    sampleSkill = Skill.createFromBackendDict({
       id: 'skill1',
       description: 'test description 1',
       misconceptions: [misconceptionDict1],
@@ -105,238 +171,563 @@ describe('Skill editor main tab directive', function() {
       version: 3,
       next_misconception_id: 3,
       prerequisite_skill_ids: ['skill_1'],
-      superseding_skill_id: 'skill0',
-      all_questions_merged: true
+      superseding_skill_id: null as unknown as string,
+      all_questions_merged: true,
     });
 
-    skillSummaryDict = {
-      id: 'skillId1',
-      description: 'description1',
+    skillWithSupersedingSkill = Skill.createFromBackendDict({
+      id: 'skill2',
+      description: 'test description 2',
+      misconceptions: [misconceptionDict1],
+      rubrics: [rubricDict],
+      skill_contents: skillContentsDict,
       language_code: 'en',
-      version: 1,
-      misconception_count: 3,
-      worked_examples_count: 3,
-      skill_model_created_on: 1593138898626.193,
-      skill_model_last_updated: 1593138898626.193
-    };
+      version: 3,
+      next_misconception_id: 3,
+      prerequisite_skill_ids: ['skill_1'],
+      superseding_skill_id: 'skill_0',
+      all_questions_merged: true,
+    });
 
     topicAndSkillsDashboardDataBackendDict = {
-      all_classroom_names: [
-        'math'
-      ],
-      categorized_skills_dict: {
+      allClassroomNames: ['math'],
+      categorizedSkillsDict: {
         'Empty Topic': {
-          uncategorized: []
+          uncategorized: [],
         },
         'Dummy Topic 1': {
           uncategorized: [
             {
-              skill_id: 'BBB6dzfb5pPt',
-              skill_description: 'Dummy Skill 1'
-            }
+              id: 'BBB6dzfb5pPt',
+              description: 'Dummy Skill 1',
+              getId(): string {
+                return this.id;
+              },
+              getDescription(): string {
+                return this.description;
+              },
+            },
           ],
           'Dummy Subtopic Title': [
             {
-              skill_id: 'D1FdmljJNXdt',
-              skill_description: 'Dummy Skill 2'
-            }
-          ]
-        }
+              id: 'D1FdmljJNXdt',
+              description: 'Dummy Skill 2',
+              getId(): string {
+                return this.id;
+              },
+              getDescription(): string {
+                return this.description;
+              },
+            },
+          ],
+        },
       },
-      topic_summary_dicts: [
+      topicSummaries: [
         {
           version: 1,
-          url_fragment: 'empty-topic',
-          language_code: 'en',
+          urlFragment: 'empty-topic',
+          languageCode: 'en',
           description: 'description',
-          uncategorized_skill_count: 0,
-          total_published_node_count: 0,
-          can_edit_topic: true,
-          is_published: false,
+          uncategorizedSkillCount: 0,
+          totalPublishedNodeCount: 0,
+          canEditTopic: true,
+          canEditQuestion: true,
+          isPublished: false,
           id: 'HLEn0XQiV9XE',
-          topic_model_created_on: 1623851496406.576,
-          subtopic_count: 0,
-          thumbnail_bg_color: '#FFFFFF',
-          canonical_story_count: 0,
+          topicModelCreatedOn: 1623851496406.576,
+          subtopicCount: 0,
+          thumbnailBgColor: '#FFFFFF',
+          canonicalStoryCount: 0,
           name: 'Empty Topic',
           classroom: 'math',
-          total_skill_count: 0,
-          additional_story_count: 0,
-          topic_model_last_updated: 1623851496406.582,
-          thumbnail_filename: 'thumbnail_filename'
+          totalSkillCount: 0,
+          additionalStoryCount: 0,
+          topicModelLastUpdated: 1623851496406.582,
+          thumbnailFilename: 'thumbnail_filename',
+          totalUpcomingChaptersCount: 1,
+          totalOverdueChaptersCount: 1,
+          totalChaptersCounts: [5, 4],
+          publishedChaptersCounts: [3, 4],
+          getId(): string {
+            return this.id;
+          },
+          getName(): string {
+            return this.name;
+          },
+          getCanonicalStoryCount(): number {
+            return this.canonicalStoryCount;
+          },
+          getSubtopicCount(): number {
+            return this.subtopicCount;
+          },
+          getTotalSkillCount(): number {
+            return this.totalSkillCount;
+          },
+          getTotalPublishedNodeCount(): number {
+            return this.totalPublishedNodeCount;
+          },
+          getUncategorizedSkillCount(): number {
+            return this.uncategorizedSkillCount;
+          },
+          getLanguageCode(): string {
+            return this.languageCode;
+          },
+          getDescription(): string {
+            return this.description;
+          },
+          getVersion(): number {
+            return this.version;
+          },
+          getAdditionalStoryCount(): number {
+            return this.additionalStoryCount;
+          },
+          getTopicModelCreatedOn(): number {
+            return this.topicModelCreatedOn;
+          },
+          getTopicModelLastUpdated(): number {
+            return this.topicModelLastUpdated;
+          },
+          getClassroom(): string | null {
+            return this.classroom ?? null;
+          },
+          getUrlFragment(): string {
+            return this.urlFragment;
+          },
+          getThumbnailFilename(): string {
+            return this.thumbnailFilename;
+          },
+          getThumbnailBgColor(): string {
+            return this.thumbnailBgColor;
+          },
+          isTopicPublished(): boolean {
+            return this.isPublished;
+          },
+          getTotalUpcomingChaptersCount(): number {
+            return this.totalUpcomingChaptersCount;
+          },
+          getTotalOverdueChaptersCount(): number {
+            return this.totalOverdueChaptersCount;
+          },
+          getTotalChaptersCounts(): number[] {
+            return this.totalChaptersCounts;
+          },
+          getPublishedChaptersCounts(): number[] {
+            return this.publishedChaptersCounts;
+          },
         },
-        {
-          version: 3,
-          url_fragment: 'dummy-topic-one',
-          language_code: 'en',
-          description: 'description',
-          uncategorized_skill_count: 1,
-          total_published_node_count: 3,
-          can_edit_topic: true,
-          is_published: false,
-          id: 'JS7lmbdZRoPc',
-          topic_model_created_on: 1623851496107.91,
-          subtopic_count: 1,
-          thumbnail_bg_color: '#FFFFFF',
-          canonical_story_count: 1,
-          name: 'Dummy Topic 1',
-          classroom: 'math',
-          total_skill_count: 2,
-          additional_story_count: 0,
-          topic_model_last_updated: 1623851737518.369,
-          thumbnail_filename: 'thumbnail_filename'
-        }
       ],
-      can_delete_skill: true,
-      untriaged_skill_summary_dicts: [
+      canDeleteSkill: true,
+      untriagedSkillSummaries: [
         {
           version: 1,
-          language_code: 'en',
+          languageCode: 'en',
           description: 'Dummy Skill 3',
-          skill_model_created_on: 1623851495022.93,
-          skill_model_last_updated: 1623851495022.942,
-          worked_examples_count: 0,
+          skillModelCreatedOn: 1623851495022.93,
+          skillModelLastUpdated: 1623851495022.942,
           id: '4P77sLaU14DE',
-          misconception_count: 0
-        }
+          misconceptionCount: 0,
+        },
       ],
-      total_skill_count: 3,
-      can_create_topic: true,
-      can_create_skill: true,
-      mergeable_skill_summary_dicts: [
+      totalSkillCount: 3,
+      canCreateTopic: true,
+      canCreateSkill: true,
+      mergeableSkillSummaries: [
         {
           version: 1,
-          language_code: 'en',
+          languageCode: 'en',
           description: 'Dummy Skill 1',
-          skill_model_created_on: 1623851493737.796,
-          skill_model_last_updated: 1623851493737.808,
-          worked_examples_count: 0,
+          skillModelCreatedOn: 1623851493737.796,
+          skillModelLastUpdated: 1623851493737.808,
           id: 'BBB6dzfb5pPt',
-          misconception_count: 0
+          misconceptionCount: 0,
         },
         {
           version: 1,
-          language_code: 'en',
+          languageCode: 'en',
           description: 'Dummy Skill 2',
-          skill_model_created_on: 1623851494780.516,
-          skill_model_last_updated: 1623851494780.529,
-          worked_examples_count: 0,
+          skillModelCreatedOn: 1623851494780.516,
+          skillModelLastUpdated: 1623851494780.529,
           id: 'D1FdmljJNXdt',
-          misconception_count: 0
-        }
+          misconceptionCount: 0,
+        },
       ],
-      can_delete_topic: true,
+      canDeleteTopic: true,
     };
 
-    ctrl = $componentController('skillPrerequisiteSkillsEditor', {
-      $rootScope: $scope,
-      $scope: $scope,
-      NgbModal: ngbModal
-    });
-    ctrl.$onInit();
-  }));
-
-  it('should fetch skill when initialized', function() {
-    spyOn(
-      skillEditorStateService, 'getGroupedSkillSummaries').and.returnValue({
-      current: [],
-      others: [skillSummaryDict]
-    });
     spyOn(skillEditorStateService, 'getSkill').and.returnValue(sampleSkill);
-    spyOn(topicsAndSkillsDashboardBackendApiService, 'fetchDashboardDataAsync')
-      .and.resolveTo(topicAndSkillsDashboardDataBackendDict);
-    ctrl.$onInit();
+    spyOn(
+      topicsAndSkillsDashboardBackendApiService,
+      'fetchDashboardDataAsync'
+    ).and.resolveTo(topicAndSkillsDashboardDataBackendDict);
 
-    expect($scope.skill).toEqual(sampleSkill);
+    fixture.detectChanges();
   });
 
-  it('should remove skill id when calling \'removeSkillId\'', function() {
-    let deleteSpy = spyOn(skillUpdateService, 'deletePrerequisiteSkill')
-      .and.returnValue(null);
+  it('should fetch skill when initialized', fakeAsync(() => {
+    spyOn(skillEditorStateService, 'getGroupedSkillSummaries').and.returnValue({
+      current: [],
+      others: [skillSummaryDict],
+    });
 
-    $scope.removeSkillId();
+    component.ngOnInit();
+    tick();
+
+    expect(component.skill).toEqual(sampleSkill);
+  }));
+
+  it("should remove skill id when calling 'removeSkillId'", () => {
+    let deleteSpy = spyOn(
+      skillUpdateService,
+      'deletePrerequisiteSkill'
+    ).and.callThrough();
+
+    component.removeSkillId('xyz');
 
     expect(deleteSpy).toHaveBeenCalled();
   });
 
-  it('should return skill editor url when calling ' +
-    '\'getSkillEditorUrl\'', function() {
-    let result = $scope.getSkillEditorUrl('skillId');
+  it(
+    'should return skill editor url when calling ' + "'getSkillEditorUrl'",
+    () => {
+      let result = component.getSkillEditorUrl('skillId');
 
-    expect(result).toBe('/skill_editor/skillId');
-  });
+      expect(result).toBe('/skill_editor/skillId');
+    }
+  );
 
-  it('should toggle prerequisite skills ' +
-    '\'togglePrerequisiteSkills\'', function() {
-    $scope.prerequisiteSkillsAreShown = false;
-    spyOn(windowDimensionsService, 'isWindowNarrow')
-      .and.returnValue(true);
+  it(
+    'should toggle prerequisite skills ' + "'togglePrerequisiteSkills'",
+    () => {
+      component.prerequisiteSkillsAreShown = false;
+      spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(true);
 
-    $scope.togglePrerequisiteSkills();
-    expect($scope.prerequisiteSkillsAreShown).toBe(true);
+      component.togglePrerequisiteSkills();
+      expect(component.prerequisiteSkillsAreShown).toBe(true);
 
-    $scope.togglePrerequisiteSkills();
-    expect($scope.prerequisiteSkillsAreShown).toBe(false);
-  });
+      component.togglePrerequisiteSkills();
+      expect(component.prerequisiteSkillsAreShown).toBe(false);
+    }
+  );
 
-  describe('while adding a skill', function() {
-    it('should show info message if we try ' +
-      'to add a prerequisite skill to itself', fakeAsync(function() {
+  it('should show skill description on skill-editor tab', fakeAsync(() => {
+    component.ngOnInit();
+    tick(20);
+
+    let desc = component.getSkillDescription('4P77sLaU14DE');
+    expect(desc).toEqual('Dummy Skill 3');
+
+    let desc2 = component.getSkillDescription('BBB6dzfb5pPt');
+    expect(desc2).toEqual('Dummy Skill 1');
+
+    let desc3 = component.getSkillDescription('nonexistentSkill');
+    expect(desc3).toBeNull();
+  }));
+
+  describe('while adding a skill', () => {
+    it('should filter out skills with non-null superseding skill id', fakeAsync(() => {
+      // Mock the skill backend API service.
+      const skillBackendApiService = TestBed.inject(SkillBackendApiService);
+      spyOn(skillBackendApiService, 'fetchSkillAsync').and.callFake(
+        (skillId: string) => {
+          if (skillId === 'skill1') {
+            return Promise.resolve(createFetchSkillResponse(sampleSkill));
+          } else if (skillId === 'skill2') {
+            return Promise.resolve(
+              createFetchSkillResponse(skillWithSupersedingSkill)
+            );
+          } else if (skillId === 'BBB6dzfb5pPt') {
+            return Promise.resolve(
+              createFetchSkillResponse(createSkillWithId('BBB6dzfb5pPt'))
+            );
+          } else if (skillId === 'D1FdmljJNXdt') {
+            return Promise.resolve(
+              createFetchSkillResponse(
+                createSkillWithId('D1FdmljJNXdt', 'some-id')
+              )
+            );
+          } else if (skillId === '4P77sLaU14DE') {
+            return Promise.resolve(
+              createFetchSkillResponse(createSkillWithId('4P77sLaU14DE'))
+            );
+          }
+          return Promise.resolve(
+            createFetchSkillResponse(createSkillWithId(skillId))
+          );
+        }
+      );
+
+      // Set up required component properties.
+      component.skill = sampleSkill;
+      component.groupedSkillSummaries = {
+        current: [
+          {id: 'skill1', description: 'test description 1'},
+          {id: 'skill2', description: 'test description 2'},
+        ],
+        others: [],
+      };
+      component.categorizedSkills = {
+        'Topic 1': {
+          uncategorized: [],
+          'Subtopic 1': [
+            {
+              id: 'skill1',
+              description: 'test description 1',
+            } as unknown as ShortSkillSummary,
+            {
+              id: 'skill2',
+              description: 'test description 2',
+            } as unknown as ShortSkillSummary,
+          ],
+        },
+      };
+      component.untriagedSkillSummaries = [
+        {
+          id: '4P77sLaU14DE',
+          description: 'Dummy Skill 3',
+        } as unknown as SkillSummary,
+      ];
+
+      const validSkillSummary = {
+        id: 'skill1',
+        description: 'test description 1',
+      };
+      // Mock modal implementation.
+      const modalRef = jasmine.createSpyObj('NgbModalRef', [
+        'componentInstance',
+        'result',
+      ]);
+      modalRef.componentInstance = {};
+      modalRef.result = Promise.resolve();
+      modalRef.result = Promise.resolve(validSkillSummary);
+      spyOn(ngbModal, 'open').and.returnValue(modalRef);
+      component.addSkill();
+      tick();
+
+      // Assert.
+      expect(ngbModal.open).toHaveBeenCalled();
+      // Verify skill2 was filtered out due to having a superseding skill ID.
+      expect(modalRef.componentInstance.skillSummaries).toEqual([
+        {id: 'skill1', description: 'test description 1'},
+      ]);
+      // Verify categorized skills were also filtered.
+      expect(
+        modalRef.componentInstance.categorizedSkills['Topic 1']['Subtopic 1']
+      ).toEqual([{id: 'skill1', description: 'test description 1'}]);
+      // Verify skillsInSameTopicCount was updated correctly.
+      expect(modalRef.componentInstance.skillsInSameTopicCount).toBe(1);
+      // Verify untriaged skills were filtered correctly.
+      expect(modalRef.componentInstance.untriagedSkillSummaries).toEqual([
+        {id: '4P77sLaU14DE', description: 'Dummy Skill 3'},
+      ]);
+    }));
+
+    it('should show info message if we try to add a prerequisite skill to itself', fakeAsync(() => {
+      // Setup skillBackendApiService mock.
+      const skillBackendApiService = TestBed.inject(SkillBackendApiService);
+      const selfId = 'skill_self_test';
+      spyOn(skillBackendApiService, 'fetchSkillAsync').and.resolveTo(
+        createFetchSkillResponse(createSkillWithId(selfId))
+      );
+
+      // Setup modal mock.
       spyOn(ngbModal, 'open').and.callFake(() => {
-        return <NgbModalRef>({
+        return {
           componentInstance: {},
           result: Promise.resolve({
-            id: 'skill1'
-          })
-        });
+            id: selfId,
+          }),
+        } as NgbModalRef;
       });
-      let alertsSpy = spyOn(alertsService, 'addInfoMessage')
-        .and.returnValue(null);
 
-      $scope.skill = sampleSkill;
-      $scope.addSkill();
+      let alertsSpy = spyOn(alertsService, 'addInfoMessage').and.callThrough();
+
+      spyOn(sampleSkill, 'getId').and.returnValue(selfId);
+      component.skill = sampleSkill;
+
+      component.groupedSkillSummaries = {
+        current: [{id: selfId, description: 'description'}],
+        others: [],
+      };
+      component.categorizedSkills = {};
+      component.untriagedSkillSummaries = [];
+
+      component.addSkill();
       tick();
 
       expect(alertsSpy).toHaveBeenCalledWith(
-        'A skill cannot be a prerequisite of itself', 5000);
+        'A skill cannot be a prerequisite of itself',
+        5000
+      );
     }));
 
-    it('should show info message if we try to add a prerequisite ' +
-      'skill which has already been added', fakeAsync(function() {
-      spyOn(ngbModal, 'open').and.callFake(() => {
-        return <NgbModalRef>({
-          componentInstance: {},
-          result: Promise.resolve({
-            id: 'skill_1'
-          })
+    it(
+      'should show info message if we try to add a prerequisite ' +
+        'skill which has already been added',
+      fakeAsync(() => {
+        // Setup skillBackendApiService mock.
+        const skillBackendApiService = TestBed.inject(SkillBackendApiService);
+        const mainSkillId = 'skill_main';
+        const existingPrereqId = 'skill_already_there';
+        spyOn(skillBackendApiService, 'fetchSkillAsync').and.resolveTo(
+          createFetchSkillResponse(createSkillWithId(existingPrereqId))
+        );
+
+        // Setup modal mock.
+        spyOn(ngbModal, 'open').and.callFake(() => {
+          return {
+            componentInstance: {},
+            result: Promise.resolve({
+              id: existingPrereqId,
+            }),
+          } as NgbModalRef;
         });
-      });
-      let alertsSpy = spyOn(alertsService, 'addInfoMessage')
-        .and.returnValue(null);
 
-      $scope.skill = sampleSkill;
-      $scope.addSkill();
-      tick();
+        let alertsSpy = spyOn(
+          alertsService,
+          'addInfoMessage'
+        ).and.callThrough();
 
-      expect(alertsSpy).toHaveBeenCalledWith(
-        'Given skill is already a prerequisite skill', 5000);
-    }));
+        spyOn(sampleSkill, 'getId').and.returnValue(mainSkillId);
+        component.skill = sampleSkill;
 
-    it('should add skill sucessfully when calling ' +
-      '\'addSkill\'', fakeAsync(function() {
-      let modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
-        return <NgbModalRef>({
-          componentInstance: {},
-          result: Promise.resolve({
-            id: 'skillId'
-          })
+        component.groupedSkillSummaries = {
+          current: [{id: existingPrereqId, description: 'description'}],
+          others: [],
+        };
+        component.categorizedSkills = {};
+        component.untriagedSkillSummaries = [];
+
+        spyOn(sampleSkill, 'getPrerequisiteSkillIds').and.returnValue([
+          existingPrereqId,
+        ]);
+
+        component.addSkill();
+        tick();
+
+        expect(alertsSpy).toHaveBeenCalledWith(
+          'Given skill is already a prerequisite skill',
+          5000
+        );
+      })
+    );
+
+    it(
+      'should add skill sucessfully when calling ' + "'addSkill'",
+      fakeAsync(() => {
+        // Setup skillBackendApiService mock.
+        const skillBackendApiService = TestBed.inject(SkillBackendApiService);
+        spyOn(skillBackendApiService, 'fetchSkillAsync').and.resolveTo(
+          createFetchSkillResponse(createSkillWithId('skillId'))
+        );
+
+        // Setup update service spy.
+        const updateSpy = spyOn(
+          skillUpdateService,
+          'addPrerequisiteSkill'
+        ).and.callThrough();
+
+        // Setup modal mock.
+        let modalSpy = spyOn(ngbModal, 'open').and.callFake(() => {
+          return {
+            componentInstance: {},
+            result: Promise.resolve({
+              id: 'skillId',
+            }),
+          } as NgbModalRef;
         });
-      });
-      $scope.skill = sampleSkill;
-      $scope.addSkill();
-      tick();
 
-      expect(modalSpy).toHaveBeenCalled();
-    }));
+        component.skill = sampleSkill;
+        component.groupedSkillSummaries = {
+          current: [{id: 'skillId', description: 'New Skill'}],
+          others: [],
+        };
+        component.categorizedSkills = {};
+        component.untriagedSkillSummaries = [];
+
+        component.addSkill();
+        tick();
+
+        expect(modalSpy).toHaveBeenCalled();
+        expect(updateSpy).toHaveBeenCalledWith(sampleSkill, 'skillId');
+      })
+    );
+  });
+
+  it('should check if window is narrow when user resizes window', () => {
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+    spyOn(windowDimensionsService, 'getResizeEvent').and.returnValue(
+      mockEventEmitter
+    );
+
+    expect(component.prerequisiteSkillsAreShown).toBe(false);
+
+    component.windowIsNarrow = true;
+
+    component.ngOnInit();
+    mockEventEmitter.emit();
+
+    expect(component.windowIsNarrow).toBe(false);
+  });
+
+  it('should toggle skill editor card on clicking', () => {
+    component.skillEditorCardIsShown = true;
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(true);
+
+    component.toggleSkillEditorCard();
+
+    expect(component.skillEditorCardIsShown).toBe(false);
+
+    component.toggleSkillEditorCard();
+
+    expect(component.skillEditorCardIsShown).toBe(true);
+  });
+
+  it('should show prerequisites list when the window is narrow', () => {
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(true);
+    spyOn(windowDimensionsService, 'getResizeEvent').and.returnValue(
+      mockEventEmitter
+    );
+    component.windowIsNarrow = false;
+
+    expect(component.prerequisiteSkillsAreShown).toBe(false);
+
+    component.ngOnInit();
+    mockEventEmitter.emit();
+
+    expect(component.prerequisiteSkillsAreShown).toBe(false);
+    expect(component.windowIsNarrow).toBe(true);
+  });
+
+  it('should show prerequisites list when the window is wide', () => {
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+    component.windowIsNarrow = true;
+
+    expect(component.prerequisiteSkillsAreShown).toBe(false);
+
+    component.ngOnInit();
+    mockEventEmitter.emit();
+
+    expect(component.prerequisiteSkillsAreShown).toBe(true);
+    expect(component.windowIsNarrow).toBe(false);
+  });
+
+  it('should not toggle prerequisites list when window is wide', () => {
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+
+    component.prerequisiteSkillsAreShown = true;
+
+    component.togglePrerequisiteSkills();
+
+    expect(component.prerequisiteSkillsAreShown).toBe(true);
+  });
+
+  it('should not toggle skill card editor when window is wide', () => {
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+
+    component.skillEditorCardIsShown = true;
+
+    component.togglePrerequisiteSkills();
+
+    expect(component.skillEditorCardIsShown).toBe(true);
   });
 });

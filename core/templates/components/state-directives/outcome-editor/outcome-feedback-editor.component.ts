@@ -16,32 +16,47 @@
  * @fileoverview Component for the outcome feedback editor.
  */
 
-import { ChangeDetectorRef, Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { Outcome } from 'domain/exploration/OutcomeObjectFactory';
-import { ContextService } from 'services/context.service';
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {PageContextService} from 'services/page-context.service';
+
+interface HtmlSchema {
+  type: 'html';
+  ui_config: object;
+}
 
 @Component({
   selector: 'oppia-outcome-feedback-editor',
   templateUrl: './outcome-feedback-editor.component.html',
+  styleUrls: ['./outcome-feedback-editor.component.css'],
 })
 export class OutcomeFeedbackEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() outcome!: Outcome;
-  OUTCOME_FEEDBACK_SCHEMA!: object;
+  @Output() outcomeChange: EventEmitter<Outcome> = new EventEmitter();
+  OUTCOME_FEEDBACK_SCHEMA!: HtmlSchema;
   constructor(
     private readonly changeDetectorRef: ChangeDetectorRef,
-    private contextService: ContextService) {}
+    private pageContextService: PageContextService
+  ) {}
 
   ngOnInit(): void {
     this.OUTCOME_FEEDBACK_SCHEMA = {
       type: 'html',
       ui_config: {
-        hide_complex_extensions: (
-          this.contextService.getEntityType() === 'question')
-      }
+        rte_component_config_id: 'ALL_COMPONENTS',
+        hide_complex_extensions:
+          this.pageContextService.getEntityType() === 'question',
+      },
     };
   }
 
@@ -49,13 +64,7 @@ export class OutcomeFeedbackEditorComponent implements OnInit {
     if (newHtmlString !== this.outcome.feedback.html) {
       this.outcome.feedback.html = newHtmlString;
       this.changeDetectorRef.detectChanges();
+      this.outcomeChange.emit(this.outcome);
     }
   }
-
-  getSchema(): object {
-    return this.OUTCOME_FEEDBACK_SCHEMA;
-  }
 }
-angular.module('oppia').directive(
-  'oppiaOutcomeFeedbackEditor', downgradeComponent(
-    {component: OutcomeFeedbackEditorComponent}));

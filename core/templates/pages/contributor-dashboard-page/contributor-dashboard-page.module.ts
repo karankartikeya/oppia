@@ -16,106 +16,98 @@
  * @fileoverview Module for the contributor dashboard page.
  */
 
-import { APP_INITIALIZER, NgModule, StaticProvider } from '@angular/core';
-import { BrowserModule, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HttpClientModule } from '@angular/common/http';
-import { HTTP_INTERCEPTORS } from '@angular/common/http';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { OppiaAngularRootComponent } from
-  'components/oppia-angular-root.component';
+import {CommonModule} from '@angular/common';
+import {NgModule} from '@angular/core';
+import {FormsModule} from '@angular/forms';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {RouterModule} from '@angular/router';
+import {InteractionExtensionsModule} from 'interactions/interactions.module';
+import {NgbModalModule, NgbTooltipModule} from '@ng-bootstrap/ng-bootstrap';
+import {OppiaCkEditorCopyToolBarModule} from 'components/ck-editor-helpers/ck-editor-copy-toolbar/ck-editor-copy-toolbar.module';
+import {SharedFormsModule} from 'components/forms/shared-forms.module';
+import {ToastrModule} from 'ngx-toastr';
 
-import { CkEditorCopyToolbarComponent } from 'components/ck-editor-helpers/ck-editor-copy-toolbar/ck-editor-copy-toolbar.component';
-import { InteractionExtensionsModule } from 'interactions/interactions.module';
-import { TranslationLanguageSelectorComponent } from
-  './translation-language-selector/translation-language-selector.component';
-import { LoginRequiredMessageComponent } from './login-required-message/login-required-message.component';
-import { LoginRequiredModalContent } from './modal-templates/login-required-modal.component';
-
-import { OpportunitiesListItemComponent } from './opportunities-list-item/opportunities-list-item.component';
-import { OpportunitiesListComponent } from './opportunities-list/opportunities-list.component';
-import { NgbModalModule } from '@ng-bootstrap/ng-bootstrap';
-import { platformFeatureInitFactory, PlatformFeatureService } from
-  'services/platform-feature.service';
-import { TranslationModalComponent } from './modal-templates/translation-modal.component';
-import { TranslationOpportunitiesComponent } from './translation-opportunities/translation-opportunities.component';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { MyHammerConfig, toastrConfig } from 'pages/oppia-root/app.module';
+import {TranslationLanguageSelectorComponent} from './translation-language-selector/translation-language-selector.component';
+import {ReviewTranslationLanguageSelectorComponent} from './translation-language-selector/review-translation-language-selector.component';
+import {TranslationTopicSelectorComponent} from './translation-topic-selector/translation-topic-selector.component';
+import {EntityTypeSelectorComponent} from './entity-type-selector/entity-type-selector.component';
+import {LoginRequiredMessageComponent} from './login-required-message/login-required-message.component';
+import {LoginRequiredModalContent} from './modal-templates/login-required-modal.component';
+import {OpportunitiesListItemComponent} from './opportunities-list-item/opportunities-list-item.component';
+import {OpportunitiesListComponent} from './opportunities-list/opportunities-list.component';
+import {TranslationSuggestionReviewModalComponent} from './modal-templates/translation-suggestion-review-modal.component';
+import {TranslationOpportunitiesComponent} from './translation-opportunities/translation-opportunities.component';
+import {toastrConfig} from 'pages/oppia-root/app.module';
+import {ContributionsAndReview} from './contributions-and-review/contributions-and-review.component';
+import {QuestionOpportunitiesComponent} from './question-opportunities/question-opportunities.component';
+import {ContributorDashboardPageComponent} from './contributor-dashboard-page.component';
+import {ContributorStatsComponent} from './contributor-stats/contributor-stats.component';
+import {CertificateDownloadModalComponent} from './modal-templates/certificate-download-modal.component';
+import {ContributorBadgesComponent} from './contributor-badges/contributor-badges.component';
+import {BadgeComponent} from './badge/badge.component';
+import {ContributorDashboardPageRootComponent} from './contributor-dashboard-page-root.component';
+import {MatSnackBarModule} from '@angular/material/snack-bar';
+import {RteHelperService} from 'services/rte-helper.service';
 
 @NgModule({
   imports: [
-    BrowserModule,
-    BrowserAnimationsModule,
-    HttpClientModule,
+    CommonModule,
+    FormsModule,
     InteractionExtensionsModule,
     SharedComponentsModule,
     NgbModalModule,
+    NgbTooltipModule,
     SharedFormsModule,
-    ToastrModule.forRoot(toastrConfig)
+    OppiaCkEditorCopyToolBarModule,
+    ToastrModule.forRoot(toastrConfig),
+    RouterModule.forChild([
+      {
+        path: '',
+        component: ContributorDashboardPageRootComponent,
+      },
+    ]),
+    MatSnackBarModule,
   ],
   declarations: [
-    CkEditorCopyToolbarComponent,
+    CertificateDownloadModalComponent,
+    ContributorBadgesComponent,
+    EntityTypeSelectorComponent,
     LoginRequiredMessageComponent,
     LoginRequiredModalContent,
     OpportunitiesListItemComponent,
     OpportunitiesListComponent,
+    ReviewTranslationLanguageSelectorComponent,
+    ContributorStatsComponent,
+    BadgeComponent,
     TranslationLanguageSelectorComponent,
     TranslationOpportunitiesComponent,
-    TranslationModalComponent
+    TranslationSuggestionReviewModalComponent,
+    TranslationTopicSelectorComponent,
+    ContributionsAndReview,
+    QuestionOpportunitiesComponent,
+    ContributorDashboardPageComponent,
+    ContributorBadgesComponent,
+    ContributorDashboardPageRootComponent,
   ],
   entryComponents: [
-    CkEditorCopyToolbarComponent,
+    CertificateDownloadModalComponent,
+    ContributorBadgesComponent,
+    EntityTypeSelectorComponent,
     LoginRequiredMessageComponent,
     LoginRequiredModalContent,
     OpportunitiesListItemComponent,
     OpportunitiesListComponent,
+    ReviewTranslationLanguageSelectorComponent,
+    ContributorStatsComponent,
+    BadgeComponent,
     TranslationLanguageSelectorComponent,
     TranslationOpportunitiesComponent,
-    TranslationModalComponent
+    TranslationSuggestionReviewModalComponent,
+    TranslationTopicSelectorComponent,
+    ContributionsAndReview,
+    QuestionOpportunitiesComponent,
+    ContributorDashboardPageComponent,
   ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: RequestInterceptor,
-      multi: true
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: platformFeatureInitFactory,
-      deps: [PlatformFeatureService],
-      multi: true
-    },
-    {
-      provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
-  ]
+  providers: [RteHelperService],
 })
-class ContributorDashboardPageModule {
-  // Empty placeholder method to satisfy the `Compiler`.
-  ngDoBootstrap() {}
-}
-
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { downgradeModule } from '@angular/upgrade/static';
-import { SharedFormsModule } from 'components/forms/shared-forms.module';
-import { ToastrModule } from 'ngx-toastr';
-
-const bootstrapFnAsync = async(extraProviders: StaticProvider[]) => {
-  const platformRef = platformBrowserDynamic(extraProviders);
-  return platformRef.bootstrapModule(ContributorDashboardPageModule);
-};
-const downgradedModule = downgradeModule(bootstrapFnAsync);
-
-declare var angular: ng.IAngularStatic;
-
-angular.module('oppia').requires.push(downgradedModule);
-
-angular.module('oppia').directive(
-  // This directive is the downgraded version of the Angular component to
-  // bootstrap the Angular 8.
-  'oppiaAngularRoot',
-  downgradeComponent({
-    component: OppiaAngularRootComponent
-  }) as angular.IDirectiveFactory);
+export class ContributorDashboardPageModule {}

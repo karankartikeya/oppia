@@ -19,15 +19,29 @@
 // may be additional customization options for the editor that should be passed
 // in via initArgs.
 
-import { Component, ElementRef, EventEmitter, Input, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
-import { AppConstants } from 'app.constants';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { ContextService } from 'services/context.service';
-import { CustomSchema } from 'services/schema-default-value.service';
-import { UtilsService } from 'services/utils.service';
-import { ImageWithRegionsResetConfirmationModalComponent } from './image-with-regions-reset-confirmation.component';
+import {
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+  SimpleChanges,
+} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {AppConstants} from 'app.constants';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {
+  CustomSchema,
+  SchemaDefaultValue,
+} from 'services/schema-default-value.service';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
+import {UtilsService} from 'services/utils.service';
+import {ImageWithRegionsResetConfirmationModalComponent} from './image-with-regions-reset-confirmation.component';
 
 export interface Region {
   region: {
@@ -42,22 +56,23 @@ export interface Region {
 @Component({
   selector: 'image-with-regions-editor',
   templateUrl: './image-with-regions-editor.component.html',
-  styleUrls: []
+  styleUrls: ['./image-with-regions-editor.component.css'],
 })
 export class ImageWithRegionsEditorComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
-  @Input() value!: { labeledRegions: Region[]; imagePath: string; };
+  @Input() value!: {labeledRegions: Region[]; imagePath: string};
+
   @Output() valueChanged = new EventEmitter();
   errorText!: string;
-  SCHEMA!: { type: string; 'obj_type': string; };
+  SCHEMA!: {type: string; obj_type: string};
   mouseX!: number;
   mouseY!: number;
   originalMouseX!: number;
   originalMouseY!: number;
-  originalRectArea!: { x: number; y: number; width: number; height: number; };
+  originalRectArea!: {x: number; y: number; width: number; height: number};
   rectX!: number;
   rectY!: number;
   rectWidth!: number;
@@ -79,32 +94,41 @@ export class ImageWithRegionsEditorComponent implements OnInit {
   hoveredRegion: number | null = null;
   // Selected Region will be null if no region is selected.
   selectedRegion: number | null = null;
+  editorIsInitialized: boolean = false;
 
   constructor(
     private assetsBackendApiService: AssetsBackendApiService,
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
+    private changeDetectorDef: ChangeDetectorRef,
     private el: ElementRef,
+    private imageLocalStorageService: ImageLocalStorageService,
     private utilsService: UtilsService,
-    private ngbModal: NgbModal
+    private ngbModal: NgbModal,
+    private svgSanitizerService: SvgSanitizerService,
+    private windowRef: WindowRef
   ) {}
 
   // Calculates the dimensions of the image, assuming that the width
   // of the image is scaled down to fit the svg element if necessary.
   private _calculateImageDimensions() {
     const svgElement: SVGSVGElement = this.el.nativeElement.querySelectorAll(
-      '.oppia-image-with-regions-editor-svg')[0];
+      '.oppia-image-with-regions-editor-svg'
+    )[0];
     const clientRect = svgElement.getBoundingClientRect();
     const displayedImageWidth = Math.min(
-      clientRect.width, this.originalImageWidth);
+      clientRect.width,
+      this.originalImageWidth
+    );
     const scalingRatio = displayedImageWidth / this.originalImageWidth;
     // Note that scalingRatio may be NaN if this.originalImageWidth is
     // zero.
-    const displayedImageHeight = (
-      this.originalImageWidth === 0 ? 0.0 :
-      this.originalImageHeight * scalingRatio);
+    const displayedImageHeight =
+      this.originalImageWidth === 0
+        ? 0.0
+        : this.originalImageHeight * scalingRatio;
     return {
       width: displayedImageWidth,
-      height: displayedImageHeight
+      height: displayedImageHeight,
     };
   }
 
@@ -122,10 +146,15 @@ export class ImageWithRegionsEditorComponent implements OnInit {
   private convertCoordsToFraction(coords: number[], dimensions: number[]) {
     return [coords[0] / dimensions[0], coords[1] / dimensions[1]];
   }
+
   // Convert to and from region area (which is stored as a fraction of
   // image width and height) and actual width and height.
   private regionAreaFromCornerAndDimensions(
-      x: number, y: number, width: number, height: number) {
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ) {
     return [
       this.convertCoordsToFraction(
         [x, y],
@@ -134,7 +163,7 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       this.convertCoordsToFraction(
         [x + width, y + height],
         [this.getImageWidth(), this.getImageHeight()]
-      )
+      ),
     ];
   }
 
@@ -143,7 +172,7 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       x: area[0][0] * this.getImageWidth(),
       y: area[0][1] * this.getImageHeight(),
       width: (area[1][0] - area[0][0]) * this.getImageWidth(),
-      height: (area[1][1] - area[0][1]) * this.getImageHeight()
+      height: (area[1][1] - area[0][1]) * this.getImageHeight(),
     };
   }
 
@@ -164,20 +193,18 @@ export class ImageWithRegionsEditorComponent implements OnInit {
     // The distance between where the mouse was first clicked to
     // initiate the resize action and the left-most x co-ordinate of
     // rectangle.
-    const marginX = Math.abs(
-      this.originalRectArea.x - this.originalMouseX);
+    const marginX = Math.abs(this.originalRectArea.x - this.originalMouseX);
     // The distance between where the mouse was first clicked to
     // initiate the resize action and the top-most y co-ordinate of
     // rectangle.
-    const marginY = Math.abs(
-      this.originalRectArea.y - this.originalMouseY);
+    const marginY = Math.abs(this.originalRectArea.y - this.originalMouseY);
     if (newHeight <= 0 && !this.yDirectionToggled) {
       this.yDirectionToggled = true;
     } else if (newHeight >= 0 && this.yDirectionToggled) {
       this.yDirectionToggled = false;
     }
     if (this.yDirection === 1) {
-      y += this.yDirectionToggled ? (height + marginY) : deltaY;
+      y += this.yDirectionToggled ? height + marginY : deltaY;
     } else if (this.yDirection === -1) {
       y += (this.yDirectionToggled ? 1 : 0) * (deltaY + marginY);
     }
@@ -187,7 +214,7 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       this.xDirectionToggled = false;
     }
     if (this.xDirection === 1) {
-      x += this.xDirectionToggled ? (width + marginX) : deltaX;
+      x += this.xDirectionToggled ? width + marginX : deltaX;
     } else if (this.xDirection === -1) {
       x += (this.xDirectionToggled ? 1 : 0) * (deltaX + marginX);
     }
@@ -195,20 +222,45 @@ export class ImageWithRegionsEditorComponent implements OnInit {
     // newWidth computed is negative, hence the absolute value is taken.
     if (resizedRegion !== null) {
       resizedRegion.area = this.regionAreaFromCornerAndDimensions(
-        x, y, Math.abs(newWidth), Math.abs(newHeight));
+        x,
+        y,
+        Math.abs(newWidth),
+        Math.abs(newHeight)
+      );
     }
   }
 
   ngOnInit(): void {
     this.alwaysEditable = true;
-    // The initializeEditor function is written separately since it
-    // is also called in resetEditor function.
-    this.initializeEditor();
-    this.imageValueChanged(this.value.imagePath);
+    // The following check is used to prevent cases when the value is not
+    // defined. This is a dynamically created component and in some cases we get
+    // undefined. This happens when ngOnInit runs before we can assign
+    // this.value the value that is supposed to be passed from object editor
+    // component.
+    if (this.value) {
+      // The initializeEditor function is written separately since it
+      // is also called in resetEditor function.
+      this.initializeEditor();
+      this.imageValueChanged(this.value.imagePath);
+    }
     this.SCHEMA = {
       type: 'custom',
-      obj_type: 'Filepath'
+      obj_type: 'Filepath',
     };
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (
+      !changes.value ||
+      !changes.value.currentValue ||
+      changes.value.previousValue === changes.value.currentValue
+    ) {
+      return;
+    }
+    this.initializeEditor();
+    if (this.value) {
+      this.imageValueChanged(this.value.imagePath);
+    }
   }
 
   // Dynamically defines the CSS style for the region rectangle.
@@ -245,14 +297,25 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       return 'display: none';
     }
     const area = this.cornerAndDimensionsFromRegionArea(
-      this.value.labeledRegions[
-        this.selectedRegion].region.area);
-    return 'left: ' + (area.x + 6) + 'px; ' +
-      'top: ' + (area.y + 26) + 'px; ' +
-      'width: ' + (area.width - 12) + 'px;';
+      this.value.labeledRegions[this.selectedRegion].region.area
+    );
+    return (
+      'left: ' +
+      (area.x + 6) +
+      'px; ' +
+      'top: ' +
+      (area.y + 26) +
+      'px; ' +
+      'width: ' +
+      (area.width - 12) +
+      'px;'
+    );
   }
 
   initializeEditor(): void {
+    if (this.editorIsInitialized) {
+      return;
+    }
     // All coordinates have origin at top-left,
     // increasing in x to the right and increasing in y down
     // Current mouse position in SVG coordinates.
@@ -266,7 +329,7 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       x: 0,
       y: 0,
       width: 0,
-      height: 0
+      height: 0,
     };
     // Coordinates for currently drawn rectangle (when user is
     // dragging).
@@ -303,21 +366,66 @@ export class ImageWithRegionsEditorComponent implements OnInit {
     this.selectedRegion = null;
     // Message to displayed when there is an error.
     this.errorText = '';
+    this.editorIsInitialized = true;
   }
+
   // Use these two functions to get the calculated image width and
   // height.
   getImageWidth(): number {
-    return this._calculateImageDimensions().width;
+    const width = this._calculateImageDimensions().width;
+    return isNaN(width) ? 0 : width;
   }
+
   getImageHeight(): number {
-    return this._calculateImageDimensions().height;
+    const height = this._calculateImageDimensions().height;
+    return isNaN(height) ? 0 : height;
   }
 
   getPreviewUrl(imageUrl: string): string {
-    return this.assetsBackendApiService.getImageUrlForPreview(
-      AppConstants.ENTITY_TYPE.EXPLORATION,
-      this.contextService.getExplorationId(),
-      encodeURIComponent(imageUrl));
+    const entityType: string =
+      this.pageContextService.getEntityType() as string;
+    if (
+      this.pageContextService.getImageSaveDestination() ===
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE &&
+      this.imageLocalStorageService.isInStorage(imageUrl)
+    ) {
+      const base64Url = this.imageLocalStorageService.getRawImageData(imageUrl);
+      // This throws "TS2322: Type 'string | null' is not assignable to type
+      // 'string'" We need to suppress this error because the method
+      // 'getRawImageData' will return null only when an
+      // image is not in local storage. This scenario is explicitly checked
+      // above, before accessing the image data. So, the typescript check can
+      // be ignored here.
+      // @ts-ignore
+      const mimeType = base64Url.split(';')[0];
+      if (mimeType === AppConstants.SVG_MIME_TYPE) {
+        return this.svgSanitizerService.removeAllInvalidTagsAndAttributes(
+          // This throws "TS2322: Type 'string | null' is not assignable to type
+          // 'string'" We need to suppress this error because the method
+          // 'getRawImageData' will return null only when an
+          // image is not in local storage. This scenario is explicitly checked
+          // above, before accessing the image data. So, the typescript check
+          // can be ignored here.
+          // @ts-ignore
+          base64Url
+        );
+      } else {
+        // This throws "TS2322: Type 'string | null' is not assignable to type
+        // 'string'" We need to suppress this error because the method
+        // 'getRawImageData' will return null only when an
+        // image is not in local storage. This scenario is explicitly checked
+        // above, before accessing the image data. So, the typescript check can
+        // be ignored here.
+        // @ts-ignore
+        return base64Url;
+      }
+    } else {
+      return this.assetsBackendApiService.getImageUrlForPreview(
+        entityType,
+        this.pageContextService.getEntityId(),
+        encodeURIComponent(imageUrl)
+      );
+    }
   }
 
   regionLabelSetter(label: string): void {
@@ -326,14 +434,15 @@ export class ImageWithRegionsEditorComponent implements OnInit {
         this.value.labeledRegions[this.selectedRegion].label = label;
       }
       this.valueChanged.emit(this.value);
-      const labels = this.value.labeledRegions.map(
-        region => {
-          return region.label;
-        }
-      );
+      const labels = this.value.labeledRegions.map(region => {
+        return region.label;
+      });
       if (this.hasDuplicates(labels)) {
-        this.errorText = 'Warning: Label "' + label + '" already ' +
-            'exists! Please use a different label.';
+        this.errorText =
+          'Warning: Label "' +
+          label +
+          '" already ' +
+          'exists! Please use a different label.';
       } else {
         this.errorText = '';
       }
@@ -342,16 +451,26 @@ export class ImageWithRegionsEditorComponent implements OnInit {
 
   onSvgMouseMove(evt: MouseEvent): void {
     const svgElement: SVGSVGElement = this.el.nativeElement.querySelectorAll(
-      '.oppia-image-with-regions-editor-svg')[0];
-    this.mouseX = evt.pageX - svgElement.getBoundingClientRect().left;
-    this.mouseY = evt.pageY - svgElement.getBoundingClientRect().top;
+      '.oppia-image-with-regions-editor-svg'
+    )[0];
+    // The method Element.getBoundingClientRect() does not provide coordinates
+    // relative to the top-left corner of the document. To fix this, the scroll
+    // coordinates are added to the left and top attributes of
+    // getBoundingClientRect().
+    // See https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect.
+    this.mouseX =
+      evt.pageX -
+      (svgElement.getBoundingClientRect().left +
+        this.windowRef.nativeWindow.scrollX);
+    this.mouseY =
+      evt.pageY -
+      (svgElement.getBoundingClientRect().top +
+        this.windowRef.nativeWindow.scrollY);
     if (this.userIsCurrentlyDrawing) {
       this.rectX = Math.min(this.originalMouseX, this.mouseX);
       this.rectY = Math.min(this.originalMouseY, this.mouseY);
-      this.rectWidth = Math.abs(
-        this.originalMouseX - this.mouseX);
-      this.rectHeight = Math.abs(
-        this.originalMouseY - this.mouseY);
+      this.rectWidth = Math.abs(this.originalMouseX - this.mouseX);
+      this.rectHeight = Math.abs(this.originalMouseY - this.mouseY);
     } else if (this.userIsCurrentlyDragging) {
       const labeledRegions = this.value.labeledRegions;
       let draggedRegion = null;
@@ -394,7 +513,6 @@ export class ImageWithRegionsEditorComponent implements OnInit {
   }
 
   onSvgMouseDown(evt: MouseEvent): void {
-    evt.preventDefault();
     this.originalMouseX = this.mouseX;
     this.originalMouseY = this.mouseY;
     if (this.hoveredRegion === null) {
@@ -408,10 +526,10 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       this.selectedRegion = null;
     }
     if (this.yDirectionToggled) {
-      this.yDirection = (this.yDirection === 1) ? -1 : 1;
+      this.yDirection = this.yDirection === 1 ? -1 : 1;
     }
     if (this.xDirectionToggled) {
-      this.xDirection = (this.xDirection === 1) ? -1 : 1;
+      this.xDirection = this.xDirection === 1 ? -1 : 1;
     }
     if (this.movedOutOfRegion) {
       this.xDirection = 0;
@@ -419,11 +537,9 @@ export class ImageWithRegionsEditorComponent implements OnInit {
     }
     if (this.userIsCurrentlyDrawing) {
       if (this.rectWidth !== 0 && this.rectHeight !== 0) {
-        const labels = this.value.labeledRegions.map(
-          region => {
-            return region.label;
-          }
-        );
+        const labels = this.value.labeledRegions.map(region => {
+          return region.label;
+        });
         // Searches numbers starting from 1 to find a valid label
         // that doesn't overlap with currently existing labels.
         let newLabel = null;
@@ -443,13 +559,16 @@ export class ImageWithRegionsEditorComponent implements OnInit {
               this.rectY,
               this.rectWidth,
               this.rectHeight
-            )
-          }
+            ),
+          },
         };
         this.value.labeledRegions.push(newRegion);
-        this.valueChanged.emit(this.value);
-        this.selectedRegion = (
-          this.value.labeledRegions.length - 1);
+        // In order to trigger change detection, we emit a new object by
+        // using the spread operator. This is because adding/modifying
+        // properties in an Object/Array doesn't always trigger
+        // change-detection cycles.
+        this.valueChanged.emit({...this.value});
+        this.selectedRegion = this.value.labeledRegions.length - 1;
       }
     }
     this.userIsCurrentlyDrawing = false;
@@ -468,23 +587,22 @@ export class ImageWithRegionsEditorComponent implements OnInit {
   }
 
   onMouseMoveRegion(index: number): void {
-    if (
-      this.userIsCurrentlyDragging ||
-      this.userIsCurrentlyResizing) {
+    if (this.userIsCurrentlyDragging || this.userIsCurrentlyResizing) {
       return;
     }
     if (this.hoveredRegion === null) {
       this.hoveredRegion = index;
     }
     const region = this.cornerAndDimensionsFromRegionArea(
-      this.value.labeledRegions[
-        this.hoveredRegion].region.area);
+      this.value.labeledRegions[this.hoveredRegion].region.area
+    );
     if (!this.xDirectionToggled && !this.yDirectionToggled) {
       if (this.mouseY <= region.y + this.resizableBorderWidthPx) {
         this.yDirection = 1;
       } else if (
-        this.mouseY >= region.height + region.y -
-        this.resizableBorderWidthPx) {
+        this.mouseY >=
+        region.height + region.y - this.resizableBorderWidthPx
+      ) {
         this.yDirection = -1;
       } else {
         this.yDirection = 0;
@@ -492,8 +610,9 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       if (this.mouseX <= region.x + this.resizableBorderWidthPx) {
         this.xDirection = 1;
       } else if (
-        this.mouseX >= region.width + region.x -
-        this.resizableBorderWidthPx) {
+        this.mouseX >=
+        region.width + region.x - this.resizableBorderWidthPx
+      ) {
         this.xDirection = -1;
       } else {
         this.xDirection = 0;
@@ -538,22 +657,26 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       // User is resizing, so we figure out the direction.
       if (
         (this.xDirection === 1 && !this.xDirectionToggled) ||
-          (this.xDirection === -1 && this.xDirectionToggled)) {
+        (this.xDirection === -1 && this.xDirectionToggled)
+      ) {
         xDirectionCursor = 'w';
       } else if (
         (this.xDirection === -1 && !this.xDirectionToggled) ||
-        (this.xDirection === 1 && this.xDirectionToggled)) {
+        (this.xDirection === 1 && this.xDirectionToggled)
+      ) {
         xDirectionCursor = 'e';
       } else {
         xDirectionCursor = '';
       }
       if (
         (this.yDirection === 1 && !this.yDirectionToggled) ||
-        (this.yDirection === -1 && this.yDirectionToggled)) {
+        (this.yDirection === -1 && this.yDirectionToggled)
+      ) {
         yDirectionCursor = 'n';
       } else if (
         (this.yDirection === -1 && !this.yDirectionToggled) ||
-        (this.yDirection === 1 && this.yDirectionToggled)) {
+        (this.yDirection === 1 && this.yDirectionToggled)
+      ) {
         yDirectionCursor = 's';
       } else {
         yDirectionCursor = '';
@@ -567,19 +690,25 @@ export class ImageWithRegionsEditorComponent implements OnInit {
   }
 
   resetEditor(): void {
-    this.ngbModal.open(ImageWithRegionsResetConfirmationModalComponent, {
-      backdrop: 'static',
-      keyboard: false,
-    }).result.then(() => {
-      this.value.imagePath = '';
-      this.value.labeledRegions = [];
-      this.imageValueChanged('');
-      this.initializeEditor();
-    }, () => {
-      // Note to developers:
-      // This callback is triggered when the Cancel button is clicked.
-      // No further action is needed.
-    });
+    this.ngbModal
+      .open(ImageWithRegionsResetConfirmationModalComponent, {
+        backdrop: 'static',
+        keyboard: false,
+      })
+      .result.then(
+        () => {
+          this.editorIsInitialized = false;
+          this.value.imagePath = '';
+          this.value.labeledRegions = [];
+          this.imageValueChanged('');
+          this.initializeEditor();
+        },
+        () => {
+          // Note to developers:
+          // This callback is triggered when the Cancel button is clicked.
+          // No further action is needed.
+        }
+      );
   }
 
   deleteRegion(index: number): void {
@@ -594,12 +723,21 @@ export class ImageWithRegionsEditorComponent implements OnInit {
       this.hoveredRegion--;
     }
     this.value.labeledRegions.splice(index, 1);
-    this.valueChanged.emit(this.value);
+    // In order to trigger change detection, we emit a new object by
+    // using the spread operator. This is because adding/modifying
+    // properties in an Object/Array doesn't always trigger
+    // change-detection cycles.
+    this.valueChanged.emit({...this.value});
   }
 
-  imageValueChanged(newVal: string): void {
+  imageValueChanged(newVal: SchemaDefaultValue): void {
     // Called when the image is changed to calculate the required
     // width and height, especially for large images.
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only unicode strings are accepted.
+    if (typeof newVal !== 'string') {
+      return;
+    }
     const that = this;
     this.value.imagePath = newVal;
     if (newVal !== '') {
@@ -610,10 +748,10 @@ export class ImageWithRegionsEditorComponent implements OnInit {
         that.originalImageHeight = img.height;
       };
       const img = new Image();
-      img.onload = function() {
-        setHeightAndWidth((<HTMLCanvasElement> this));
+      img.onload = function () {
+        setHeightAndWidth(this as HTMLCanvasElement);
       };
-      img.src = this.getPreviewUrl(newVal);
+      img.src = this.getPreviewUrl(newVal) as string;
     }
     this.valueChanged.emit(this.value);
   }
@@ -622,8 +760,3 @@ export class ImageWithRegionsEditorComponent implements OnInit {
     return this.SCHEMA as CustomSchema;
   }
 }
-
-angular.module('oppia').directive(
-  'imageWithRegionsEditor', downgradeComponent({
-    component: ImageWithRegionsEditorComponent
-  }) as angular.IDirectiveFactory);

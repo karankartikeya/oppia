@@ -16,30 +16,94 @@
 
 """Provides the redis cache service functionality."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core import feconf
-from core import python_utils
+from core import feconf, utils
 from core.domain import caching_domain
 
 import redis
-from typing import Dict, List, Optional, cast
+from typing import Dict, List, Optional
 
-# Redis client for our own implementation of caching.
-OPPIA_REDIS_CLIENT = redis.StrictRedis(
-    host=feconf.REDISHOST,
-    port=feconf.REDISPORT,
-    db=feconf.OPPIA_REDIS_DB_INDEX,
-    decode_responses=True
-)
 
-# Redis client for the Cloud NDB cache.
-CLOUD_NDB_REDIS_CLIENT = redis.StrictRedis(
-    host=feconf.REDISHOST,
-    port=feconf.REDISPORT,
-    db=feconf.CLOUD_NDB_REDIS_DB_INDEX
-)
+class OppiaRedisClient(metaclass=utils.SingletonMeta):
+    """Singleton wrapper for the Oppia Redis client."""
+
+    def __init__(self) -> None:
+        """Initialize the Oppia Redis client."""
+        # Here we use MyPy ignore because redis.StrictRedis is a generic type
+        # but the redis-py library's type stubs don't properly specify the type
+        # arguments, leading to type-arg errors that we cannot fix without
+        # modifying the library.
+        self._client: redis.StrictRedis = redis.StrictRedis(  # type: ignore[type-arg]
+            host=feconf.REDISHOST,
+            port=feconf.REDISPORT,
+            db=feconf.OPPIA_REDIS_DB_INDEX,
+            decode_responses=True,
+        )
+
+    # Here we use MyPy ignore because redis.StrictRedis is a generic type but
+    # the redis-py library's type stubs don't properly specify the type
+    # arguments, leading to type-arg errors that we cannot fix without
+    # modifying the library.
+    def get_client(self) -> redis.StrictRedis:  # type: ignore[type-arg]
+        """Return the Redis client instance.
+
+        Returns:
+            redis.StrictRedis. The Redis client instance.
+        """
+        return self._client
+
+
+class CloudNdbRedisClient(metaclass=utils.SingletonMeta):
+    """Singleton wrapper for the Cloud NDB Redis client."""
+
+    def __init__(self) -> None:
+        """Initialize the Cloud NDB Redis client."""
+        # Here we use MyPy ignore because redis.StrictRedis is a generic type
+        # but the redis-py library's type stubs don't properly specify the type
+        # arguments, leading to type-arg errors that we cannot fix without
+        # modifying the library.
+        self._client: redis.StrictRedis = redis.StrictRedis(  # type: ignore[type-arg]
+            host=feconf.REDISHOST,
+            port=feconf.REDISPORT,
+            db=feconf.CLOUD_NDB_REDIS_DB_INDEX,
+        )
+
+    # Here we use MyPy ignore because redis.StrictRedis is a generic type but
+    # the redis-py library's type stubs don't properly specify the type
+    # arguments, leading to type-arg errors that we cannot fix without
+    # modifying the library.
+    def get_client(self) -> redis.StrictRedis:  # type: ignore[type-arg]
+        """Return the Redis client instance.
+
+        Returns:
+            redis.StrictRedis. The Redis client instance.
+        """
+        return self._client
+
+
+# Here we use MyPy ignore because redis.StrictRedis is a generic type but the
+# redis-py library's type stubs don't properly specify the type arguments,
+# leading to type-arg errors that we cannot fix without modifying the library.
+def get_oppia_redis_client() -> redis.StrictRedis:  # type: ignore[type-arg]
+    """Get or create the Oppia Redis client lazily.
+
+    Returns:
+        redis.StrictRedis. The Oppia Redis client instance.
+    """
+    return OppiaRedisClient().get_client()
+
+
+# Here we use MyPy ignore because redis.StrictRedis is a generic type but the
+# redis-py library's type stubs don't properly specify the type arguments,
+# leading to type-arg errors that we cannot fix without modifying the library.
+def get_cloud_ndb_redis_client() -> redis.StrictRedis:  # type: ignore[type-arg]
+    """Get or create the Cloud NDB Redis client lazily.
+
+    Returns:
+        redis.StrictRedis. The Cloud NDB Redis client instance.
+    """
+    return CloudNdbRedisClient().get_client()
 
 
 def get_memory_cache_stats() -> caching_domain.MemoryCacheStats:
@@ -52,24 +116,20 @@ def get_memory_cache_stats() -> caching_domain.MemoryCacheStats:
         memory in bytes, peak memory usage in bytes, and the total number of
         keys stored as values.
     """
-    # We have ignored [attr-defined] below because there is some error in
-    # the redis typeshed. Typestubs don't define the method memory_stats()
-    # for the redis.StrictRedis object.
-    # TODO(#13617): Update our typeshed after redis stubs are improved in
-    # typeshed. Then the ignore[attr-defined] used below can be removed.
-    redis_full_profile = OPPIA_REDIS_CLIENT.memory_stats() # type: ignore[attr-defined]
-    memory_stats = caching_domain.MemoryCacheStats( # type: ignore[no-untyped-call]
-        redis_full_profile.get('total.allocated'),
-        redis_full_profile.get('peak.allocated'),
-        redis_full_profile.get('keys.count'))
+    redis_full_profile = get_oppia_redis_client().memory_stats()
+    memory_stats = caching_domain.MemoryCacheStats(
+        redis_full_profile['total.allocated'],
+        redis_full_profile['peak.allocated'],
+        redis_full_profile['keys.count'],
+    )
 
     return memory_stats
 
 
 def flush_caches() -> None:
     """Wipes the Redis caches clean."""
-    OPPIA_REDIS_CLIENT.flushdb()
-    CLOUD_NDB_REDIS_CLIENT.flushdb()
+    get_oppia_redis_client().flushdb()
+    get_cloud_ndb_redis_client().flushdb()
 
 
 def get_multi(keys: List[str]) -> List[Optional[str]]:
@@ -83,12 +143,7 @@ def get_multi(keys: List[str]) -> List[Optional[str]]:
         that are passed in.
     """
     assert isinstance(keys, list)
-    # TODO(#13663): After we install mypy in virtual environment and upgrade
-    # our mypy, we will have latest stubs of redis available. After this
-    # the cast and type ignore used below can be removed.
-    return cast(
-        List[Optional[str]],
-        OPPIA_REDIS_CLIENT.mget(keys)) # type: ignore[no-untyped-call]
+    return get_oppia_redis_client().mget(keys)
 
 
 def set_multi(key_value_mapping: Dict[str, str]) -> bool:
@@ -103,12 +158,7 @@ def set_multi(key_value_mapping: Dict[str, str]) -> bool:
         bool. Whether the set action succeeded.
     """
     assert isinstance(key_value_mapping, dict)
-    # TODO(#13663): After we install mypy in virtual environment and upgrade
-    # our mypy, we will have latest stubs of redis available. After this
-    # the cast and type ignore used below can be removed.
-    return cast(
-        bool,
-        OPPIA_REDIS_CLIENT.mset(key_value_mapping)) # type: ignore[no-untyped-call]
+    return get_oppia_redis_client().mset(key_value_mapping)
 
 
 def delete_multi(keys: List[str]) -> int:
@@ -121,6 +171,5 @@ def delete_multi(keys: List[str]) -> int:
         int. Number of successfully deleted keys.
     """
     for key in keys:
-        assert isinstance(key, python_utils.BASESTRING)
-    number_of_deleted_keys = OPPIA_REDIS_CLIENT.delete(*keys)
-    return number_of_deleted_keys
+        assert isinstance(key, str)
+    return get_oppia_redis_client().delete(*keys)

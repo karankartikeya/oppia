@@ -16,21 +16,19 @@
  * @fileoverview Module for the CodeRepl interaction components.
  */
 
-import 'core-js/es7/reflect';
 import 'zone.js';
 
-import { CommonModule } from '@angular/common';
-import { NgModule } from '@angular/core';
-import { CodemirrorModule } from '@ctrl/ngx-codemirror';
-import { FormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
-import { InteractiveCodeReplComponent } from './directives/oppia-interactive-code-repl.component';
-import { DirectivesModule } from 'directives/directives.module';
-import { SharedPipesModule } from 'filters/shared-pipes.module';
-import { TranslateModule } from '@ngx-translate/core';
-import { ResponseCodeReplComponent } from './directives/oppia-response-code-repl.component';
-import { ShortResponseCodeRepl } from './directives/oppia-short-response-code-repl.component';
-
+import {CommonModule} from '@angular/common';
+import {NgModule} from '@angular/core';
+import {CodemirrorModule} from '@ctrl/ngx-codemirror';
+import {FormsModule} from '@angular/forms';
+import {MatButtonModule} from '@angular/material/button';
+import {InteractiveCodeReplComponent} from './directives/oppia-interactive-code-repl.component';
+import {DirectivesModule} from 'directives/directives.module';
+import {SharedPipesModule} from 'filters/shared-pipes.module';
+import {TranslateModule} from '@ngx-translate/core';
+import {ResponseCodeReplComponent} from './directives/oppia-response-code-repl.component';
+import {ShortResponseCodeRepl} from './directives/oppia-short-response-code-repl.component';
 
 @NgModule({
   imports: [
@@ -45,18 +43,17 @@ import { ShortResponseCodeRepl } from './directives/oppia-short-response-code-re
   declarations: [
     InteractiveCodeReplComponent,
     ResponseCodeReplComponent,
-    ShortResponseCodeRepl
+    ShortResponseCodeRepl,
   ],
   entryComponents: [
     InteractiveCodeReplComponent,
     ResponseCodeReplComponent,
-    ShortResponseCodeRepl
+    ShortResponseCodeRepl,
   ],
   exports: [
     InteractiveCodeReplComponent,
     ResponseCodeReplComponent,
-    ShortResponseCodeRepl
+    ShortResponseCodeRepl,
   ],
 })
-
-export class CodeReplInteractionModule { }
+export class CodeReplInteractionModule {}

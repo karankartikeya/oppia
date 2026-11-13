@@ -17,12 +17,10 @@
  * visible.
  */
 
-
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class BackgroundMaskService {
   maskIsActive: boolean = false;
@@ -30,14 +28,12 @@ export class BackgroundMaskService {
   isMaskActive(): boolean {
     return this.maskIsActive;
   }
+
   activateMask(): void {
     this.maskIsActive = true;
   }
+
   deactivateMask(): void {
     this.maskIsActive = false;
   }
 }
-
-angular.module('oppia').factory(
-  'BackgroundMaskService',
-  downgradeInjectable(BackgroundMaskService));

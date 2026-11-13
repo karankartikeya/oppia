@@ -18,19 +18,19 @@
  * dismissible.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, OnInit} from '@angular/core';
 
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { PromoBarBackendApiService } from 'services/promo-bar-backend-api.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {PromoBarBackendApiService} from 'services/promo-bar-backend-api.service';
 
 @Component({
   selector: 'oppia-promo-bar',
-  templateUrl: './promo-bar.component.html'
+  templateUrl: './promo-bar.component.html',
+  styleUrls: ['./promo-bar.component.css'],
 })
 export class PromoBarComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   promoIsVisible!: boolean;
   promoBarIsEnabled!: boolean;
@@ -42,11 +42,10 @@ export class PromoBarComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.promoBarBackendApiService.getPromoBarDataAsync()
-      .then((promoBar) => {
-        this.promoBarIsEnabled = promoBar.promoBarEnabled;
-        this.promoBarMessage = promoBar.promoBarMessage;
-      });
+    this.promoBarBackendApiService.getPromoBarDataAsync().then(promoBar => {
+      this.promoBarIsEnabled = promoBar.promoBarEnabled;
+      this.promoBarMessage = promoBar.promoBarMessage;
+    });
     this.promoIsVisible = !this.isPromoDismissed();
   }
 
@@ -56,7 +55,7 @@ export class PromoBarComponent implements OnInit {
     }
     let promoIsDismissed =
       this.windowRef.nativeWindow.sessionStorage.promoIsDismissed;
-    if (typeof (promoIsDismissed) !== 'undefined') {
+    if (typeof promoIsDismissed !== 'undefined') {
       return JSON.parse(promoIsDismissed);
     }
     return false;
@@ -88,7 +87,3 @@ export class PromoBarComponent implements OnInit {
     this.setPromoDismissed(true);
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaPromoBar', downgradeComponent(
-    {component: PromoBarComponent}));

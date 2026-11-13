@@ -16,8 +16,7 @@
 
 """Unit tests for jobs.job_options."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.jobs import job_options
 from core.tests import test_utils
@@ -35,6 +34,11 @@ class JobOptionsTests(test_utils.TestBase):
 
         self.assertEqual(options.namespace, 'abc')
 
+    def test_special_overwritten_values(self) -> None:
+        options = job_options.JobOptions(language_accent_code='en-IN')
+
+        self.assertEqual(options.language_accent_code, 'en-IN')
+
     def test_unsupported_values(self) -> None:
-        with self.assertRaisesRegexp(ValueError, r'Unsupported option\(s\)'): # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(ValueError, r'Unsupported option\(s\)'):
             job_options.JobOptions(a='a', b='b')

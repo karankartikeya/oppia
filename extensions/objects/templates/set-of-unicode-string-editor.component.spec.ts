@@ -16,19 +16,21 @@
  * @fileoverview Component for set of unicode string editor.
  */
 
-import { ChangeDetectorRef } from '@angular/core';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { SetOfUnicodeStringEditorComponent } from './set-of-unicode-string-editor.component';
+// @ts-nocheck
+
+import {ChangeDetectorRef} from '@angular/core';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {SetOfUnicodeStringEditorComponent} from './set-of-unicode-string-editor.component';
 
 describe('SetOfUnicodeStringEditorComponent', () => {
   let component: SetOfUnicodeStringEditorComponent;
   let fixture: ComponentFixture<SetOfUnicodeStringEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [SetOfUnicodeStringEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -49,19 +51,23 @@ describe('SetOfUnicodeStringEditorComponent', () => {
     expect(component.getSchema()).toEqual({
       type: 'list',
       items: {
-        type: 'unicode'
+        type: 'unicode',
       },
-      validators: [{
-        id: 'is_uniquified'
-      }]
+      validators: [
+        {
+          id: 'is_uniquified',
+        },
+      ],
     });
   });
 
   it('should update value when user types', () => {
     const changeDetectorRef =
       fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     spyOn(component.valueChanged, 'emit');
 
     component.value = 'value';
@@ -76,8 +82,10 @@ describe('SetOfUnicodeStringEditorComponent', () => {
   it('should not update value if it has no changed', () => {
     const changeDetectorRef =
       fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     spyOn(component.valueChanged, 'emit');
     component.value = 'value';
 

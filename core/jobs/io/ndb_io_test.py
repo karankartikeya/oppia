@@ -14,25 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides an Apache Beam API for operating on NDB models."""
+"""Unit tests for jobs.io.ndb_io."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.jobs import job_test_utils
 from core.jobs.io import ndb_io
 from core.platform import models
 
 import apache_beam as beam
-
 from typing import List
 
 MYPY = False
 if MYPY:  # pragma: no cover
-    from mypy_imports import base_models
-    from mypy_imports import datastore_services
+    from mypy_imports import base_models, datastore_services
 
-(base_models,) = models.Registry.import_models([models.NAMES.base_model])
+(base_models,) = models.Registry.import_models([models.Names.BASE_MODEL])
 
 datastore_services = models.Registry.import_datastore_services()
 
@@ -54,7 +51,8 @@ class NdbIoTests(job_test_utils.PipelinedTestBase):
             model_list: list(Model). The models to put into the datastore.
         """
         datastore_services.update_timestamps_multi(
-            model_list, update_last_updated_time=False)
+            model_list, update_last_updated_time=False
+        )
         datastore_services.put_multi(model_list)
 
     def test_read_from_datastore(self) -> None:
@@ -65,10 +63,10 @@ class NdbIoTests(job_test_utils.PipelinedTestBase):
         ]
         self.put_multi(model_list)
 
-        self.assertItemsEqual(self.get_base_models(), model_list) # type: ignore[no-untyped-call]
+        self.assertItemsEqual(self.get_base_models(), model_list)
 
-        model_pcoll = (
-            self.pipeline | ndb_io.GetModels(base_models.BaseModel.get_all())
+        model_pcoll = self.pipeline | ndb_io.GetModels(
+            base_models.BaseModel.get_all()
         )
 
         self.assert_pcoll_equal(model_pcoll, model_list)
@@ -80,12 +78,12 @@ class NdbIoTests(job_test_utils.PipelinedTestBase):
             self.create_model(base_models.BaseModel, id='c'),
         ]
 
-        self.assertItemsEqual(self.get_base_models(), []) # type: ignore[no-untyped-call]
+        self.assertItemsEqual(self.get_base_models(), [])
 
         self.assert_pcoll_empty(
-            self.pipeline | beam.Create(model_list) | ndb_io.PutModels())
-
-        self.assertItemsEqual(self.get_base_models(), model_list) # type: ignore[no-untyped-call]
+            self.pipeline | beam.Create(model_list) | ndb_io.PutModels()
+        )
+        self.assertItemsEqual(self.get_base_models(), model_list)
 
     def test_delete_from_datastore(self) -> None:
         model_list = [
@@ -95,11 +93,12 @@ class NdbIoTests(job_test_utils.PipelinedTestBase):
         ]
         self.put_multi(model_list)
 
-        self.assertItemsEqual(self.get_base_models(), model_list) # type: ignore[no-untyped-call]
+        self.assertItemsEqual(self.get_base_models(), model_list)
 
         self.assert_pcoll_empty(
             self.pipeline
             | beam.Create([model.key for model in model_list])
-            | ndb_io.DeleteModels())
+            | ndb_io.DeleteModels()
+        )
 
-        self.assertItemsEqual(self.get_base_models(), []) # type: ignore[no-untyped-call]
+        self.assertItemsEqual(self.get_base_models(), [])

@@ -16,15 +16,23 @@
 
 """Error classes for feedback model audits."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.jobs.types import base_validation_errors
+from core.platform import models
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import feedback_models
+
+(feedback_models,) = models.Registry.import_models([models.Names.FEEDBACK])
 
 
-class InvalidEntityTypeError(base_validation_errors.BaseAuditError):
+class InvalidEntityTypeError(base_validation_errors.BaseValidationError):
     """Error class for models that have invalid entity type."""
 
-    def __init__(self, model):
+    def __init__(
+        self, model: feedback_models.GeneralFeedbackThreadModel
+    ) -> None:
         message = 'entity type %s is invalid.' % model.entity_type
-        super(InvalidEntityTypeError, self).__init__(message, model)
+        super().__init__(message, model)

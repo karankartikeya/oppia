@@ -20,36 +20,40 @@
 // because Angular doesn't support global definitions and every library used
 // needs to be imported explicitly.
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
-import $ from 'jquery';
+import {Injectable} from '@angular/core';
+// eslint-disable-next-line oppia/disallow-httpclient
+import {HttpClient, HttpBackend} from '@angular/common/http';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CsrfTokenService {
+  // 'tokenPromise' will be null when token is not initialized.
   tokenPromise: PromiseLike<string> | null = null;
+  http: HttpClient;
+
+  constructor(httpBackend: HttpBackend) {
+    // We pass HttpBackend into this constructor in order to bypass the default
+    // REQUEST_INTERCEPTER which we use and which depends on CsrfTokenService.
+    this.http = new HttpClient(httpBackend);
+  }
 
   initializeToken(): void {
     if (this.tokenPromise !== null) {
       throw new Error('Token request has already been made');
     }
-    // TODO(#8035): Remove the use of $.ajax and hence the ts-ignore
-    // in csrf-token.service.spec.ts once all the services are migrated
-    // We use jQuery here instead of Angular's $http, since the latter creates
-    // a circular dependency.
-    this.tokenPromise = $.ajax({
-      url: '/csrfhandler',
-      type: 'GET',
-      dataType: 'text',
-      dataFilter: function(data: string) {
-        // Remove the protective XSSI (cross-site scripting inclusion) prefix.
-        let actualData = data.substring(5);
-        return JSON.parse(actualData);
-      },
-    }).then(function(response: {token: string}) {
-      return response.token;
-    });
+    this.tokenPromise = this.http
+      .get('/csrfhandler', {responseType: 'text'})
+      .toPromise()
+      .then(
+        (responseText: string) => {
+          // Remove the protective XSSI (cross-site scripting inclusion) prefix.
+          return JSON.parse(responseText.substring(5)).token;
+        },
+        err => {
+          throw err;
+        }
+      );
   }
 
   getTokenAsync(): PromiseLike<string> {
@@ -59,6 +63,3 @@ export class CsrfTokenService {
     return this.tokenPromise;
   }
 }
-
-angular.module('oppia').factory(
-  'CsrfTokenService', downgradeInjectable(CsrfTokenService));

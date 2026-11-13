@@ -16,35 +16,44 @@
  * @fileoverview Unit tests for the question player engine service.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { TestBed} from '@angular/core/testing';
-import { AnswerClassificationResult } from 'domain/classifier/answer-classification-result.model';
-import { OutcomeObjectFactory } from 'domain/exploration/OutcomeObjectFactory';
-import { QuestionBackendDict, QuestionObjectFactory } from 'domain/question/QuestionObjectFactory';
-import { StateCard } from 'domain/state_card/state-card.model';
-import { ExpressionInterpolationService } from 'expressions/expression-interpolation.service';
-import { TextInputRulesService } from 'interactions/TextInput/directives/text-input-rules.service';
-import { AlertsService } from 'services/alerts.service';
-import { ContextService } from 'services/context.service';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
-import { AnswerClassificationService, InteractionRulesService } from './answer-classification.service';
-import { QuestionPlayerEngineService } from './question-player-engine.service';
-import { AudioTranslationLanguageService } from
-  'pages/exploration-player-page/services/audio-translation-language.service';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {fakeAsync, TestBed, tick} from '@angular/core/testing';
+import {AnswerClassificationResult} from '../../../domain/classifier/answer-classification-result.model';
+import {Outcome} from '../../../domain/exploration/outcome.model';
+import {
+  Question,
+  QuestionBackendDict,
+} from '../../../domain/question/question.model';
+import {StateCard} from '../../../domain/state_card/state-card.model';
+import {ExpressionInterpolationService} from '../../../expressions/expression-interpolation.service';
+import {TextInputRulesService} from '../../../../../extensions/interactions/TextInput/directives/text-input-rules.service';
+import {AlertsService} from '../../../services/alerts.service';
+import {PageContextService} from '../../../services/page-context.service';
+import {FocusManagerService} from '../../../services/stateful/focus-manager.service';
+import {
+  AnswerClassificationService,
+  InteractionRulesService,
+} from './answer-classification.service';
+import {QuestionBackendApiService} from '../../../domain/question/question-backend-api.service';
+import {QuestionPlayerEngineService} from './question-player-engine.service';
+import {State} from '../../../domain/state/state.model';
 
-describe('Question player engine service ', () => {
-  let audioTranslationLanguageService: AudioTranslationLanguageService;
+describe('Question player engine service', () => {
   let alertsService: AlertsService;
   let answerClassificationService: AnswerClassificationService;
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
   let expressionInterpolationService: ExpressionInterpolationService;
   let focusManagerService: FocusManagerService;
   let multipleQuestionsBackendDict: QuestionBackendDict[];
-  let outcomeObjectFactory: OutcomeObjectFactory;
-  let questionObjectFactory: QuestionObjectFactory;
   let questionPlayerEngineService: QuestionPlayerEngineService;
   let singleQuestionBackendDict: QuestionBackendDict;
+  let singleQuestionObject: Question;
+  let multipleQuestionsObjects: Question[];
+  let questionBackendApiService: QuestionBackendApiService;
   let textInputService: InteractionRulesService;
+
+  let questionId = 'question_id';
+  let question: Question;
 
   beforeEach(() => {
     singleQuestionBackendDict = {
@@ -52,395 +61,420 @@ describe('Question player engine service ', () => {
       question_state_data: {
         classifier_model_id: null,
         param_changes: [],
-        next_content_id_index: 1,
         solicit_answer_details: false,
         content: {
           content_id: '1',
-          html: 'Question 1'
-        },
-        written_translations: {
-          translations_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
+          html: 'Question 1',
         },
         interaction: {
-          answer_groups: [{
-            outcome: {
-              dest: 'State 1',
-              feedback: {
-                content_id: 'feedback_1',
-                html: '<p>Try Again.</p>'
+          answer_groups: [
+            {
+              outcome: {
+                dest: 'State 1',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'feedback_1',
+                  html: '<p>Try Again.</p>',
+                },
+                param_changes: [],
+                refresher_exploration_id: null,
+                missing_prerequisite_skill_id: null,
+                labelled_as_correct: true,
               },
-              param_changes: [],
-              refresher_exploration_id: null,
-              missing_prerequisite_skill_id: null,
-              labelled_as_correct: true,
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 0},
+                },
+              ],
+              training_data: [],
+              tagged_skill_misconception_id: null,
             },
-            rule_specs: [{
-              rule_type: 'Equals',
-              inputs: {x: 0}
-            }],
-            training_data: null,
-            tagged_skill_misconception_id: null,
-          },
-          {
-            outcome: {
-              dest: 'State 2',
-              feedback: {
-                content_id: 'feedback_2',
-                html: '<p>Try Again.</p>'
+            {
+              outcome: {
+                dest: 'State 2',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'feedback_2',
+                  html: '<p>Try Again.</p>',
+                },
+                param_changes: [],
+                refresher_exploration_id: null,
+                missing_prerequisite_skill_id: null,
+                labelled_as_correct: true,
               },
-              param_changes: [],
-              refresher_exploration_id: null,
-              missing_prerequisite_skill_id: null,
-              labelled_as_correct: true,
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 0},
+                },
+              ],
+              training_data: [],
+              tagged_skill_misconception_id: 'misconceptionId',
             },
-            rule_specs: [{
-              rule_type: 'Equals',
-              inputs: {x: 0}
-            }],
-            training_data: null,
-            tagged_skill_misconception_id: 'misconceptionId',
-          }],
+          ],
           default_outcome: {
             dest: null,
+            dest_if_really_stuck: null,
             labelled_as_correct: true,
             missing_prerequisite_skill_id: null,
             refresher_exploration_id: null,
             param_changes: [],
             feedback: {
               content_id: 'feedback_id',
-              html: '<p>Dummy Feedback</p>'
-            }
+              html: '<p>Dummy Feedback</p>',
+            },
           },
           id: 'TextInput',
           customization_args: {
             rows: {
-              value: 1
+              value: 1,
             },
             placeholder: {
               value: {
                 unicode_str: '',
-                content_id: 'ca_placeholder_0'
-              }
-            }
+                content_id: 'ca_placeholder_0',
+              },
+            },
+            catchMisspellings: {
+              value: false,
+            },
           },
           confirmed_unclassified_answers: [],
           hints: [
             {
               hint_content: {
                 content_id: 'hint_1',
-                html: '<p>This is a hint.</p>'
-              }
-            }
+                html: '<p>This is a hint.</p>',
+              },
+            },
           ],
           solution: {
             correct_answer: 'Solution',
             explanation: {
               content_id: 'solution',
-              html: '<p>This is a solution.</p>'
+              html: '<p>This is a solution.</p>',
             },
-            answer_is_exclusive: false
-          }
+            answer_is_exclusive: false,
+          },
         },
         linked_skill_id: null,
         card_is_checkpoint: true,
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        }
+        inapplicable_skill_misconception_ids: [],
       },
       question_state_data_schema_version: 45,
+      next_content_id_index: 5,
       language_code: 'en',
       version: 1,
       linked_skill_ids: [],
       inapplicable_skill_misconception_ids: [],
     };
 
-    multipleQuestionsBackendDict = [{
-      id: 'questionId1',
-      question_state_data: {
-        classifier_model_id: null,
-        param_changes: [],
-        next_content_id_index: 1,
-        solicit_answer_details: false,
-        content: {
-          content_id: '1',
-          html: 'Question 1'
-        },
-        written_translations: {
-          translations_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        },
-        interaction: {
-          answer_groups: [],
-          default_outcome: {
-            dest: null,
-            labelled_as_correct: true,
-            missing_prerequisite_skill_id: null,
-            refresher_exploration_id: null,
-            param_changes: [],
-            feedback: {
-              content_id: 'feedback_id',
-              html: '<p>Dummy Feedback</p>'
-            }
+    multipleQuestionsBackendDict = [
+      {
+        id: 'questionId1',
+        question_state_data: {
+          classifier_model_id: null,
+          param_changes: [],
+          solicit_answer_details: false,
+          content: {
+            content_id: '1',
+            html: 'Question 1',
           },
-          id: 'TextInput',
-          customization_args: {
-            rows: {
-              value: 1
+          interaction: {
+            answer_groups: [],
+            default_outcome: {
+              dest: null,
+              dest_if_really_stuck: null,
+              labelled_as_correct: true,
+              missing_prerequisite_skill_id: null,
+              refresher_exploration_id: null,
+              param_changes: [],
+              feedback: {
+                content_id: 'feedback_id',
+                html: '<p>Dummy Feedback</p>',
+              },
             },
-            placeholder: {
-              value: {
-                unicode_str: '',
-                content_id: 'ca_placeholder_0'
-              }
-            }
+            id: 'TextInput',
+            customization_args: {
+              rows: {
+                value: 1,
+              },
+              placeholder: {
+                value: {
+                  unicode_str: '',
+                  content_id: 'ca_placeholder_0',
+                },
+              },
+              catchMisspellings: {
+                value: false,
+              },
+            },
+            confirmed_unclassified_answers: [],
+            hints: [
+              {
+                hint_content: {
+                  content_id: 'hint_1',
+                  html: '<p>This is a hint.</p>',
+                },
+              },
+            ],
+            solution: {
+              correct_answer: 'Solution',
+              explanation: {
+                content_id: 'solution',
+                html: '<p>This is a solution.</p>',
+              },
+              answer_is_exclusive: false,
+            },
           },
-          confirmed_unclassified_answers: [],
-          hints: [
-            {
-              hint_content: {
-                content_id: 'hint_1',
-                html: '<p>This is a hint.</p>'
-              }
-            }
-          ],
-          solution: {
-            correct_answer: 'Solution',
-            explanation: {
-              content_id: 'solution',
-              html: '<p>This is a solution.</p>'
-            },
-            answer_is_exclusive: false
-          }
+          linked_skill_id: null,
+          card_is_checkpoint: true,
+          inapplicable_skill_misconception_ids: [],
         },
-        linked_skill_id: null,
-        card_is_checkpoint: true,
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        }
+        question_state_data_schema_version: 45,
+        language_code: 'en',
+        next_content_id_index: 6,
+        version: 1,
+        linked_skill_ids: [],
+        inapplicable_skill_misconception_ids: [],
       },
-      question_state_data_schema_version: 45,
-      language_code: 'en',
-      version: 1,
-      linked_skill_ids: [],
-      inapplicable_skill_misconception_ids: [],
-    },
-    {
-      id: 'questionId2',
-      question_state_data: {
-        classifier_model_id: null,
-        param_changes: [],
+      {
+        id: 'questionId2',
+        question_state_data: {
+          classifier_model_id: null,
+          param_changes: [],
+          solicit_answer_details: false,
+          content: {
+            content_id: '2',
+            html: 'Question 2',
+          },
+          interaction: {
+            answer_groups: [],
+            default_outcome: {
+              dest: null,
+              dest_if_really_stuck: null,
+              labelled_as_correct: true,
+              missing_prerequisite_skill_id: null,
+              refresher_exploration_id: null,
+              param_changes: [],
+              feedback: {
+                content_id: 'feedback_id',
+                html: '<p>Dummy Feedback</p>',
+              },
+            },
+            id: 'TextInput',
+            customization_args: {
+              rows: {
+                value: 1,
+              },
+              placeholder: {
+                value: {
+                  unicode_str: '',
+                  content_id: 'ca_placeholder_0',
+                },
+              },
+              catchMisspellings: {
+                value: false,
+              },
+            },
+            confirmed_unclassified_answers: [],
+            hints: [
+              {
+                hint_content: {
+                  content_id: 'hint_1',
+                  html: '<p>This is a hint.</p>',
+                },
+              },
+            ],
+            solution: {
+              correct_answer: 'Solution',
+              explanation: {
+                content_id: 'solution',
+                html: '<p>This is a solution.</p>',
+              },
+              answer_is_exclusive: false,
+            },
+          },
+          linked_skill_id: null,
+          card_is_checkpoint: true,
+          inapplicable_skill_misconception_ids: [],
+        },
+        question_state_data_schema_version: 45,
+        language_code: 'br',
         next_content_id_index: 2,
-        solicit_answer_details: false,
-        content: {
-          content_id: '2',
-          html: 'Question 2'
-        },
-        written_translations: {
-          translations_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        },
-        interaction: {
-          answer_groups: [],
-          default_outcome: {
-            dest: null,
-            labelled_as_correct: true,
-            missing_prerequisite_skill_id: null,
-            refresher_exploration_id: null,
-            param_changes: [],
-            feedback: {
-              content_id: 'feedback_id',
-              html: '<p>Dummy Feedback</p>'
-            }
-          },
-          id: 'TextInput',
-          customization_args: {
-            rows: {
-              value: 1
-            },
-            placeholder: {
-              value: {
-                unicode_str: '',
-                content_id: 'ca_placeholder_0'
-              }
-            }
-          },
-          confirmed_unclassified_answers: [],
-          hints: [
-            {
-              hint_content: {
-                content_id: 'hint_1',
-                html: '<p>This is a hint.</p>'
-              }
-            }
-          ],
-          solution: {
-            correct_answer: 'Solution',
-            explanation: {
-              content_id: 'solution',
-              html: '<p>This is a solution.</p>'
-            },
-            answer_is_exclusive: false
-          }
-        },
-        linked_skill_id: null,
-        card_is_checkpoint: true,
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        }
+        version: 1,
+        linked_skill_ids: [],
+        inapplicable_skill_misconception_ids: [],
       },
-      question_state_data_schema_version: 45,
-      language_code: 'br',
-      version: 1,
-      linked_skill_ids: [],
-      inapplicable_skill_misconception_ids: [],
-    },
-    {
-      id: 'questionId3',
-      question_state_data: {
-        classifier_model_id: null,
-        param_changes: [],
-        next_content_id_index: 1,
-        solicit_answer_details: false,
-        content: {
-          content_id: '3',
-          html: 'Question 3'
-        },
-        written_translations: {
-          translations_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        },
-        interaction: {
-          answer_groups: [],
-          default_outcome: {
-            dest: null,
-            labelled_as_correct: true,
-            missing_prerequisite_skill_id: null,
-            refresher_exploration_id: null,
-            param_changes: [],
-            feedback: {
-              content_id: 'feedback_id',
-              html: '<p>Dummy Feedback</p>'
-            }
+      {
+        id: 'questionId3',
+        question_state_data: {
+          classifier_model_id: null,
+          param_changes: [],
+          solicit_answer_details: false,
+          content: {
+            content_id: '3',
+            html: 'Question 3',
           },
-          id: 'TextInput',
-          customization_args: {
-            rows: {
-              value: 1
+          interaction: {
+            answer_groups: [],
+            default_outcome: {
+              dest: null,
+              dest_if_really_stuck: null,
+              labelled_as_correct: true,
+              missing_prerequisite_skill_id: null,
+              refresher_exploration_id: null,
+              param_changes: [],
+              feedback: {
+                content_id: 'feedback_id',
+                html: '<p>Dummy Feedback</p>',
+              },
             },
-            placeholder: {
-              value: {
-                unicode_str: '',
-                content_id: 'ca_placeholder_0'
-              }
-            }
+            id: 'TextInput',
+            customization_args: {
+              rows: {
+                value: 1,
+              },
+              placeholder: {
+                value: {
+                  unicode_str: '',
+                  content_id: 'ca_placeholder_0',
+                },
+              },
+              catchMisspellings: {
+                value: false,
+              },
+            },
+            confirmed_unclassified_answers: [],
+            hints: [
+              {
+                hint_content: {
+                  content_id: 'hint_1',
+                  html: '<p>This is a hint.</p>',
+                },
+              },
+            ],
+            solution: {
+              correct_answer: 'Solution',
+              explanation: {
+                content_id: 'solution',
+                html: '<p>This is a solution.</p>',
+              },
+              answer_is_exclusive: false,
+            },
           },
-          confirmed_unclassified_answers: [],
-          hints: [
-            {
-              hint_content: {
-                content_id: 'hint_1',
-                html: '<p>This is a hint.</p>'
-              }
-            }
-          ],
-          solution: {
-            correct_answer: 'Solution',
-            explanation: {
-              content_id: 'solution',
-              html: '<p>This is a solution.</p>'
-            },
-            answer_is_exclusive: false
-          }
+          linked_skill_id: null,
+          card_is_checkpoint: true,
+          inapplicable_skill_misconception_ids: [],
         },
-        linked_skill_id: null,
-        card_is_checkpoint: true,
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            1: {},
-            ca_placeholder_0: {},
-            feedback_id: {},
-            solution: {},
-            hint_1: {}
-          }
-        }
+        question_state_data_schema_version: 45,
+        language_code: 'ab',
+        version: 1,
+        next_content_id_index: 6,
+        linked_skill_ids: [],
+        inapplicable_skill_misconception_ids: [],
       },
-      question_state_data_schema_version: 45,
-      language_code: 'ab',
-      version: 1,
-      linked_skill_ids: [],
-      inapplicable_skill_misconception_ids: [],
-    }];
+    ];
   });
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
+      imports: [HttpClientTestingModule],
+      providers: [
+        QuestionPlayerEngineService,
+        QuestionBackendApiService,
+        ExpressionInterpolationService,
+        FocusManagerService,
+        AlertsService,
+        AnswerClassificationService,
+        PageContextService,
+        TextInputRulesService,
+      ],
     });
 
-    audioTranslationLanguageService = TestBed.inject(
-      AudioTranslationLanguageService);
     alertsService = TestBed.inject(AlertsService);
     answerClassificationService = TestBed.inject(AnswerClassificationService);
-    contextService = TestBed.inject(ContextService);
-    expressionInterpolationService =
-      TestBed.inject(ExpressionInterpolationService);
-    questionObjectFactory = TestBed.inject(QuestionObjectFactory);
+    pageContextService = TestBed.inject(PageContextService);
+    expressionInterpolationService = TestBed.inject(
+      ExpressionInterpolationService
+    );
+    questionBackendApiService = TestBed.inject(QuestionBackendApiService);
     questionPlayerEngineService = TestBed.inject(QuestionPlayerEngineService);
-    outcomeObjectFactory = TestBed.inject(OutcomeObjectFactory);
     focusManagerService = TestBed.inject(FocusManagerService);
-    textInputService = TestBed.get(TextInputRulesService);
+    textInputService = jasmine.createSpyObj('InteractionRulesService', ['']);
+
+    singleQuestionObject = Question.createFromBackendDict(
+      singleQuestionBackendDict
+    );
+    multipleQuestionsObjects = multipleQuestionsBackendDict.map(
+      function (questionDict) {
+        return Question.createFromBackendDict(questionDict);
+      }
+    );
+    question = new Question(
+      questionId,
+      State.createDefaultState('state', 'content_0', 'default_outcome_1'),
+      '',
+      7,
+      [],
+      [],
+      2
+    );
+  });
+
+  it('should register hint as used', () => {
+    questionPlayerEngineService.recordHintUsed(question);
+
+    expect(
+      questionPlayerEngineService.questionPlayerState[questionId]
+    ).toBeDefined();
+  });
+
+  it('should register solution viewed', () => {
+    questionPlayerEngineService.recordSolutionViewed(question);
+
+    expect(
+      questionPlayerEngineService.questionPlayerState[questionId].viewedSolution
+    ).toBeDefined();
+  });
+
+  it('should submit answer', () => {
+    questionPlayerEngineService.recordAnswerSubmitted(question, true, '');
+    questionPlayerEngineService.recordSolutionViewed(question);
+    questionPlayerEngineService.recordAnswerSubmitted(question, true, '');
+
+    expect(
+      questionPlayerEngineService.questionPlayerState[questionId].answers.length
+    ).toEqual(1);
+  });
+
+  it('should get question player state data', () => {
+    expect(
+      questionPlayerEngineService.getQuestionPlayerStateData()
+    ).toBeDefined();
+  });
+
+  it('should access on question session completed', () => {
+    expect(
+      questionPlayerEngineService.onQuestionSessionCompleted
+    ).toBeDefined();
   });
 
   it('should load questions when initialized', () => {
     let initSuccessCb = jasmine.createSpy('success');
     let initErrorCb = jasmine.createSpy('fail');
 
-    spyOn(contextService, 'setQuestionPlayerIsOpen');
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
+    spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+    spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
 
     expect(questionPlayerEngineService.getQuestionCount()).toBe(0);
 
     questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
+      multipleQuestionsObjects,
+      initSuccessCb,
+      initErrorCb
+    );
 
     expect(questionPlayerEngineService.getQuestionCount()).toBe(3);
   });
@@ -449,72 +483,160 @@ describe('Question player engine service ', () => {
     let initSuccessCb = jasmine.createSpy('success');
     let initErrorCb = jasmine.createSpy('fail');
 
-    expect(contextService.isInQuestionPlayerMode()).toBe(false);
+    expect(pageContextService.isInQuestionPlayerMode()).toBe(false);
 
     questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
+      multipleQuestionsObjects,
+      initSuccessCb,
+      initErrorCb
+    );
 
-    expect(contextService.isInQuestionPlayerMode()).toBe(true);
+    expect(pageContextService.isInQuestionPlayerMode()).toBe(true);
   });
 
-  it('should update the current question ID when an answer is ' +
-    'submitted and a new card is recorded', () => {
-    let submitAnswerSuccessCb = jasmine.createSpy('success');
-    let initSuccessCb = jasmine.createSpy('success');
-    let initErrorCb = jasmine.createSpy('fail');
-    let answer = 'answer';
-    let answerClassificationResult = new AnswerClassificationResult(
-      outcomeObjectFactory.createNew(
-        'default', '', '', []), 1, 0, 'default_outcome');
+  it(
+    'should update the current question ID when an answer is ' +
+      'submitted and a new card is recorded',
+    () => {
+      let submitAnswerSuccessCb = jasmine.createSpy('success');
+      let initSuccessCb = jasmine.createSpy('success');
+      let initErrorCb = jasmine.createSpy('fail');
+      let answer = 'answer';
+      let answerClassificationResult = new AnswerClassificationResult(
+        Outcome.createNew('default', 'feedback_id', 'feedback', []),
+        1,
+        0,
+        'default_outcome'
+      );
 
-    spyOn(contextService, 'setQuestionPlayerIsOpen');
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
-    spyOn(answerClassificationService, 'getMatchingClassificationResult')
-      .and.returnValue(answerClassificationResult);
-    spyOn(expressionInterpolationService, 'processHtml')
-      .and.callFake((html, envs) => html);
+      spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+      spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
+      spyOn(
+        answerClassificationService,
+        'getMatchingClassificationResult'
+      ).and.returnValue(answerClassificationResult);
+      spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+        (html, envs) =>
+          html === '' ? jasmine.createSpy('null').and.returnValue(null)() : html
+      );
 
-    questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
-    let currentQuestion1 = questionPlayerEngineService.getCurrentQuestion();
-    expect(currentQuestion1.getId()).toBe(multipleQuestionsBackendDict[0].id);
+      questionPlayerEngineService.init(
+        multipleQuestionsObjects,
+        initSuccessCb,
+        initErrorCb
+      );
+      let currentQuestion1 = questionPlayerEngineService.getCurrentQuestion();
+      expect(currentQuestion1.getId()).toBe(multipleQuestionsObjects[0]._id);
 
-    questionPlayerEngineService.submitAnswer(
-      answer, textInputService, submitAnswerSuccessCb);
-    questionPlayerEngineService.recordNewCardAdded();
-    let currentQuestion2 = questionPlayerEngineService.getCurrentQuestion();
-
-    expect(currentQuestion2.getId()).toBe(multipleQuestionsBackendDict[1].id);
-  });
+      questionPlayerEngineService.submitAnswer(
+        answer,
+        textInputService,
+        submitAnswerSuccessCb
+      );
+      questionPlayerEngineService.recordNewCardAdded();
+      let currentQuestion2 = questionPlayerEngineService.getCurrentQuestion();
+      expect(currentQuestion2.getId()).toBe(multipleQuestionsObjects[1]._id);
+    }
+  );
 
   it('should return the current question Id', () => {
     let initSuccessCb = jasmine.createSpy('success');
     let initErrorCb = jasmine.createSpy('fail');
 
-    spyOn(contextService, 'setQuestionPlayerIsOpen');
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
+    spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+    spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
 
     expect(() => {
       questionPlayerEngineService.getCurrentQuestionId();
-    }).toThrowError(
-      'Cannot read properties of undefined (reading \'getId\')');
+    }).toThrowError("Cannot read properties of undefined (reading 'getId')");
 
     questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
+      multipleQuestionsObjects,
+      initSuccessCb,
+      initErrorCb
+    );
 
-    expect(questionPlayerEngineService.getCurrentQuestionId())
-      .toBe(multipleQuestionsBackendDict[0].id);
+    const firstQuestionId = multipleQuestionsObjects[0].getId();
+    if (firstQuestionId === null) {
+      throw new Error('First question ID is null.');
+    }
+    expect(questionPlayerEngineService.getCurrentQuestionId()).toBe(
+      multipleQuestionsObjects[0].getId() ?? ''
+    );
+
+    // Simulate the question returning a null ID to trigger the null guard.
+    spyOn(multipleQuestionsObjects[0], 'getId').and.returnValue(null);
+
+    expect(() => {
+      questionPlayerEngineService.getCurrentQuestionId();
+    }).toThrowError('Current question ID is null.');
+  });
+
+  it('should throw an error in loadInitialQuestion if first question id is null', () => {
+    let initSuccessCb = jasmine.createSpy('success');
+    let initErrorCb = jasmine.createSpy('fail');
+
+    spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+    spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
+    // Spy on all question objects so that regardless of how init() shuffles the
+    // array, every question returns a null ID, triggering the null guard inside
+    // loadInitialQuestion.
+    for (const q of multipleQuestionsObjects) {
+      spyOn(q, 'getId').and.returnValue(null);
+    }
+
+    expect(() => {
+      questionPlayerEngineService.init(
+        multipleQuestionsObjects,
+        initSuccessCb,
+        initErrorCb
+      );
+    }).toThrowError('First question ID is null.');
+  });
+
+  it('should init question player', fakeAsync(() => {
+    spyOn(questionBackendApiService, 'fetchQuestionsAsync').and.returnValue(
+      Promise.resolve([singleQuestionBackendDict])
+    );
+    spyOn(Question, 'createFromBackendDict').and.returnValue(
+      singleQuestionObject
+    );
+    spyOn(questionPlayerEngineService.onTotalQuestionsReceived, 'emit');
+
+    let successCallback = () => {};
+    let errorCallback = () => {};
+    questionPlayerEngineService.initQuestionPlayer(
+      {
+        skillList: [],
+        questionCount: 1,
+        questionsSortedByDifficulty: true,
+      },
+      successCallback,
+      errorCallback
+    );
+    tick(100);
+
+    expect(
+      questionPlayerEngineService.onTotalQuestionsReceived.emit
+    ).toHaveBeenCalled();
+  }));
+
+  it('should test onTotalQuestionsReceived getter', () => {
+    expect(questionPlayerEngineService.onTotalQuestionsReceived).toBeDefined();
   });
 
   it('should return number of questions', () => {
     let initSuccessCb = jasmine.createSpy('success');
     let initErrorCb = jasmine.createSpy('fail');
 
-    spyOn(contextService, 'setQuestionPlayerIsOpen');
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
+    spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+    spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
 
     questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
+      multipleQuestionsObjects,
+      initSuccessCb,
+      initErrorCb
+    );
     let totalQuestions = questionPlayerEngineService.getQuestionCount();
     expect(totalQuestions).toBe(3);
 
@@ -523,7 +645,10 @@ describe('Question player engine service ', () => {
     expect(totalQuestions).toBe(0);
 
     questionPlayerEngineService.init(
-      [singleQuestionBackendDict], initSuccessCb, initErrorCb);
+      [singleQuestionObject],
+      initSuccessCb,
+      initErrorCb
+    );
     totalQuestions = questionPlayerEngineService.getQuestionCount();
     expect(totalQuestions).toBe(1);
   });
@@ -532,11 +657,14 @@ describe('Question player engine service ', () => {
     let initSuccessCb = jasmine.createSpy('success');
     let initErrorCb = jasmine.createSpy('fail');
 
-    spyOn(contextService, 'setQuestionPlayerIsOpen');
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
+    spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+    spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
 
     questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
+      multipleQuestionsObjects,
+      initSuccessCb,
+      initErrorCb
+    );
 
     expect(questionPlayerEngineService.getQuestionCount()).toBe(3);
 
@@ -545,291 +673,480 @@ describe('Question player engine service ', () => {
     expect(questionPlayerEngineService.getQuestionCount()).toBe(0);
   });
 
-  it('should return the language code correctly when an answer is ' +
-    'submitted and a new card is recorded', () => {
-    let submitAnswerSuccessCb = jasmine.createSpy('success');
-    let initSuccessCb = jasmine.createSpy('success');
-    let initErrorCb = jasmine.createSpy('fail');
-    let answer = 'answer';
-    let answerClassificationResult = new AnswerClassificationResult(
-      outcomeObjectFactory
-        .createNew('default', '', '', []), 1, 0, 'default_outcome'
-    );
+  it(
+    'should return the language code correctly when an answer is ' +
+      'submitted and a new card is recorded',
+    () => {
+      let submitAnswerSuccessCb = jasmine.createSpy('success');
+      let initSuccessCb = jasmine.createSpy('success');
+      let initErrorCb = jasmine.createSpy('fail');
+      let answer = 'answer';
+      let answerClassificationResult = new AnswerClassificationResult(
+        Outcome.createNew('default', 'feedback_id', 'feedback', []),
+        1,
+        0,
+        'default_outcome'
+      );
 
-    spyOn(contextService, 'setQuestionPlayerIsOpen');
-    spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
-    spyOn(answerClassificationService, 'getMatchingClassificationResult')
-      .and.returnValue(answerClassificationResult);
-    spyOn(expressionInterpolationService, 'processHtml')
-      .and.callFake((html, envs) => html);
+      spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+      spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
+      spyOn(
+        answerClassificationService,
+        'getMatchingClassificationResult'
+      ).and.returnValue(answerClassificationResult);
+      spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+        (html, envs) =>
+          html === '' ? jasmine.createSpy('null').and.returnValue(null)() : html
+      );
 
-    questionPlayerEngineService.init(
-      multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
-    let languageCode = questionPlayerEngineService.getLanguageCode();
+      questionPlayerEngineService.init(
+        multipleQuestionsObjects,
+        initSuccessCb,
+        initErrorCb
+      );
+      let languageCode = questionPlayerEngineService.getLanguageCode();
 
-    expect(languageCode).toBe(multipleQuestionsBackendDict[0].language_code);
+      expect(languageCode).toBe(multipleQuestionsObjects[0]._languageCode);
 
-    questionPlayerEngineService.submitAnswer(
-      answer, textInputService, submitAnswerSuccessCb);
-    questionPlayerEngineService.recordNewCardAdded();
+      questionPlayerEngineService.submitAnswer(
+        answer,
+        textInputService,
+        submitAnswerSuccessCb
+      );
+      questionPlayerEngineService.recordNewCardAdded();
 
-    languageCode = questionPlayerEngineService.getLanguageCode();
-    expect(languageCode).toBe(multipleQuestionsBackendDict[1].language_code);
+      languageCode = questionPlayerEngineService.getLanguageCode();
+      expect(languageCode).toBe(multipleQuestionsObjects[1]._languageCode);
 
-    questionPlayerEngineService.submitAnswer(
-      answer, textInputService, submitAnswerSuccessCb);
-    questionPlayerEngineService.recordNewCardAdded();
+      questionPlayerEngineService.submitAnswer(
+        answer,
+        textInputService,
+        submitAnswerSuccessCb
+      );
+      questionPlayerEngineService.recordNewCardAdded();
 
-    languageCode = questionPlayerEngineService.getLanguageCode();
-    expect(languageCode).toBe(multipleQuestionsBackendDict[2].language_code);
-  });
+      languageCode = questionPlayerEngineService.getLanguageCode();
+      expect(languageCode).toBe(multipleQuestionsObjects[2]._languageCode);
+    }
+  );
 
-  it('should always return false when calling \'isInPreviewMode()\'', () => {
-    let previewMode = questionPlayerEngineService.isInPreviewMode();
+  it(
+    'should show warning message while loading a question ' +
+      'if the question name is empty',
+    () => {
+      let initSuccessCb = jasmine.createSpy('success');
+      let initErrorCb = jasmine.createSpy('fail');
 
-    expect(previewMode).toBe(false);
-  });
+      singleQuestionBackendDict.question_state_data.content.html = '';
+      let alertsServiceSpy = spyOn(
+        alertsService,
+        'addWarning'
+      ).and.callThrough();
+      spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+        (html, envs) =>
+          html === '' ? jasmine.createSpy('null').and.returnValue(null)() : html
+      );
 
-  it('should show warning message while loading a question ' +
-    'if the question name is empty', () => {
-    let initSuccessCb = jasmine.createSpy('success');
-    let initErrorCb = jasmine.createSpy('fail');
+      questionPlayerEngineService.init(
+        [Question.createFromBackendDict(singleQuestionBackendDict)],
+        initSuccessCb,
+        initErrorCb
+      );
 
-    singleQuestionBackendDict.question_state_data
-      .content.html = null;
-    let alertsServiceSpy = spyOn(
-      alertsService, 'addWarning').and.returnValue();
-    spyOn(expressionInterpolationService, 'processHtml')
-      .and.callFake((html, envs) => html);
-
-    questionPlayerEngineService.init(
-      [singleQuestionBackendDict], initSuccessCb, initErrorCb);
-
-    expect(alertsServiceSpy).toHaveBeenCalledWith(
-      'Question name should not be empty.');
-  });
+      expect(alertsServiceSpy).toHaveBeenCalledWith(
+        'Question name should not be empty.'
+      );
+    }
+  );
 
   it('should not load questions if there are no questions', () => {
     let initSuccessCb = jasmine.createSpy('success');
     let initErrorCb = jasmine.createSpy('fail');
 
-    let alertsServiceSpy = spyOn(
-      alertsService, 'addWarning').and.returnValue();
+    let alertsServiceSpy = spyOn(alertsService, 'addWarning').and.callThrough();
 
-    questionPlayerEngineService.init(
-      [], initSuccessCb, initErrorCb);
+    questionPlayerEngineService.init([], initSuccessCb, initErrorCb);
 
     expect(alertsServiceSpy).toHaveBeenCalledWith(
-      'There are no questions to display.');
+      'There are no questions to display.'
+    );
     expect(initSuccessCb).not.toHaveBeenCalled();
     expect(initErrorCb).toHaveBeenCalled();
   });
 
   describe('on submitting answer ', () => {
-    it('should call success callback if the submitted ' +
-      'answer is correct', () => {
-      let submitAnswerSuccessCb = jasmine.createSpy('success');
-      let initSuccessCb = jasmine.createSpy('success');
-      let initErrorCb = jasmine.createSpy('fail');
-      let answer = 'answer';
-      let answerClassificationResult = new AnswerClassificationResult(
-        outcomeObjectFactory
-          .createNew('default', '', '', []), 1, 0, 'default_outcome'
+    let submitAnswerSuccessCb: jasmine.Spy;
+    let initSuccessCb: jasmine.Spy;
+    let initErrorCb: jasmine.Spy;
+    let answer: string;
+    let answerClassificationResult: AnswerClassificationResult;
+
+    beforeEach(() => {
+      submitAnswerSuccessCb = jasmine.createSpy('success');
+      initSuccessCb = jasmine.createSpy('success');
+      initErrorCb = jasmine.createSpy('fail');
+      answer = 'answer';
+      answerClassificationResult = new AnswerClassificationResult(
+        Outcome.createNew('default', 'feedback_id', 'feedback', []),
+        1,
+        0,
+        'default_outcome'
       );
       answerClassificationResult.outcome.labelledAsCorrect = true;
-
-      spyOn(answerClassificationService, 'getMatchingClassificationResult')
-        .and.returnValue(answerClassificationResult);
-
-      questionPlayerEngineService.init(
-        multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
-
-      expect(questionPlayerEngineService.isAnswerBeingProcessed()).toBe(false);
-      expect(submitAnswerSuccessCb).toHaveBeenCalled();
     });
 
-    it('should not submit answer again if the answer ' +
-      'is already being processed', () => {
-      let submitAnswerSuccessCb = jasmine.createSpy('success');
-      let answer = 'answer';
-      let answerClassificationResult = new AnswerClassificationResult(
-        outcomeObjectFactory
-          .createNew('default', '', '', []), 1, 0, 'default_outcome'
+    it(
+      'should call success callback if the submitted ' + 'answer is correct',
+      () => {
+        spyOn(
+          answerClassificationService,
+          'getMatchingClassificationResult'
+        ).and.returnValue(answerClassificationResult);
+
+        questionPlayerEngineService.init(
+          multipleQuestionsObjects,
+          initSuccessCb,
+          initErrorCb
+        );
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+
+        expect(submitAnswerSuccessCb).toHaveBeenCalled();
+      }
+    );
+
+    it(
+      'should not submit answer again if the answer ' +
+        'is already being processed',
+      () => {
+        spyOn(
+          answerClassificationService,
+          'getMatchingClassificationResult'
+        ).and.returnValue(answerClassificationResult);
+
+        questionPlayerEngineService.setAnswerIsBeingProcessed(true);
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+
+        expect(submitAnswerSuccessCb).not.toHaveBeenCalled();
+      }
+    );
+
+    it(
+      'should show warning message if the feedback ' + 'content is empty',
+      () => {
+        answerClassificationResult.outcome.feedback.html = '';
+
+        spyOn(
+          answerClassificationService,
+          'getMatchingClassificationResult'
+        ).and.returnValue(answerClassificationResult);
+        let alertsServiceSpy = spyOn(
+          alertsService,
+          'addWarning'
+        ).and.callThrough();
+        spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+          (html, envs) =>
+            html === ''
+              ? jasmine.createSpy('null').and.returnValue(null)()
+              : html
+        );
+
+        if (
+          singleQuestionBackendDict.question_state_data.interaction
+            .default_outcome
+        ) {
+          singleQuestionBackendDict.question_state_data.interaction.default_outcome.feedback.html =
+            '';
+        }
+        questionPlayerEngineService.init(
+          [Question.createFromBackendDict(singleQuestionBackendDict)],
+          initSuccessCb,
+          initErrorCb
+        );
+
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+
+        expect(alertsServiceSpy).toHaveBeenCalledWith(
+          'Feedback content should not be empty.'
+        );
+      }
+    );
+
+    it('should show warning message if the question ' + 'name is empty', () => {
+      singleQuestionBackendDict.question_state_data.content.html = '';
+      let sampleQuestion = Question.createFromBackendDict(
+        singleQuestionBackendDict
       );
 
-      spyOn(answerClassificationService, 'getMatchingClassificationResult')
-        .and.returnValue(answerClassificationResult);
-
-      questionPlayerEngineService.setAnswerIsBeingProcessed(true);
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
-
-      expect(submitAnswerSuccessCb).not.toHaveBeenCalled();
-    });
-
-    it('should show warning message if the feedback ' +
-      'content is empty', () => {
-      let submitAnswerSuccessCb = jasmine.createSpy('success');
-      let initSuccessCb = jasmine.createSpy('success');
-      let initErrorCb = jasmine.createSpy('fail');
-      let answer = 'answer';
-      let answerClassificationResult = new AnswerClassificationResult(
-        outcomeObjectFactory
-          .createNew('default', null, null, []), 1, 0, 'default_outcome'
-      );
-      answerClassificationResult.outcome.labelledAsCorrect = true;
-
-      spyOn(answerClassificationService, 'getMatchingClassificationResult')
-        .and.returnValue(answerClassificationResult);
+      spyOn(
+        answerClassificationService,
+        'getMatchingClassificationResult'
+      ).and.returnValue(answerClassificationResult);
       let alertsServiceSpy = spyOn(
-        alertsService, 'addWarning').and.returnValue();
-      spyOn(expressionInterpolationService, 'processHtml')
-        .and.callFake((html, envs) => html);
-
-      singleQuestionBackendDict.question_state_data
-        .interaction.default_outcome.feedback.html = null;
-      questionPlayerEngineService.init(
-        [singleQuestionBackendDict], initSuccessCb, initErrorCb);
-
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
-
-      expect(alertsServiceSpy)
-        .toHaveBeenCalledWith('Feedback content should not be empty.');
-    });
-
-    it('should show warning message if the question ' +
-      'name is empty', () => {
-      let submitAnswerSuccessCb = jasmine.createSpy('success');
-      let initSuccessCb = jasmine.createSpy('success');
-      let initErrorCb = jasmine.createSpy('fail');
-      let answer = 'answer';
-      let answerClassificationResult = new AnswerClassificationResult(
-        outcomeObjectFactory
-          .createNew('default', '', '', []), 1, 0, 'default_outcome'
-      );
-      answerClassificationResult.outcome.labelledAsCorrect = true;
-
-      singleQuestionBackendDict.question_state_data
-        .content.html = null;
-      let sampleQuestion = questionObjectFactory.createFromBackendDict(
-        singleQuestionBackendDict);
-
-      spyOn(answerClassificationService, 'getMatchingClassificationResult')
-        .and.returnValue(answerClassificationResult);
-      let alertsServiceSpy = spyOn(
-        alertsService, 'addWarning').and.returnValue();
+        alertsService,
+        'addWarning'
+      ).and.callThrough();
       spyOn(questionPlayerEngineService, 'init').and.callFake(() => {
         questionPlayerEngineService.addQuestion(sampleQuestion);
       });
 
-      spyOn(expressionInterpolationService, 'processHtml')
-        .and.callFake((html, envs) => html);
+      spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+        (html, envs) =>
+          html === '' ? jasmine.createSpy('null').and.returnValue(null)() : html
+      );
 
       questionPlayerEngineService.init(
-        [singleQuestionBackendDict], initSuccessCb, initErrorCb);
-      questionPlayerEngineService.setCurrentIndex(0);
+        [sampleQuestion],
+        initSuccessCb,
+        initErrorCb
+      );
+      questionPlayerEngineService.currentIndex = 0;
       questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
+        answer,
+        textInputService,
+        submitAnswerSuccessCb
+      );
 
-      expect(alertsServiceSpy)
-        .toHaveBeenCalledWith('Question name should not be empty.');
+      expect(alertsServiceSpy).toHaveBeenCalledWith(
+        'Question name should not be empty.'
+      );
     });
 
-    it('should update the current index when a card is added', () => {
+    it(
+      'should not create next card if the existing ' + 'card is the last one',
+      () => {
+        let sampleCard = StateCard.createNewCard(
+          'Card 1',
+          'Content html',
+          'Interaction text',
+          jasmine.createSpyObj('Interaction', ['']),
+          'content_id'
+        );
+
+        spyOn(
+          answerClassificationService,
+          'getMatchingClassificationResult'
+        ).and.returnValue(answerClassificationResult);
+        spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+          (html, envs) =>
+            html === ''
+              ? jasmine.createSpy('null').and.returnValue(null)()
+              : html
+        );
+        spyOn(focusManagerService, 'generateFocusLabel').and.returnValue(
+          'focusLabel'
+        );
+
+        // We are using a stub backend dict which consists of three questions.
+        questionPlayerEngineService.init(
+          multipleQuestionsObjects,
+          initSuccessCb,
+          initErrorCb
+        );
+
+        let createNewCardSpy = spyOn(
+          StateCard,
+          'createNewCard'
+        ).and.returnValue(sampleCard);
+
+        expect(createNewCardSpy).toHaveBeenCalledTimes(0);
+
+        // Submitting answer to the first question.
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+
+        expect(questionPlayerEngineService.getCurrentQuestionId()).toBe(
+          multipleQuestionsObjects[0].getId() ?? ''
+        );
+        expect(createNewCardSpy).toHaveBeenCalledTimes(1);
+
+        questionPlayerEngineService.recordNewCardAdded();
+        // Submitting answer to the second question.
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+
+        expect(questionPlayerEngineService.getCurrentQuestionId()).toBe(
+          multipleQuestionsObjects[1].getId() ?? ''
+        );
+        expect(createNewCardSpy).toHaveBeenCalledTimes(2);
+
+        questionPlayerEngineService.recordNewCardAdded();
+        // Submitting answer to the last question.
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+
+        expect(questionPlayerEngineService.getCurrentQuestionId()).toBe(
+          multipleQuestionsObjects[2].getId() ?? ''
+        );
+        // Please note that after submitting answer to the final question,
+        // a new card was not created, hence createNewCardSpy was not called.
+        expect(createNewCardSpy).toHaveBeenCalledTimes(2);
+      }
+    );
+
+    it('should call error callback if initial content id is null', () => {
+      let initSuccessCb = jasmine.createSpy('success');
+      let initErrorCb = jasmine.createSpy('fail');
+
+      spyOn(pageContextService, 'setQuestionPlayerIsOpen');
+      spyOn(pageContextService, 'isInQuestionPlayerMode').and.returnValue(true);
+
+      const originalContentId =
+        singleQuestionBackendDict.question_state_data.content.content_id;
+      singleQuestionBackendDict.question_state_data.content.content_id = null;
+
+      try {
+        questionPlayerEngineService.init(
+          [Question.createFromBackendDict(singleQuestionBackendDict)],
+          initSuccessCb,
+          initErrorCb
+        );
+      } finally {
+        singleQuestionBackendDict.question_state_data.content.content_id =
+          originalContentId;
+      }
+
+      expect(initErrorCb).toHaveBeenCalled();
+    });
+
+    it('should call error callback if next content id is null', () => {
       let submitAnswerSuccessCb = jasmine.createSpy('success');
       let initSuccessCb = jasmine.createSpy('success');
       let initErrorCb = jasmine.createSpy('fail');
       let answer = 'answer';
       let answerClassificationResult = new AnswerClassificationResult(
-        outcomeObjectFactory
-          .createNew('default', '', '', []), 1, 0, 'default_outcome'
+        Outcome.createNew('default', '', '', []),
+        1,
+        0,
+        'default_outcome'
       );
       answerClassificationResult.outcome.labelledAsCorrect = true;
 
-      spyOn(contextService, 'setQuestionPlayerIsOpen');
-      spyOn(contextService, 'isInQuestionPlayerMode').and.returnValue(true);
-      spyOn(answerClassificationService, 'getMatchingClassificationResult')
-        .and.returnValue(answerClassificationResult);
-      spyOn(expressionInterpolationService, 'processHtml')
-        .and.callFake((html, envs) => html);
+      spyOn(
+        answerClassificationService,
+        'getMatchingClassificationResult'
+      ).and.returnValue(answerClassificationResult);
+      spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+        (html, envs) => html
+      );
+      spyOn(Math, 'random').and.returnValue(0.999);
+
+      const nextQuestionBackendDict = multipleQuestionsBackendDict[1];
+      const originalContentId =
+        nextQuestionBackendDict.question_state_data.content.content_id;
+      nextQuestionBackendDict.question_state_data.content.content_id = null;
+
+      multipleQuestionsObjects = multipleQuestionsBackendDict.map(
+        function (questionDict) {
+          return Question.createFromBackendDict(questionDict);
+        }
+      );
 
       questionPlayerEngineService.init(
-        multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
+        multipleQuestionsObjects,
+        initSuccessCb,
+        initErrorCb
+      );
 
-      expect(questionPlayerEngineService.getCurrentIndex()).toBe(0);
-
-      questionPlayerEngineService.recordNewCardAdded();
-
-      expect(questionPlayerEngineService.getCurrentIndex()).toBe(1);
+      try {
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+      } finally {
+        nextQuestionBackendDict.question_state_data.content.content_id =
+          originalContentId;
+        multipleQuestionsObjects = multipleQuestionsBackendDict.map(
+          function (questionDict) {
+            return Question.createFromBackendDict(questionDict);
+          }
+        );
+      }
     });
 
-    it('should not create next card if the existing ' +
-      'card is the last one', () => {
+    it('should return empty string if next interaction id is null', () => {
       let submitAnswerSuccessCb = jasmine.createSpy('success');
       let initSuccessCb = jasmine.createSpy('success');
       let initErrorCb = jasmine.createSpy('fail');
       let answer = 'answer';
       let answerClassificationResult = new AnswerClassificationResult(
-        outcomeObjectFactory
-          .createNew('default', '', '', []), 1, 0, 'default_outcome'
+        Outcome.createNew('default', '', '', []),
+        1,
+        0,
+        'default_outcome'
       );
-      let sampleCard = StateCard.createNewCard(
-        'Card 1', 'Content html', 'Interaction text', null,
-        null, null, 'content_id', audioTranslationLanguageService);
-
       answerClassificationResult.outcome.labelledAsCorrect = true;
 
-      spyOn(answerClassificationService, 'getMatchingClassificationResult')
-        .and.returnValue(answerClassificationResult);
-      spyOn(expressionInterpolationService, 'processHtml')
-        .and.callFake((html, envs) => html);
-      spyOn(focusManagerService, 'generateFocusLabel')
-        .and.returnValue('focusLabel');
-
-      // We are using a stub backend dict which consists of three questions.
-      questionPlayerEngineService.init(
-        multipleQuestionsBackendDict, initSuccessCb, initErrorCb);
-
+      spyOn(
+        answerClassificationService,
+        'getMatchingClassificationResult'
+      ).and.returnValue(answerClassificationResult);
       let createNewCardSpy = spyOn(
-        StateCard, 'createNewCard').and.returnValue(sampleCard);
+        StateCard,
+        'createNewCard'
+      ).and.callThrough();
+      spyOn(expressionInterpolationService, 'processHtml').and.callFake(
+        (html, envs) => html
+      );
+      spyOn(Math, 'random').and.returnValue(0.999);
 
-      expect(createNewCardSpy).toHaveBeenCalledTimes(0);
+      const nextQuestionBackendDict = multipleQuestionsBackendDict[1];
+      const originalInteractionId =
+        nextQuestionBackendDict.question_state_data.interaction.id;
+      nextQuestionBackendDict.question_state_data.interaction.id = null;
 
-      // Submitting answer to the first question.
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
+      multipleQuestionsObjects = multipleQuestionsBackendDict.map(
+        function (questionDict) {
+          return Question.createFromBackendDict(questionDict);
+        }
+      );
 
-      expect(
-        questionPlayerEngineService.getCurrentQuestionId()).toBe(
-        multipleQuestionsBackendDict[0].id);
-      expect(createNewCardSpy).toHaveBeenCalledTimes(1);
+      questionPlayerEngineService.init(
+        multipleQuestionsObjects,
+        initSuccessCb,
+        initErrorCb
+      );
 
-      questionPlayerEngineService.recordNewCardAdded();
-      // Submitting answer to the second question.
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
+      try {
+        questionPlayerEngineService.submitAnswer(
+          answer,
+          textInputService,
+          submitAnswerSuccessCb
+        );
+      } finally {
+        nextQuestionBackendDict.question_state_data.interaction.id =
+          originalInteractionId;
+        multipleQuestionsObjects = multipleQuestionsBackendDict.map(
+          function (questionDict) {
+            return Question.createFromBackendDict(questionDict);
+          }
+        );
+      }
 
-      expect(
-        questionPlayerEngineService.getCurrentQuestionId()).toBe(
-        multipleQuestionsBackendDict[1].id);
       expect(createNewCardSpy).toHaveBeenCalledTimes(2);
-
-      questionPlayerEngineService.recordNewCardAdded();
-      // Submitting answer to the last question.
-      questionPlayerEngineService.submitAnswer(
-        answer, textInputService, submitAnswerSuccessCb);
-
-      expect(
-        questionPlayerEngineService.getCurrentQuestionId()).toBe(
-        multipleQuestionsBackendDict[2].id);
-      // Please note that after submitting answer to the final question,
-      // a new card was not created, hence createNewCardSpy was not called.
-      expect(createNewCardSpy).toHaveBeenCalledTimes(2);
+      expect(createNewCardSpy.calls.argsFor(1)[0]).toBe('true');
+      expect(createNewCardSpy.calls.argsFor(1)[2].trim()).toBe('');
     });
   });
 });

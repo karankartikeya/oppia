@@ -21,31 +21,32 @@
 // in via initArgs.
 //
 // This component is based on the UnicodeString directive.
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, EventEmitter, Input, Output} from '@angular/core';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
 @Component({
   selector: 'html-editor',
   templateUrl: './html-editor.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class HtmlEditorComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() modalId!: symbol;
   @Input() value!: string;
   @Output() valueChanged = new EventEmitter();
-  schema = {
-    type: 'html'
+  schema: {type: 'html'} = {
+    type: 'html',
   };
 
-  updateValue(value: string): void {
+  updateValue(value: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only html strings are accepted.
+    if (typeof value !== 'string') {
+      return;
+    }
     this.value = value;
     this.valueChanged.emit(value);
   }
 }
-
-angular.module('oppia').directive('htmlEditor', downgradeComponent({
-  component: HtmlEditorComponent
-}) as angular.IDirectiveFactory);

@@ -13,76 +13,53 @@
 // limitations under the License.
 
 /**
- * @fileoverview Module for the collection player page.
+ * @fileoverview Module for the creator dashboard page.
  */
 
-import { APP_INITIALIZER, NgModule, StaticProvider } from '@angular/core';
-import { BrowserModule, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HttpClientModule } from '@angular/common/http';
-import { HTTP_INTERCEPTORS } from '@angular/common/http';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { OppiaAngularRootComponent } from
-  'components/oppia-angular-root.component';
-import { platformFeatureInitFactory, PlatformFeatureService } from
-  'services/platform-feature.service';
+import {NgModule} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {FormsModule} from '@angular/forms';
+import {RouterModule} from '@angular/router';
+import {ToastrModule} from 'ngx-toastr';
+import {TranslateModule} from '@ngx-translate/core';
 
-import { InteractionExtensionsModule } from 'interactions/interactions.module';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { MyHammerConfig, toastrConfig } from 'pages/oppia-root/app.module';
+import {BackgroundBannerModule} from '../../components/common-layout-directives/common-elements/background-banner.module';
+import {BaseModule} from '../../base-components/base.module';
+import {SharedComponentsModule} from '../../components/shared-component.module';
+import {StringUtilityPipesModule} from '../../filters/string-utility-filters/string-utility-pipes.module';
+import {MaterialModule} from '../../modules/material.module';
+import {NgBootstrapModule} from '../../modules/ng-boostrap.module';
+import {toastrConfig} from '../../pages/oppia-root/app.module';
 
+import {CreatorDashboardPageComponent} from './creator-dashboard-page.component';
+import {CreatorDashboardPageRootComponent} from './creator-dashboard-page-root.component';
 
 @NgModule({
   imports: [
-    BrowserModule,
-    BrowserAnimationsModule,
-    HttpClientModule,
-    InteractionExtensionsModule,
+    CommonModule,
+    FormsModule,
+    BaseModule,
+    BackgroundBannerModule,
     SharedComponentsModule,
-    ToastrModule.forRoot(toastrConfig)
+    StringUtilityPipesModule,
+    MaterialModule,
+    NgBootstrapModule,
+    ToastrModule.forRoot(toastrConfig),
+    TranslateModule,
+    RouterModule.forChild([
+      {
+        path: '',
+        component: CreatorDashboardPageRootComponent,
+      },
+    ]),
   ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: RequestInterceptor,
-      multi: true
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: platformFeatureInitFactory,
-      deps: [PlatformFeatureService],
-      multi: true
-    },
-    {
-      provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
-  ]
+  declarations: [
+    CreatorDashboardPageComponent,
+    CreatorDashboardPageRootComponent,
+  ],
+  entryComponents: [
+    CreatorDashboardPageComponent,
+    CreatorDashboardPageRootComponent,
+  ],
 })
-class CreatorDashboardPageModule {
-  // Empty placeholder method to satisfy the `Compiler`.
-  ngDoBootstrap() {}
-}
-
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { downgradeModule } from '@angular/upgrade/static';
-import { ToastrModule } from 'ngx-toastr';
-
-const bootstrapFnAsync = async(extraProviders: StaticProvider[]) => {
-  const platformRef = platformBrowserDynamic(extraProviders);
-  return platformRef.bootstrapModule(CreatorDashboardPageModule);
-};
-const downgradedModule = downgradeModule(bootstrapFnAsync);
-
-declare var angular: ng.IAngularStatic;
-
-angular.module('oppia').requires.push(downgradedModule);
-
-angular.module('oppia').directive(
-  // This directive is the downgraded version of the Angular component to
-  // bootstrap the Angular 8.
-  'oppiaAngularRoot',
-  downgradeComponent({
-    component: OppiaAngularRootComponent
-  }) as angular.IDirectiveFactory);
+export class CreatorDashboardPageModule {}

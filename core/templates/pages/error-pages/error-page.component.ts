@@ -16,27 +16,43 @@
  * @fileoverview Component for the error page.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, Input, OnInit} from '@angular/core';
 
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { PageTitleService } from 'services/page-title.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 @Component({
   selector: 'error-page',
   templateUrl: './error-page.component.html',
-  styleUrls: []
+  styleUrls: ['./error-page.component.css'],
 })
 export class ErrorPageComponent implements OnInit {
-  @Input() statusCode: string;
+  // This property is initialized using Angular lifecycle hooks.
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() statusCode!: string;
+
+  customErrorMessage: string | null = null;
+
   constructor(
     private urlInterpolationService: UrlInterpolationService,
-    private pageTitleService: PageTitleService) {}
+    private windowRef: WindowRef
+  ) {}
 
-  ngOnInit(): void {
-    this.pageTitleService.setDocumentTitle(
-      'Error ' + this.statusCode + ' - Oppia');
+  async ngOnInit(): Promise<void> {
+    // Get custom error message from sessionStorage.
+    // Auth guards store it there since location.replaceState clears router state.
+    const storedErrorMessage =
+      this.windowRef.nativeWindow.sessionStorage.getItem(
+        'oppia_401_error_message'
+      );
+    if (storedErrorMessage) {
+      this.customErrorMessage = storedErrorMessage;
+      // Clear it immediately after reading so it doesn't persist across page reloads.
+      this.windowRef.nativeWindow.sessionStorage.removeItem(
+        'oppia_401_error_message'
+      );
+    }
   }
 
   getStaticImageUrl(imagePath: string): string {
@@ -47,7 +63,3 @@ export class ErrorPageComponent implements OnInit {
     return Number(this.statusCode);
   }
 }
-
-angular.module('oppia').directive(
-  'errorPage', downgradeComponent(
-    {component: ErrorPageComponent}));

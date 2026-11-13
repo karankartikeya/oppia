@@ -13,77 +13,62 @@
 // limitations under the License.
 
 /**
- * @fileoverview Directive for showing Editor Navbar breadcrumb
+ * @fileoverview Component for showing Editor Navbar breadcrumb
  * in editor navbar.
  */
 
-require('domain/utilities/url-interpolation.service.ts');
-require(
-  'pages/exploration-editor-page/services/exploration-property.service.ts');
-require('pages/exploration-editor-page/services/exploration-title.service.ts');
-require('pages/exploration-editor-page/services/router.service.ts');
-require('services/stateful/focus-manager.service.ts');
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {Subscription} from 'rxjs';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {ExplorationEditorPageConstants} from '../exploration-editor-page.constants';
+import {ExplorationTitleService} from '../services/exploration-title.service';
+import {RouterService} from '../services/router.service';
 
-import { Subscription } from 'rxjs';
+@Component({
+  selector: 'oppia-editor-navbar-breadcrumb',
+  templateUrl: './editor-navbar-breadcrumb.component.html',
+  styleUrls: ['./editor-navbar-breadcrumb.component.css'],
+})
+export class EditorNavbarBreadcrumbComponent implements OnInit, OnDestroy {
+  directiveSubscriptions = new Subscription();
+  navbarTitle: string | null = null;
 
-angular.module('oppia').component('editorNavbarBreadcrumb', {
-  template: require('./editor-navbar-breadcrumb.component.html'),
-  controller: [
-    '$rootScope', '$scope', 'ExplorationPropertyService',
-    'ExplorationTitleService', 'FocusManagerService', 'RouterService',
-    'EXPLORATION_TITLE_INPUT_FOCUS_LABEL',
-    function(
-        $rootScope, $scope, ExplorationPropertyService,
-        ExplorationTitleService, FocusManagerService, RouterService,
-        EXPLORATION_TITLE_INPUT_FOCUS_LABEL) {
-      var ctrl = this;
-      ctrl.directiveSubscriptions = new Subscription();
-      $scope.editTitle = function() {
-        RouterService.navigateToSettingsTab();
-        FocusManagerService.setFocus(EXPLORATION_TITLE_INPUT_FOCUS_LABEL);
-      };
+  constructor(
+    private explorationTitleService: ExplorationTitleService,
+    private focusManagerService: FocusManagerService,
+    private routerService: RouterService
+  ) {}
 
-      var _TAB_NAMES_TO_HUMAN_READABLE_NAMES = {
-        main: 'Edit',
-        translation: 'Translation',
-        preview: 'Preview',
-        settings: 'Settings',
-        stats: 'Statistics',
-        improvements: 'Improvements',
-        history: 'History',
-        feedback: 'Feedback',
-      };
+  editTitle(): void {
+    this.routerService.navigateToSettingsTab();
+    this.focusManagerService.setFocus(
+      ExplorationEditorPageConstants.EXPLORATION_TITLE_INPUT_FOCUS_LABEL
+    );
+  }
 
-      $scope.getCurrentTabName = function() {
-        if (!RouterService.getActiveTabName()) {
-          return '';
-        } else {
-          return _TAB_NAMES_TO_HUMAN_READABLE_NAMES[
-            RouterService.getActiveTabName()];
+  ngOnInit(): void {
+    this.setNavbarTitle();
+    this.directiveSubscriptions.add(
+      this.explorationTitleService.onExplorationPropertyChanged.subscribe(
+        () => {
+          this.setNavbarTitle();
         }
-      };
-      ctrl.$onInit = function() {
-        $scope.navbarTitle = null;
-        ctrl.directiveSubscriptions.add(
-          ExplorationPropertyService.onExplorationPropertyChanged.subscribe(
-            (propertyName) => {
-              if (propertyName === ExplorationTitleService.propertyName) {
-                const _MAX_TITLE_LENGTH = 20;
-                $scope.navbarTitle = ExplorationTitleService.savedMemento;
-                if ($scope.navbarTitle.length > _MAX_TITLE_LENGTH) {
-                  $scope.navbarTitle = (
-                    $scope.navbarTitle.substring(
-                      0, _MAX_TITLE_LENGTH - 3) + '...');
-                }
-                $rootScope.$applyAsync();
-              }
-            }
-          )
-        );
-      };
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
+      )
+    );
+  }
+
+  setNavbarTitle(): void {
+    if (
+      this.explorationTitleService.savedMemento === undefined ||
+      this.explorationTitleService.savedMemento === null
+    ) {
+      this.navbarTitle = null;
+      return;
     }
-  ]
-});
+    this.navbarTitle = String(this.explorationTitleService.savedMemento);
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

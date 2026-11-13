@@ -13,300 +13,412 @@
 // limitations under the License.
 
 /**
- * @fileoverview Directive for the rule editor.
+ * @fileoverview Component for the rule editor.
  */
 
-import { EventBusGroup } from 'app-events/event-bus.service';
-import { ObjectFormValidityChangeEvent } from 'app-events/app-events';
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+  AfterViewChecked,
+  NgZone,
+} from '@angular/core';
+import cloneDeep from 'lodash/cloneDeep';
+import isEqual from 'lodash/isEqual';
+import {
+  EventBusGroup,
+  EventBusService,
+  Newable,
+} from 'app-events/event-bus.service';
+import {StateInteractionIdService} from 'components/state-editor/state-editor-properties-services/state-interaction-id.service';
+import {ResponsesService} from 'pages/exploration-editor-page/editor-tab/services/responses.service';
+import {PopulateRuleContentIdsService} from 'pages/exploration-editor-page/services/populate-rule-content-ids.service';
+import {ObjectFormValidityChangeEvent} from 'app-events/app-events';
+import DEFAULT_OBJECT_VALUES from '../../../../../extensions/objects/object_defaults.json';
+import INTERACTION_SPECS from '../../../../../extensions/interactions/interaction_specs.json';
+import {Rule} from 'domain/exploration/rule.model';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {InteractionRuleInputs} from 'interactions/rule-input-defs';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
-require('components/forms/custom-forms-directives/html-select.component.ts');
-require('components/forms/custom-forms-directives/object-editor.directive.ts');
-require(
-  'components/state-directives/rule-editor/rule-type-selector.directive.ts');
-require(
-  'pages/exploration-editor-page/services/populate-rule-content-ids.service');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-editor.service.ts');
-require('filters/string-utility-filters/convert-to-plain-text.filter.ts');
-require('filters/string-utility-filters/truncate.filter.ts');
+interface SelectItem {
+  type: string;
+  varName: string;
+}
 
-require('domain/utilities/url-interpolation.service.ts');
-require(
-  'pages/exploration-editor-page/editor-tab/services/responses.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-property.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-interaction-id.service');
+// The index signature makes a Choice assignable to DictSchemaDefaultValue,
+// which is needed when passing the choices to the object editor.
+interface Choice {
+  [key: string]: SchemaDefaultValue;
+  id: string;
+  val: string | number | SubtitledHtml;
+}
 
-var DEFAULT_OBJECT_VALUES = require('objects/object_defaults.json');
-// This directive controls an editor for selecting the type and input parameters
-// to a rule. It also includes 'Cancel' and 'Save Answer' buttons which call
-// respective 'onCancelRuleEdit' and 'onSaveRule' callbacks when called. These
-// buttons only show up if 'isEditingRuleInline' is true.
-angular.module('oppia').component('ruleEditor', {
-  bindings: {
-    isEditable: '=',
-    isEditingRuleInline: '&',
-    onCancelRuleEdit: '&',
-    onSaveRule: '&',
-    rule: '=',
-    modalId: '<'
-  },
-  template: require('./rule-editor.component.html'),
-  controllerAs: '$ctrl',
-  controller: [
-    '$scope', '$timeout', 'EventBusService',
-    'PopulateRuleContentIdsService', 'ResponsesService',
-    'StateEditorService', 'StateInteractionIdService',
-    'INTERACTION_SPECS',
-    function(
-        $scope, $timeout, EventBusService,
-        PopulateRuleContentIdsService, ResponsesService,
-        StateEditorService, StateInteractionIdService,
-        INTERACTION_SPECS) {
-      var ctrl = this;
-      // This returns the rule description string.
-      var computeRuleDescriptionFragments = function() {
-        if (!ctrl.rule.type) {
-          ctrl.ruleDescriptionFragments = [];
-          return '';
-        }
+export interface RuleDescriptionFragment {
+  type: string;
+  varName: string;
+  text: string;
+}
 
-        var ruleDescription = (
-          INTERACTION_SPECS[ctrl.currentInteractionId].rule_descriptions[
-            ctrl.rule.type]);
+@Component({
+  selector: 'oppia-rule-editor',
+  templateUrl: './rule-editor.component.html',
+  styleUrls: ['./rule-editor.component.css'],
+})
+export class RuleEditorComponent
+  implements OnInit, OnDestroy, AfterViewChecked
+{
+  @Input() isEditable!: boolean;
+  @Input() isEditingRuleInline!: boolean;
+  @Output() onCancelRuleEdit = new EventEmitter<void>();
+  @Output() onSaveRule = new EventEmitter<void>();
+  @Input() rule!: Rule;
+  @Input() modalId!: symbol;
 
-        var PATTERN = /\{\{\s*(\w+)\s*\|\s*(\w+)\s*\}\}/;
-        var finalInputArray = ruleDescription.split(PATTERN);
+  ruleDescriptionFragments!: RuleDescriptionFragment[];
+  currentInteractionId!: InteractionSpecsKey;
+  ruleDescriptionChoices!: Choice[];
+  ruleDescriptionChoiceList: {id: string; val: string}[] = [];
+  ruleEditorInitArgs!: SchemaDefaultValue;
+  isInvalid: boolean = false;
+  eventBusGroup: EventBusGroup;
+  // The 'unknown' type is used here because the record can contain any type of value.
+  editRuleForm: Record<string, unknown> = {};
 
-        var result = [];
-        for (var i = 0; i < finalInputArray.length; i += 3) {
-          result.push({
-            // Omit the leading noneditable string.
-            text: i !== 0 ? finalInputArray[i] : '',
-            type: 'noneditable'
-          });
-          if (i === finalInputArray.length - 1) {
-            break;
-          }
+  constructor(
+    private eventBusService: EventBusService,
+    private stateInteractionIdService: StateInteractionIdService,
+    private responsesService: ResponsesService,
+    private populateRuleContentIdsService: PopulateRuleContentIdsService,
+    private readonly changeDetectorRef: ChangeDetectorRef,
+    private readonly ngZone: NgZone
+  ) {
+    this.eventBusGroup = new EventBusGroup(this.eventBusService);
+  }
 
-          var answerChoices = ResponsesService.getAnswerChoices();
-
-          if (answerChoices) {
-            // This rule is for a multiple-choice, image-click, or item
-            // selection interaction.
-            // TODO(sll): Remove the need for this special case.
-            if (answerChoices.length > 0) {
-              if (
-                finalInputArray[2] === 'SetOfTranslatableHtmlContentIds'
-              ) {
-                ctrl.ruleDescriptionChoices = answerChoices.map(
-                  choice => ({
-                    id: choice.label,
-                    val: choice.val
-                  })
-                );
-                result.push({
-                  type: 'checkboxes',
-                  varName: finalInputArray[i + 1]
-                });
-              } else if (
-                finalInputArray[2] ===
-                'ListOfSetsOfTranslatableHtmlContentIds'
-              ) {
-                ctrl.ruleDescriptionChoices = answerChoices.map(
-                  choice => ({
-                    id: choice.label,
-                    val: choice.val
-                  })
-                );
-                result.push({
-                  type: 'dropdown',
-                  varName: finalInputArray[i + 1]
-                });
-              } else if (
-                finalInputArray[i + 2] === 'TranslatableHtmlContentId') {
-                ctrl.ruleDescriptionChoices = answerChoices.map(
-                  function(choice) {
-                    return {
-                      id: choice.label,
-                      val: choice.val
-                    };
-                  }
-                );
-                result.push({
-                  type: 'dragAndDropHtmlStringSelect',
-                  varName: finalInputArray[i + 1]
-                });
-              } else if (
-                finalInputArray[i + 2] === 'DragAndDropPositiveInt') {
-                ctrl.ruleDescriptionChoices = answerChoices.map(
-                  function(choice) {
-                    return {
-                      id: choice.label,
-                      val: choice.val
-                    };
-                  }
-                );
-                result.push({
-                  type: 'dragAndDropPositiveIntSelect',
-                  varName: finalInputArray[i + 1]
-                });
-              } else {
-                ctrl.ruleDescriptionChoices = answerChoices.map(
-                  function(choice) {
-                    return {
-                      id: choice.val,
-                      val: choice.label
-                    };
-                  }
-                );
-                result.push({
-                  type: 'select',
-                  varName: finalInputArray[i + 1]
-                });
-                if (!ctrl.rule.inputs[finalInputArray[i + 1]]) {
-                  ctrl.rule.inputs[finalInputArray[i + 1]] = (
-                    ctrl.ruleDescriptionChoices[0].id);
-                }
-              }
-            } else {
-              ctrl.ruleDescriptionChoices = [];
-              result.push({
-                text: ' [Error: No choices available] ',
-                type: 'noneditable'
-              });
-            }
-          } else {
-            result.push({
-              type: finalInputArray[i + 2],
-              varName: finalInputArray[i + 1]
-            });
-          }
-        }
-
-        // The following is necessary in order to ensure that the
-        // object-editor HTML tags load correctly when the rule type is
-        // changed. This is an issue for, e.g., the MusicNotesInput
-        // interaction, where the rule inputs can sometimes be integers and
-        // sometimes be lists of music notes.
-        ctrl.ruleDescriptionFragments = [];
-        $timeout(function() {
-          ctrl.ruleDescriptionFragments = result;
-        }, 10);
-
-        return ruleDescription;
-      };
-
-      ctrl.onSelectNewRuleType = function(newRuleType) {
-        var oldRuleInputs = angular.copy(ctrl.rule.inputs) || {};
-        var oldRuleInputTypes = angular.copy(ctrl.rule.inputTypes) || {};
-
-        ctrl.rule.type = newRuleType;
-        ctrl.rule.inputs = {};
-        ctrl.rule.inputTypes = {};
-
-        var tmpRuleDescription = computeRuleDescriptionFragments();
-        // This provides the list of choices for the multiple-choice and
-        // image-click interactions.
-        var answerChoices = ResponsesService.getAnswerChoices();
-
-        // Finds the parameters and sets them in ctrl.rule.inputs.
-        var PATTERN = /\{\{\s*(\w+)\s*(\|\s*\w+\s*)?\}\}/;
-        while (true) {
-          if (!tmpRuleDescription.match(PATTERN)) {
-            break;
-          }
-          var varName = tmpRuleDescription.match(PATTERN)[1];
-          var varType = null;
-          if (tmpRuleDescription.match(PATTERN)[2]) {
-            varType = tmpRuleDescription.match(PATTERN)[2].substring(1);
-          }
-          ctrl.rule.inputTypes[varName] = varType;
-
-          // TODO(sll): Find a more robust way of doing this. For example,
-          // we could associate a particular varName with answerChoices
-          // depending on the interaction. This varName would take its
-          // default value from answerChoices, but other variables would
-          // take their default values from the DEFAULT_OBJECT_VALUES dict.
-          if (angular.equals(DEFAULT_OBJECT_VALUES[varType], [])) {
-            ctrl.rule.inputs[varName] = [];
-          } else if (answerChoices && answerChoices.length > 0) {
-            ctrl.rule.inputs[varName] = angular.copy(
-              answerChoices[0].val);
-          } else {
-            ctrl.rule.inputs[varName] = angular.copy(
-              DEFAULT_OBJECT_VALUES[varType]);
-          }
-
-          tmpRuleDescription = tmpRuleDescription.replace(PATTERN, ' ');
-        }
-
-        for (var key in ctrl.rule.inputs) {
-          if (oldRuleInputs.hasOwnProperty(key) &&
-            oldRuleInputTypes[key] === ctrl.rule.inputTypes[key]) {
-            ctrl.rule.inputs[key] = oldRuleInputs[key];
-          }
-        }
-      };
-
-      ctrl.cancelThisEdit = function() {
-        ctrl.onCancelRuleEdit();
-      };
-
-      ctrl.saveThisRule = function() {
-        PopulateRuleContentIdsService.populateNullRuleContentIds(ctrl.rule);
-        ctrl.onSaveRule();
-      };
-
-      ctrl.$onInit = function() {
-        ctrl.isInvalid = false;
-        /**
-          * Rule editors are usually used in two ways. Inline or in a modal.
-          * When in a modal, the save button is in the modal html and when
-          * inline it is in the rule editors template. When listening to the
-          * object validity change event, we need to know which button to
-          * disable. If we are inline, we disable the button in the
-          * rule-editor template. Which is why we using the if condition
-          * below.
-          */
-        if (ctrl.isEditingRuleInline()) {
-          const eventBusGroup: EventBusGroup = new EventBusGroup(
-            EventBusService);
-          ctrl.eventBusGroup = eventBusGroup;
-          ctrl.modalId = Symbol();
-          eventBusGroup.on(
-            ObjectFormValidityChangeEvent,
-            event => {
-              if (event.message.modalId === ctrl.modalId) {
-                ctrl.isInvalid = event.message.value;
-                $scope.$applyAsync();
-              }
-            });
-        }
-        ctrl.currentInteractionId = StateInteractionIdService.savedMemento;
-        ctrl.editRuleForm = {};
-        // Select a default rule type, if one isn't already selected.
-        if (ctrl.rule.type === null) {
-          ctrl.onSelectNewRuleType(ctrl.rule.type);
-        }
-        computeRuleDescriptionFragments();
-
-        $scope.$watch(
-          '$ctrl.ruleEditForm.form.$invalid', function(newValue) {
-            StateEditorService.updateCurrentRuleInputIsValid(!newValue);
-          }
-        );
-      };
-
-      ctrl.$onDestroy = function() {
-        if (ctrl.eventBusGroup) {
-          ctrl.eventBusGroup.unsubscribe();
-        }
-      };
+  computeRuleDescriptionFragments(): string {
+    if (!this.rule.type) {
+      this.ruleDescriptionFragments = [];
+      return '';
     }
-  ]
-});
+
+    // The 'unknown' type is used here because the generic type of
+    // INTERACTION_SPECS depends on the specific interaction, which is
+    // only known at runtime.
+    let ruleDescription = (
+      INTERACTION_SPECS as unknown as Record<
+        string,
+        {rule_descriptions: Record<string, string>}
+      >
+    )[this.currentInteractionId].rule_descriptions[this.rule.type];
+
+    let PATTERN = /\{\{\s*(\w+)\s*\|\s*(\w+)\s*\}\}/;
+    let finalInputArray = ruleDescription.split(PATTERN);
+
+    let result: RuleDescriptionFragment[] = [];
+    for (let i = 0; i < finalInputArray.length; i += 3) {
+      result.push({
+        // Omit the leading noneditable string.
+        text: i !== 0 ? finalInputArray[i] : '',
+        type: 'noneditable',
+        varName: '',
+      });
+      if (i === finalInputArray.length - 1) {
+        break;
+      }
+
+      let answerChoices = this.responsesService.getAnswerChoices();
+
+      if (answerChoices) {
+        // This rule is for a multiple-choice, image-click, or item
+        // selection interaction.
+        // TODO(sll): Remove the need for this special case.
+        if (answerChoices.length > 0) {
+          if (finalInputArray[2] === 'SetOfTranslatableHtmlContentIds') {
+            this.ruleDescriptionChoices = answerChoices.map(choice => ({
+              id: choice.label,
+              val: choice.val,
+            }));
+            result.push({
+              type: 'checkboxes',
+              varName: finalInputArray[i + 1],
+              text: '',
+            });
+          } else if (
+            finalInputArray[2] === 'ListOfSetsOfTranslatableHtmlContentIds'
+          ) {
+            this.ruleDescriptionChoices = answerChoices.map(choice => ({
+              id: choice.label,
+              val: choice.val,
+            }));
+            result.push({
+              type: 'dropdown',
+              varName: finalInputArray[i + 1],
+              text: '',
+            });
+          } else if (finalInputArray[i + 2] === 'TranslatableHtmlContentId') {
+            this.ruleDescriptionChoices = answerChoices.map(function (choice) {
+              return {
+                id: choice.label,
+                val: choice.val,
+              };
+            });
+            result.push({
+              type: 'dragAndDropHtmlStringSelect',
+              varName: finalInputArray[i + 1],
+              text: '',
+            });
+          } else if (finalInputArray[i + 2] === 'DragAndDropPositiveInt') {
+            this.ruleDescriptionChoices = answerChoices.map(function (choice) {
+              return {
+                id: choice.label,
+                val: choice.val,
+              };
+            });
+            result.push({
+              type: 'dragAndDropPositiveIntSelect',
+              varName: finalInputArray[i + 1],
+              text: '',
+            });
+          } else {
+            this.ruleDescriptionChoices = answerChoices.map(function (choice) {
+              return {
+                id: choice.val as string,
+                val: choice.label,
+              };
+            });
+            result.push({
+              type: 'select',
+              varName: finalInputArray[i + 1],
+              text: '',
+            });
+            if (!this.rule.inputs[finalInputArray[i + 1]]) {
+              this.rule.inputs[finalInputArray[i + 1]] =
+                this.ruleDescriptionChoices[0].id;
+            }
+          }
+        } else {
+          this.ruleDescriptionChoices = [];
+          result.push({
+            text: ' [Error: No choices available] ',
+            type: 'noneditable',
+            varName: '',
+          });
+        }
+      } else {
+        result.push({
+          type: finalInputArray[i + 2],
+          varName: finalInputArray[i + 1],
+          text: '',
+        });
+      }
+    }
+
+    // The following is necessary in order to ensure that the
+    // object-editor HTML tags load correctly when the rule type is
+    // changed. This is an issue for, e.g., the MusicNotesInput
+    // interaction, where the rule inputs can sometimes be integers and
+    // sometimes be lists of music notes.
+    this.ruleDescriptionFragments = [];
+    this.ngZone.run(() => {
+      this.ruleDescriptionFragments = result;
+      // The rule description choices are only present when answer choices
+      // are available, so default to an empty list when they are not.
+      this.ruleDescriptionChoiceList = this.ruleDescriptionChoices
+        ? this.ruleDescriptionChoices.map(choice => ({
+            id: choice.id,
+            val:
+              typeof choice.val === 'string' ? choice.val : String(choice.val),
+          }))
+        : [];
+      this.ruleEditorInitArgs = {
+        choices: this.ruleDescriptionChoices || [],
+      };
+    }, 10);
+
+    return ruleDescription;
+  }
+
+  onSelectionChangeHtmlSelect(selection: number, item: SelectItem): void {
+    this.rule.inputs[item.varName] = selection;
+
+    this.changeDetectorRef.detectChanges();
+  }
+
+  getFirstRuleDescriptionChoiceText(): string {
+    const firstChoice = this.ruleDescriptionChoices[0];
+    return typeof firstChoice.val === 'string'
+      ? firstChoice.val
+      : String(firstChoice.val);
+  }
+
+  getRuleInputAsString(item: SelectItem): string {
+    return String(this.rule.inputs[item.varName]);
+  }
+
+  // The rule input value can be of any interaction rule input type, which is
+  // only determined at runtime, so a type assertion is used here to match the
+  // value type accepted by the object editor.
+  getRuleInputValue(item: SelectItem): SchemaDefaultValue {
+    return this.rule.inputs[item.varName] as SchemaDefaultValue;
+  }
+
+  // The new value is emitted by the object editor as a schema default value,
+  // so a type assertion is used here to match the interaction rule input type.
+  setRuleInputValue(newValue: SchemaDefaultValue, item: SelectItem): void {
+    this.rule.inputs[item.varName] = newValue as InteractionRuleInputs;
+  }
+
+  onSelectNewRuleType(newRuleType: string): void {
+    let oldRuleInputs = cloneDeep(this.rule.inputs) || {};
+    let oldRuleInputTypes = cloneDeep(this.rule.inputTypes) || {};
+
+    this.rule.type = newRuleType;
+    this.rule.inputs = {};
+    this.rule.inputTypes = {};
+
+    let tmpRuleDescription = this.computeRuleDescriptionFragments();
+    // This provides the list of choices for the multiple-choice and
+    // image-click interactions.
+    let answerChoices = this.responsesService.getAnswerChoices();
+
+    // Finds the parameters and sets them in ctrl.rule.inputs.
+    let PATTERN = /\{\{\s*(\w+)\s*(\|\s*\w+\s*)?\}\}/;
+    while (true) {
+      let match = tmpRuleDescription.match(PATTERN);
+      if (!match) {
+        break;
+      }
+      let varName = match[1];
+      let varType = '';
+      if (match[2]) {
+        varType = match[2].substring(1);
+      }
+      this.rule.inputTypes[varName] = varType;
+
+      // TODO(sll): Find a more robust way of doing this. For example,
+      // we could associate a particular varName with answerChoices
+      // depending on the interaction. This varName would take its
+      // default value from answerChoices, but other variables would
+      // take their default values from the DEFAULT_OBJECT_VALUES dict.
+      if (
+        varType in DEFAULT_OBJECT_VALUES &&
+        isEqual(
+          DEFAULT_OBJECT_VALUES[varType as keyof typeof DEFAULT_OBJECT_VALUES],
+          []
+        )
+      ) {
+        this.rule.inputs[varName] = [];
+      } else if (answerChoices && answerChoices.length > 0) {
+        this.rule.inputs[varName] = cloneDeep(answerChoices[0].val);
+      } else if (varType in DEFAULT_OBJECT_VALUES) {
+        this.rule.inputs[varName] = cloneDeep(
+          DEFAULT_OBJECT_VALUES[varType as keyof typeof DEFAULT_OBJECT_VALUES]
+        );
+      }
+
+      tmpRuleDescription = tmpRuleDescription.replace(PATTERN, ' ');
+    }
+
+    for (let key in this.rule.inputs) {
+      if (
+        oldRuleInputs.hasOwnProperty(key) &&
+        oldRuleInputTypes[key] === this.rule.inputTypes[key]
+      ) {
+        this.rule.inputs[key] = oldRuleInputs[key];
+      }
+    }
+
+    this.changeDetectorRef.detectChanges();
+  }
+
+  cancelThisEdit(): void {
+    this.onCancelRuleEdit.emit();
+  }
+
+  saveThisRule(): void {
+    this.populateRuleContentIdsService.populateNullRuleContentIds(this.rule);
+    this.onSaveRule.emit();
+    this.changeDetectorRef.detectChanges();
+  }
+
+  ngOnInit(): void {
+    this.isInvalid = false;
+    /**
+     * Rule editors are usually used in two ways. Inline or in a modal.
+     * When in a modal, the save button is in the modal html and when
+     * inline it is in the rule editors template. When listening to the
+     * object validity change event, we need to know which button to
+     * disable. If we are inline, we disable the button in the
+     * rule-editor template. Which is why we using the if condition
+     * below.
+     */
+    if (this.isEditingRuleInline) {
+      this.modalId = Symbol();
+      this.eventBusGroup.on(
+        ObjectFormValidityChangeEvent as Newable<ObjectFormValidityChangeEvent>,
+        (event: ObjectFormValidityChangeEvent) => {
+          if (event.message.modalId === this.modalId) {
+            this.isInvalid = event.message.value;
+          }
+        }
+      );
+    }
+    const currentInteractionId = this.stateInteractionIdService.savedMemento;
+    if (currentInteractionId === null) {
+      throw new Error('Cannot load rule editor without interaction.');
+    }
+    this.currentInteractionId = currentInteractionId;
+    this.editRuleForm = {};
+    // Select a default rule type, if one isn't already selected.
+    if (this.rule.type === null) {
+      this.onSelectNewRuleType(this.rule.type);
+    }
+    this.computeRuleDescriptionFragments();
+
+    // List-of-sets-of-translatable-html-content-ids-editor
+    // could not able to assign this.rule.inputTypes.x default values.
+    if (this.rule.inputTypes.x === 'ListOfSetsOfTranslatableHtmlContentIds') {
+      if (
+        (this.rule.inputs.x as string[][])[0] === undefined ||
+        (this.rule.inputs.x as string[][])[0]?.length === 0
+      ) {
+        let box: string[][] = [];
+        this.ruleDescriptionChoices.map(choice => {
+          box.push([choice.val as string]);
+        });
+        this.rule.inputs.x = box;
+      }
+    } else if (this.rule.inputTypes.x === 'TranslatableHtmlContentId') {
+      if (this.rule.inputs.x === null) {
+        this.rule.inputs.x = this.ruleDescriptionChoices[0].val;
+      }
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.eventBusGroup) {
+      this.eventBusGroup.unsubscribe();
+    }
+  }
+
+  ngAfterViewChecked(): void {
+    this.changeDetectorRef.detectChanges();
+  }
+
+  get isRuleValid(): boolean {
+    if (
+      this.currentInteractionId === 'NumericInput' &&
+      this.rule.type === 'IsWithinTolerance'
+    ) {
+      const tolerance = this.rule.inputs.tol;
+      return typeof tolerance === 'number' ? tolerance >= 0 : true;
+    }
+    return true;
+  }
+}

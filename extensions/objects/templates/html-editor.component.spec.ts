@@ -16,18 +16,18 @@
  * @fileoverview Unit test for HTML editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { HtmlEditorComponent } from './html-editor.component';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {HtmlEditorComponent} from './html-editor.component';
 
 describe('HtmlEditorComponent', () => {
   let component: HtmlEditorComponent;
   let fixture: ComponentFixture<HtmlEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [HtmlEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -46,5 +46,16 @@ describe('HtmlEditorComponent', () => {
 
     expect(component.value).toBe('test');
     expect(component.valueChanged.emit).toHaveBeenCalledWith('test');
+  });
+
+  it('should not update the value when the input is not an html string', () => {
+    spyOn(component.valueChanged, 'emit');
+
+    component.value = 'old';
+
+    component.updateValue(5);
+
+    expect(component.value).toBe('old');
+    expect(component.valueChanged.emit).not.toHaveBeenCalled();
   });
 });

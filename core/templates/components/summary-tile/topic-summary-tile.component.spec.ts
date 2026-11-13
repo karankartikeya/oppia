@@ -16,13 +16,14 @@
  * @fileoverview Unit tests for TopicSummaryTileComponent.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { CreatorTopicSummary } from 'domain/topic/creator-topic-summary.model';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { TopicSummaryTileComponent } from './topic-summary-tile.component';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {CreatorTopicSummary} from 'domain/topic/creator-topic-summary.model';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {TopicSummaryTileComponent} from './topic-summary-tile.component';
 
 describe('TopicSummaryTileCompoennt', () => {
   let component: TopicSummaryTileComponent;
@@ -30,14 +31,12 @@ describe('TopicSummaryTileCompoennt', () => {
 
   let abas: AssetsBackendApiService;
   let urlInterpolationService: UrlInterpolationService;
+  let i18nLanguageCodeService: I18nLanguageCodeService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
-      declarations: [
-        TopicSummaryTileComponent,
-        MockTranslatePipe
-      ]
+      declarations: [TopicSummaryTileComponent, MockTranslatePipe],
     }).compileComponents();
   }));
 
@@ -45,7 +44,8 @@ describe('TopicSummaryTileCompoennt', () => {
     fixture = TestBed.createComponent(TopicSummaryTileComponent);
     component = fixture.componentInstance;
     abas = TestBed.inject(AssetsBackendApiService);
-    urlInterpolationService = TestBed.get(UrlInterpolationService);
+    urlInterpolationService = TestBed.inject(UrlInterpolationService);
+    i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
 
     component.topicSummary = CreatorTopicSummary.createFromBackendDict({
       topic_model_created_on: 1581839432987.596,
@@ -56,6 +56,7 @@ describe('TopicSummaryTileCompoennt', () => {
       total_skill_count: 10,
       total_published_node_count: 3,
       can_edit_topic: true,
+      can_edit_question: false,
       topic_model_last_updated: 1581839492500.852,
       additional_story_count: 0,
       name: 'Alpha',
@@ -66,7 +67,11 @@ describe('TopicSummaryTileCompoennt', () => {
       language_code: 'en',
       url_fragment: 'alpha',
       thumbnail_filename: 'image.svg',
-      thumbnail_bg_color: '#C6DCDA'
+      thumbnail_bg_color: '#C6DCDA',
+      total_upcoming_chapters_count: 1,
+      total_overdue_chapters_count: 1,
+      total_chapter_counts_for_each_story: [5, 4],
+      published_chapter_counts_for_each_story: [3, 4],
     });
   });
 
@@ -80,7 +85,8 @@ describe('TopicSummaryTileCompoennt', () => {
 
   it('should get topic page url', () => {
     spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
-      '/topic/page/url');
+      '/topic/page/url'
+    );
 
     expect(component.getTopicPageUrl()).toBe('/topic/page/url');
   });
@@ -92,5 +98,36 @@ describe('TopicSummaryTileCompoennt', () => {
 
   it('should get darker thumbnail background color', () => {
     expect(component.getDarkerThumbnailBgColor()).toBe('#627876');
+  });
+
+  it('should get topic name translation key correctly', () => {
+    spyOn(i18nLanguageCodeService, 'getTopicTranslationKey').and.returnValue(
+      'I18N_TOPIC_abc1234_TITLE'
+    );
+
+    component.ngOnInit();
+
+    expect(component.topicNameTranslationKey).toBe('I18N_TOPIC_abc1234_TITLE');
+  });
+
+  it('should check if hacky topic name translation is displayed correctly', () => {
+    spyOn(
+      i18nLanguageCodeService,
+      'isHackyTranslationAvailable'
+    ).and.returnValue(true);
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageEnglish').and.returnValue(
+      false
+    );
+
+    component.ngOnInit();
+
+    expect(component.isHackyTopicNameTranslationDisplayed()).toBe(true);
+  });
+
+  it('should get RTL language status correctly', () => {
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageRTL').and.returnValue(
+      true
+    );
+    expect(component.isLanguageRTL()).toBeTrue();
   });
 });

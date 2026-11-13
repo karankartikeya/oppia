@@ -14,59 +14,59 @@
 
 """Common utility functions and classes used by multiple Python scripts."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import contextlib
 import errno
 import getpass
 import io
+import json
 import os
 import platform
 import re
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import time
+from http import client
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
-from core import constants
-from core import python_utils
+from typing import Dict, Final, Generator, List, Literal, Optional, Tuple, Union
+
+TextModeTypes = Literal['r', 'w', 'a', 'x', 'r+', 'w+', 'a+']
+BinaryModeTypes = Literal['rb', 'wb', 'ab', 'xb', 'r+b', 'w+b', 'a+b', 'x+b']
+
+# Add third_party to path. Some scripts access feconf even before
+# python_libs is added to path.
+_THIRD_PARTY_PATH = os.path.join(os.getcwd(), 'third_party', 'python_libs')
+sys.path.insert(0, _THIRD_PARTY_PATH)
 
 AFFIRMATIVE_CONFIRMATIONS = ['y', 'ye', 'yes']
 
 CURRENT_PYTHON_BIN = sys.executable
 
-# Versions of libraries used in devflow.
-COVERAGE_VERSION = '5.3'
-ESPRIMA_VERSION = '4.0.1'
-ISORT_VERSION = '5.8.0'
-PYCODESTYLE_VERSION = '2.6.0'
-PSUTIL_VERSION = '5.8.0'
-PYLINT_VERSION = '2.8.3'
-PYLINT_QUOTES_VERSION = '0.1.9'
-PYGITHUB_VERSION = '1.45'
-WEBTEST_VERSION = '2.0.35'
-PIP_TOOLS_VERSION = '6.0.1'
-GRPCIO_VERSION = '1.38.0'
-ENUM_VERSION = '1.1.10'
-PROTOBUF_VERSION = '3.13.0'
-SETUPTOOLS_VERSION = '36.6.0'
-
 # Node version.
-NODE_VERSION = '14.15.0'
+NODE_VERSION = '16.13.0'
+
+# Dedicated Node version for Playwright acceptance tests. This is intentionally
+# isolated from NODE_VERSION so existing frontend tooling remains unchanged.
+PLAYWRIGHT_NODE_VERSION = '20.11.1'
+
+# Dedicated Node version for Lighthouse tests. This is intentionally isolated
+# from NODE_VERSION so existing frontend tooling remains unchanged, because
+# Lighthouse 12+ requires Node 18.20 or newer. It matches
+# PLAYWRIGHT_NODE_VERSION so that the same Node 20 toolchain already installed
+# for the Playwright acceptance tests can be reused. This Node version is also
+# used to run the repo-wide `yarn install` (see install_third_party_libs.py),
+# so that the engines requirement of Lighthouse is satisfied at install time
+# without an --ignore-engines flag.
+LIGHTHOUSE_NODE_VERSION = PLAYWRIGHT_NODE_VERSION
 
 # NB: Please ensure that the version is consistent with the version in .yarnrc.
-YARN_VERSION = '1.22.10'
-
-# Versions of libraries used in backend.
-PILLOW_VERSION = '6.2.2'
-
-# Buf version.
-BUF_VERSION = '0.29.0'
-# Protoc is the compiler for protobuf files and the version must be same as
-# the version of protobuf library being used.
-PROTOC_VERSION = PROTOBUF_VERSION
+YARN_VERSION = '1.22.15'
 
 # IMPORTANT STEPS FOR DEVELOPERS TO UPGRADE REDIS:
 # 1. Download the new version of the redis cli.
@@ -84,7 +84,6 @@ PROTOC_VERSION = PROTOBUF_VERSION
 #    the upgrade to develop.
 # 7. If any tests fail, DO NOT upgrade to this newer version of the redis cli.
 REDIS_CLI_VERSION = '6.2.4'
-ELASTICSEARCH_VERSION = '7.10.1'
 
 RELEASE_BRANCH_NAME_PREFIX = 'release-'
 CURR_DIR = os.path.abspath(os.getcwd())
@@ -93,58 +92,55 @@ OPPIA_TOOLS_DIR_ABS_PATH = os.path.abspath(OPPIA_TOOLS_DIR)
 THIRD_PARTY_DIR = os.path.join(CURR_DIR, 'third_party')
 THIRD_PARTY_PYTHON_LIBS_DIR = os.path.join(THIRD_PARTY_DIR, 'python_libs')
 GOOGLE_CLOUD_SDK_HOME = os.path.join(
-    OPPIA_TOOLS_DIR_ABS_PATH, 'google-cloud-sdk-335.0.0', 'google-cloud-sdk')
+    OPPIA_TOOLS_DIR_ABS_PATH, 'google-cloud-sdk-500.0.0', 'google-cloud-sdk'
+)
 GOOGLE_APP_ENGINE_SDK_HOME = os.path.join(
-    GOOGLE_CLOUD_SDK_HOME, 'platform', 'google_appengine')
+    GOOGLE_CLOUD_SDK_HOME, 'platform', 'google_appengine'
+)
 GOOGLE_CLOUD_SDK_BIN = os.path.join(GOOGLE_CLOUD_SDK_HOME, 'bin')
-ISORT_PATH = os.path.join(OPPIA_TOOLS_DIR, 'isort-%s' % ISORT_VERSION)
-WEBPACK_BIN_PATH = (
-    os.path.join(CURR_DIR, 'node_modules', 'webpack', 'bin', 'webpack.js'))
-DEV_APPSERVER_PATH = (
-    os.path.join(GOOGLE_CLOUD_SDK_BIN, 'dev_appserver.py'))
+NG_BIN_PATH = os.path.join(CURR_DIR, 'node_modules', '.bin', 'ng')
+DEV_APPSERVER_PATH = os.path.join(GOOGLE_CLOUD_SDK_BIN, 'dev_appserver.py')
 GCLOUD_PATH = os.path.join(GOOGLE_CLOUD_SDK_BIN, 'gcloud')
 NODE_PATH = os.path.join(OPPIA_TOOLS_DIR, 'node-%s' % NODE_VERSION)
-PYLINT_PATH = os.path.join(OPPIA_TOOLS_DIR, 'pylint-%s' % PYLINT_VERSION)
-PYCODESTYLE_PATH = os.path.join(
-    OPPIA_TOOLS_DIR, 'pycodestyle-%s' % PYCODESTYLE_VERSION)
-PYLINT_QUOTES_PATH = os.path.join(
-    OPPIA_TOOLS_DIR, 'pylint-quotes-%s' % PYLINT_QUOTES_VERSION)
+PLAYWRIGHT_NODE_PATH = os.path.join(
+    OPPIA_TOOLS_DIR, 'node-%s' % PLAYWRIGHT_NODE_VERSION
+)
+LIGHTHOUSE_NODE_PATH = os.path.join(
+    OPPIA_TOOLS_DIR, 'node-%s' % LIGHTHOUSE_NODE_VERSION
+)
 NODE_MODULES_PATH = os.path.join(CURR_DIR, 'node_modules')
 FRONTEND_DIR = os.path.join(CURR_DIR, 'core', 'templates')
 YARN_PATH = os.path.join(OPPIA_TOOLS_DIR, 'yarn-%s' % YARN_VERSION)
 FIREBASE_PATH = os.path.join(
-    NODE_MODULES_PATH, 'firebase-tools', 'lib', 'bin', 'firebase.js')
+    NODE_MODULES_PATH, 'firebase-tools', 'lib', 'bin', 'firebase.js'
+)
 OS_NAME = platform.system()
 ARCHITECTURE = platform.machine()
-PSUTIL_DIR = os.path.join(OPPIA_TOOLS_DIR, 'psutil-%s' % PSUTIL_VERSION)
 REDIS_SERVER_PATH = os.path.join(
-    OPPIA_TOOLS_DIR, 'redis-cli-%s' % REDIS_CLI_VERSION,
-    'src', 'redis-server')
+    OPPIA_TOOLS_DIR, 'redis-cli-%s' % REDIS_CLI_VERSION, 'src', 'redis-server'
+)
 REDIS_CLI_PATH = os.path.join(
-    OPPIA_TOOLS_DIR, 'redis-cli-%s' % REDIS_CLI_VERSION,
-    'src', 'redis-cli')
+    OPPIA_TOOLS_DIR, 'redis-cli-%s' % REDIS_CLI_VERSION, 'src', 'redis-cli'
+)
 # Directory for storing/fetching data related to the Cloud Datastore emulator.
-CLOUD_DATASTORE_EMULATOR_DATA_DIR = (
-    os.path.join(CURR_DIR, os.pardir, 'cloud_datastore_emulator_cache'))
+CLOUD_DATASTORE_EMULATOR_DATA_DIR = os.path.join(
+    CURR_DIR, os.pardir, 'cloud_datastore_emulator_cache'
+)
 # Directory for storing/fetching data related to the Firebase emulator.
-FIREBASE_EMULATOR_CACHE_DIR = (
-    os.path.join(CURR_DIR, os.pardir, 'firebase_emulator_cache'))
-
-ES_PATH = os.path.join(
-    OPPIA_TOOLS_DIR, 'elasticsearch-%s' % ELASTICSEARCH_VERSION)
-ES_PATH_CONFIG_DIR = os.path.join(
-    OPPIA_TOOLS_DIR, 'elasticsearch-%s' % ELASTICSEARCH_VERSION, 'config')
-ES_PATH_DATA_DIR = os.path.join(
-    OPPIA_TOOLS_DIR, 'elasticsearch-%s' % ELASTICSEARCH_VERSION, 'data')
+FIREBASE_EMULATOR_CACHE_DIR = os.path.join(
+    CURR_DIR, os.pardir, 'firebase_emulator_cache'
+)
 
 RELEASE_BRANCH_REGEX = r'release-(\d+\.\d+\.\d+)$'
 RELEASE_MAINTENANCE_BRANCH_REGEX = r'release-maintenance-(\d+\.\d+\.\d+)$'
 HOTFIX_BRANCH_REGEX = r'release-(\d+\.\d+\.\d+)-hotfix-[1-9]+$'
 TEST_BRANCH_REGEX = r'test-[A-Za-z0-9-]*$'
-USER_PREFERENCES = {'open_new_tab_in_browser': None}
+USER_PREFERENCES: Dict[str, Optional[str]] = {'open_new_tab_in_browser': None}
 
+DEV_PROJECT_ID = 'dev-project-id'
 FECONF_PATH = os.path.join('core', 'feconf.py')
 CONSTANTS_FILE_PATH = os.path.join('assets', 'constants.ts')
+APP_DEV_YAML_PATH = os.path.join('app_dev.yaml')
 MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS = 5 * 60
 MAX_WAIT_TIME_FOR_PORT_TO_CLOSE_SECS = 60
 REDIS_CONF_PATH = os.path.join('redis.conf')
@@ -162,77 +158,86 @@ COMPILED_REQUIREMENTS_FILE_PATH = os.path.join(CURR_DIR, 'requirements.txt')
 # will be identical.
 REQUIREMENTS_FILE_PATH = os.path.join(CURR_DIR, 'requirements.in')
 
-WEBPACK_DEV_CONFIG = 'webpack.dev.config.ts'
-WEBPACK_DEV_SOURCE_MAPS_CONFIG = 'webpack.dev.sourcemap.config.ts'
-WEBPACK_PROD_CONFIG = 'webpack.prod.config.ts'
-WEBPACK_PROD_SOURCE_MAPS_CONFIG = 'webpack.prod.sourcemap.config.ts'
+ANALYTICS_CONSTANTS_FILE_PATH = os.path.join(
+    'assets', 'analytics-constants.json'
+)
 
 PORTSERVER_SOCKET_FILEPATH = os.path.join(os.getcwd(), 'portserver.socket')
-
-WEBDRIVER_HOME_PATH = os.path.join(NODE_MODULES_PATH, 'webdriver-manager')
-WEBDRIVER_MANAGER_BIN_PATH = (
-    os.path.join(WEBDRIVER_HOME_PATH, 'bin', 'webdriver-manager'))
-WEBDRIVER_PROVIDER_PATH = (
-    os.path.join(WEBDRIVER_HOME_PATH, 'dist', 'lib', 'provider'))
-GECKO_PROVIDER_FILE_PATH = (
-    os.path.join(WEBDRIVER_PROVIDER_PATH, 'geckodriver.js'))
-CHROME_PROVIDER_FILE_PATH = (
-    os.path.join(WEBDRIVER_PROVIDER_PATH, 'chromedriver.js'))
-
-PROTRACTOR_BIN_PATH = (
-    os.path.join(NODE_MODULES_PATH, 'protractor', 'bin', 'protractor'))
-PROTRACTOR_CONFIG_FILE_PATH = (
-    os.path.join('core', 'tests', 'protractor.conf.js'))
+HASHES_JSON_FILEPATH = os.path.join('assets', 'hashes.json')
 
 DIRS_TO_ADD_TO_SYS_PATH = [
     GOOGLE_APP_ENGINE_SDK_HOME,
-    PYLINT_PATH,
-    os.path.join(OPPIA_TOOLS_DIR, 'webtest-%s' % WEBTEST_VERSION),
-    os.path.join(OPPIA_TOOLS_DIR, 'Pillow-%s' % PILLOW_VERSION),
-    os.path.join(OPPIA_TOOLS_DIR, 'protobuf-%s' % PROTOBUF_VERSION),
-    PSUTIL_DIR,
-    os.path.join(CURR_DIR, 'proto_files'),
-    os.path.join(OPPIA_TOOLS_DIR, 'grpcio-%s' % GRPCIO_VERSION),
-    os.path.join(OPPIA_TOOLS_DIR, 'setuptools-%s' % '36.6.0'),
-    os.path.join(OPPIA_TOOLS_DIR, 'PyGithub-%s' % PYGITHUB_VERSION),
     CURR_DIR,
     THIRD_PARTY_PYTHON_LIBS_DIR,
 ]
 
+CHROME_PATHS = [
+    # Unix.
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    # Arch Linux.
+    '/usr/bin/brave',
+    '/usr/bin/chromium',
+    # Windows.
+    '/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    'c:\\Program Files (x86)\\Google\\Chrome\\Application\\Chrome.exe',
+    # WSL.
+    '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    # Mac OS.
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+]
 
-def is_windows_os():
+ACCEPTANCE_TEST_CONFIG_FILE_PATH = os.path.join(
+    CURR_DIR, 'core', 'tests', 'ci-test-suite-configs', 'acceptance.json'
+)
+
+GAE_PORT_FOR_ACCEPTANCE_TESTING: Final = 8181
+PORTS_USED_BY_OPPIA_PROCESSES_IN_LOCAL_ACCEPTANCE_TESTING: Final = [
+    GAE_PORT_FOR_ACCEPTANCE_TESTING,
+]
+
+
+def is_windows_os() -> bool:
     """Check if the running system is Windows."""
     return OS_NAME == 'Windows'
 
 
-def is_mac_os():
+def is_mac_os() -> bool:
     """Check if the running system is MacOS."""
     return OS_NAME == 'Darwin'
 
 
-def is_linux_os():
+def is_linux_os() -> bool:
     """Check if the running system is Linux."""
     return OS_NAME == 'Linux'
 
 
-def is_x64_architecture():
+def is_x64_architecture() -> bool:
     """Check if the architecture is on X64."""
     # https://docs.python.org/2/library/platform.html#platform.architecture
     return sys.maxsize > 2**32
 
 
-NODE_BIN_PATH = os.path.join(
-    NODE_PATH, '' if is_windows_os() else 'bin', 'node')
+NODE_BIN_PATH = os.path.join(NODE_PATH, 'bin', 'node')
+NPX_BIN_PATH = os.path.join(NODE_PATH, 'bin', 'npx')
+
+# Binaries for running Playwright with a newer Node runtime only.
+PLAYWRIGHT_NPM_BIN_PATH = os.path.join(PLAYWRIGHT_NODE_PATH, 'bin', 'npm')
+PLAYWRIGHT_NPX_BIN_PATH = os.path.join(PLAYWRIGHT_NODE_PATH, 'bin', 'npx')
+LIGHTHOUSE_NODE_BIN_PATH = os.path.join(LIGHTHOUSE_NODE_PATH, 'bin', 'node')
 
 # Add path for node which is required by the node_modules.
-os.environ['PATH'] = os.pathsep.join([
-    os.path.dirname(NODE_BIN_PATH),
-    os.path.join(YARN_PATH, 'bin'),
-    os.environ['PATH'],
-])
+os.environ['PATH'] = os.pathsep.join(
+    [
+        os.path.dirname(NODE_BIN_PATH),
+        os.path.join(YARN_PATH, 'bin'),
+        os.environ['PATH'],
+    ]
+)
 
 
-def run_cmd(cmd_tokens):
+def run_cmd(cmd_tokens: List[str]) -> str:
     """Runs the command and returns the output.
     Raises subprocess.CalledProcessError upon failure.
 
@@ -243,16 +248,17 @@ def run_cmd(cmd_tokens):
         str. The output of the command.
     """
     return subprocess.check_output(
-        cmd_tokens, stderr=subprocess.STDOUT, encoding='utf-8').strip()
+        cmd_tokens, stderr=subprocess.STDOUT, encoding='utf-8'
+    ).strip()
 
 
-def ensure_directory_exists(d):
+def ensure_directory_exists(d: str) -> None:
     """Creates the given directory if it does not already exist."""
     if not os.path.exists(d):
         os.makedirs(d)
 
 
-def require_cwd_to_be_oppia(allow_deploy_dir=False):
+def require_cwd_to_be_oppia(allow_deploy_dir: bool = False) -> None:
     """Ensures that the current working directory ends in 'oppia'.
 
     If allow_deploy_dir is True, this also allows the cwd to be a directory
@@ -261,9 +267,9 @@ def require_cwd_to_be_oppia(allow_deploy_dir=False):
     is_oppia_dir = os.getcwd().endswith('oppia')
 
     current_dirname = os.path.basename(os.path.normpath(os.getcwd()))
-    is_deploy_dir = (
-        current_dirname.startswith('deploy-') and
-        os.path.isdir(os.path.join(os.getcwd(), os.pardir, 'oppia')))
+    is_deploy_dir = current_dirname.startswith('deploy-') and os.path.isdir(
+        os.path.join(os.getcwd(), os.pardir, 'oppia')
+    )
 
     if is_oppia_dir or (allow_deploy_dir and is_deploy_dir):
         return
@@ -271,85 +277,114 @@ def require_cwd_to_be_oppia(allow_deploy_dir=False):
     raise Exception('Please run this script from the oppia/ directory.')
 
 
-def open_new_tab_in_browser_if_possible(url):
+def open_new_tab_in_browser_if_possible(url: str) -> None:
     """Opens the given URL in a new browser tab, if possible."""
     if USER_PREFERENCES['open_new_tab_in_browser'] is None:
-        python_utils.PRINT(
+        print(
             '\nDo you want the url to be opened in the browser? '
-            'Confirm by entering y/ye/yes.')
+            'Confirm by entering y/ye/yes.'
+        )
         USER_PREFERENCES['open_new_tab_in_browser'] = input()
     if USER_PREFERENCES['open_new_tab_in_browser'] not in ['y', 'ye', 'yes']:
-        python_utils.PRINT(
-            'Please open the following link in browser: %s' % url)
+        print('Please open the following link in browser: %s' % url)
         return
     browser_cmds = ['brave', 'chromium-browser', 'google-chrome', 'firefox']
-    for cmd in browser_cmds:
+    print(
+        'Please choose your default browser from the list using a number. '
+        'It will be given a preference over other available options.'
+    )
+    for index, browser in enumerate(browser_cmds):
+        print('%s). %s' % (index + 1, browser))
+
+    default_index = int(input().strip()) - 1
+    # Re-order the browsers by moving the user selected browser to the
+    # first position and copying over the browsers before and after
+    # the selected browser in the same order as they were present.
+    ordered_browser_cmds = (
+        [browser_cmds[default_index]]
+        + browser_cmds[:default_index]
+        + browser_cmds[default_index + 1 :]
+    )
+    for cmd in ordered_browser_cmds:
         if subprocess.call(['which', cmd]) == 0:
             subprocess.check_call([cmd, url])
             return
-    python_utils.PRINT(
-        '******************************************************************')
-    python_utils.PRINT(
-        'WARNING: Unable to open browser. Please manually open the following')
-    python_utils.PRINT('URL in a browser window, then press Enter to confirm.')
-    python_utils.PRINT('')
-    python_utils.PRINT('    %s' % url)
-    python_utils.PRINT('')
-    python_utils.PRINT(
-        'NOTE: To get rid of this message, open scripts/common.py and fix')
-    python_utils.PRINT(
-        'the function open_new_tab_in_browser_if_possible() to work on your')
-    python_utils.PRINT('system.')
+    print('******************************************************************')
+    print('WARNING: Unable to open browser. Please manually open the following')
+    print('URL in a browser window, then press Enter to confirm.')
+    print('')
+    print('    %s' % url)
+    print('')
+    print('NOTE: To get rid of this message, open scripts/common.py and fix')
+    print('the function open_new_tab_in_browser_if_possible() to work on your')
+    print('system.')
     input()
 
 
-def get_remote_alias(remote_url):
-    """Finds the correct alias for the given remote repository URL."""
+def get_remote_alias(remote_urls: List[str]) -> str:
+    """Finds the correct alias for the given remote repository URLs."""
     git_remote_output = subprocess.check_output(
-        ['git', 'remote', '-v']).decode('utf-8').split('\n')
+        ['git', 'remote', '-v'], encoding='utf-8'
+    ).split('\n')
     remote_alias = None
-    for line in git_remote_output:
-        if remote_url in line:
-            remote_alias = line.split()[0]
+    remote_url = None
+    for remote_url in remote_urls:
+        for line in git_remote_output:
+            if remote_url in line:
+                remote_alias = line.split()[0]
+        if remote_alias:
+            break
     if remote_alias is None:
         raise Exception(
             'ERROR: There is no existing remote alias for the %s repo.'
-            % remote_url)
+            % ', '.join(remote_urls)
+        )
 
     return remote_alias
 
 
-def verify_local_repo_is_clean():
+def verify_local_repo_is_clean() -> None:
     """Checks that the local Git repo is clean."""
-    git_status_output = subprocess.check_output(
-        ['git', 'status']
-    ).strip().split(b'\n')
+    git_status_output = (
+        subprocess.check_output(['git', 'status']).strip().split(b'\n')
+    )
 
     branch_is_clean_message_1 = b'nothing to commit, working directory clean'
     branch_is_clean_message_2 = b'nothing to commit, working tree clean'
     if (
-            not branch_is_clean_message_1 in git_status_output and
-            not branch_is_clean_message_2 in git_status_output):
-        raise Exception(
-            'ERROR: This script should be run from a clean branch.')
+        not branch_is_clean_message_1 in git_status_output
+        and not branch_is_clean_message_2 in git_status_output
+    ):
+        raise Exception('ERROR: This script should be run from a clean branch.')
 
 
-def get_current_branch_name():
+def get_current_branch_name() -> str:
     """Get the current branch name.
 
     Returns:
         str. The name of current branch.
     """
-    git_status_output = subprocess.check_output(
-        ['git', 'status']).decode('utf-8').strip().split('\n')
+    git_status_output = (
+        subprocess.check_output(['git', 'status'], encoding='utf-8')
+        .strip()
+        .split('\n')
+    )
     branch_message_prefix = 'On branch '
     git_status_first_line = git_status_output[0]
-    assert git_status_first_line.startswith(branch_message_prefix)
+    assert git_status_first_line.startswith(
+        branch_message_prefix
+    ), git_status_first_line
     # Standard output is in bytes, we need to decode the line to print it.
-    return git_status_first_line[len(branch_message_prefix):]
+    return git_status_first_line[len(branch_message_prefix) :]
 
 
-def get_current_release_version_number(release_branch_name):
+def update_branch_with_upstream() -> None:
+    """Updates the current branch with upstream."""
+    current_branch_name = get_current_branch_name()
+    run_cmd(['git', 'pull', 'upstream', current_branch_name])
+
+
+def get_current_release_version_number(release_branch_name: str) -> str:
     """Gets the release version given a release branch name.
 
     Args:
@@ -357,12 +392,15 @@ def get_current_release_version_number(release_branch_name):
 
     Returns:
         str. The version of release.
+
+    Raises:
+        Exception. Invalid name of the release branch.
     """
     release_match = re.match(RELEASE_BRANCH_REGEX, release_branch_name)
     release_maintenance_match = re.match(
-        RELEASE_MAINTENANCE_BRANCH_REGEX, release_branch_name)
-    hotfix_match = re.match(
-        HOTFIX_BRANCH_REGEX, release_branch_name)
+        RELEASE_MAINTENANCE_BRANCH_REGEX, release_branch_name
+    )
+    hotfix_match = re.match(HOTFIX_BRANCH_REGEX, release_branch_name)
     if release_match:
         return release_match.group(1)
     elif release_maintenance_match:
@@ -373,18 +411,17 @@ def get_current_release_version_number(release_branch_name):
         raise Exception('Invalid branch name: %s.' % release_branch_name)
 
 
-def is_current_branch_a_hotfix_branch():
+def is_current_branch_a_hotfix_branch() -> bool:
     """Checks if the current branch is a hotfix branch.
 
     Returns:
         bool. Whether the current branch is hotfix branch.
     """
     current_branch_name = get_current_branch_name()
-    return bool(
-        re.match(HOTFIX_BRANCH_REGEX, current_branch_name))
+    return bool(re.match(HOTFIX_BRANCH_REGEX, current_branch_name))
 
 
-def is_current_branch_a_release_branch():
+def is_current_branch_a_release_branch() -> bool:
     """Returns whether the current branch is a release branch.
 
     Returns:
@@ -393,13 +430,13 @@ def is_current_branch_a_release_branch():
     current_branch_name = get_current_branch_name()
     release_match = bool(re.match(RELEASE_BRANCH_REGEX, current_branch_name))
     release_maintenance_match = bool(
-        re.match(RELEASE_MAINTENANCE_BRANCH_REGEX, current_branch_name))
-    hotfix_match = bool(
-        re.match(HOTFIX_BRANCH_REGEX, current_branch_name))
+        re.match(RELEASE_MAINTENANCE_BRANCH_REGEX, current_branch_name)
+    )
+    hotfix_match = bool(re.match(HOTFIX_BRANCH_REGEX, current_branch_name))
     return release_match or release_maintenance_match or hotfix_match
 
 
-def is_current_branch_a_test_branch():
+def is_current_branch_a_test_branch() -> bool:
     """Returns whether the current branch is a test branch for deployment.
 
     Returns:
@@ -409,15 +446,16 @@ def is_current_branch_a_test_branch():
     return bool(re.match(TEST_BRANCH_REGEX, current_branch_name))
 
 
-def verify_current_branch_name(expected_branch_name):
+def verify_current_branch_name(expected_branch_name: str) -> None:
     """Checks that the user is on the expected branch."""
     if get_current_branch_name() != expected_branch_name:
         raise Exception(
-            'ERROR: This script can only be run from the "%s" branch.' %
-            expected_branch_name)
+            'ERROR: This script can only be run from the "%s" branch.'
+            % expected_branch_name
+        )
 
 
-def is_port_in_use(port):
+def is_port_in_use(port: int) -> bool:
     """Checks if a process is listening to the port.
 
     Args:
@@ -427,11 +465,28 @@ def is_port_in_use(port):
         bool. True if port is open else False.
     """
     with contextlib.closing(
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    ) as s:
         return bool(not s.connect_ex(('localhost', port)))
 
 
-def recursive_chown(path, uid, gid):
+def get_ports_in_use(ports: list[int]) -> list[int]:
+    """Checks which ports from a list are currently in use.
+
+    Args:
+        ports: list[int]. List of port numbers.
+
+    Returns:
+        list[int]. List of port numbers that are currently in use.
+    """
+    in_use = []
+    for port in ports:
+        if is_port_in_use(port):
+            in_use.append(port)
+    return in_use
+
+
+def recursive_chown(path: str, uid: int, gid: int) -> None:
     """Changes the owner and group id of all files in a path to the numeric
     uid and gid.
 
@@ -448,7 +503,7 @@ def recursive_chown(path, uid, gid):
             os.chown(os.path.join(root, filename), uid, gid)
 
 
-def recursive_chmod(path, mode):
+def recursive_chmod(path: str, mode: int) -> None:
     """Changes the mode of path to the passed numeric mode.
 
     Args:
@@ -463,17 +518,17 @@ def recursive_chmod(path, mode):
             os.chmod(os.path.join(root, filename), mode)
 
 
-def print_each_string_after_two_new_lines(strings):
+def print_each_string_after_two_new_lines(strings: List[str]) -> None:
     """Prints the given strings, separating adjacent strings with two newlines.
 
     Args:
         strings: list(str). The strings to print.
     """
     for string in strings:
-        python_utils.PRINT('%s\n' % string)
+        print('%s\n' % string)
 
 
-def install_npm_library(library_name, version, path):
+def install_npm_library(library_name: str, version: str, path: str) -> None:
     """Installs the npm library after ensuring its not already installed.
 
     Args:
@@ -481,15 +536,15 @@ def install_npm_library(library_name, version, path):
         version: str. The library version.
         path: str. The installation path for the library.
     """
-    python_utils.PRINT(
-        'Checking whether %s is installed in %s' % (library_name, path))
+    print('Checking whether %s is installed in %s' % (library_name, path))
     if not os.path.exists(os.path.join(NODE_MODULES_PATH, library_name)):
-        python_utils.PRINT('Installing %s' % library_name)
-        subprocess.check_call([
-            'yarn', 'add', '%s@%s' % (library_name, version)])
+        print('Installing %s' % library_name)
+        subprocess.check_call(
+            ['yarn', 'add', '%s@%s' % (library_name, version)]
+        )
 
 
-def ask_user_to_confirm(message):
+def ask_user_to_confirm(message: str) -> None:
     """Asks user to perform a task and confirm once they are done.
 
     Args:
@@ -497,17 +552,16 @@ def ask_user_to_confirm(message):
             to do.
     """
     while True:
-        python_utils.PRINT(
-            '******************************************************')
-        python_utils.PRINT(message)
-        python_utils.PRINT('Confirm once you are done by entering y/ye/yes.\n')
+        print('******************************************************')
+        print(message)
+        print('Confirm once you are done by entering y/ye/yes.\n')
         answer = input().lower()
         if answer in AFFIRMATIVE_CONFIRMATIONS:
             return
 
 
-def get_personal_access_token():
-    """"Returns the personal access token for the GitHub id of user.
+def get_personal_access_token() -> str:
+    """Returns the personal access token for the GitHub id of user.
 
     Returns:
         str. The personal access token for the GitHub id of user.
@@ -518,84 +572,20 @@ def get_personal_access_token():
     personal_access_token = getpass.getpass(
         prompt=(
             'Please provide personal access token for your github ID. '
-            'You can create one at https://github.com/settings/tokens: '))
+            'You can create one at https://github.com/settings/tokens: '
+        )
+    )
 
     if personal_access_token is None:
         raise Exception(
             'No personal access token provided, please set up a personal '
             'access token at https://github.com/settings/tokens and re-run '
-            'the script')
+            'the script'
+        )
     return personal_access_token
 
 
-def check_blocking_bug_issue_count(repo):
-    """Checks the number of unresolved blocking bugs.
-
-    Args:
-        repo: github.Repository.Repository. The PyGithub object for the repo.
-
-    Raises:
-        Exception. Number of unresolved blocking bugs is not zero.
-        Exception. The blocking bug milestone is closed.
-    """
-    blocking_bugs_milestone = repo.get_milestone(
-        number=constants.release_constants.BLOCKING_BUG_MILESTONE_NUMBER)
-    if blocking_bugs_milestone.state == 'closed':
-        raise Exception('The blocking bug milestone is closed.')
-    if blocking_bugs_milestone.open_issues:
-        open_new_tab_in_browser_if_possible(
-            'https://github.com/oppia/oppia/issues?q=is%3Aopen+'
-            'is%3Aissue+milestone%3A%22Blocking+bugs%22')
-        raise Exception(
-            'There are %s unresolved blocking bugs. Please ensure '
-            'that they are resolved before release summary generation.' % (
-                blocking_bugs_milestone.open_issues))
-
-
-def check_prs_for_current_release_are_released(repo):
-    """Checks that all pull requests for current release have a
-    'PR: released' label.
-
-    Args:
-        repo: github.Repository.Repository. The PyGithub object for the repo.
-
-    Raises:
-        Exception. Some pull requests for current release do not have a
-            "PR: released" label.
-    """
-    current_release_label = repo.get_label(
-        constants.release_constants.LABEL_FOR_CURRENT_RELEASE_PRS)
-    current_release_prs = repo.get_issues(
-        state='all', labels=[current_release_label])
-    for pr in current_release_prs:
-        label_names = [label.name for label in pr.labels]
-        if constants.release_constants.LABEL_FOR_RELEASED_PRS not in (
-                label_names):
-            open_new_tab_in_browser_if_possible(
-                'https://github.com/oppia/oppia/pulls?utf8=%E2%9C%93&q=is%3Apr'
-                '+label%3A%22PR%3A+for+current+release%22+')
-            raise Exception(
-                'There are PRs for current release which do not have '
-                'a \'PR: released\' label. Please ensure that they are '
-                'released before release summary generation.')
-
-
-def convert_to_posixpath(file_path):
-    """Converts a Windows style filepath to posixpath format. If the operating
-    system is not Windows, this function does nothing.
-
-    Args:
-        file_path: str. The path to be converted.
-
-    Returns:
-        str. Returns a posixpath version of the file path.
-    """
-    if not is_windows_os():
-        return file_path
-    return file_path.replace('\\', '/')
-
-
-def create_readme(dir_path, readme_content):
+def create_readme(dir_path: str, readme_content: str) -> None:
     """Creates a readme in a given dir path with the specified
     readme content.
 
@@ -604,13 +594,19 @@ def create_readme(dir_path, readme_content):
             be created.
         readme_content: str. The content to be written in the README.
     """
-    with python_utils.open_file(os.path.join(dir_path, 'README.md'), 'w') as f:
+    with open(os.path.join(dir_path, 'README.md'), 'w', encoding='utf-8') as f:
         f.write(readme_content)
 
 
-def inplace_replace_file(filename, regex_pattern, replacement_string):
+def inplace_replace_file(
+    filename: str,
+    regex_pattern: str,
+    replacement_string: str,
+    expected_number_of_replacements: Optional[int] = None,
+) -> None:
     """Replace the file content in-place with regex pattern. The pattern is used
-    to replace the file's content line by line.
+    to replace the file's content line by line. The old file is kept as-is until
+    it is replaced.
 
     Note:
         This function should only be used with files that are processed line by
@@ -620,60 +616,52 @@ def inplace_replace_file(filename, regex_pattern, replacement_string):
         filename: str. The name of the file to be changed.
         regex_pattern: str. The pattern to check.
         replacement_string: str. The content to be replaced.
+        expected_number_of_replacements: optional(int). The number of
+            replacements that should be made. When None no check is done.
+
+    Raises:
+        ValueError. Wrong number of replacements.
+        Exception. The content failed to get replaced.
     """
-    backup_filename = '%s.bak' % filename
-    shutil.copyfile(filename, backup_filename)
+    new_filename = '%s.new' % filename
+    shutil.copyfile(filename, new_filename)
     new_contents = []
+    total_number_of_replacements = 0
     try:
         regex = re.compile(regex_pattern)
-        with python_utils.open_file(backup_filename, 'r') as f:
-            for line in f:
-                new_contents.append(regex.sub(replacement_string, line))
+        with open(filename, 'r', encoding='utf-8') as old_file:
+            for line in old_file:
+                new_line, number_of_replacements = regex.subn(
+                    replacement_string, line
+                )
+                new_contents.append(new_line)
+                total_number_of_replacements += number_of_replacements
 
-        with python_utils.open_file(filename, 'w') as f:
+        with open(new_filename, 'w', encoding='utf-8') as new_file:
             for line in new_contents:
-                f.write(line)
-        os.remove(backup_filename)
+                new_file.write(line)
+
+        if (
+            expected_number_of_replacements is not None
+            and total_number_of_replacements != expected_number_of_replacements
+        ):
+            raise ValueError(
+                'Wrong number of replacements. Expected %s. Performed %s.'
+                % (
+                    expected_number_of_replacements,
+                    total_number_of_replacements,
+                )
+            )
+
+        os.replace(new_filename, filename)
+
     except Exception:
-        # Restore the content if there was en error.
-        os.remove(filename)
-        shutil.move(backup_filename, filename)
+        # Drop the new file if there was an error.
+        os.remove(new_filename)
         raise
 
 
-@contextlib.contextmanager
-def inplace_replace_file_context(filename, regex_pattern, replacement_string):
-    """Context manager in which the file's content is replaced according to the
-    given regex pattern. This function should only be used with files that are
-    processed line by line.
-
-    Args:
-        filename: str. The name of the file to be changed.
-        regex_pattern: str. The pattern to check.
-        replacement_string: str. The content to be replaced.
-
-    Yields:
-        None. Nothing.
-    """
-    backup_filename = '%s.bak' % filename
-    regex = re.compile(regex_pattern)
-
-    shutil.copyfile(filename, backup_filename)
-
-    try:
-        with python_utils.open_file(backup_filename, 'r') as f:
-            new_contents = [regex.sub(replacement_string, line) for line in f]
-        with python_utils.open_file(filename, 'w') as f:
-            f.write(''.join(new_contents))
-        yield
-    finally:
-        if os.path.isfile(filename) and os.path.isfile(backup_filename):
-            os.remove(filename)
-        if os.path.isfile(backup_filename):
-            shutil.move(backup_filename, filename)
-
-
-def wait_for_port_to_be_in_use(port_number):
+def wait_for_port_to_be_in_use(port_number: int) -> None:
     """Wait until the port is in use and exit if port isn't open after
     MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS seconds.
 
@@ -681,23 +669,70 @@ def wait_for_port_to_be_in_use(port_number):
         port_number: int. The port number to wait.
     """
     waited_seconds = 0
-    while (not is_port_in_use(port_number)
-           and waited_seconds < MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS):
+    while (
+        not is_port_in_use(port_number)
+        and waited_seconds < MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS
+    ):
         time.sleep(1)
         waited_seconds += 1
-    if (waited_seconds == MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS
-            and not is_port_in_use(port_number)):
-        python_utils.PRINT(
-            'Failed to start server on port %s, exiting ...' %
-            port_number)
-        python_utils.PRINT(
+    if (
+        waited_seconds == MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS
+        and not is_port_in_use(port_number)
+    ):
+        print('Failed to start server on port %s, exiting ...' % port_number)
+        print(
             'This may be because you do not have enough available '
             'memory. Please refer to '
-            'https://github.com/oppia/oppia/wiki/Troubleshooting#low-ram')
+            'https://github.com/oppia/oppia/wiki/Troubleshooting#low-ram'
+        )
         sys.exit(1)
 
 
-def wait_for_port_to_not_be_in_use(port_number):
+def wait_for_firebase_emulator_to_be_ready(
+    port_number: int, timeout_secs: int = MAX_WAIT_TIME_FOR_PORT_TO_OPEN_SECS
+) -> None:
+    """Wait until the Firebase Auth emulator is ready to accept requests.
+
+    This function performs an HTTP health check to verify that the emulator
+    is actually responding, not just that the port is open. This is more
+    robust than just checking if the port is in use, as the emulator might
+    bind the port but crash during initialization.
+
+    Args:
+        port_number: int. The port number where the emulator is running.
+        timeout_secs: int. Maximum time to wait for the emulator to be ready.
+
+    Raises:
+        Exception. If the emulator fails to become ready within the timeout.
+    """
+    emulator_url = 'http://localhost:%d/' % port_number
+    waited_seconds = 0
+
+    while waited_seconds < timeout_secs:
+        try:
+            # The Firebase Auth emulator responds to GET requests at the root
+            # URL when it's ready.
+            response = urlrequest.urlopen(emulator_url, timeout=5)
+            if response.status == 200:
+                print(
+                    'Firebase Auth emulator is ready on port %d.' % port_number
+                )
+                return
+        except (urlerror.URLError, client.HTTPException, socket.timeout):
+            # The emulator is not yet ready, keep waiting.
+            pass
+
+        time.sleep(1)
+        waited_seconds += 1
+
+    raise Exception(
+        'Firebase Auth emulator failed to become ready on port %d '
+        'within %d seconds. This may indicate the emulator crashed during '
+        'initialization.' % (port_number, timeout_secs)
+    )
+
+
+def wait_for_port_to_not_be_in_use(port_number: int) -> bool:
     """Wait until the port is closed or
     MAX_WAIT_TIME_FOR_PORT_TO_CLOSE_SECS seconds.
 
@@ -708,64 +743,33 @@ def wait_for_port_to_not_be_in_use(port_number):
         bool. Whether the port closed in time.
     """
     waited_seconds = 0
-    while (is_port_in_use(port_number)
-           and waited_seconds < MAX_WAIT_TIME_FOR_PORT_TO_CLOSE_SECS):
+    while (
+        is_port_in_use(port_number)
+        and waited_seconds < MAX_WAIT_TIME_FOR_PORT_TO_CLOSE_SECS
+    ):
         time.sleep(1)
         waited_seconds += 1
     return not is_port_in_use(port_number)
 
 
-def fix_third_party_imports() -> None:
-    """Sets up up the environment variables and corrects the system paths so
-    that the backend tests and imports work correctly.
-    """
-    # These environmental variables are required to allow Google Cloud Tasks to
-    # operate in a local development environment without connecting to the
-    # internet. These environment variables allow Cloud APIs to be instantiated.
-    os.environ['CLOUDSDK_CORE_PROJECT'] = 'dummy-cloudsdk-project-id'
-    os.environ['APPLICATION_ID'] = 'dummy-cloudsdk-project-id'
-
-    # The devappserver function fixes the system path by adding certain google
-    # appengine libraries that we need in oppia to the python system path. The
-    # Google Cloud SDK comes with certain packages preinstalled including
-    # webapp2, jinja2, and pyyaml so this function makes sure that those
-    # libraries are installed.
-    import dev_appserver
-    dev_appserver.fix_sys_path()
-    # In the process of migrating Oppia from Python 2 to Python 3, we are using
-    # both google app engine apis that are contained in the Google Cloud SDK
-    # folder, and also google cloud apis that are installed in our
-    # 'third_party/python_libs' directory. Therefore, there is a confusion of
-    # where the google module is located and which google module to import from.
-    # The following code ensures that the google module that python looks at
-    # imports from the 'third_party/python_libs' folder so that the imports are
-    # correct.
-    if 'google' in sys.modules:
-        google_path = os.path.join(THIRD_PARTY_PYTHON_LIBS_DIR, 'google')
-        google_module = sys.modules['google']
-        google_module.__path__ = [google_path]
-        google_module.__file__ = os.path.join(google_path, '__init__.py')
-
-    sys.path.insert(1, THIRD_PARTY_PYTHON_LIBS_DIR)
-
-
 class CD:
     """Context manager for changing the current working directory."""
 
-    def __init__(self, new_path):
+    def __init__(self, new_path: str) -> None:
         self.new_path = new_path
-        self.saved_path = None
+        self.saved_path: Optional[str] = None
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         self.saved_path = os.getcwd()
         os.chdir(self.new_path)
 
-    def __exit__(self, etype, value, traceback):
+    def __exit__(self, etype: str, value: str, traceback: str) -> None:
+        assert self.saved_path is not None
         os.chdir(self.saved_path)
 
 
 @contextlib.contextmanager
-def swap_env(key, value):
+def swap_env(key: str, value: str) -> Generator[Optional[str], None, None]:
     """Context manager that temporarily changes the value of os.environ[key].
 
     Args:
@@ -787,13 +791,16 @@ def swap_env(key, value):
             os.environ[key] = old_value
 
 
-def write_stdout_safe(string):
+def write_stdout_safe(string: Union[str, bytes]) -> None:
     """Tries to write the input string to stdout in a non-blocking way.
 
     https://stackoverflow.com/a/44961052/4859885
 
     Args:
         string: str|bytes. The string to write to stdout.
+
+    Raises:
+        OSError. Failed to write the input string.
     """
     string_bytes = string.encode('utf-8') if isinstance(string, str) else string
 
@@ -801,7 +808,8 @@ def write_stdout_safe(string):
     while num_bytes_written < len(string_bytes):
         try:
             num_bytes_written += os.write(
-                sys.stdout.fileno(), string_bytes[num_bytes_written:])
+                sys.stdout.fileno(), string_bytes[num_bytes_written:]
+            )
         # The os.write might not be supported, thus we need
         # to try sys.stdout.write.
         except io.UnsupportedOperation:
@@ -812,5 +820,245 @@ def write_stdout_safe(string):
         except OSError as e:
             if e.errno == errno.EAGAIN:
                 continue
-            else:
-                raise
+
+            raise
+
+
+def url_open(
+    source_url: Union[str, urlrequest.Request],
+) -> urlrequest._UrlopenRet:
+    """Opens a URL and returns the response.
+
+    Args:
+        source_url: Union[str, Request]. The URL.
+
+    Returns:
+        urlopen. The 'urlopen' object.
+    """
+    context = ssl.create_default_context()
+    return urlrequest.urlopen(source_url, context=context)
+
+
+def url_retrieve(
+    url: str,
+    output_path: str,
+    max_attempts: int = 2,
+    enforce_https: bool = True,
+) -> None:
+    """Retrieve a file from a URL and write the file to the file system.
+
+    Note that we use Python's recommended default settings for verifying SSL
+    connections, which are documented here:
+    https://docs.python.org/3/library/ssl.html#best-defaults.
+
+    Args:
+        url: str. The URL to retrieve the data from.
+        output_path: str. Path to the destination file where the data from the
+            URL will be written.
+        max_attempts: int. The maximum number of attempts that will be made to
+            download the data. For failures before the maximum number of
+            attempts, a message describing the error will be printed. Once the
+            maximum is hit, any errors will be raised.
+        enforce_https: bool. Whether to require that the provided URL starts
+            with 'https://' to ensure downloads are secure.
+
+    Raises:
+        Exception. Raised when the provided URL does not use HTTPS but
+            enforce_https is True.
+    """
+    if enforce_https and not url.startswith('https://'):
+        raise Exception('The URL %s should use HTTPS.' % url)
+
+    # Try downloading using curl initially.
+    print('Downloading %s to %s using curl...' % (url, output_path))
+    curl_task = subprocess.Popen(
+        # The -L flag is for following redirects.
+        ['curl', '-L', url, '--output', output_path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding='utf-8',
+    )
+    with curl_task:
+        out, err = curl_task.communicate()
+    if curl_task.returncode == 0:
+        # The download was successful.
+        print(out)
+        print(err)
+        return
+
+    # Download with urlopen if curl fails.
+    print('Downloading using curl failed. Trying with urlopen.')
+    print('Error log for curl: %s' % err)
+    failures = 0
+    success = False
+    while not success and failures < max_attempts:
+        try:
+            with urlrequest.urlopen(
+                url, context=ssl.create_default_context()
+            ) as response:
+                with open(output_path, 'wb', encoding=None) as output_file:
+                    output_file.write(response.read())
+        except (
+            urlerror.URLError,
+            ssl.SSLError,
+            client.IncompleteRead,
+            ConnectionResetError,
+        ) as exception:
+            failures += 1
+            print(
+                'Attempt %d of %d failed when downloading %s.'
+                % (failures, max_attempts, url)
+            )
+            print('Error in common.url_retrieve: %s' % exception)
+            if failures >= max_attempts:
+                raise exception
+            print('Error: %s' % exception)
+            print('Retrying download.')
+        else:
+            success = True
+
+
+def setup_chrome_bin_env_variable() -> None:
+    """Sets the CHROME_BIN environment variable to the path
+    of the Chrome binary.
+
+    Raises:
+        Exception. Chrome not found.
+    """
+    for path in CHROME_PATHS:
+        if os.path.isfile(path):
+            os.environ['CHROME_BIN'] = path
+            break
+    else:
+        print('Chrome is not found, stopping...')
+        raise Exception('Chrome not found.')
+
+
+def set_constants_to_default() -> None:
+    """Set variables in constants.ts and feconf.py to default values."""
+    modify_constants(
+        prod_env=False,
+        emulator_mode=True,
+        maintenance_mode=False,
+        version_info_must_be_set=False,
+    )
+
+
+def modify_constants(
+    prod_env: bool = False,
+    emulator_mode: bool = True,
+    maintenance_mode: bool = False,
+    version_info_must_be_set: bool = True,
+) -> None:
+    """Modify constants.ts and feconf.py.
+
+    Args:
+        prod_env: bool. Whether the server is started in prod mode.
+        emulator_mode: bool. Whether the server is started in emulator mode.
+        maintenance_mode: bool. Whether the site should be put into
+            the maintenance mode.
+        version_info_must_be_set: bool. Whether the version info must be set.
+    """
+    dev_mode_variable = '"DEV_MODE": false' if prod_env else '"DEV_MODE": true'
+    inplace_replace_file(
+        CONSTANTS_FILE_PATH,
+        r'"DEV_MODE": (true|false)',
+        dev_mode_variable,
+        expected_number_of_replacements=1,
+    )
+    emulator_mode_variable = (
+        '"EMULATOR_MODE": true' if emulator_mode else '"EMULATOR_MODE": false'
+    )
+    inplace_replace_file(
+        CONSTANTS_FILE_PATH,
+        r'"EMULATOR_MODE": (true|false)',
+        emulator_mode_variable,
+        expected_number_of_replacements=1,
+    )
+
+    enable_maintenance_mode_variable = 'ENABLE_MAINTENANCE_MODE = %s' % str(
+        maintenance_mode
+    )
+    inplace_replace_file(
+        FECONF_PATH,
+        r'ENABLE_MAINTENANCE_MODE = (True|False)',
+        enable_maintenance_mode_variable,
+        expected_number_of_replacements=1,
+    )
+
+    if prod_env or version_info_must_be_set is False:
+        branch_name_variable = '"BRANCH_NAME": "%s"' % (
+            subprocess.check_output(
+                ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], encoding='utf-8'
+            )
+            .strip()
+            .split('\n', maxsplit=1)[0]
+            if version_info_must_be_set
+            else ''
+        )
+        inplace_replace_file(
+            CONSTANTS_FILE_PATH,
+            r'"BRANCH_NAME": ".*"',
+            branch_name_variable,
+            expected_number_of_replacements=1,
+        )
+
+        short_commit_hash_variable = '"SHORT_COMMIT_HASH": "%s"' % (
+            subprocess.check_output(
+                ['git', 'rev-parse', '--short', 'HEAD'], encoding='utf-8'
+            )
+            .strip()
+            .split('\n', maxsplit=1)[0]
+            if version_info_must_be_set
+            else ''
+        )
+        inplace_replace_file(
+            CONSTANTS_FILE_PATH,
+            r'"SHORT_COMMIT_HASH": ".*"',
+            short_commit_hash_variable,
+            expected_number_of_replacements=1,
+        )
+
+
+def is_oppia_server_already_running() -> bool:
+    """Check if the ports are taken by any other processes. If any one of
+    them is taken, it may indicate there is already one Oppia instance running.
+
+    Returns:
+        bool. Whether there is a running Oppia instance.
+    """
+    for port in PORTS_USED_BY_OPPIA_PROCESSES_IN_LOCAL_ACCEPTANCE_TESTING:
+        if is_port_in_use(port):
+            print(
+                'There is already a server running on localhost:%s. '
+                'Please terminate it before running the acceptance tests. '
+                'Exiting.' % port
+            )
+            return True
+    return False
+
+
+def start_subprocess_for_result(cmd: List[str]) -> Tuple[bytes, bytes]:
+    """Starts subprocess and returns (stdout, stderr)."""
+    task = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = task.communicate()
+    return out, err
+
+
+def write_hashes_json_file(file_hashes: Dict[str, str]) -> None:
+    """Writes asset hashes to the hashes.json file.
+
+    This file is imported by TypeScript code and must exist for compilation
+    to succeed. During development/testing, an empty dict is typically passed
+    to create an empty but valid JSON file. During production builds, actual
+    hash mappings are provided for cache invalidation.
+
+    Args:
+        file_hashes: dict(str, str). Dictionary with filepaths as keys and
+            hashes of file content as values. Pass an empty dict to create
+            an empty hashes file.
+    """
+    ensure_directory_exists(os.path.dirname(HASHES_JSON_FILEPATH))
+    with open(HASHES_JSON_FILEPATH, 'w+', encoding='utf-8') as hashes_json_file:
+        hashes_json_file.write(str(json.dumps(file_hashes, ensure_ascii=False)))
+        hashes_json_file.write('\n')

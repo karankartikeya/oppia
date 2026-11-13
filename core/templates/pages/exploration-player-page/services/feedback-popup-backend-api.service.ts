@@ -16,35 +16,38 @@
  * @fileoverview Backend Api Service for Feedback Popup.
  */
 
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { ExplorationEngineService } from './exploration-engine.service';
+import {HttpClient} from '@angular/common/http';
+import {Injectable} from '@angular/core';
+import {PageContextService} from 'services/page-context.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class FeedbackPopupBackendApiService {
   feedbackUrl: string;
 
   constructor(
     private httpClient: HttpClient,
-    private explorationEngineService: ExplorationEngineService
+    private pageContextService: PageContextService
   ) {
-    this.feedbackUrl = '/explorehandler/give_feedback/' +
-      this.explorationEngineService.getExplorationId();
+    this.feedbackUrl =
+      '/explorehandler/give_feedback/' +
+      this.pageContextService.getExplorationId();
   }
 
   async submitFeedbackAsync(
-      subject: string,
-      feedback: string,
-      includeAuthor: boolean,
-      stateName: string
+    subject: string,
+    feedback: string,
+    includeAuthor: boolean,
+    stateName: string
   ): Promise<Object> {
-    return this.httpClient.post(this.feedbackUrl, {
-      subject,
-      feedback,
-      include_author: includeAuthor,
-      state_name: stateName
-    }).toPromise();
+    return this.httpClient
+      .post(this.feedbackUrl, {
+        subject,
+        feedback,
+        include_author: includeAuthor,
+        state_name: stateName,
+      })
+      .toPromise();
   }
 }

@@ -16,100 +16,136 @@
  * @fileoverview Directive unit tests for the "click hexbins" visualization.
  */
 
-require('visualizations/oppia-visualization-click-hexbins.directive.ts');
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {DebugElement, NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  waitForAsync,
+  TestBed,
+  fakeAsync,
+  tick,
+} from '@angular/core/testing';
+import {ImagePreloaderService} from 'pages/exploration-player-page/services/image-preloader.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
+import {
+  Hexbin,
+  OppiaVisualizationClickHexbinsComponent,
+} from './oppia-visualization-click-hexbins.directive';
 
-describe('Oppia click hexbins visualization', function() {
-  let $compile, $rootScope;
-  let el: JQLite;
+describe('Oppia click hexbins visualization', function () {
+  let component: OppiaVisualizationClickHexbinsComponent;
+  let fixture: ComponentFixture<OppiaVisualizationClickHexbinsComponent>;
+  let imagePreloaderService: ImagePreloaderService;
+  let assetsBackendApiService: AssetsBackendApiService;
+  let bannerDe: DebugElement;
+  let bannerEl: HTMLElement;
+  let tooltipTarget: Hexbin;
 
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.value('AssetsBackendApiService', {
-      getImageUrlForPreview: (url: string) => url,
-    });
-    $provide.value('ContextService', {
-      getEntityId: () => 'eid',
-      getEntityType: () => 'exploration',
-    });
-    $provide.value('ImagePreloaderService', {
-      getDimensionsOfImage: (_: string) => ({width: 300, height: 250}),
-    });
-  }));
-
-  beforeEach(angular.mock.inject(function(_$compile_, _$rootScope_) {
-    $compile = _$compile_;
-    $rootScope = _$rootScope_;
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [OppiaVisualizationClickHexbinsComponent],
+      providers: [
+        AssetsBackendApiService,
+        PageContextService,
+        ImagePreloaderService,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
   beforeEach(() => {
-    const elementTemplate = angular.element(
-      '<oppia-visualization-click-hexbins ' + (
-        'data="data" interaction-args="interactionArgs">') +
-      '</oppia-visualization-click-hexbins>');
-    const scope = $rootScope.$new();
-    scope.data = [
+    fixture = TestBed.createComponent(OppiaVisualizationClickHexbinsComponent);
+    component = fixture.componentInstance;
+    imagePreloaderService = TestBed.inject(ImagePreloaderService);
+    assetsBackendApiService = TestBed.inject(AssetsBackendApiService);
+
+    spyOn(imagePreloaderService, 'getDimensionsOfImage').and.returnValue({
+      width: 10,
+      height: 5,
+    });
+    spyOn(assetsBackendApiService, 'getImageUrlForPreview').and.returnValue(
+      'url'
+    );
+
+    // Create a proper iterable mock for Hexbin (extends Array).
+    tooltipTarget = Object.assign(
+      [
+        {
+          answer: {clickPosition: [0.5, 0.5], clickedRegions: [] as string[]},
+          frequency: 2,
+        },
+      ],
+      {x: 0, y: 0}
+    ) as Hexbin;
+
+    // Make the tooltip hidden by default.
+    component.tooltipTarget = null;
+    component.data = [
       {answer: {clickPosition: [0.03, 0.03], clickedRegions: []}, frequency: 2},
-      {answer: {clickPosition: [0.50, 0.50], clickedRegions: []}, frequency: 1},
+      {answer: {clickPosition: [0.5, 0.5], clickedRegions: []}, frequency: 1},
     ];
-    scope.interactionArgs = {
+    component.interactionArgs = {
       imageAndRegions: {
-        value: { imagePath: 'solar-system.png' },
+        value: {imagePath: 'solar-system.png'},
       },
     };
-    el = $compile(elementTemplate)(scope);
-    $rootScope.$digest();
+
+    bannerDe = fixture.debugElement;
+    bannerEl = bannerDe.nativeElement;
+
+    fixture.detectChanges();
   });
 
   it('should group the two answers as two distinct hexagons', () => {
-    expect(el.find('.click-hexbin-hexagon').length).toEqual(2);
+    expect(bannerEl.querySelectorAll('.click-hexbin-hexagon').length).toEqual(
+      2
+    );
   });
 
-  describe('Tooltip behavior', () => {
-    it('should be hidden by default', () => {
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(0);
-    });
-
-    it('should appear after hovering a hexagon', () => {
-      el.find('.protractor-test-hexagon-0').trigger('mouseover');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(1);
-      expect(el.find('.click-hexbin-chart-tooltip').get(0).innerText.trim())
-        .toEqual('2 clicks');
-    });
-
-    it('should switch focus when moving mouse between hexagons', () => {
-      el.find('.protractor-test-hexagon-0').trigger('mouseover');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(1);
-      expect(el.find('.click-hexbin-chart-tooltip').get(0).innerText.trim())
-        .toEqual('2 clicks');
-
-      el.find('.protractor-test-hexagon-0').trigger('mouseout');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(0);
-
-      el.find('.protractor-test-hexagon-1').trigger('mouseover');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(1);
-      expect(el.find('.click-hexbin-chart-tooltip').get(0).innerText.trim())
-        .toEqual('1 click');
-    });
-
-    it('should stick to first hexagon hovered', () => {
-      el.find('.protractor-test-hexagon-0').trigger('mouseover');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(1);
-      expect(el.find('.click-hexbin-chart-tooltip').get(0).innerText.trim())
-        .toEqual('2 clicks');
-
-      el.find('.protractor-test-hexagon-1').trigger('mouseover');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(1);
-      expect(el.find('.click-hexbin-chart-tooltip').get(0).innerText.trim())
-        .toEqual('2 clicks');
-    });
-
-    it('should handle mouseout of unfocused hexagons gracefully', () => {
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(0);
-
-      el.find('.protractor-test-hexagon-0').trigger('mouseout');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(0);
-
-      el.find('.protractor-test-hexagon-1').trigger('mouseout');
-      expect(el.find('.click-hexbin-chart-tooltip').length).toEqual(0);
-    });
+  it('should be hidden by default', () => {
+    expect(
+      bannerEl.querySelectorAll('.click-hexbin-chart-tooltip').length
+    ).toEqual(0);
   });
+
+  it('should showTooltip', fakeAsync(() => {
+    spyOn(component, 'getNumClicks').and.returnValue(2);
+
+    component.showTooltip(tooltipTarget);
+    tick();
+
+    expect(component.getTooltipNumClicks()).toEqual(2);
+
+    component.hideTooltip(tooltipTarget);
+    tick();
+
+    expect(component.tooltipTarget).toBe(null);
+  }));
+
+  it('should return 0 clicks when tooltip target is null', () => {
+    component.tooltipTarget = null;
+    expect(component.getTooltipNumClicks()).toEqual(0);
+  });
+
+  it('should return false when tooltip is not visible', () => {
+    component.tooltipTarget = null;
+    expect(component.isTooltipVisible()).toBe(false);
+  });
+
+  it('should return true when tooltip is visible', () => {
+    component.tooltipTarget = tooltipTarget;
+    expect(component.isTooltipVisible()).toBe(true);
+  });
+
+  it('should intialize component', fakeAsync(() => {
+    component.ngOnInit();
+    tick();
+
+    expect(component.getTooltipStyle()).toEqual({
+      left: '0px',
+      top: '0px',
+    });
+  }));
 });

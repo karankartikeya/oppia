@@ -42,32 +42,48 @@
  * `this.data.metadata.uploadedImageData`, make sure that you also update
  * imgData. Failing to do so could lead to unpredictable behavior.
  */
-import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
-import { SafeResourceUrl } from '@angular/platform-browser';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { ImagePreloaderService } from 'pages/exploration-player-page/services/image-preloader.service';
-import { AlertsService } from 'services/alerts.service';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { ContextService } from 'services/context.service';
-import { CsrfTokenService } from 'services/csrf-token.service';
-import { ImageLocalStorageService } from 'services/image-local-storage.service';
-import { ImageUploadHelperService } from 'services/image-upload-helper.service';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
-import 'third-party-imports/gif-frames.import';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnChanges,
+  OnInit,
+  Output,
+  SimpleChanges,
+} from '@angular/core';
+import {SafeResourceUrl} from '@angular/platform-browser';
+// eslint-disable-next-line oppia/disallow-httpclient
+import {HttpClient, HttpErrorResponse} from '@angular/common/http';
+
+import {AppConstants} from 'app.constants';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {ImagePreloaderService} from 'pages/exploration-player-page/services/image-preloader.service';
+import {AlertsService} from 'services/alerts.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
+import {CsrfTokenService} from 'services/csrf-token.service';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {ImageUploadHelperService} from 'services/image-upload-helper.service';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
+
+import {GifFramesService} from 'third-party-imports/gif-frames.import';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 const gifshot = require('gifshot');
+
+// We attach GifFrames to the window and use it in our codebase and the
+// default Window interface doesn't contain "GifFrames" property. Hence we want
+// to extend the Window definition here.
 
 interface FilepathData {
   mode: number;
   metadata: {
-    uploadedFile?: File;
+    uploadedFile?: Blob;
     uploadedImageData?: string | SafeResourceUrl;
     originalWidth?: number;
     originalHeight?: number;
     savedImageFilename?: string;
-    savedImageUrl?: string;
+    savedImageUrl?: string | SafeResourceUrl;
   };
   crop: boolean;
 }
@@ -77,35 +93,73 @@ interface Dimensions {
   width: number;
 }
 
+interface Coordinates {
+  x: number;
+  y: number;
+}
+
+interface CropArea {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+interface CropAreaDynamicStyles {
+  left: string;
+  top: string;
+  width: string;
+  height: string;
+  cursor: string;
+  background: string;
+  [key: string]: string;
+}
+
+interface InvalidSvgTagsAndAttributes {
+  tags: string[];
+  attrs: string[];
+}
+
+type GifFrameProcessor = (dataUrl: string) => Promise<string>;
+type GifshotSuccessCallback = (
+  gifshotCallbackObject: GifshotCallbackObject
+) => void;
+
 // Reference: https://github.com/yahoo/gifshot#creategifoptions-callback.
 interface GifshotCallbackObject {
-  image: string,
-  cameraStream: MediaStream,
-  error: boolean,
-  errorCode: string,
-  errorMsg: string,
-  savedRenderingContexts: ImageData
+  image: string;
+  cameraStream: MediaStream;
+  error: boolean;
+  errorCode: string;
+  errorMsg: string;
+  savedRenderingContexts: ImageData;
+}
+
+interface ImageUploadBackendResponse {
+  filename: string;
 }
 
 @Component({
   selector: 'image-editor',
   templateUrl: './image-editor.component.html',
-  styleUrls: []
+  styleUrls: ['./image-editor.component.css'],
 })
 export class ImageEditorComponent implements OnInit, OnChanges {
-  @Input() modalId;
-  @Input() value;
-  @Output() valueChanged = new EventEmitter();
+  @Input() modalId!: symbol;
+  @Input() value: string = '';
+  @Output() valueChanged = new EventEmitter<string>();
   @Output() validityChange = new EventEmitter<Record<'empty', boolean>>();
   MODE_EMPTY = 1;
   MODE_UPLOADED = 2;
   MODE_SAVED = 3;
 
+  imageIsUploading = false;
+
   // We only use PNG format since that is what canvas can export to in
   // all browsers.
   OUTPUT_IMAGE_FORMAT = {
     png: 'png',
-    gif: 'gif'
+    gif: 'gif',
   };
 
   MIME_TYPE_GIF = 'data:image/gif';
@@ -129,49 +183,70 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   MOUSE_INSIDE = 9;
 
   // Define the cursors for the crop area.
-  CROP_CURSORS: Record<string, string> = {};
-  imageContainerStyle = {};
-  allowedImageFormats = AppConstants.ALLOWED_IMAGE_FORMATS;
+  CROP_CURSORS: Record<number, string> = {};
+  imageContainerStyle: Record<string, string> = {};
+  allowedImageFormats: string[] = [...AppConstants.ALLOWED_IMAGE_FORMATS];
   HUNDRED_KB_IN_BYTES: number = 100 * 1024;
-  imageResizeRatio: number;
-  cropArea: { x1: number; y1: number; x2: number; y2: number; };
-  mousePositionWithinCropArea: null | number;
-  mouseLastKnownCoordinates: { x: number; y: number; };
-  lastMouseDownEventCoordinates: { x: number; y: number; };
+  ONE_MB_IN_BYTES: number = 1 * 1024 * 1024;
+  imageResizeRatio: number = 1;
+  cropArea: CropArea = {x1: 0, y1: 0, x2: 0, y2: 0};
+  mousePositionWithinCropArea: null | number = null;
+  mouseLastKnownCoordinates: Coordinates = {x: 0, y: 0};
+  lastMouseDownEventCoordinates: Coordinates = {x: 0, y: 0};
   userIsDraggingCropArea: boolean = false;
-  cropAreaResizeDirection: null | number;
+  cropAreaResizeDirection: null | number = null;
   userIsResizingCropArea: boolean = false;
-  invalidTagsAndAttributes: { tags: string[]; attrs: string[]; };
-  processedImageIsTooLarge: boolean;
-  entityId: string;
-  entityType: string;
+  invalidImageWarningIsShown: boolean = false;
+  invalidTagsAndAttributes: InvalidSvgTagsAndAttributes = {
+    tags: [],
+    attrs: [],
+  };
+  processedImageIsTooLarge: boolean = false;
+  entityId: string = '';
+  entityType: string = '';
   // Check the note before imports and after fileoverview.
-  private imgData;
+  private imgData: string | null = null;
   // Check the note before imports and after fileoverview.
-  private _data: FilepathData;
+  private _data: FilepathData = {
+    mode: this.MODE_EMPTY,
+    metadata: {},
+    crop: true,
+  };
 
   // Check the note before imports and after fileoverview.
   get data(): FilepathData {
     return this._data;
   }
+
   set data(value: FilepathData) {
     this._data = value;
     this.validate(this._data);
   }
-  cropAreaXWhenLastDown: number;
-  cropAreaYWhenLastDown: number;
+
+  cropAreaXWhenLastDown: number = 0;
+  cropAreaYWhenLastDown: number = 0;
 
   constructor(
+    private http: HttpClient,
     private alertsService: AlertsService,
     private assetsBackendApiService: AssetsBackendApiService,
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
     private csrfTokenService: CsrfTokenService,
     private imageLocalStorageService: ImageLocalStorageService,
     private imagePreloaderService: ImagePreloaderService,
     private imageUploadHelperService: ImageUploadHelperService,
     private svgSanitizerService: SvgSanitizerService,
-    private urlInterpolationService: UrlInterpolationService
+    private urlInterpolationService: UrlInterpolationService,
+    private windowRef: WindowRef,
+    private gifFramesService: GifFramesService
   ) {}
+
+  // Public wrapper for the SVG sanitizer service's getIssueURL method.
+  // This is needed because Angular strict template checking does not
+  // allow direct access to private class members from templates.
+  getIssueURL(invalidTagsAndAttributes: InvalidSvgTagsAndAttributes): string {
+    return this.svgSanitizerService.getIssueURL(invalidTagsAndAttributes);
+  }
 
   ngOnInit(): void {
     this.validityChange.emit({empty: false});
@@ -216,33 +291,37 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     //       savedImageFilename: <File name of the resource for the image>
     //       savedImageUrl: <Trusted resource Url for the image>
     //     }.
-    this.data = { mode: this.MODE_EMPTY, metadata: {}, crop: true };
+    this.data = {mode: this.MODE_EMPTY, metadata: {}, crop: true};
 
     // Resizing properties.
     this.imageResizeRatio = 1;
 
     // Cropping properties.
-    this.cropArea = { x1: 0, y1: 0, x2: 0, y2: 0 };
+    this.cropArea = {x1: 0, y1: 0, x2: 0, y2: 0};
     this.mousePositionWithinCropArea = null;
-    this.mouseLastKnownCoordinates = { x: 0, y: 0 };
-    this.lastMouseDownEventCoordinates = { x: 0, y: 0 };
+    this.mouseLastKnownCoordinates = {x: 0, y: 0};
+    this.lastMouseDownEventCoordinates = {x: 0, y: 0};
     this.userIsDraggingCropArea = false;
     this.userIsResizingCropArea = false;
     this.cropAreaResizeDirection = null;
     this.invalidTagsAndAttributes = {
       tags: [],
-      attrs: []
+      attrs: [],
     };
+    this.invalidImageWarningIsShown = false;
     this.processedImageIsTooLarge = false;
 
-    this.entityId = this.contextService.getEntityId();
-    this.entityType = this.contextService.getEntityType();
+    this.entityId = this.pageContextService.getEntityId() || '';
+    this.entityType = this.pageContextService.getEntityType() || '';
 
-    window.addEventListener('mouseup', (e) => {
-      e.preventDefault();
-      this.userIsDraggingCropArea = false;
-      this.userIsResizingCropArea = false;
-    }, false);
+    window.addEventListener(
+      'mouseup',
+      (_e: MouseEvent) => {
+        this.userIsDraggingCropArea = false;
+        this.userIsResizingCropArea = false;
+      },
+      false
+    );
     if (this.value) {
       this.resetComponent(this.value);
     }
@@ -250,18 +329,18 @@ export class ImageEditorComponent implements OnInit, OnChanges {
 
   /** Internal functions (not visible in the view) */
 
-  private resetComponent(newValue) {
+  private resetComponent(newValue: string): void {
     // Reset the component each time the value changes
     // (e.g. if this is part of an editable list).
     if (newValue) {
       this.setSavedImageFilename(newValue, false);
-      const dimensions = (
-        this.imagePreloaderService.getDimensionsOfImage(newValue));
+      const dimensions =
+        this.imagePreloaderService.getDimensionsOfImage(newValue);
       this.imageContainerStyle = {
         height: dimensions.height + 'px',
-        width: dimensions.width + 'px'
+        width: dimensions.width + 'px',
       };
-      this.validityChange.emit({ empty: true });
+      this.validityChange.emit({empty: true});
     }
   }
 
@@ -274,7 +353,11 @@ export class ImageEditorComponent implements OnInit, OnChanges {
    * @return A DOMString containing the output image data URI.
    */
 
-  private getResampledImageData(imageDataURI, width, height) {
+  private getResampledImageData(
+    imageDataURI: string,
+    width: number,
+    height: number
+  ): string {
     // Create an Image object with the original data.
     const img = new Image();
     img.src = imageDataURI;
@@ -284,23 +367,31 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
+    if (ctx === null) {
+      throw new Error('Could not get canvas context.');
+    }
     ctx.drawImage(img, 0, 0, width, height);
     return canvas.toDataURL('image/' + this.OUTPUT_IMAGE_FORMAT.png, 1);
   }
 
-
   /**
-  * Crops an image to the specified rectangular region.
-  *
-  * @param imageDataURI A DOMString containing the input image data URI.
-  * @param x The x coorinate of the top-left corner of the crop region.
-  * @param y The y coorinate of the top-left corner of the crop region.
-  * @param width The width of the crop region.
-  * @param height The height of the crop region.
-  * @return A DOMString containing the output image data URI.
-  */
+   * Crops an image to the specified rectangular region.
+   *
+   * @param imageDataURI A DOMString containing the input image data URI.
+   * @param x The x coorinate of the top-left corner of the crop region.
+   * @param y The y coorinate of the top-left corner of the crop region.
+   * @param width The width of the crop region.
+   * @param height The height of the crop region.
+   * @return A DOMString containing the output image data URI.
+   */
 
-  private getCroppedImageData(imageDataURI, x, y, width, height) {
+  private getCroppedImageData(
+    imageDataURI: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): string {
     // Put the original image in a canvas.
     const img = new Image();
     img.src = imageDataURI;
@@ -308,6 +399,9 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     canvas.width = x + width;
     canvas.height = y + height;
     const ctx = canvas.getContext('2d');
+    if (ctx === null) {
+      throw new Error('Could not get canvas context.');
+    }
     ctx.drawImage(img, 0, 0);
 
     // Get image data for a cropped selection.
@@ -318,46 +412,69 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     cropCanvas.width = width;
     cropCanvas.height = height;
     const cropCtx = cropCanvas.getContext('2d');
+    if (cropCtx === null) {
+      throw new Error('Could not get canvas context.');
+    }
     cropCtx.putImageData(data, 0, 0);
     return cropCanvas.toDataURL('image/' + this.OUTPUT_IMAGE_FORMAT.png, 1);
   }
 
-
   private async getCroppedGIFDataAsync(
-      x: number, y: number, width: number, height: number,
-      imageDataURI: string): Promise<string> {
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    imageDataURI: string
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       // Put the original image in a canvas.
       let img = new Image();
+      img.addEventListener(
+        'load',
+        () => {
+          // If the image loads,
+          // fulfill the promise with the cropped dataURL.
+          const canvas = document.createElement('canvas');
+          canvas.width = x + width;
+          canvas.height = y + height;
+          const ctx = canvas.getContext('2d');
+          if (ctx === null) {
+            reject(new Error('Could not get canvas context.'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0);
+
+          // Get image data for a cropped selection.
+          const data = ctx.getImageData(x, y, width, height);
+
+          // Draw on a separate canvas and return the dataURL.
+          const cropCanvas = document.createElement('canvas');
+          cropCanvas.width = width;
+          cropCanvas.height = height;
+          const cropCtx = cropCanvas.getContext('2d');
+          if (cropCtx === null) {
+            reject(new Error('Could not get canvas context.'));
+            return;
+          }
+          cropCtx.putImageData(data, 0, 0);
+          resolve(cropCanvas.toDataURL('image/png'));
+        },
+        false
+      );
+      img.addEventListener(
+        'error',
+        () => {
+          reject(new Error('Image could not be loaded.'));
+        },
+        false
+      );
       img.src = imageDataURI;
-      img.addEventListener('load', () => {
-        // If the image loads,
-        // fulfill the promise with the cropped dataURL.
-        const canvas = document.createElement('canvas');
-        canvas.width = x + width;
-        canvas.height = y + height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-
-        // Get image data for a cropped selection.
-        const data = ctx.getImageData(x, y, width, height);
-
-        // Draw on a separate canvas and return the dataURL.
-        const cropCanvas = document.createElement('canvas');
-        cropCanvas.width = width;
-        cropCanvas.height = height;
-        const cropCtx = cropCanvas.getContext('2d');
-        cropCtx.putImageData(data, 0, 0);
-        resolve(cropCanvas.toDataURL('image/png'));
-      }, false);
-      img.addEventListener('error', () => {
-        reject(new Error('Image could not be loaded.'));
-      }, false);
     });
   }
 
-
-  private getEventCoorindatesRelativeToImageContainer(e) {
+  private getEventCoorindatesRelativeToImageContainer(
+    e: MouseEvent
+  ): Coordinates {
     // Even though the event listeners are added to the image container,
     // the events seem to be reported with 'target' set to the deepest
     // element where the event occurred. In other words, if the event
@@ -370,20 +487,20 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     let x = e.offsetX;
     let y = e.offsetY;
     const containerClass = 'filepath-editor-image-crop-container';
-    let node = e.target;
+    let node = e.target as HTMLElement | null;
     while (node !== null && !node.classList.contains(containerClass)) {
       x += node.offsetLeft;
       y += node.offsetTop;
-      node = node.offsetParent;
+      node = node.offsetParent as HTMLElement | null;
     }
-    return { x: x, y: y };
+    return {x: x, y: y};
   }
 
-  private clamp(value, min, max) {
+  private clamp(value: number, min: number, max: number): number {
     return Math.min(Math.max(min, value), max);
   }
 
-  private handleMouseMoveWhileDraggingCropArea(x, y) {
+  private handleMouseMoveWhileDraggingCropArea(x: number, y: number): void {
     const xDown = this.lastMouseDownEventCoordinates.x;
     const yDown = this.lastMouseDownEventCoordinates.y;
     const x1WhenDown = this.cropAreaXWhenLastDown;
@@ -407,36 +524,44 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     this.cropArea.y2 = y1 + cropHeight;
   }
 
-  private handleMouseMoveWhileResizingCropArea(x, y) {
+  private handleMouseMoveWhileResizingCropArea(x: number, y: number): void {
     const dimensions = this.calculateTargetImageDimensions();
     const direction = this.cropAreaResizeDirection;
 
-    const adjustResizeLeft = (x) => {
+    const adjustResizeLeft = (x: number) => {
       // Update crop area x1 value, correcting for boundaries.
       this.cropArea.x1 = this.clamp(
-        x, 0, this.cropArea.x2 - this.CROP_AREA_MIN_WIDTH_PX);
+        x,
+        0,
+        this.cropArea.x2 - this.CROP_AREA_MIN_WIDTH_PX
+      );
     };
 
-    const adjustResizeRight = (x) => {
+    const adjustResizeRight = (x: number) => {
       // Update crop area x2 value, correcting for boundaries.
       this.cropArea.x2 = this.clamp(
         x,
         this.CROP_AREA_MIN_WIDTH_PX + this.cropArea.x1,
-        dimensions.width);
+        dimensions.width
+      );
     };
 
-    const adjustResizeTop = (y) => {
+    const adjustResizeTop = (y: number) => {
       // Update crop area y1 value, correcting for boundaries.
       this.cropArea.y1 = this.clamp(
-        y, 0, this.cropArea.y2 - this.CROP_AREA_MIN_HEIGHT_PX);
+        y,
+        0,
+        this.cropArea.y2 - this.CROP_AREA_MIN_HEIGHT_PX
+      );
     };
 
-    const adjustResizeBottom = (y) => {
+    const adjustResizeBottom = (y: number) => {
       // Update crop area y2 value, correcting for boundaries.
       this.cropArea.y2 = this.clamp(
         y,
         this.CROP_AREA_MIN_HEIGHT_PX + this.cropArea.y1,
-        dimensions.height);
+        dimensions.height
+      );
     };
 
     switch (direction) {
@@ -471,7 +596,7 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     }
   }
 
-  private updatePositionWithinCropArea(x, y) {
+  private updatePositionWithinCropArea(x: number, y: number): void {
     const margin = this.CROP_BORDER_MARGIN_PX;
     const cx1 = this.cropArea.x1;
     const cy1 = this.cropArea.y1;
@@ -521,54 +646,79 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     }
   }
 
-  private getTrustedResourceUrlForImageFileName(imageFileName) {
+  private getTrustedResourceUrlForImageFileName(
+    imageFileName: string
+  ): string | SafeResourceUrl {
     if (
-      this.contextService.getImageSaveDestination() ===
-      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE &&
-      this.imageLocalStorageService.isInStorage(imageFileName)) {
-      const imageUrl = this.imageLocalStorageService.getRawImageData(
-        imageFileName);
+      this.pageContextService.getImageSaveDestination() ===
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE &&
+      this.imageLocalStorageService.isInStorage(imageFileName)
+    ) {
+      const imageUrl =
+        this.imageLocalStorageService.getRawImageData(imageFileName);
+      if (imageUrl === null) {
+        return '';
+      }
       if (imageFileName.endsWith('.svg')) {
-        return this.svgSanitizerService.getTrustedSvgResourceUrl(imageUrl);
+        return (
+          this.svgSanitizerService.getTrustedSvgResourceUrl(imageUrl) || ''
+        );
       }
       return imageUrl;
     }
     const encodedFilepath = window.encodeURIComponent(imageFileName);
     return this.assetsBackendApiService.getImageUrlForPreview(
-      this.contextService.getEntityType(),
-      this.contextService.getEntityId(),
-      encodedFilepath);
+      this.entityType,
+      this.entityId,
+      encodedFilepath
+    );
+  }
+
+  private getUploadedImageData(): string {
+    return this.imgData || (this.data.metadata.uploadedImageData as string);
+  }
+
+  private getOriginalImageDimensions(): Dimensions {
+    return {
+      width: this.data.metadata.originalWidth || 0,
+      height: this.data.metadata.originalHeight || 0,
+    };
   }
 
   resetFilePathEditor(): void {
     if (
-      this.data.metadata.savedImageFilename && (
-        this.contextService.getImageSaveDestination() ===
-        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE) &&
+      this.data.metadata.savedImageFilename &&
+      this.pageContextService.getImageSaveDestination() ===
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE &&
       this.imageLocalStorageService.isInStorage(
-        this.data.metadata.savedImageFilename)
+        this.data.metadata.savedImageFilename
+      )
     ) {
       this.imageLocalStorageService.deleteImage(
-        this.data.metadata.savedImageFilename);
+        this.data.metadata.savedImageFilename
+      );
     }
     this.data = {
       mode: this.MODE_EMPTY,
       metadata: {},
-      crop: true
+      crop: true,
     };
+    this.imageIsUploading = false;
     this.imageResizeRatio = 1;
     this.invalidTagsAndAttributes = {
       tags: [],
-      attrs: []
+      attrs: [],
     };
+    this.invalidImageWarningIsShown = false;
     this.validityChange.emit({empty: false});
   }
 
   validate(data: FilepathData): boolean {
-    const isValid = data.mode === this.MODE_SAVED &&
+    const isValid =
+      data.mode === this.MODE_SAVED &&
       data.metadata.savedImageFilename &&
       data.metadata.savedImageFilename.length > 0;
-    return isValid;
+    return Boolean(isValid);
   }
 
   isUserCropping(): boolean {
@@ -579,8 +729,6 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   }
 
   onMouseMoveOnImageArea(e: MouseEvent): void {
-    e.preventDefault();
-
     const coords = this.getEventCoorindatesRelativeToImageContainer(e);
 
     if (this.userIsDraggingCropArea) {
@@ -591,42 +739,35 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       this.updatePositionWithinCropArea(coords.x, coords.y);
     }
 
-    this.mouseLastKnownCoordinates = { x: coords.x, y: coords.y };
+    this.mouseLastKnownCoordinates = {x: coords.x, y: coords.y};
   }
 
   onMouseDownOnCropArea(e: MouseEvent): void {
-    e.preventDefault();
     const coords = this.getEventCoorindatesRelativeToImageContainer(e);
     const position = this.mousePositionWithinCropArea;
 
     if (position === this.MOUSE_INSIDE) {
-      this.lastMouseDownEventCoordinates = { x: coords.x, y: coords.y };
+      this.lastMouseDownEventCoordinates = {x: coords.x, y: coords.y};
       this.cropAreaXWhenLastDown = this.cropArea.x1;
       this.cropAreaYWhenLastDown = this.cropArea.y1;
       this.userIsDraggingCropArea = true;
     } else if (position !== null) {
-      this.lastMouseDownEventCoordinates = { x: coords.x, y: coords.y };
+      this.lastMouseDownEventCoordinates = {x: coords.x, y: coords.y};
       this.userIsResizingCropArea = true;
       this.cropAreaResizeDirection = position;
     }
   }
 
   onMouseUpOnCropArea(e: MouseEvent): void {
-    e.preventDefault();
     this.userIsDraggingCropArea = false;
     this.userIsResizingCropArea = false;
   }
 
-  getMainContainerDynamicStyles(): string {
-    const width = this.OUTPUT_IMAGE_MAX_WIDTH_PX;
-    return 'width: ' + width + 'px';
-  }
-
   getImageContainerDynamicStyles(): string {
     if (this.data.mode === this.MODE_EMPTY) {
-      return 'border: 1px dotted #888';
+      return 'border: 1px dotted #888; width: 100%';
     } else {
-      return 'border: none';
+      return 'border: none; width: ' + this.OUTPUT_IMAGE_MAX_WIDTH_PX + 'px';
     }
   }
 
@@ -639,8 +780,9 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   }
 
   getCropButtonBarDynamicStyles(): string {
-    return 'left: ' + this.cropArea.x2 + 'px;' +
-      'top: ' + this.cropArea.y1 + 'px;';
+    return (
+      'left: ' + this.cropArea.x2 + 'px;' + 'top: ' + this.cropArea.y1 + 'px;'
+    );
   }
 
   getCropAreaDynamicStyles(): string {
@@ -649,13 +791,13 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     const position = this.mousePositionWithinCropArea;
 
     // Position, size, cursor and background.
-    const styles = {
+    const styles: CropAreaDynamicStyles = {
       left: this.cropArea.x1 + 'px',
       top: this.cropArea.y1 + 'px',
       width: cropWidth + 'px',
       height: cropHeight + 'px',
-      cursor: this.CROP_CURSORS[position],
-      background: null
+      cursor: position === null ? '' : this.CROP_CURSORS[position],
+      background: '',
     };
 
     if (!styles.cursor) {
@@ -664,9 +806,11 @@ export class ImageEditorComponent implements OnInit, OnChanges {
 
     // Translucent background layer.
     if (this.isUserCropping()) {
-      const data = 'url(' + (
+      const data =
+        'url(' +
         // Check point 2 in the note before imports and after fileoverview.
-        this.imgData || this.data.metadata.uploadedImageData) + ')';
+        this.getUploadedImageData() +
+        ')';
       styles.background = data + ' no-repeat';
 
       // Add crop area border.
@@ -675,14 +819,15 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       styles['background-position'] = '-' + x + 'px -' + y + 'px';
 
       const dimensions = this.calculateTargetImageDimensions();
-      styles['background-size'] = dimensions.width + 'px ' +
-        dimensions.height + 'px';
+      styles['background-size'] =
+        dimensions.width + 'px ' + dimensions.height + 'px';
     }
 
-    return Object.keys(styles).map(
-      key => {
+    return Object.keys(styles)
+      .map((key: string) => {
         return key + ': ' + styles[key];
-      }).join('; ');
+      })
+      .join('; ');
   }
 
   getUploadedImageDynamicStyles(): string {
@@ -695,59 +840,83 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   confirmCropImage(): void {
     // Find coordinates of the cropped area within original image scale.
     const dimensions = this.calculateTargetImageDimensions();
-    const r = this.data.metadata.originalWidth / dimensions.width;
+    const originalDimensions = this.getOriginalImageDimensions();
+    const r = originalDimensions.width / dimensions.width;
     const x1 = this.cropArea.x1 * r;
     const y1 = this.cropArea.y1 * r;
     const width = (this.cropArea.x2 - this.cropArea.x1) * r;
     const height = (this.cropArea.y2 - this.cropArea.y1) * r;
     // Check point 2 in the note before imports and after fileoverview.
-    const imageDataURI = this.imgData || (
-      this.data.metadata.uploadedImageData as string);
+    const imageDataURI = this.getUploadedImageData();
     const mimeType = imageDataURI.split(';')[0];
 
-    let newImageFile;
+    let newImageFile: Blob | null = null;
 
     if (mimeType === this.MIME_TYPE_GIF) {
-      let successCb = obj => {
+      let successCb = (obj: GifshotCallbackObject) => {
         this.validateProcessedFilesize(obj.image);
-        newImageFile = (
-          this.imageUploadHelperService.convertImageDataToImageFile(
-            obj.image));
+        newImageFile =
+          this.imageUploadHelperService.convertImageDataToImageFile(obj.image);
+        if (newImageFile === null) {
+          this.alertsService.addWarning('Could not get resampled file.');
+          document.body.style.cursor = 'default';
+          return;
+        }
         this.updateDimensions(newImageFile, obj.image, width, height);
         document.body.style.cursor = 'default';
       };
       let processFrameCb = this.getCroppedGIFDataAsync.bind(
-        null, x1, y1, width, height);
+        null,
+        x1,
+        y1,
+        width,
+        height
+      );
       this.processGIFImage(
-        imageDataURI, width, height, processFrameCb, successCb);
-    } else if (mimeType === 'data:image/svg+xml') {
+        imageDataURI,
+        width,
+        height,
+        processFrameCb,
+        successCb
+      );
+    } else if (mimeType === AppConstants.SVG_MIME_TYPE) {
       // Check point 2 in the note before imports and after fileoverview.
-      const imageData = this.imgData || (
-        this.data.metadata.uploadedImageData as string);
-      newImageFile = (
-        this.imageUploadHelperService.convertImageDataToImageFile(
-          this.data.metadata.uploadedImageData as string));
+      const imageData = this.getUploadedImageData();
+      newImageFile =
+        this.imageUploadHelperService.convertImageDataToImageFile(imageData);
+      if (newImageFile === null) {
+        this.alertsService.addWarning('Could not get resampled file.');
+        return;
+      }
       this.updateDimensions(newImageFile, imageData, width, height);
     } else {
       // Generate new image data and file.
       const newImageData = this.getCroppedImageData(
         // Check point 2 in the note before imports and after fileoverview.
-        this.imgData || this.data.metadata.uploadedImageData,
-        x1, y1, width, height);
+        this.getUploadedImageData(),
+        x1,
+        y1,
+        width,
+        height
+      );
       this.validateProcessedFilesize(newImageData);
 
-      newImageFile = (
-        this.imageUploadHelperService.convertImageDataToImageFile(
-          newImageData));
+      newImageFile =
+        this.imageUploadHelperService.convertImageDataToImageFile(newImageData);
+      if (newImageFile === null) {
+        this.alertsService.addWarning('Could not get resampled file.');
+        return;
+      }
       this.updateDimensions(newImageFile, newImageData, width, height);
     }
   }
 
   updateDimensions(
-      newImageFile: File,
-      newImageData: string,
-      width: number,
-      height: number): void {
+    newImageFile: Blob,
+    newImageData: string,
+    width: number,
+    height: number
+  ): void {
     // Update image data.
     this.data.metadata.uploadedFile = newImageFile;
     this.data.metadata.uploadedImageData = newImageData;
@@ -763,7 +932,7 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       x1: 0,
       y1: 0,
       x2: dimensions.width,
-      y2: dimensions.height
+      y2: dimensions.height,
     };
   }
 
@@ -777,8 +946,11 @@ export class ImageEditorComponent implements OnInit, OnChanges {
 
   getImageSizeHelp(): string | null {
     const imageWidth = this.data.metadata.originalWidth;
-    if (this.imageResizeRatio === 1 &&
-      imageWidth > this.OUTPUT_IMAGE_MAX_WIDTH_PX) {
+    if (
+      this.imageResizeRatio === 1 &&
+      imageWidth !== undefined &&
+      imageWidth > this.OUTPUT_IMAGE_MAX_WIDTH_PX
+    ) {
       return (
         'This image has been automatically downsized to ensure ' +
         'that it will fit in the card.'
@@ -809,41 +981,55 @@ export class ImageEditorComponent implements OnInit, OnChanges {
 
   decreaseResizePercent(amount: number): void {
     // Do not allow to decrease size below 10%.
-    this.imageResizeRatio = Math.max(
-      0.1, this.imageResizeRatio - amount / 100);
+    this.imageResizeRatio = Math.max(0.1, this.imageResizeRatio - amount / 100);
     this.updateValidationWithLatestDimensions();
   }
 
   increaseResizePercent(amount: number): void {
-    // Do not allow to increase size above 100% (only downsize allowed).
+    const imageDataURI = this.getUploadedImageData();
+    const mimeType = imageDataURI.split(';')[0];
+    const maxImageRatio = mimeType === AppConstants.SVG_MIME_TYPE ? 2 : 1;
+    // Do not allow the user to increase size beyond 100% for non-SVG images
+    // and 200% for SVG images. Users may downsize the image if required.
+    // SVG images can be resized to 200% because certain SVGs may not contain a
+    // default height/width, this results in a browser-specific default, which
+    // may be too small to work with.
     this.imageResizeRatio = Math.min(
-      1, this.imageResizeRatio + amount / 100);
+      maxImageRatio,
+      this.imageResizeRatio + amount / 100
+    );
     this.updateValidationWithLatestDimensions();
+    this.cancelCropImage();
   }
 
   private updateValidationWithLatestDimensions(): void {
     const dimensions = this.calculateTargetImageDimensions();
-    const imageDataURI = (
-      this.imgData || <string> this.data.metadata.uploadedImageData);
-    const mimeType = (<string>imageDataURI).split(';')[0];
+    const imageDataURI = this.getUploadedImageData();
+    const mimeType = imageDataURI.split(';')[0];
     if (mimeType === this.MIME_TYPE_GIF) {
-      let successCb = obj => {
+      let successCb = (obj: GifshotCallbackObject) => {
         this.validateProcessedFilesize(obj.image);
         document.body.style.cursor = 'default';
       };
       this.processGIFImage(
-        imageDataURI, dimensions.width, dimensions.height,
-        null, successCb);
+        imageDataURI,
+        dimensions.width,
+        dimensions.height,
+        null,
+        successCb
+      );
     } else {
       const resampledImageData = this.getResampledImageData(
-        imageDataURI, dimensions.width, dimensions.height);
+        imageDataURI,
+        dimensions.width,
+        dimensions.height
+      );
       this.validateProcessedFilesize(resampledImageData);
     }
   }
 
   calculateTargetImageDimensions(): Dimensions {
-    let width = this.data.metadata.originalWidth;
-    let height = this.data.metadata.originalHeight;
+    let {width, height} = this.getOriginalImageDimensions();
     if (width > this.OUTPUT_IMAGE_MAX_WIDTH_PX) {
       const aspectRatio = width / height;
       width = this.OUTPUT_IMAGE_MAX_WIDTH_PX;
@@ -851,21 +1037,32 @@ export class ImageEditorComponent implements OnInit, OnChanges {
     }
     return {
       width: Math.round(width * this.imageResizeRatio),
-      height: Math.round(height * this.imageResizeRatio)
+      height: Math.round(height * this.imageResizeRatio),
     };
   }
 
   setUploadedFile(file: File): void {
+    this.invalidImageWarningIsShown = false;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (_e: ProgressEvent<FileReader>) => {
       const img = new Image();
       img.onload = () => {
+        this.invalidImageWarningIsShown = false;
         // Check point 2 in the note before imports and after fileoverview.
         this.imgData = reader.result as string;
         let imageData: string | SafeResourceUrl = reader.result as string;
         if (file.name.endsWith('.svg')) {
-          imageData = this.svgSanitizerService.getTrustedSvgResourceUrl(
-            imageData as string);
+          this.invalidTagsAndAttributes =
+            this.svgSanitizerService.getInvalidSvgTagsAndAttrsFromDataUri(
+              this.imgData
+            );
+          this.imgData =
+            this.svgSanitizerService.removeAllInvalidTagsAndAttributes(
+              this.imgData
+            );
+          imageData =
+            this.svgSanitizerService.getTrustedSvgResourceUrl(this.imgData) ||
+            '';
         }
         this.data = {
           mode: this.MODE_UPLOADED,
@@ -873,20 +1070,23 @@ export class ImageEditorComponent implements OnInit, OnChanges {
             uploadedFile: file,
             uploadedImageData: imageData,
             originalWidth: img.naturalWidth || 300,
-            originalHeight: img.naturalHeight || 150
+            originalHeight: img.naturalHeight || 150,
           },
-          crop: file.type !== 'image/svg+xml'
+          crop: file.type !== 'image/svg+xml',
         };
         const dimensions = this.calculateTargetImageDimensions();
         this.cropArea = {
           x1: 0,
           y1: 0,
           x2: dimensions.width,
-          y2: dimensions.height
+          y2: dimensions.height,
         };
         this.updateValidationWithLatestDimensions();
       };
-      img.src = <string>(reader.result);
+      img.onerror = () => {
+        this.invalidImageWarningIsShown = true;
+      };
+      img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   }
@@ -897,16 +1097,16 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       metadata: {
         savedImageFilename: filename,
         // Check point 2 in the note before imports and after fileoverview.
-        savedImageUrl: this.getTrustedResourceUrlForImageFileName(
-          filename) as string
+        savedImageUrl: this.getTrustedResourceUrlForImageFileName(filename),
       },
-      crop: true
+      crop: true,
     };
+    this.imageIsUploading = false;
     if (updateParent) {
       this.alertsService.clearWarnings();
       this.value = filename;
       this.valueChanged.emit(filename);
-      this.validityChange.emit({ empty: true });
+      this.validityChange.emit({empty: true});
       this.resetComponent(filename);
     }
   }
@@ -923,17 +1123,23 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   validateProcessedFilesize(resampledImageData: string): void {
     const mimeType = resampledImageData.split(';')[0];
     const imageSize = atob(
-      resampledImageData.replace(`${mimeType};base64,`, '')).length;
-    // The processed image can sometimes be larger than 100 KB. This is
-    // because the output of HTMLCanvasElement.toDataURL() operation in
+      resampledImageData.replace(`${mimeType};base64,`, '')
+    ).length;
+    // The processed image can sometimes be larger than original file size. This
+    // is because the output of HTMLCanvasElement.toDataURL() operation in
     // getResampledImageData() is browser specific and can vary in size.
     // See https://stackoverflow.com/a/9777037.
-    this.processedImageIsTooLarge = imageSize > this.HUNDRED_KB_IN_BYTES;
+    if (this.entityType === AppConstants.ENTITY_TYPE.BLOG_POST) {
+      this.processedImageIsTooLarge = imageSize > this.ONE_MB_IN_BYTES;
+    } else {
+      this.processedImageIsTooLarge = imageSize > this.HUNDRED_KB_IN_BYTES;
+    }
   }
 
   saveUploadedFile(): void {
     this.alertsService.clearWarnings();
     this.processedImageIsTooLarge = false;
+    this.imageIsUploading = true;
 
     if (!this.data.metadata.uploadedFile) {
       this.alertsService.addWarning('No image file detected.');
@@ -944,25 +1150,27 @@ export class ImageEditorComponent implements OnInit, OnChanges {
 
     // Check mime type from imageDataURI.
     // Check point 2 in the note before imports and after fileoverview.
-    const imageDataURI = this.imgData || (
-      this.data.metadata.uploadedImageData as string);
+    let imageDataURI = this.getUploadedImageData();
     const mimeType = imageDataURI.split(';')[0];
-    let resampledFile;
+    let resampledFile: Blob | null = null;
 
     if (mimeType === 'data:image/gif') {
-      let successCb = obj => {
+      let successCb = (obj: GifshotCallbackObject) => {
         if (!obj.error) {
           this.validateProcessedFilesize(obj.image);
           if (this.processedImageIsTooLarge) {
             document.body.style.cursor = 'default';
+            this.imageIsUploading = false;
             return;
           }
-          resampledFile = (
+          resampledFile =
             this.imageUploadHelperService.convertImageDataToImageFile(
-              obj.image));
+              obj.image
+            );
           if (resampledFile === null) {
             this.alertsService.addWarning('Could not get resampled file.');
             document.body.style.cursor = 'default';
+            this.imageIsUploading = false;
             return;
           }
           this.saveImage(dimensions, resampledFile, 'gif');
@@ -972,31 +1180,34 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       let gifWidth = dimensions.width;
       let gifHeight = dimensions.height;
       this.processGIFImage(imageDataURI, gifWidth, gifHeight, null, successCb);
-    } else if (mimeType === 'data:image/svg+xml') {
-      this.invalidTagsAndAttributes = (
-        this.svgSanitizerService.getInvalidSvgTagsAndAttrsFromDataUri(
-          imageDataURI));
-      const tags = this.invalidTagsAndAttributes.tags;
-      const attrs = this.invalidTagsAndAttributes.attrs;
-      if (tags.length === 0 && attrs.length === 0) {
-        resampledFile = (
-          this.imageUploadHelperService.convertImageDataToImageFile(
-            imageDataURI));
-        this.saveImage(dimensions, resampledFile, 'svg');
-        this.data.crop = false;
-      }
-    } else {
-      const resampledImageData = this.getResampledImageData(
-        imageDataURI, dimensions.width, dimensions.height);
-      this.validateProcessedFilesize(resampledImageData);
-      if (this.processedImageIsTooLarge) {
-        return;
-      }
-      resampledFile = (
-        this.imageUploadHelperService.convertImageDataToImageFile(
-          resampledImageData));
+    } else if (mimeType === AppConstants.SVG_MIME_TYPE) {
+      resampledFile =
+        this.imageUploadHelperService.convertImageDataToImageFile(imageDataURI);
       if (resampledFile === null) {
         this.alertsService.addWarning('Could not get resampled file.');
+        this.imageIsUploading = false;
+        return;
+      }
+      this.saveImage(dimensions, resampledFile, 'svg');
+      this.data.crop = false;
+    } else {
+      const resampledImageData = this.getResampledImageData(
+        imageDataURI,
+        dimensions.width,
+        dimensions.height
+      );
+      this.validateProcessedFilesize(resampledImageData);
+      if (this.processedImageIsTooLarge) {
+        this.imageIsUploading = false;
+        return;
+      }
+      resampledFile =
+        this.imageUploadHelperService.convertImageDataToImageFile(
+          resampledImageData
+        );
+      if (resampledFile === null) {
+        this.alertsService.addWarning('Could not get resampled file.');
+        this.imageIsUploading = false;
         return;
       }
       this.saveImage(dimensions, resampledFile, 'png');
@@ -1004,59 +1215,73 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   }
 
   private processGIFImage(
-      imageDataURI: string, width: number, height: number,
-      processFrameCallback: (dataUrl: string) => void,
-      successCallback: (gifshotCallbackObject: GifshotCallbackObject) => void
+    imageDataURI: string,
+    width: number,
+    height: number,
+    processFrameCallback: GifFrameProcessor | null,
+    successCallback: GifshotSuccessCallback
   ): void {
     // Looping through individual GIF frames can take a while
     // especially if there are a lot. Changing the cursor will let the
     // user know that something is happening.
     document.body.style.cursor = 'wait';
-    window.GifFrames({
-      url: imageDataURI,
-      frames: 'all',
-      outputType: 'canvas',
-    }).then(async function(frameData) {
-      let frames = [];
-      for (let i = 0; i < frameData.length; i += 1) {
-        let sourceCanvas = frameData[i].getImage();
-        // Some GIFs may be optimised such that frames are stacked and
-        // only incremental changes are present in individual frames.
-        // For such GIFs, no additional operation needs to be done to
-        // handle transparent content. These GIFs have 0 or 1 Disposal
-        // method value.
-        // See https://www.w3.org/Graphics/GIF/spec-gif89a.txt
-        if (frameData[i].frameInfo.disposal > 1) {
-          // Frames that have transparent content may not render
-          // properly in the gifshot output. As a workaround, add a
-          // white background to individual frames before creating a
-          // GIF.
-          let ctx = sourceCanvas.getContext('2d');
-          ctx.globalCompositeOperation = 'destination-over';
-          ctx.fillStyle = '#FFF';
-          ctx.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
-          ctx.globalCompositeOperation = 'source-over';
+    this.gifFramesService
+      .getFrames({
+        url: imageDataURI,
+        frames: 'all',
+        outputType: 'canvas',
+      })
+      .then(async frameData => {
+        let frames: string[] = [];
+        for (let i = 0; i < frameData.length; i += 1) {
+          let sourceCanvas = frameData[i].getImage();
+          // Some GIFs may be optimised such that frames are stacked and
+          // only incremental changes are present in individual frames.
+          // For such GIFs, no additional operation needs to be done to
+          // handle transparent content. These GIFs have 0 or 1 Disposal
+          // method value.
+          // See https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+          if (frameData[i].frameInfo.disposal > 1) {
+            // Frames that have transparent content may not render
+            // properly in the gifshot output. As a workaround, add a
+            // white background to individual frames before creating a
+            // GIF.
+            let ctx = sourceCanvas.getContext('2d');
+            if (ctx === null) {
+              throw new Error('Could not get canvas context.');
+            }
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = '#FFF';
+            ctx.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+          }
+          let dataURL = sourceCanvas.toDataURL('image/png');
+          let updatedFrame = processFrameCallback
+            ? await processFrameCallback(dataURL)
+            : dataURL;
+          frames.push(updatedFrame);
         }
-        let dataURL = sourceCanvas.toDataURL('image/png');
-        let updatedFrame = (
-          processFrameCallback ?
-          await processFrameCallback(dataURL) : dataURL);
-        frames.push(updatedFrame);
-      }
-      gifshot.createGIF({
-        gifWidth: width,
-        gifHeight: height,
-        images: frames
-      }, successCallback);
-    });
+        gifshot.createGIF(
+          {
+            gifWidth: width,
+            gifHeight: height,
+            images: frames,
+          },
+          successCallback
+        );
+      });
   }
 
   saveImageToLocalStorage(
-      dimensions: Dimensions,
-      resampledFile: Blob,
-      imageType: string): void {
+    dimensions: Dimensions,
+    resampledFile: Blob,
+    imageType: string
+  ): void {
     const filename = this.imageUploadHelperService.generateImageFilename(
-      dimensions.height, dimensions.width, imageType);
+      dimensions.height,
+      dimensions.width,
+      imageType
+    );
     const reader = new FileReader();
     reader.onload = () => {
       const imageData = reader.result as string;
@@ -1064,22 +1289,23 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       this.imgData = imageData;
       this.imageLocalStorageService.saveImage(filename, imageData);
       this.setSavedImageFilename(filename, true);
-      const dimensions = (
-        this.imagePreloaderService.getDimensionsOfImage(filename));
+      const dimensions =
+        this.imagePreloaderService.getDimensionsOfImage(filename);
       this.imageContainerStyle = {
         height: dimensions.height + 'px',
-        width: dimensions.width + 'px'
+        width: dimensions.width + 'px',
       };
     };
     reader.readAsDataURL(resampledFile);
   }
 
   saveImage(
-      dimensions: Dimensions,
-      resampledFile: Blob,
-      imageType: string): void {
+    dimensions: Dimensions,
+    resampledFile: Blob,
+    imageType: string
+  ): void {
     if (
-      this.contextService.getImageSaveDestination() ===
+      this.pageContextService.getImageSaveDestination() ===
       AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
     ) {
       this.saveImageToLocalStorage(dimensions, resampledFile, imageType);
@@ -1089,59 +1315,62 @@ export class ImageEditorComponent implements OnInit, OnChanges {
   }
 
   postImageToServer(
-      dimensions: Dimensions,
-      resampledFile: Blob,
-      imageType: string = 'png'): void {
+    dimensions: Dimensions,
+    resampledFile: Blob,
+    imageType: string = 'png'
+  ): void {
     let form = new FormData();
     form.append('image', resampledFile);
-    form.append('payload', JSON.stringify({
-      filename: this.imageUploadHelperService.generateImageFilename(
-        dimensions.height, dimensions.width, imageType)
-    }));
-    const imageUploadUrlTemplate = (
-      '/createhandler/imageupload/<entity_type>/<entity_id>');
-    this.csrfTokenService.getTokenAsync().then((token) => {
-      form.append('csrf_token', token);
-      $.ajax({
-        url: this.urlInterpolationService.interpolateUrl(
-          imageUploadUrlTemplate, {
-            entity_type: this.entityType,
-            entity_id: this.entityId
-          }
+    form.append(
+      'payload',
+      JSON.stringify({
+        filename: this.imageUploadHelperService.generateImageFilename(
+          dimensions.height,
+          dimensions.width,
+          imageType
         ),
-        data: form,
-        processData: false,
-        contentType: false,
-        type: 'POST',
-        dataFilter: data => {
-          // Remove the XSSI prefix.
-          const transformedData = data.substring(5);
-          return JSON.parse(transformedData);
-        },
-        dataType: 'text'
-      }).done((data) => {
-        // Pre-load image before marking the image as saved.
-        const img = new Image();
-        img.onload = () => {
-          this.setSavedImageFilename(data.filename, true);
-          let dimensions = (
-            this.imagePreloaderService.getDimensionsOfImage(data.filename));
-          this.imageContainerStyle = {
-            height: dimensions.height + 'px',
-            width: dimensions.width + 'px'
+      })
+    );
+    const imageUploadUrlTemplate =
+      '/createhandler/imageupload/<entity_type>/<entity_id>';
+    this.http
+      .post<ImageUploadBackendResponse>(
+        this.urlInterpolationService.interpolateUrl(imageUploadUrlTemplate, {
+          entity_type: this.entityType,
+          entity_id: this.entityId,
+        }),
+        form
+      )
+      .toPromise()
+      .then(
+        data => {
+          if (data === undefined) {
+            this.alertsService.addWarning('Error communicating with server.');
+            return;
+          }
+          // Pre-load image before marking the image as saved.
+          const img = new Image();
+          img.onload = () => {
+            this.setSavedImageFilename(data.filename, true);
+            let dimensions = this.imagePreloaderService.getDimensionsOfImage(
+              data.filename
+            );
+            this.imageContainerStyle = {
+              height: dimensions.height + 'px',
+              width: dimensions.width + 'px',
+            };
           };
-        };
-        // Check point 2 in the note before imports and after fileoverview.
-        img.src = this.getTrustedResourceUrlForImageFileName(
-          data.filename) as string;
-      }).fail((data) => {
-        // Remove the XSSI prefix.
-        var transformedData = data.responseText.substring(5);
-        var parsedResponse = JSON.parse(transformedData);
-        this.alertsService.addWarning(
-          parsedResponse.error || 'Error communicating with server.');
-      });
-    });
+          // Check point 2 in the note before imports and after fileoverview.
+          img.src = this.getTrustedResourceUrlForImageFileName(
+            data.filename
+          ) as string;
+        },
+        (response: HttpErrorResponse) => {
+          this.alertsService.addWarning(
+            response.error || 'Error communicating with server.'
+          );
+        }
+      );
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -1149,13 +1378,8 @@ export class ImageEditorComponent implements OnInit, OnChanges {
       changes.value &&
       changes.value.currentValue !== changes.value.previousValue
     ) {
-      const newValue = changes.value.currentValue;
+      const newValue = changes.value.currentValue as string;
       this.resetComponent(newValue);
     }
   }
 }
-
-angular.module('oppia').directive(
-  'imageEditor', downgradeComponent({
-    component: ImageEditorComponent
-  }) as angular.IDirectiveFactory);

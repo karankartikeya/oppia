@@ -16,13 +16,12 @@
  * @fileoverview Component for the navbar breadcrumb of the collection editor.
  */
 
-import { Component } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { Collection } from 'domain/collection/collection.model';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
-import { CollectionEditorPageConstants } from '../collection-editor-page.constants';
-import { CollectionEditorRoutingService } from '../services/collection-editor-routing.service';
-import { CollectionEditorStateService } from '../services/collection-editor-state.service';
+import {Component} from '@angular/core';
+import {Collection} from 'domain/collection/collection.model';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {CollectionEditorPageConstants} from '../collection-editor-page.constants';
+import {CollectionEditorRoutingService} from '../services/collection-editor-routing.service';
+import {CollectionEditorStateService} from '../services/collection-editor-state.service';
 
 // TODO(bhenning): After the navbar is moved to a directive, this directive
 // should be updated to say 'Loading...' if the collection editor's controller
@@ -33,17 +32,22 @@ import { CollectionEditorStateService } from '../services/collection-editor-stat
 
 @Component({
   selector: 'collection-editor-navbar-breadcrumb',
-  templateUrl: './collection-editor-navbar-breadcrumb.component.html'
+  templateUrl: './collection-editor-navbar-breadcrumb.component.html',
+  styleUrls: ['./collection-editor-navbar-breadcrumb.component.css'],
 })
 export class CollectionEditorNavbarBreadcrumbComponent {
-  _TAB_NAMES_TO_HUMAN_READABLE_NAMES = {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  activeTabName!: string;
+  collection!: Collection;
+
+  _TAB_NAMES_TO_HUMAN_READABLE_NAMES: Record<string, string> = {
     edit: 'Edit',
     settings: 'Settings',
     stats: 'Statistics',
     history: 'History',
   };
-  activeTabName: string;
-  collection: Collection;
 
   constructor(
     private collectionEditorStateService: CollectionEditorStateService,
@@ -58,7 +62,8 @@ export class CollectionEditorNavbarBreadcrumbComponent {
   editCollectionTitle(): void {
     this.activeTabName = this._TAB_NAMES_TO_HUMAN_READABLE_NAMES.settings;
     this.focusManagerService.setFocus(
-      CollectionEditorPageConstants.COLLECTION_TITLE_INPUT_FOCUS_LABEL);
+      CollectionEditorPageConstants.COLLECTION_TITLE_INPUT_FOCUS_LABEL
+    );
   }
 
   ngOnInit(): void {
@@ -66,8 +71,3 @@ export class CollectionEditorNavbarBreadcrumbComponent {
     this.activeTabName = this.collectionEditorRoutingService.getActiveTabName();
   }
 }
-
-angular.module('oppia').directive('collectionEditorNavbarBreadcrumb',
-  downgradeComponent({
-    component: CollectionEditorNavbarBreadcrumbComponent
-  }));

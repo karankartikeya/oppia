@@ -16,27 +16,28 @@
 
 """Provides email services api to log emails in DEV_MODE."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import logging
-import textwrap
 
-from core import python_utils
+from core.domain import email_services
 
 from typing import Dict, List, Optional, Union
 
 
 def send_email_to_recipients(
-        sender_email: str,
-        recipient_emails: List[str],
-        subject: str,
-        plaintext_body: str,
-        html_body: str,
-        bcc: Optional[List[str]] = None,
-        reply_to: Optional[str] = None,
-        recipient_variables: Optional[
-            Dict[str, Dict[str, Union[str, float]]]] = None
+    sender_email: str,
+    recipient_emails: List[str],
+    subject: str,
+    plaintext_body: str,
+    html_body: str,
+    cc: Optional[List[str]] = None,
+    bcc: Optional[List[str]] = None,
+    reply_to: Optional[str] = None,
+    recipient_variables: Optional[
+        Dict[str, Dict[str, Union[str, float]]]
+    ] = None,
+    attachments: Optional[List[Dict[str, str]]] = None,
 ) -> bool:
     """Prints information about sent emails to the terminal console, in order
     to model sending an email in development mode.
@@ -52,6 +53,8 @@ def send_email_to_recipients(
             be utf-8.
         html_body: str. The HTML body of the email. Must fit in a datastore
             entity. Format must be utf-8.
+        cc: list(str)|None. Optional argument. List of cc emails. Format must
+            be utf-8.
         bcc: list(str)|None. Optional argument. List of bcc emails. Format must
             be utf-8.
         reply_to: str|None. Optional argument. Reply address formatted like
@@ -69,59 +72,32 @@ def send_email_to_recipients(
             More info about this format at:
             https://documentation.mailgun.com/en/
                 latest/user_manual.html#batch-sending
+        attachments: list(dict)|None. Optional argument. A list of
+            dictionaries, where each dictionary includes the keys `filename`
+            and `path` with their corresponding values.
 
     Returns:
         bool. Whether the emails are "sent" successfully.
     """
-    # Show the first 3 emails in the recipient list.
-    recipient_email_list_str = ' '.join(
-        ['%s' %
-         (recipient_email,) for recipient_email in recipient_emails[:3]])
-    if len(recipient_emails) > 3:
-        recipient_email_list_str += (
-            '... Total: %s emails.' % (
-                python_utils.UNICODE(len(recipient_emails))))
-
-    # Show the first 3 emails in bcc email list.
-    if bcc:
-        bcc_email_list_str = ' '.join(
-            ['%s' %
-             (bcc_email,) for bcc_email in bcc[:3]])
-        if len(bcc) > 3:
-            bcc_email_list_str += (
-                '... Total: %s emails.' % python_utils.UNICODE(len(bcc)))
-
-    msg = (
-        """
-        EmailService.SendMail
-        From: %s
-        To: %s
-        Subject: %s
-        Body:
-            Content-type: text/plain
-            Data length: %d
-        Body:
-            Content-type: text/html
-            Data length: %d
-        """ % (
-            sender_email, recipient_email_list_str, subject,
-            len(plaintext_body), len(html_body)))
-    optional_msg_description = (
-        """
-        Bcc: %s
-        Reply_to: %s
-        Recipient Variables:
-            Length: %d
-        """ % (
-            bcc_email_list_str if bcc else 'None',
-            reply_to if reply_to else 'None',
-            len(recipient_variables) if recipient_variables else 0))
     logging.info(
-        textwrap.dedent(msg) + textwrap.dedent(optional_msg_description))
+        email_services.convert_email_to_loggable_string(
+            sender_email,
+            recipient_emails,
+            subject,
+            plaintext_body,
+            html_body,
+            cc,
+            bcc,
+            reply_to,
+            recipient_variables,
+            attachments,
+        )
+    )
     logging.info(
-        'You are not currently sending out real emails since this is a' +
-        ' dev environment. Emails are sent out in the production' +
-        ' environment.')
+        'You are not currently sending out real emails since this is a'
+        ' dev environment. Emails are sent out in the production'
+        ' environment.'
+    )
     # Returns True signifying that the "send_email_to_recipients" action was
     # successful.
     return True

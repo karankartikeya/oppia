@@ -16,15 +16,18 @@
  * @fileoverview Unit tests for KeyboardShortcutHelpModalComponent.
  */
 
-import { ComponentFixture, fakeAsync, TestBed, async } from
-  '@angular/core/testing';
-import { By } from '@angular/platform-browser';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { UrlService } from 'services/contextual/url.service';
-import { ContextService } from 'services/context.service';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  waitForAsync,
+} from '@angular/core/testing';
+import {By} from '@angular/platform-browser';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {UrlService} from 'services/contextual/url.service';
+import {PageContextService} from 'services/page-context.service';
 
-import { KeyboardShortcutHelpModalComponent } from
-  './keyboard-shortcut-help-modal.component';
+import {KeyboardShortcutHelpModalComponent} from './keyboard-shortcut-help-modal.component';
 
 class MockActiveModal {
   dismiss(): void {
@@ -37,37 +40,40 @@ describe('KeyboardShortcutHelpModalComponent', () => {
   let fixture: ComponentFixture<KeyboardShortcutHelpModalComponent>;
   let ngbActiveModal: NgbActiveModal;
   let urlService: UrlService;
-  let contextService: ContextService;
-  beforeEach(async(() => {
+  let pageContextService: PageContextService;
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [KeyboardShortcutHelpModalComponent],
       providers: [
         {
           provide: NgbActiveModal,
-          useClass: MockActiveModal
+          useClass: MockActiveModal,
         },
-      ]
+      ],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(KeyboardShortcutHelpModalComponent);
     component = fixture.componentInstance;
-    ngbActiveModal = TestBed.get(NgbActiveModal);
-    urlService = TestBed.get(UrlService);
-    contextService = TestBed.get(ContextService);
+    ngbActiveModal = TestBed.inject(NgbActiveModal);
+    urlService = TestBed.inject(UrlService);
+    pageContextService = TestBed.inject(PageContextService);
   });
 
   it('should load the library page shortcut descriptions', () => {
-    const mockLibraryPage = spyOn(
-      urlService, 'getPathname').and.returnValue('/community-library');
+    const mockLibraryPage = spyOn(urlService, 'getPathname').and.returnValue(
+      '/community-library'
+    );
     component.ngOnInit();
     expect(mockLibraryPage).toHaveBeenCalled();
   });
 
   it('should load the exploration player shortcut descriptions', () => {
     const mockExplorationPlayerPage = spyOn(
-      contextService, 'isInExplorationPlayerPage').and.returnValue(true);
+      pageContextService,
+      'isInExplorationPlayerPage'
+    ).and.returnValue(true);
     component.ngOnInit();
     expect(mockExplorationPlayerPage).toHaveBeenCalled();
   });
@@ -75,7 +81,8 @@ describe('KeyboardShortcutHelpModalComponent', () => {
   it('should dismiss the modal when clicked on cancel', fakeAsync(() => {
     const dismissSpy = spyOn(ngbActiveModal, 'dismiss').and.callThrough();
     const closeButtonDE = fixture.debugElement.query(
-      By.css('.modal-footer .btn.btn-secondary'));
+      By.css('.modal-footer .btn.btn-secondary')
+    );
 
     closeButtonDE.nativeElement.click();
 

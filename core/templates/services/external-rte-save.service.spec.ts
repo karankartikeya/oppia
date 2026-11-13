@@ -14,24 +14,24 @@
 
 /**
  * @fileoverview Unit tests for ExternalRteSaveService
-*/
+ */
 
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import {EventEmitter} from '@angular/core';
+import {TestBed} from '@angular/core/testing';
 
-import { ExternalRteSaveService } from
-  'services/external-rte-save.service';
+import {ExternalRteSaveService} from 'services/external-rte-save.service';
 
 describe('External Rte Save Service', () => {
   let externalRteSaveService: ExternalRteSaveService;
 
   beforeEach(() => {
-    externalRteSaveService = TestBed.get(ExternalRteSaveService);
+    externalRteSaveService = TestBed.inject(ExternalRteSaveService);
   });
 
   it('should fetch externalRteSave event emitter', () => {
     let sampleExternalRteSaveEventEmitter = new EventEmitter();
     expect(externalRteSaveService.onExternalRteSave).toEqual(
-      sampleExternalRteSaveEventEmitter);
+      sampleExternalRteSaveEventEmitter
+    );
   });
 });

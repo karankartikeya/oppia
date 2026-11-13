@@ -16,64 +16,79 @@
  * @fileoverview Uni tests for code string editor.
  */
 
-import { async, ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { CodeStringEditorComponent } from './code-string-editor.component';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {CodeStringEditorComponent} from './code-string-editor.component';
 
 describe('CodeStringEditorComponent', () => {
   let component: CodeStringEditorComponent;
   let fixture: ComponentFixture<CodeStringEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [CodeStringEditorComponent]
+      declarations: [CodeStringEditorComponent],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(CodeStringEditorComponent);
     component = fixture.componentInstance;
+  });
 
-    component.value = 'test';
+  it('should initialise then value', () => {
+    component.ngOnInit();
+
+    expect(component.value).toEqual('');
   });
 
   it('should initialise when user adds response', () => {
+    component.value = 'test';
     component.ngOnInit();
 
+    expect(component.value).toEqual('test');
     expect(component.warningText).toBe('');
   });
 
-  it('should update value when user types in the text input box',
-    fakeAsync(() => {
-      spyOn(component.valueChanged, 'emit');
-      component.ngOnInit();
+  it('should update value when user types in the text input box', fakeAsync(() => {
+    spyOn(component.valueChanged, 'emit');
+    component.value = 'test';
+    component.ngOnInit();
 
-      component.onEdit({
-        target: {
-          value: 'print(\'Hello\');'
-        }
-      });
-      tick(60);
+    const textarea = document.createElement('textarea');
+    textarea.value = "print('Hello');";
+    const event = new Event('input');
+    Object.defineProperty(event, 'target', {value: textarea});
 
-      expect(component.warningText).toBe('');
-      expect(component.value).toBe('print(\'Hello\');');
-      expect(component.valueChanged.emit)
-        .toHaveBeenCalledWith('print(\'Hello\');');
-    }));
+    component.onEdit(event);
+    tick(60);
+
+    expect(component.warningText).toBe('');
+    expect(component.value).toBe("print('Hello');");
+    expect(component.valueChanged.emit).toHaveBeenCalledWith("print('Hello');");
+  }));
 
   it('should warn user when user inserts a tab character', fakeAsync(() => {
     spyOn(component.valueChanged, 'emit');
+    component.value = 'test';
     component.ngOnInit();
 
-    component.onEdit({
-      target: {
-        value: '\tprint(\'Hello\');'
-      }
-    });
+    const textarea = document.createElement('textarea');
+    textarea.value = "\tprint('Hello');";
+    const event = new Event('input');
+    Object.defineProperty(event, 'target', {value: textarea});
+
+    component.onEdit(event);
     tick(60);
 
     expect(component.warningText).toBe('Code may not contain tab characters.');
-    expect(component.value).toBe('\tprint(\'Hello\');');
-    expect(component.valueChanged.emit)
-      .toHaveBeenCalledWith('\tprint(\'Hello\');');
+    expect(component.value).toBe("\tprint('Hello');");
+    expect(component.valueChanged.emit).toHaveBeenCalledWith(
+      "\tprint('Hello');"
+    );
   }));
 });

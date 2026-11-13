@@ -16,24 +16,28 @@
  * @fileoverview Component for creating a new collection node.
  */
 
-import { Component } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ExplorationCreationBackendApiService } from 'components/entity-creation-services/exploration-creation-backend-api.service';
-import { Collection } from 'domain/collection/collection.model';
-import { ExplorationSummaryBackendApiService } from 'domain/summary/exploration-summary-backend-api.service';
-import { NormalizeWhitespacePipe } from 'filters/string-utility-filters/normalize-whitespace.pipe';
-import { AlertsService } from 'services/alerts.service';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
-import { ValidatorsService } from 'services/validators.service';
-import { CollectionEditorStateService } from '../services/collection-editor-state.service';
-import { CollectionLinearizerService } from '../services/collection-linearizer.service';
+import {Component} from '@angular/core';
+import {ExplorationCreationBackendApiService} from 'components/entity-creation-services/exploration-creation-backend-api.service';
+import {Collection} from 'domain/collection/collection.model';
+import {ExplorationSummaryBackendApiService} from 'domain/summary/exploration-summary-backend-api.service';
+import {LearnerExplorationSummaryBackendDict} from 'domain/summary/learner-exploration-summary.model';
+import {NormalizeWhitespacePipe} from 'filters/string-utility-filters/normalize-whitespace.pipe';
+import {AlertsService} from 'services/alerts.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {ValidatorsService} from 'services/validators.service';
+import {CollectionEditorStateService} from '../services/collection-editor-state.service';
+import {CollectionLinearizerService} from '../services/collection-linearizer.service';
 
 @Component({
   selector: 'oppia-collection-node-creator',
-  templateUrl: './collection-node-creator.component.html'
+  templateUrl: './collection-node-creator.component.html',
+  styleUrls: ['./collection-node-creator.component.css'],
 })
 export class CollectionNodeCreatorComponent {
-  collection: Collection;
+  // This property is initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  collection!: Collection;
   newExplorationId: string = '';
   newExplorationTitle: string = '';
   searchQueryHasError: boolean = false;
@@ -42,10 +46,8 @@ export class CollectionNodeCreatorComponent {
     private alertsService: AlertsService,
     private collectionEditorStateService: CollectionEditorStateService,
     private collectionLinearizerService: CollectionLinearizerService,
-    private explorationCreationBackendApiService:
-    ExplorationCreationBackendApiService,
-    private explorationSummaryBackendApiService:
-    ExplorationSummaryBackendApiService,
+    private explorationCreationBackendApiService: ExplorationCreationBackendApiService,
+    private explorationSummaryBackendApiService: ExplorationSummaryBackendApiService,
     private siteAnalyticsService: SiteAnalyticsService,
     private validatorsService: ValidatorsService,
     private normalizeWhitespacePipe: NormalizeWhitespacePipe
@@ -62,57 +64,76 @@ export class CollectionNodeCreatorComponent {
     }
     if (this.collection.containsCollectionNode(newExplorationId)) {
       this.alertsService.addWarning(
-        'There is already an exploration in this collection ' +
-        'with that id.');
+        'There is already an exploration in this collection ' + 'with that id.'
+      );
       return;
     }
 
     this.explorationSummaryBackendApiService
       .loadPublicAndPrivateExplorationSummariesAsync([newExplorationId])
-      .then((responseObject) => {
-        let summaries = responseObject.summaries;
-        let summaryBackendObject = null;
-        if (summaries.length !== 0 &&
-            summaries[0].id === newExplorationId) {
-          summaryBackendObject = summaries[0];
-        }
+      .then(
+        responseObject => {
+          let summaries = responseObject.summaries;
+          let summaryBackendObject: LearnerExplorationSummaryBackendDict | null =
+            null;
+          if (summaries.length !== 0 && summaries[0].id === newExplorationId) {
+            // Convert ExplorationSummaryDict to LearnerExplorationSummaryBackendDict
+            // by adding the missing required properties.
+            summaryBackendObject = {
+              ...summaries[0],
+              activity_type: 'exploration',
+              last_updated_msec: Date.now(),
+              ratings: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+              created_on_msec: Date.now(),
+            };
+          }
 
-        if (summaryBackendObject) {
-          this.collectionLinearizerService.appendCollectionNode(
-            this.collection, newExplorationId, summaryBackendObject);
-        } else {
+          if (summaryBackendObject) {
+            this.collectionLinearizerService.appendCollectionNode(
+              this.collection,
+              newExplorationId,
+              summaryBackendObject
+            );
+          } else {
+            this.alertsService.addWarning(
+              'That exploration does not exist or you do not have edit ' +
+                'access to it.'
+            );
+          }
+        },
+        () => {
           this.alertsService.addWarning(
-            'That exploration does not exist or you do not have edit ' +
-            'access to it.');
+            'There was an error while adding an exploration to the ' +
+              'collection.'
+          );
         }
-      }, () => {
-        this.alertsService.addWarning(
-          'There was an error while adding an exploration to the ' +
-          'collection.');
-      });
+      );
   }
 
   // Creates a new exploration, then adds it to the collection.
   createNewExploration(): void {
-    let title = (
-      this.normalizeWhitespacePipe.transform(this.newExplorationTitle));
+    let title = this.normalizeWhitespacePipe.transform(
+      this.newExplorationTitle
+    );
 
     if (!this.validatorsService.isValidExplorationTitle(title, true)) {
       return;
     }
 
     // Create a new exploration with the given title.
-    this.explorationCreationBackendApiService.registerNewExplorationAsync({
-      title: title
-    }).then((response) => {
-      this.newExplorationTitle = '';
-      let newExplorationId = response.explorationId;
+    this.explorationCreationBackendApiService
+      .registerNewExplorationAsync({
+        title: title,
+      })
+      .then(response => {
+        this.newExplorationTitle = '';
+        let newExplorationId = response.explorationId;
 
-      this.siteAnalyticsService
-        .registerCreateNewExplorationInCollectionEvent(
-          newExplorationId);
-      this.addExplorationToCollection(newExplorationId);
-    });
+        this.siteAnalyticsService.registerCreateNewExplorationInCollectionEvent(
+          newExplorationId
+        );
+        this.addExplorationToCollection(newExplorationId);
+      });
   }
 
   // Checks whether the user has left a '#' at the end of their ID
@@ -120,19 +141,13 @@ export class CollectionNodeCreatorComponent {
   // editor page.
   isIdMalformed(typedExplorationId: string): boolean {
     return (
-      typedExplorationId &&
-      typedExplorationId.lastIndexOf('#') ===
-      typedExplorationId.length - 1);
+      Boolean(typedExplorationId) &&
+      typedExplorationId.lastIndexOf('#') === typedExplorationId.length - 1
+    );
   }
-
 
   addExploration(): void {
     this.addExplorationToCollection(this.newExplorationId);
     this.newExplorationId = '';
   }
 }
-
-angular.module('oppia').directive('oppiaCollectionNodeCreator',
-  downgradeComponent({
-    component: CollectionNodeCreatorComponent
-  }) as angular.IDirectiveFactory);

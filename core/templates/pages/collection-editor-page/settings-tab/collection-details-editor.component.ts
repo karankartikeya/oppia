@@ -18,33 +18,40 @@
  * adding a new exploration.
  */
 
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { AppConstants } from 'app.constants';
-import { CollectionUpdateService } from 'domain/collection/collection-update.service';
-import { CollectionValidationService } from 'domain/collection/collection-validation.service';
-import { Collection } from 'domain/collection/collection.model';
-import { Subscription } from 'rxjs';
-import { AlertsService } from 'services/alerts.service';
-import { CollectionEditorPageConstants } from '../collection-editor-page.constants';
-import { CollectionEditorStateService } from '../services/collection-editor-state.service';
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {AppConstants} from 'app.constants';
+import {CollectionUpdateService} from 'domain/collection/collection-update.service';
+import {CollectionValidationService} from 'domain/collection/collection-validation.service';
+import {Collection} from 'domain/collection/collection.model';
+import {Subscription} from 'rxjs';
+import {AlertsService} from 'services/alerts.service';
+import {CollectionEditorPageConstants} from '../collection-editor-page.constants';
+import {CollectionEditorStateService} from '../services/collection-editor-state.service';
 
 @Component({
   selector: 'collection-details-editor',
-  templateUrl: './collection-details-editor.component.html'
+  templateUrl: './collection-details-editor.component.html',
+  styleUrls: ['./collection-details-editor.component.css'],
 })
 export class CollectionDetailsEditorComponent implements OnInit, OnDestroy {
   directiveSubscriptions = new Subscription();
-  collection: Collection;
-  COLLECTION_TITLE_INPUT_FOCUS_LABEL = (
-    CollectionEditorPageConstants.COLLECTION_TITLE_INPUT_FOCUS_LABEL);
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  collection!: Collection;
+  // The following properties are used to display the collection settings.
+  // These are null until collection data is entered by the user.
+  displayedCollectionTitle!: string | null;
+  displayedCollectionObjective!: string | null;
+  displayedCollectionCategory!: string | null;
+  displayedCollectionLanguage!: string | null;
+  COLLECTION_TITLE_INPUT_FOCUS_LABEL =
+    CollectionEditorPageConstants.COLLECTION_TITLE_INPUT_FOCUS_LABEL;
+
   CATEGORY_LIST: string[] = [...AppConstants.ALL_CATEGORIES];
   languageListForSelect = AppConstants.SUPPORTED_CONTENT_LANGUAGES;
   TAG_REGEX = AppConstants.TAG_REGEX;
-  displayedCollectionTitle: string;
-  displayedCollectionObjective: string;
-  displayedCollectionCategory: string;
-  displayedCollectionLanguage: string;
-  displayedCollectionTags: string[] = [];
+  displayedCollectionTags: string[] | null = [];
 
   constructor(
     private alertsService: AlertsService,
@@ -55,9 +62,10 @@ export class CollectionDetailsEditorComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.directiveSubscriptions.add(
-      this.collectionEditorStateService.onCollectionInitialized.subscribe(
-        () => this.refreshSettingsTab()
-      ));
+      this.collectionEditorStateService.onCollectionInitialized.subscribe(() =>
+        this.refreshSettingsTab()
+      )
+    );
     this.collection = this.collectionEditorStateService.getCollection();
   }
 
@@ -68,14 +76,15 @@ export class CollectionDetailsEditorComponent implements OnInit, OnDestroy {
     this.displayedCollectionLanguage = this.collection.getLanguageCode();
     this.displayedCollectionTags = this.collection.getTags();
 
-    let categoryIsInList = this.CATEGORY_LIST.some((categoryItem) => {
+    let categoryIsInList = this.CATEGORY_LIST.some(categoryItem => {
       return categoryItem === this.collection.getCategory();
     });
 
     // If the current category is not in the dropdown, add it
     // as the first option.
-    if (!categoryIsInList && this.collection.getCategory()) {
-      this.CATEGORY_LIST.unshift(this.collection.getCategory());
+    let category = this.collection.getCategory();
+    if (!categoryIsInList && category) {
+      this.CATEGORY_LIST.unshift(category);
     }
   }
 
@@ -84,7 +93,10 @@ export class CollectionDetailsEditorComponent implements OnInit, OnDestroy {
   }
 
   // Normalize the tags for the collection.
-  normalizeTags(tags: string[]): string[] {
+  normalizeTags(tags: string[] | null): string[] {
+    if (tags === null) {
+      return [];
+    }
     for (let i = 0; i < tags.length; i++) {
       tags[i] = tags[i].trim().replace(/\s+/g, ' ');
     }
@@ -93,22 +105,30 @@ export class CollectionDetailsEditorComponent implements OnInit, OnDestroy {
 
   updateCollectionTitle(): void {
     this.collectionUpdateService.setCollectionTitle(
-      this.collection, this.displayedCollectionTitle);
+      this.collection,
+      this.displayedCollectionTitle
+    );
   }
 
   updateCollectionObjective(): void {
     this.collectionUpdateService.setCollectionObjective(
-      this.collection, this.displayedCollectionObjective);
+      this.collection,
+      this.displayedCollectionObjective
+    );
   }
 
   updateCollectionCategory(): void {
     this.collectionUpdateService.setCollectionCategory(
-      this.collection, this.displayedCollectionCategory);
+      this.collection,
+      this.displayedCollectionCategory
+    );
   }
 
   updateCollectionLanguageCode(): void {
     this.collectionUpdateService.setCollectionLanguageCode(
-      this.collection, this.displayedCollectionLanguage);
+      this.collection,
+      this.displayedCollectionLanguage
+    );
   }
 
   updateCollectionTags(): void {
@@ -116,15 +136,19 @@ export class CollectionDetailsEditorComponent implements OnInit, OnDestroy {
       this.displayedCollectionTags
     );
 
-    if (!this.collectionValidationService.isTagValid(
-      this.displayedCollectionTags)) {
+    if (
+      !this.collectionValidationService.isTagValid(this.displayedCollectionTags)
+    ) {
       this.alertsService.addWarning(
         'Please ensure that there are no duplicate tags and that all ' +
-                'tags contain only lower case and spaces.');
+          'tags contain only lower case and spaces.'
+      );
       return;
     }
     this.collectionUpdateService.setCollectionTags(
-      this.collection, this.displayedCollectionTags);
+      this.collection,
+      this.displayedCollectionTags
+    );
   }
 
   ngOnDestroy(): void {

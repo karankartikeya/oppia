@@ -13,124 +13,199 @@
 // limitations under the License.
 
 /**
- * @fileoverview Directive for the ItemSelectionInput interaction.
+ * @fileoverview Component for the ItemSelectionInput interaction.
  *
  * IMPORTANT NOTE: The naming convention for customization args that are passed
  * into the directive is: the name of the parameter, followed by 'With',
  * followed by the name of the arg.
  */
 
-require('domain/utilities/browser-checker.service.ts');
-require(
-  'interactions/interaction-attributes-extractor.service.ts');
-require(
-  'interactions/ItemSelectionInput/directives/' +
-  'item-selection-input-rules.service.ts');
-require(
-  'pages/exploration-player-page/services/current-interaction.service.ts');
+import {Component, HostListener, Input, OnInit} from '@angular/core';
+import {ItemSelectionInputCustomizationArgs} from 'interactions/customization-args-defs';
+import {BrowserCheckerService} from 'domain/utilities/browser-checker.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {ItemSelectionInputRulesService} from 'interactions/ItemSelectionInput/directives/item-selection-input-rules.service';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {PlayerPositionService} from 'pages/exploration-player-page/services/player-position.service';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {RecordedVoiceovers} from 'domain/exploration/recorded-voiceovers.model';
 
-angular.module('oppia').component('oppiaInteractiveItemSelectionInput', {
-  template: require('./item-selection-input-interaction.component.html'),
-  controllerAs: '$ctrl',
-  controller: [
-    '$attrs', 'BrowserCheckerService',
-    'CurrentInteractionService',
-    'InteractionAttributesExtractorService',
-    'ItemSelectionInputRulesService',
-    function(
-        $attrs, BrowserCheckerService,
-        CurrentInteractionService,
-        InteractionAttributesExtractorService,
-        ItemSelectionInputRulesService) {
-      var ctrl = this;
-      ctrl.onToggleCheckbox = function() {
-        ctrl.newQuestion = false;
-        ctrl.selectionCount = Object.keys(ctrl.userSelections).filter(
-          function(obj) {
-            return ctrl.userSelections[obj];
-          }
-        ).length;
-        ctrl.preventAdditionalSelections = (
-          ctrl.selectionCount >= ctrl.maxAllowableSelectionCount);
-        ctrl.notEnoughSelections = (
-          ctrl.selectionCount < ctrl.minAllowableSelectionCount);
-      };
+@Component({
+  selector: 'oppia-interactive-item-selection-input',
+  templateUrl: './item-selection-input-interaction.component.html',
+  styleUrls: ['../static/item_selection_input.css'],
+})
+export class InteractiveItemSelectionInputComponent implements OnInit {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() choicesWithValue!: string;
+  @Input() maxAllowableSelectionCountWithValue!: string;
+  @Input() minAllowableSelectionCountWithValue!: string;
+  @Input() lastAnswer!: string[] | null;
+  choices!: string[];
+  choicesValue!: SubtitledHtml[];
+  maxAllowableSelectionCount!: number;
+  minAllowableSelectionCount!: number;
+  selectionCount!: number;
+  userSelections!: Record<string, boolean>;
+  displayedCard!: StateCard;
+  recordedVoiceovers!: RecordedVoiceovers;
+  COMPONENT_NAME_RULE_INPUT!: string;
+  displayCheckboxes: boolean = false;
+  newQuestion: boolean = false;
+  notEnoughSelections: boolean = false;
+  preventAdditionalSelections: boolean = false;
+  exactSelections: boolean = false;
 
-      ctrl.submitMultipleChoiceAnswer = function(event, index) {
-        // Deselect previously selected option.
-        var selectedElement = (
-          document.querySelector(
-            'button.multiple-choice-option.selected'));
-        if (selectedElement) {
-          selectedElement.classList.remove('selected');
+  constructor(
+    private browserCheckerService: BrowserCheckerService,
+    private currentInteractionService: CurrentInteractionService,
+    private interactionAttributesExtractorService: InteractionAttributesExtractorService,
+    private itemSelectionInputRulesService: ItemSelectionInputRulesService,
+    private playerPositionService: PlayerPositionService,
+    private playerTranscriptService: PlayerTranscriptService
+  ) {}
+
+  ngOnInit(): void {
+    const {choices, maxAllowableSelectionCount, minAllowableSelectionCount} =
+      this.interactionAttributesExtractorService.getValuesFromAttributes(
+        'ItemSelectionInput',
+        {
+          choicesWithValue: this.choicesWithValue,
+          maxAllowableSelectionCountWithValue:
+            this.maxAllowableSelectionCountWithValue,
+          minAllowableSelectionCountWithValue:
+            this.minAllowableSelectionCountWithValue,
         }
-        // Selected current option.
-        event.currentTarget.classList.add('selected');
-        ctrl.userSelections = {};
-        ctrl.userSelections[ctrl.choices[index]] = true;
-        ctrl.notEnoughSelections = false;
-        if (!BrowserCheckerService.isMobileDevice()) {
-          ctrl.submitAnswer(ctrl.userSelections);
-        }
-      };
+      ) as ItemSelectionInputCustomizationArgs;
 
-      ctrl.submitAnswer = function() {
-        const getContentIdOfHtml = (html) => {
-          const {
-            choices
-          } = InteractionAttributesExtractorService.getValuesFromAttributes(
-            'ItemSelectionInput',
-            $attrs
-          );
+    this.choicesValue = choices.value;
+    this.choices = this.choicesValue.map(choice => choice.html);
+    this.maxAllowableSelectionCount = maxAllowableSelectionCount.value;
+    this.minAllowableSelectionCount = minAllowableSelectionCount.value;
 
-          return choices[ctrl.choices.indexOf(html)].contentId;
-        };
+    // The following is an associative array where the key is a choice
+    // (html) and the value is a boolean value indicating whether the
+    // choice was selected by the user (default is false).
+    this.userSelections = {};
 
-        const htmlAnswers = Object.keys(ctrl.userSelections).filter(
-          (obj) => ctrl.userSelections[obj]);
-        const answers = htmlAnswers.map(getContentIdOfHtml);
-
-        CurrentInteractionService.onSubmit(
-          answers, ItemSelectionInputRulesService);
-      };
-
-      var validityCheckFn = function() {
-        return !ctrl.notEnoughSelections;
-      };
-      ctrl.$onInit = function() {
-        const {
-          choices,
-          maxAllowableSelectionCount,
-          minAllowableSelectionCount
-        } = InteractionAttributesExtractorService.getValuesFromAttributes(
-          'ItemSelectionInput',
-          $attrs
-        );
-        ctrl.choices = choices.map(choice => choice.html);
-        ctrl.maxAllowableSelectionCount = maxAllowableSelectionCount;
-        ctrl.minAllowableSelectionCount = minAllowableSelectionCount;
-
-        // The following is an associative array where the key is a choice
-        // (html) and the value is a boolean value indicating whether the
-        // choice was selected by the user (default is false).
-        ctrl.userSelections = {};
-
-        for (var i = 0; i < ctrl.choices.length; i++) {
-          ctrl.userSelections[ctrl.choices[i]] = false;
-        }
-
-        ctrl.displayCheckboxes = (ctrl.maxAllowableSelectionCount > 1);
-
-        // The following indicates that the number of answers is more than
-        // maxAllowableSelectionCount.
-        ctrl.preventAdditionalSelections = false;
-
-        // The following indicates that the number of answers is less than
-        // minAllowableSelectionCount.
-        ctrl.notEnoughSelections = (ctrl.minAllowableSelectionCount > 0);
-        CurrentInteractionService.registerCurrentInteraction(
-          ctrl.submitAnswer, validityCheckFn);
-      };
+    for (let i = 0; i < this.choices.length; i++) {
+      this.userSelections[this.choices[i]] = false;
     }
-  ]
-});
+    if (this.lastAnswer !== null && this.lastAnswer !== undefined) {
+      for (const selectedContentId of this.lastAnswer) {
+        const selectedChoice = this.choicesValue.find(
+          choice => choice.contentId === selectedContentId
+        );
+        if (selectedChoice !== undefined) {
+          this.userSelections[selectedChoice.html] = true;
+        }
+      }
+    }
+
+    this.displayCheckboxes = this.maxAllowableSelectionCount > 1;
+    this.selectionCount = Object.keys(this.userSelections).filter(
+      obj => this.userSelections[obj]
+    ).length;
+
+    // The following indicates that the number of answers is more than
+    // maxAllowableSelectionCount.
+    this.preventAdditionalSelections = false;
+
+    // The following indicates that the number of answers is less than
+    // minAllowableSelectionCount.
+    this.notEnoughSelections =
+      (this.minAllowableSelectionCount > 0 &&
+        this.minAllowableSelectionCount < this.maxAllowableSelectionCount) ||
+      (this.minAllowableSelectionCount === 1 &&
+        this.maxAllowableSelectionCount === 1);
+
+    this.exactSelections =
+      this.minAllowableSelectionCount === this.maxAllowableSelectionCount;
+    this.currentInteractionService.registerCurrentInteraction(
+      this.submitAnswer.bind(this),
+      this.validityCheckFn.bind(this)
+    );
+  }
+
+  getContentId(): string {
+    let contentId = this.choicesValue[0]._contentId;
+    if (contentId === null) {
+      throw new Error('Content id is null');
+    } else {
+      return contentId;
+    }
+  }
+
+  getAnswers(): string[] {
+    const htmlAnswers = Object.keys(this.userSelections).filter(
+      obj => this.userSelections[obj]
+    );
+    return htmlAnswers.map(
+      html => this.choicesValue[this.choices.indexOf(html)].contentId as string
+    );
+  }
+
+  onToggleCheckbox(): void {
+    this.newQuestion = false;
+    this.selectionCount = Object.keys(this.userSelections).filter(
+      obj => this.userSelections[obj]
+    ).length;
+    if (this.minAllowableSelectionCount === this.maxAllowableSelectionCount) {
+      if (this.selectionCount < this.maxAllowableSelectionCount) {
+        this.exactSelections = true;
+        this.preventAdditionalSelections =
+          this.selectionCount >= this.maxAllowableSelectionCount;
+      } else {
+        this.exactSelections = false;
+        this.preventAdditionalSelections = true;
+      }
+    } else {
+      this.preventAdditionalSelections =
+        this.selectionCount >= this.maxAllowableSelectionCount;
+      this.notEnoughSelections =
+        this.selectionCount < this.minAllowableSelectionCount &&
+        this.minAllowableSelectionCount !== this.maxAllowableSelectionCount;
+      this.exactSelections = false;
+    }
+    this.currentInteractionService.updateCurrentAnswer(this.getAnswers());
+  }
+
+  submitMultipleChoiceAnswer(event: MouseEvent, index: number): void {
+    event.preventDefault();
+    // Deselect previously selected option.
+    var selectedElement = document.querySelector(
+      'button.multiple-choice-option.selected'
+    );
+    if (selectedElement) {
+      selectedElement.classList.remove('selected');
+    }
+    // Selected current option.
+    (event.currentTarget as HTMLDivElement).classList.add('selected');
+    this.userSelections = {};
+    this.userSelections[this.choices[index]] = true;
+    this.notEnoughSelections = false;
+    this.currentInteractionService.updateCurrentAnswer(this.getAnswers());
+  }
+
+  @HostListener('document:keydown.enter', ['$event'])
+  handleEnterKey(event: KeyboardEvent): void {
+    event.preventDefault();
+    this.submitAnswer();
+  }
+
+  submitAnswer(): void {
+    const answers = this.getAnswers();
+    this.currentInteractionService.onSubmit(
+      answers,
+      this.itemSelectionInputRulesService as ItemSelectionInputRulesService
+    );
+  }
+
+  validityCheckFn(): boolean {
+    return !this.notEnoughSelections;
+  }
+}

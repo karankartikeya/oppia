@@ -16,42 +16,47 @@
  * @fileoverview Component for starting a new Apache Beam job.
  */
 
-import { Component, Inject } from '@angular/core';
-import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { catchError, take } from 'rxjs/operators';
+import {Component, Inject} from '@angular/core';
+import {MatDialogRef, MAT_DIALOG_DATA} from '@angular/material/dialog';
+import {catchError, take} from 'rxjs/operators';
 
-import { BeamJob } from 'domain/jobs/beam-job.model';
-import { BeamJobRun } from 'domain/jobs/beam-job-run.model';
-import { ReleaseCoordinatorBackendApiService } from 'pages/release-coordinator-page/services/release-coordinator-backend-api.service';
-import { AlertsService } from 'services/alerts.service';
-import { of } from 'rxjs';
-import { AppConstants } from 'app.constants';
+import {BeamJob} from 'domain/jobs/beam-job.model';
+import {BeamJobRun} from 'domain/jobs/beam-job-run.model';
+import {ReleaseCoordinatorBackendApiService} from 'pages/release-coordinator-page/services/release-coordinator-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
+import {of} from 'rxjs';
+import {AppConstants} from 'app.constants';
 
 @Component({
   selector: 'start-new-beam-job-dialog',
   templateUrl: './start-new-beam-job-dialog.component.html',
+  styleUrls: ['./start-new-beam-job-dialog.component.css'],
 })
 export class StartNewBeamJobDialogComponent {
   readonly DEV_MODE: boolean = AppConstants.DEV_MODE;
   isRunning = false;
 
   constructor(
-      @Inject(MAT_DIALOG_DATA) public beamJob: BeamJob,
-      private matDialogRef:
-        MatDialogRef<StartNewBeamJobDialogComponent, BeamJobRun>,
-      private alertsService: AlertsService,
-      private backendApiService: ReleaseCoordinatorBackendApiService) {}
+    @Inject(MAT_DIALOG_DATA) public beamJob: BeamJob,
+    private matDialogRef: // JobRun may be null if the job failed to start.
+    MatDialogRef<StartNewBeamJobDialogComponent, BeamJobRun | null>,
+    private alertsService: AlertsService,
+    private backendApiService: ReleaseCoordinatorBackendApiService
+  ) {}
 
   onActionClick(): void {
     this.isRunning = true;
     this.matDialogRef.disableClose = true;
 
-    this.backendApiService.startNewBeamJob(this.beamJob).pipe(
-      take(1),
-      catchError(error => {
-        this.alertsService.addWarning(error.message);
-        return of(null);
-      })
-    ).subscribe(newJobRun => this.matDialogRef.close(newJobRun));
+    this.backendApiService
+      .startNewBeamJob(this.beamJob)
+      .pipe(
+        take(1),
+        catchError(error => {
+          this.alertsService.addWarning(error.message);
+          return of(null);
+        })
+      )
+      .subscribe(newJobRun => this.matDialogRef.close(newJobRun));
   }
 }

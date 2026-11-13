@@ -16,13 +16,12 @@
  * @fileoverview Component for removeActivityModal.
  */
 
-import { downgradeComponent } from '@angular/upgrade/static';
-import { Component, Input, OnInit } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
+import {Component, Input, OnInit} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 
-import constants from 'assets/constants';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { LearnerDashboardPageConstants } from 'pages/learner-dashboard-page/learner-dashboard-page.constants';
+import {AppConstants} from 'app.constants';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {LearnerDashboardPageConstants} from 'pages/learner-dashboard-page/learner-dashboard-page.constants';
 
 @Component({
   selector: 'oppia-remove-activity-modal',
@@ -30,7 +29,7 @@ import { LearnerDashboardPageConstants } from 'pages/learner-dashboard-page/lear
 })
 export class RemoveActivityModalComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() sectionNameI18nId!: string;
   @Input() subsectionName!: string;
@@ -40,56 +39,57 @@ export class RemoveActivityModalComponent implements OnInit {
 
   constructor(
     private activeModal: NgbActiveModal,
-    private urlInterpolationService: UrlInterpolationService,
+    private urlInterpolationService: UrlInterpolationService
   ) {}
 
   ngOnInit(): void {
     let activityType = '';
-    if (this.subsectionName ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SUBSECTION_I18N_IDS.EXPLORATIONS) {
-      activityType = constants.ACTIVITY_TYPE_EXPLORATION;
-    } else if (this.subsectionName ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SUBSECTION_I18N_IDS
-        .COLLECTIONS) {
-      activityType = constants.ACTIVITY_TYPE_COLLECTION;
-    } else if (this.subsectionName ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SUBSECTION_I18N_IDS
-        .LEARN_TOPIC) {
-      activityType = constants.ACTIVITY_TYPE_LEARN_TOPIC;
+    if (
+      this.subsectionName ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS
+        .EXPLORATIONS
+    ) {
+      activityType = AppConstants.ACTIVITY_TYPE_EXPLORATION;
+    } else if (
+      this.subsectionName ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS
+        .COLLECTIONS
+    ) {
+      activityType = AppConstants.ACTIVITY_TYPE_COLLECTION;
+    } else if (
+      this.subsectionName ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS
+        .LEARN_TOPIC
+    ) {
+      activityType = AppConstants.ACTIVITY_TYPE_LEARN_TOPIC;
     } else {
       throw new Error('Subsection name is not valid.');
     }
 
     let removeActivityUrlPrefix = '';
-    if (this.sectionNameI18nId ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SECTION_I18N_IDS.PLAYLIST) {
-      removeActivityUrlPrefix =
-        '/learnerplaylistactivityhandler/';
-    } else if (this.sectionNameI18nId ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SECTION_I18N_IDS.INCOMPLETE) {
-      removeActivityUrlPrefix =
-        '/learnerincompleteactivityhandler/';
-    } else if (this.sectionNameI18nId ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SECTION_I18N_IDS.CURRENT_GOALS) {
-      removeActivityUrlPrefix =
-        '/learnergoalshandler/';
+    if (
+      this.sectionNameI18nId ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .INCOMPLETE
+    ) {
+      removeActivityUrlPrefix = '/learnerincompleteactivityhandler/';
+    } else if (
+      this.sectionNameI18nId ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .CURRENT_GOALS
+    ) {
+      removeActivityUrlPrefix = '/learnergoalshandler/';
     } else {
       throw new Error('Section name is not valid.');
     }
 
-    this.removeActivityUrl = (
-      this.urlInterpolationService.interpolateUrl(
-        removeActivityUrlPrefix +
-        '<activityType>/<activityId>', {
-          activityType: activityType,
-          activityId: this.activityId
-        }));
+    this.removeActivityUrl = this.urlInterpolationService.interpolateUrl(
+      removeActivityUrlPrefix + '<activityType>/<activityId>',
+      {
+        activityType: activityType,
+        activityId: this.activityId,
+      }
+    );
   }
 
   remove(): void {
@@ -100,8 +100,3 @@ export class RemoveActivityModalComponent implements OnInit {
     this.activeModal.dismiss();
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaRemoveActivityModalComponent',
-  downgradeComponent(
-    {component: RemoveActivityModalComponent}));

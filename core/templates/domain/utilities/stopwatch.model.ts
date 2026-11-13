@@ -19,7 +19,7 @@
 // A simple service that provides stopwatch instances. Each stopwatch can be
 // independently reset and queried for the current time.
 
-import { LoggerService } from 'services/contextual/logger.service';
+import {LoggerService} from 'services/contextual/logger.service';
 
 export class Stopwatch {
   // Start time is null initially .
@@ -36,11 +36,16 @@ export class Stopwatch {
     this.startTime = this._getCurrentTime();
   }
 
-  getTimeInSecs(): number | null {
+  getTimeInSecs(): number {
     if (this.startTime === null) {
       this.log.error(
-        'Tried to retrieve the elapsed time, but no start time was set.');
-      return null;
+        'Tried to retrieve the elapsed time, but no start time was set.'
+      );
+      return 0;
+    }
+    if (this.startTime > this._getCurrentTime()) {
+      this.log.error('Start time was set incorrectly.');
+      return 0;
     }
     return (this._getCurrentTime() - this.startTime) / 1000;
   }

@@ -1,4 +1,4 @@
-// Copyright 2020 The Oppia Authors. All Rights Reserved.
+// Copyright 2022 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,330 +12,774 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /**
  * @fileoverview Unit tests for the subtopic editor tab component.
  */
 
-import { EventEmitter } from '@angular/core';
-import { ShortSkillSummary } from 'domain/skill/short-skill-summary.model';
-import { Subtopic } from 'domain/topic/subtopic.model';
-import { SubtopicPage } from 'domain/topic/subtopic-page.model';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {ShortSkillSummary} from 'domain/skill/short-skill-summary.model';
+import {Subtopic} from 'domain/topic/subtopic.model';
+import {StudyGuide} from 'domain/topic/study-guide.model';
+import {SubtopicPage} from 'domain/topic/subtopic-page.model';
+import {SubtopicEditorTabComponent} from './subtopic-editor-tab.component';
+import {StudyGuideSection} from 'domain/topic/study-guide-sections.model';
+import {
+  ComponentFixture,
+  TestBed,
+  fakeAsync,
+  tick,
+} from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {TopicEditorStateService} from '../services/topic-editor-state.service';
+import {TopicUpdateService} from 'domain/topic/topic-update.service';
+import {SubtopicValidationService} from '../services/subtopic-validation.service';
+import {TopicEditorRoutingService} from '../services/topic-editor-routing.service';
+import {Topic} from 'domain/topic/topic-object.model';
+import {QuestionBackendApiService} from 'domain/question/question-backend-api.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {CdkDragDrop} from '@angular/cdk/drag-drop';
+import {UrlFragmentEditorComponent} from '../../../components/url-fragment-editor/url-fragment-editor.component';
+import {By} from '@angular/platform-browser';
 
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+class MockQuestionBackendApiService {
+  async fetchTotalQuestionCountForSkillIdsAsync() {
+    return Promise.resolve(2);
+  }
+}
 
-describe('Subtopic editor tab', function() {
-  importAllAngularServices();
+class MockWindowDimensionsService {
+  isWindowNarrow(): boolean {
+    return false;
+  }
+}
 
-  beforeEach(angular.mock.module('oppia'));
-
-  var ctrl = null;
-  var skillSummary = null;
-  var TopicEditorStateService = null;
-  var TopicUpdateService = null;
-  var SubtopicValidationService = null;
-  var TopicEditorRoutingService = null;
-  var TopicObjectFactory = null;
-  var MockWindowDimensionsService = {
-    isWindowNarrow: () => false
+class MockWindowRef {
+  nativeWindow = {
+    confirm() {
+      return true;
+    },
+    location: {
+      hostname: 'hostname',
+      href: 'href',
+      pathname: 'pathname',
+      search: 'search',
+      hash: 'hash',
+    },
+    open() {
+      return;
+    },
   };
-  var $location = null;
+}
 
-  var topicInitializedEventEmitter = null;
-  var topicReinitializedEventEmitter = null;
+class MockPlatformFeatureService {
+  status = {
+    ShowRestructuredStudyGuides: {
+      isEnabled: false,
+    },
+  };
+}
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    TopicEditorStateService = $injector.get('TopicEditorStateService');
-    TopicUpdateService = $injector.get('TopicUpdateService');
-    SubtopicValidationService = $injector.get('SubtopicValidationService');
-    TopicEditorRoutingService = $injector.get('TopicEditorRoutingService');
-    TopicObjectFactory = $injector.get('TopicObjectFactory');
-    $location = $injector.get('$location');
+class MockNgbModalRef {
+  componentInstance = {};
+}
 
-    var MockQuestionBackendApiService = {
-      fetchTotalQuestionCountForSkillIdsAsync: async() => Promise.resolve(2)
-    };
-    var topic = TopicObjectFactory.createInterstitialTopic();
-    var subtopic = Subtopic.createFromTitle(1, 'Subtopic1');
+describe('Subtopic editor tab', () => {
+  let component: SubtopicEditorTabComponent;
+  let fixture: ComponentFixture<SubtopicEditorTabComponent>;
+  let skillSummary: ShortSkillSummary;
+  let ngbModal: NgbModal;
+  let topicEditorStateService: TopicEditorStateService;
+  let topicUpdateService: TopicUpdateService;
+  let subtopicValidationService: SubtopicValidationService;
+  let topicEditorRoutingService: TopicEditorRoutingService;
+  let platformFeatureService: PlatformFeatureService;
+  let subtopic: Subtopic;
+  let wds: WindowDimensionsService;
+  let topicInitializedEventEmitter = new EventEmitter();
+  let topicReinitializedEventEmitter = new EventEmitter();
+  let subtopicPageLoadedEventEmitter = new EventEmitter();
+  let studyGuideLoadedEventEmitter = new EventEmitter();
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [SubtopicEditorTabComponent, UrlFragmentEditorComponent],
+      providers: [
+        TopicEditorStateService,
+        TopicEditorRoutingService,
+        {
+          provide: QuestionBackendApiService,
+          useClass: MockQuestionBackendApiService,
+        },
+        {
+          provide: WindowDimensionsService,
+          useClass: MockWindowDimensionsService,
+        },
+        {
+          provide: WindowRef,
+          useClass: MockWindowRef,
+        },
+        {
+          provide: PlatformFeatureService,
+          useClass: MockPlatformFeatureService,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  });
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(SubtopicEditorTabComponent);
+    ngbModal = TestBed.inject(NgbModal);
+    component = fixture.componentInstance;
+    topicEditorStateService = TestBed.inject(TopicEditorStateService);
+    topicUpdateService = TestBed.inject(TopicUpdateService);
+    subtopicValidationService = TestBed.inject(SubtopicValidationService);
+    topicEditorRoutingService = TestBed.inject(TopicEditorRoutingService);
+    platformFeatureService = TestBed.inject(PlatformFeatureService);
+    wds = TestBed.inject(WindowDimensionsService);
+
+    let topic = new Topic(
+      'id',
+      'Topic name loading',
+      'Abbrev. name loading',
+      'Url Fragment loading',
+      'Topic description loading',
+      'en',
+      [],
+      [],
+      [],
+      1,
+      1,
+      [],
+      'str',
+      '',
+      {},
+      false,
+      '',
+      '',
+      []
+    );
+    let subtopic = Subtopic.createFromTitle(1, 'Subtopic1');
     subtopic._skillIds = ['skill_1'];
     subtopic.setUrlFragment('dummy-url');
-    skillSummary = ShortSkillSummary.create(
-      'skill_1', 'Description 1');
+    skillSummary = ShortSkillSummary.create('skill_1', 'Description 1');
     topic._uncategorizedSkillSummaries = [skillSummary];
-    var subtopicPage = SubtopicPage.createDefault('asd2r42', 1);
+    let subtopicPage = SubtopicPage.createDefault('asd2r42', 1);
+    let studyGuide = StudyGuide.createDefault('study_guide_id', 1);
     topic._id = 'sndsjfn42';
 
-    topicInitializedEventEmitter = new EventEmitter();
-    topicReinitializedEventEmitter = new EventEmitter();
+    component.studyGuide = studyGuide;
+    component.sections = studyGuide.getSections();
+    component.subtopicId = 1;
 
-    spyOnProperty(TopicEditorStateService, 'onTopicInitialized').and.callFake(
-      function() {
+    spyOnProperty(topicEditorStateService, 'onTopicInitialized').and.callFake(
+      () => {
         return topicInitializedEventEmitter;
-      });
-    spyOnProperty(
-      TopicEditorStateService, 'onTopicReinitialized').and.callFake(
-      function() {
+      }
+    );
+    spyOnProperty(topicEditorStateService, 'onTopicReinitialized').and.callFake(
+      () => {
         return topicReinitializedEventEmitter;
-      });
+      }
+    );
+    spyOnProperty(topicEditorStateService, 'onSubtopicPageLoaded').and.callFake(
+      () => {
+        return subtopicPageLoadedEventEmitter;
+      }
+    );
+    spyOnProperty(topicEditorStateService, 'onStudyGuideLoaded').and.callFake(
+      () => {
+        return studyGuideLoadedEventEmitter;
+      }
+    );
 
-    topic.getSubtopicById = function(id) {
+    topic.getSubtopicById = id => {
       return id === 99 ? null : subtopic;
     };
-    spyOn(TopicEditorStateService, 'getTopic').and.returnValue(topic);
-    spyOn(TopicEditorStateService, 'hasLoadedTopic').and.returnValue(true);
-    spyOn(
-      TopicEditorStateService,
-      'getSubtopicPage').and.returnValue(subtopicPage);
-    $location.path('/subtopic_editor/1');
-    ctrl = $componentController('subtopicEditorTab', {
-      QuestionBackendApiService: MockQuestionBackendApiService,
-      WindowDimensionsService: MockWindowDimensionsService
-    });
-    ctrl.$onInit();
-    ctrl.initEditor();
-  }));
+    spyOn(topicEditorStateService, 'getTopic').and.returnValue(topic);
+    spyOn(topicEditorStateService, 'hasLoadedTopic').and.returnValue(true);
+    spyOn(topicEditorStateService, 'getSubtopicPage').and.returnValue(
+      subtopicPage
+    );
+    spyOn(topicEditorStateService, 'getStudyGuide').and.returnValue(studyGuide);
+    spyOn(topicEditorStateService, 'getClassroomUrlFragment').and.returnValue(
+      'math'
+    );
+    component.ngOnInit();
+    component.initEditor();
+  });
 
   afterEach(() => {
-    ctrl.$onDestroy();
+    component.ngOnDestroy();
   });
 
-  it('should initialize the variables', function() {
-    expect(ctrl.editableTitle).toEqual('Subtopic1');
+  it('should initialize the variables', () => {
+    expect(component.editableTitle).toEqual('Subtopic1');
+    expect(component.generatedUrlPrefix).toContain('hostname/learn/math');
   });
 
-  it('should call TopicUpdateService if subtopic title updates', function() {
-    var titleSpy = spyOn(TopicUpdateService, 'setSubtopicTitle');
-    ctrl.updateSubtopicTitle('New title');
+  it('should initialize with restructured study guides feature disabled', () => {
+    expect(component.isShowRestructuredStudyGuidesFeatureEnabled()).toBe(false);
+    expect(component.sections).toEqual([]);
+  });
+
+  it('should initialize with restructured study guides feature enabled', () => {
+    platformFeatureService.status.ShowRestructuredStudyGuides.isEnabled = true;
+    spyOn(topicEditorStateService, 'loadStudyGuide');
+    component.initEditor();
+    expect(topicEditorStateService.loadStudyGuide).toHaveBeenCalled();
+  });
+
+  it('should call topicUpdateService if subtopic title updates', () => {
+    let titleSpy = spyOn(topicUpdateService, 'setSubtopicTitle');
+    component.updateSubtopicTitle('New title');
     expect(titleSpy).toHaveBeenCalled();
   });
 
-  it('should call TopicUpdateService if subtopic title is not updated',
-    function() {
-      ctrl.updateSubtopicTitle('New title');
-      var titleSpy = spyOn(TopicUpdateService, 'setSubtopicTitle');
-      ctrl.updateSubtopicTitle('New title');
-      expect(titleSpy).not.toHaveBeenCalled();
-    });
+  it('should call topicUpdateService if subtopic title is not updated', () => {
+    component.updateSubtopicTitle('New title');
+    let titleSpy = spyOn(topicUpdateService, 'setSubtopicTitle');
+    component.updateSubtopicTitle('New title');
+    expect(titleSpy).not.toHaveBeenCalled();
+  });
 
-  it('should call TopicUpdateService if subtopic url fragment is updated',
-    function() {
-      var urlFragmentSpy = spyOn(TopicUpdateService, 'setSubtopicUrlFragment');
-      ctrl.updateSubtopicUrlFragment('new-url');
-      expect(urlFragmentSpy).toHaveBeenCalled();
-    });
+  it('should call topicUpdateService if subtopic url fragment is updated', () => {
+    let urlFragmentSpy = spyOn(topicUpdateService, 'setSubtopicUrlFragment');
+    spyOn(subtopicValidationService, 'isUrlFragmentValid').and.returnValue(
+      true
+    );
+    spyOn(
+      subtopicValidationService,
+      'doesSubtopicWithUrlFragmentExist'
+    ).and.returnValue(false);
+    component.updateSubtopicUrlFragment('new-url');
+    expect(urlFragmentSpy).toHaveBeenCalled();
+  });
 
-  it('should not call TopicUpdateService when url fragment has not changed',
-    function() {
-      ctrl.updateSubtopicUrlFragment('subtopic-url');
-      ctrl.initialSubtopicUrlFragment = 'subtopic-url';
-      var urlFragmentSpy = spyOn(TopicUpdateService, 'setSubtopicUrlFragment');
-      ctrl.updateSubtopicUrlFragment('subtopic-url');
-      expect(urlFragmentSpy).not.toHaveBeenCalled();
-    });
+  it('should not call topicUpdateService when url fragment has not changed', () => {
+    component.updateSubtopicUrlFragment('subtopic-url');
+    component.initialSubtopicUrlFragment = 'subtopic-url';
+    let urlFragmentSpy = spyOn(topicUpdateService, 'setSubtopicUrlFragment');
+    component.updateSubtopicUrlFragment('subtopic-url');
+    expect(urlFragmentSpy).not.toHaveBeenCalled();
+  });
 
-  it('should not call TopicUpdateService if subtopic url fragment is invalid',
-    function() {
-      var urlFragmentSpy = spyOn(TopicUpdateService, 'setSubtopicUrlFragment');
-      ctrl.updateSubtopicUrlFragment('new url');
-      expect(urlFragmentSpy).not.toHaveBeenCalled();
-      ctrl.updateSubtopicUrlFragment('New-Url');
-      expect(urlFragmentSpy).not.toHaveBeenCalled();
-      ctrl.updateSubtopicUrlFragment('new-url-');
-      expect(urlFragmentSpy).not.toHaveBeenCalled();
-      ctrl.updateSubtopicUrlFragment('new123url');
-      expect(urlFragmentSpy).not.toHaveBeenCalled();
-    });
+  it('should not call topicUpdateService if subtopic url fragment is invalid', () => {
+    let urlFragmentSpy = spyOn(topicUpdateService, 'setSubtopicUrlFragment');
+    spyOn(subtopicValidationService, 'isUrlFragmentValid').and.returnValue(
+      false
+    );
+    component.updateSubtopicUrlFragment('new url');
+    expect(urlFragmentSpy).not.toHaveBeenCalled();
+  });
 
-  it('should call TopicUpdateService if subtopic thumbnail updates',
-    function() {
-      var thubmnailSpy = (
-        spyOn(TopicUpdateService, 'setSubtopicThumbnailFilename'));
-      ctrl.updateSubtopicThumbnailFilename('img.svg');
-      expect(thubmnailSpy).toHaveBeenCalled();
-    });
+  it('should not call topicUpdateService if subtopic url fragment exists', () => {
+    let urlFragmentSpy = spyOn(topicUpdateService, 'setSubtopicUrlFragment');
+    spyOn(subtopicValidationService, 'isUrlFragmentValid').and.returnValue(
+      true
+    );
+    spyOn(
+      subtopicValidationService,
+      'doesSubtopicWithUrlFragmentExist'
+    ).and.returnValue(true);
+    component.updateSubtopicUrlFragment('existing-url');
+    expect(urlFragmentSpy).not.toHaveBeenCalled();
+  });
 
-  it('should call TopicUpdateService if subtopic thumbnail is not updated',
-    function() {
-      ctrl.updateSubtopicThumbnailFilename('img.svg');
-      var thubmnailSpy = spyOn(TopicUpdateService, 'setSubtopicTitle');
-      ctrl.updateSubtopicThumbnailFilename('img.svg');
-      expect(thubmnailSpy).not.toHaveBeenCalled();
-    });
+  it('should call topicUpdateService if subtopic thumbnail updates', () => {
+    let thumbnailSpy = spyOn(
+      topicUpdateService,
+      'setSubtopicThumbnailFilename'
+    );
+    component.updateSubtopicThumbnailFilename('img.svg');
+    expect(thumbnailSpy).toHaveBeenCalled();
+  });
 
-  it('should call TopicUpdateService if subtopic thumbnail bg color updates',
-    function() {
-      var thubmnailBgSpy = (
-        spyOn(TopicUpdateService, 'setSubtopicThumbnailBgColor'));
-      ctrl.updateSubtopicThumbnailBgColor('#FFFFFF');
-      expect(thubmnailBgSpy).toHaveBeenCalled();
-    });
+  it('should not call topicUpdateService if subtopic thumbnail is not updated', () => {
+    component.updateSubtopicThumbnailFilename('img.svg');
+    let thumbnailSpy = spyOn(
+      topicUpdateService,
+      'setSubtopicThumbnailFilename'
+    );
+    component.updateSubtopicThumbnailFilename('img.svg');
+    expect(thumbnailSpy).not.toHaveBeenCalled();
+  });
 
-  it('should not call TopicUpdateService if subtopic ' +
+  it('should call topicUpdateService if subtopic thumbnail bg color updates', () => {
+    let thumbnailBgSpy = spyOn(
+      topicUpdateService,
+      'setSubtopicThumbnailBgColor'
+    );
+    component.updateSubtopicThumbnailBgColor('#FFFFFF');
+    expect(thumbnailBgSpy).toHaveBeenCalled();
+  });
+
+  it(
+    'should not call topicUpdateService if subtopic ' +
       'thumbnail bg color is not updated',
-  function() {
-    ctrl.updateSubtopicThumbnailBgColor('#FFFFFF');
-    var thubmnailBgSpy = spyOn(
-      TopicUpdateService, 'setSubtopicThumbnailBgColor');
-    ctrl.updateSubtopicThumbnailBgColor('#FFFFFF');
-    expect(thubmnailBgSpy).not.toHaveBeenCalled();
+    () => {
+      component.updateSubtopicThumbnailBgColor('#FFFFFF');
+      let thumbnailBgSpy = spyOn(
+        topicUpdateService,
+        'setSubtopicThumbnailBgColor'
+      );
+      component.updateSubtopicThumbnailBgColor('#FFFFFF');
+      expect(thumbnailBgSpy).not.toHaveBeenCalled();
+    }
+  );
+
+  it('should return skill editor URL', () => {
+    let skillId = 'asd4242a';
+    expect(component.getSkillEditorUrl(skillId)).toEqual(
+      '/skill_editor/' + skillId
+    );
   });
 
-  it('should return skill editor URL', function() {
-    var skillId = 'asd4242a';
-    expect(ctrl.getSkillEditorUrl(skillId)).toEqual(
-      '/skill_editor/' + skillId);
-  });
-
-  it('should show schema editor', function() {
-    expect(ctrl.schemaEditorIsShown).toEqual(false);
-    ctrl.showSchemaEditor();
-    expect(ctrl.schemaEditorIsShown).toEqual(true);
-  });
-
-  it('should return if skill is deleted', function() {
-    var skillSummary = ShortSkillSummary.create(
-      '1', 'Skill description');
-    expect(ctrl.isSkillDeleted(skillSummary)).toEqual(false);
-  });
-
-  it('should call TopicUpdateService when skill is rearranged',
-    function() {
-      var removeSkillSpy = spyOn(
-        TopicUpdateService, 'rearrangeSkillInSubtopic');
-      ctrl.onRearrangeMoveSkillFinish(1);
-      expect(removeSkillSpy).toHaveBeenCalled();
+  it('should show SKILL_AND_STUDY_GUIDE_EDITOR_COMPONENTS schema', () => {
+    component.ngOnInit();
+    expect(component.SUBTOPIC_PAGE_SCHEMA).toEqual({
+      type: 'html',
+      ui_config: {
+        rte_component_config_id: 'SKILL_AND_STUDY_GUIDE_EDITOR_COMPONENTS',
+        rows: 100,
+      },
     });
-
-  it('should not call TopicUpdateService if skill is rearranged to the ' +
-      'original place', function() {
-    ctrl.onRearrangeMoveSkillStart(10);
-    var removeSkillSpy = spyOn(
-      TopicUpdateService, 'rearrangeSkillInSubtopic');
-    ctrl.onRearrangeMoveSkillFinish(10);
-    expect(removeSkillSpy).not.toHaveBeenCalled();
   });
 
-  it('should record the index of the skill to move', function() {
-    ctrl.onRearrangeMoveSkillStart(10);
-    expect(ctrl.fromIndex).toEqual(10);
+  it('should show schema editor', () => {
+    expect(component.schemaEditorIsShown).toEqual(false);
+    component.showSchemaEditor();
+    expect(component.schemaEditorIsShown).toEqual(true);
   });
 
-  it('should set the error message if subtopic title is invalid', function() {
-    expect(ctrl.errorMsg).toEqual(null);
-    spyOn(SubtopicValidationService, 'checkValidSubtopicName')
-      .and.callFake(() => false);
-    ctrl.updateSubtopicTitle('New Subtopic1');
-    expect(ctrl.errorMsg).toEqual(
-      'A subtopic with this title already exists');
+  it('should return if skill is deleted', () => {
+    let skillSummary = ShortSkillSummary.create('1', 'Skill description');
+    expect(component.isSkillDeleted(skillSummary)).toEqual(false);
   });
 
-  it('should reset the error message', function() {
-    spyOn(SubtopicValidationService, 'checkValidSubtopicName')
-      .and.callFake(() => false);
-    ctrl.updateSubtopicTitle('New Subtopic1');
-    expect(ctrl.errorMsg).toEqual(
-      'A subtopic with this title already exists');
-    ctrl.resetErrorMsg();
-    expect(ctrl.errorMsg).toEqual(null);
+  it('should call topicUpdateService when skill is rearranged', () => {
+    let removeSkillSpy = spyOn(topicUpdateService, 'rearrangeSkillInSubtopic');
+    let skillSummaries = [
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: '1',
+        skill_description: 'Skill Description',
+      }),
+      ShortSkillSummary.createFromBackendDict({
+        skill_id: '2',
+        skill_description: 'Skill Description',
+      }),
+    ];
+    subtopic = Subtopic.createFromTitle(1, 'subtopic1');
+    subtopic._skillSummaries = skillSummaries;
+    const event = {
+      previousIndex: 1,
+      currentIndex: 2,
+    } as CdkDragDrop<string[]>;
+    component.drop(event);
+    expect(removeSkillSpy).toHaveBeenCalled();
   });
 
-  it('should call TopicUpdateService to update the SubtopicPageContent',
-    function() {
-      var updateSubtopicSpy = (
-        spyOn(TopicUpdateService, 'setSubtopicPageContentsHtml'));
-      ctrl.htmlData = 'new html data';
-      ctrl.updateHtmlData();
-      expect(updateSubtopicSpy).toHaveBeenCalled();
-    });
-
-  it('should call the TopicUpdateService if skill is removed from subtopic',
-    function() {
-      var removeSkillSpy = (
-        spyOn(TopicUpdateService, 'removeSkillFromSubtopic'));
-      ctrl.removeSkillFromSubtopic(0, null);
-      expect(removeSkillSpy).toHaveBeenCalled();
-    });
-
-  it('should call the TopicUpdateService if skill is removed from topic',
-    function() {
-      var removeSkillSpy = (
-        spyOn(TopicUpdateService, 'removeSkillFromSubtopic'));
-      ctrl.removeSkillFromTopic(skillSummary);
-      expect(removeSkillSpy).toHaveBeenCalled();
-    });
-
-  it('should set skill edit options index', function() {
-    ctrl.showSkillEditOptions(10);
-    expect(ctrl.selectedSkillEditOptionsIndex).toEqual(10);
-    ctrl.showSkillEditOptions(20);
-    expect(ctrl.selectedSkillEditOptionsIndex).toEqual(20);
+  it('should set the error message if subtopic title is invalid', () => {
+    expect(component.errorMsg).toEqual(null);
+    spyOn(subtopicValidationService, 'checkValidSubtopicName').and.callFake(
+      () => false
+    );
+    component.updateSubtopicTitle('New Subtopic1');
+    expect(component.errorMsg).toEqual(
+      'A subtopic with this title already exists'
+    );
   });
 
-  it('should toggle skills list preview only in mobile view', function() {
-    MockWindowDimensionsService.isWindowNarrow = () => true;
-    expect(ctrl.skillsListIsShown).toEqual(true);
-    ctrl.togglePreviewSkillCard();
-    expect(ctrl.skillsListIsShown).toEqual(false);
-    ctrl.togglePreviewSkillCard();
-    expect(ctrl.skillsListIsShown).toEqual(true);
-    ctrl.togglePreviewSkillCard();
-
-    MockWindowDimensionsService.isWindowNarrow = () => false;
-    ctrl.skillsListIsShown = true;
-    ctrl.togglePreviewSkillCard();
-    expect(ctrl.skillsListIsShown).toEqual(true);
+  it('should reset the error message', () => {
+    spyOn(subtopicValidationService, 'checkValidSubtopicName').and.callFake(
+      () => false
+    );
+    component.updateSubtopicTitle('New Subtopic1');
+    expect(component.errorMsg).toEqual(
+      'A subtopic with this title already exists'
+    );
+    component.resetErrorMsg();
+    expect(component.errorMsg).toEqual(null);
   });
 
-  it('should toggle subtopic editor card only in mobile view', function() {
-    MockWindowDimensionsService.isWindowNarrow = () => true;
-    expect(ctrl.subtopicEditorCardIsShown).toEqual(true);
-    ctrl.toggleSubtopicEditorCard();
-    expect(ctrl.subtopicEditorCardIsShown).toEqual(false);
-    ctrl.toggleSubtopicEditorCard();
-    expect(ctrl.subtopicEditorCardIsShown).toEqual(true);
-    ctrl.toggleSubtopicEditorCard();
-
-    MockWindowDimensionsService.isWindowNarrow = () => false;
-    ctrl.subtopicEditorCardIsShown = true;
-    ctrl.toggleSubtopicEditorCard();
-    expect(ctrl.subtopicEditorCardIsShown).toEqual(true);
+  it('should call topicUpdateService to update the SubtopicPageContent', () => {
+    let updateSubtopicSpy = spyOn(
+      topicUpdateService,
+      'setSubtopicPageContentsHtml'
+    );
+    component.htmlData = 'new html data';
+    component.updateHtmlData();
+    expect(updateSubtopicSpy).toHaveBeenCalled();
   });
 
-  it('should toggle subtopic preview', function() {
-    expect(ctrl.subtopicPreviewCardIsShown).toEqual(false);
-    ctrl.toggleSubtopicPreview();
-    expect(ctrl.subtopicPreviewCardIsShown).toEqual(true);
-    ctrl.toggleSubtopicPreview();
-    expect(ctrl.subtopicPreviewCardIsShown).toEqual(false);
-    ctrl.toggleSubtopicPreview();
+  it('should call the topicUpdateService if skill is removed from subtopic', () => {
+    let removeSkillSpy = spyOn(topicUpdateService, 'removeSkillFromSubtopic');
+    spyOn(component, 'initEditor');
+    component.removeSkillFromSubtopic({} as ShortSkillSummary);
+    expect(removeSkillSpy).toHaveBeenCalled();
+    expect(component.initEditor).toHaveBeenCalled();
   });
 
-  it('should call TopicEditorRoutingService to navigate To Topic Editor',
-    function() {
-      var navigateSpy = spyOn(TopicEditorRoutingService, 'navigateToMainTab');
-      ctrl.navigateToTopicEditor();
-      expect(navigateSpy).toHaveBeenCalled();
-    });
-
-  it('should call initEditor when topic is initialized', function() {
-    spyOn(ctrl, 'initEditor').and.callThrough();
-    topicInitializedEventEmitter.emit();
-    expect(ctrl.initEditor).toHaveBeenCalledTimes(1);
-    topicReinitializedEventEmitter.emit();
-    expect(ctrl.initEditor).toHaveBeenCalledTimes(2);
+  it('should call the topicUpdateService if skill is removed from topic', () => {
+    let removeSkillSpy = spyOn(topicUpdateService, 'removeSkillFromSubtopic');
+    let removeUncategorizedSkillSpy = spyOn(
+      topicUpdateService,
+      'removeUncategorizedSkill'
+    );
+    spyOn(component, 'initEditor');
+    component.removeSkillFromTopic(skillSummary);
+    expect(removeSkillSpy).toHaveBeenCalled();
+    expect(removeUncategorizedSkillSpy).toHaveBeenCalled();
+    expect(component.initEditor).toHaveBeenCalled();
   });
 
-  it('should hide the html data input on canceling', function() {
-    ctrl.schemaEditorIsShown = true;
-    ctrl.cancelHtmlDataChange();
-    expect(ctrl.schemaEditorIsShown).toEqual(false);
+  it('should set skill edit options index', () => {
+    component.showSkillEditOptions(10);
+    expect(component.selectedSkillEditOptionsIndex).toEqual(10);
+    component.showSkillEditOptions(20);
+    expect(component.selectedSkillEditOptionsIndex).toEqual(20);
   });
 
-  it('should redirect to topic editor if subtopic id is invalid', function() {
-    spyOn(TopicEditorRoutingService, 'getSubtopicIdFromUrl').and
-      .returnValue(99);
-    var navigateSpy = spyOn(TopicEditorRoutingService, 'navigateToMainTab');
-    ctrl.initEditor();
+  it('should toggle skill edit options index when same index is clicked', () => {
+    component.showSkillEditOptions(10);
+    expect(component.selectedSkillEditOptionsIndex).toEqual(10);
+    component.showSkillEditOptions(10);
+    expect(component.selectedSkillEditOptionsIndex).toEqual(-1);
+  });
+
+  it(
+    'should toggle skills list preview only in mobile view' +
+      'when window is narrow',
+    () => {
+      spyOn(wds, 'isWindowNarrow').and.returnValue(true);
+      expect(component.skillsListIsShown).toEqual(true);
+      component.togglePreviewSkillCard();
+      expect(component.skillsListIsShown).toEqual(false);
+      component.togglePreviewSkillCard();
+      expect(component.skillsListIsShown).toEqual(true);
+    }
+  );
+
+  it('should not toggle skills list preview when window is not narrow', () => {
+    spyOn(wds, 'isWindowNarrow').and.returnValue(false);
+    component.skillsListIsShown = true;
+    component.togglePreviewSkillCard();
+    expect(component.skillsListIsShown).toEqual(true);
+  });
+
+  it(
+    'should toggle subtopic editor card only in mobile view' +
+      'when window is narrow',
+    () => {
+      spyOn(wds, 'isWindowNarrow').and.returnValue(true);
+      expect(component.subtopicEditorCardIsShown).toEqual(true);
+      component.toggleSubtopicEditorCard();
+      expect(component.subtopicEditorCardIsShown).toEqual(false);
+      component.toggleSubtopicEditorCard();
+      expect(component.subtopicEditorCardIsShown).toEqual(true);
+    }
+  );
+
+  it('should not toggle subtopic editor card when window is not narrow', () => {
+    spyOn(wds, 'isWindowNarrow').and.returnValue(false);
+    component.subtopicEditorCardIsShown = true;
+    component.toggleSubtopicEditorCard();
+    expect(component.subtopicEditorCardIsShown).toEqual(true);
+  });
+
+  it('should toggle sections list only in mobile view when window is narrow', () => {
+    spyOn(wds, 'isWindowNarrow').and.returnValue(true);
+    component.sectionsListIsShown = true;
+    component.toggleSectionsList();
+    expect(component.sectionsListIsShown).toEqual(false);
+    component.toggleSectionsList();
+    expect(component.sectionsListIsShown).toEqual(true);
+  });
+
+  it('should not toggle sections list when window is not narrow', () => {
+    spyOn(wds, 'isWindowNarrow').and.returnValue(false);
+    component.sectionsListIsShown = true;
+    component.toggleSectionsList();
+    expect(component.sectionsListIsShown).toEqual(true);
+  });
+
+  it('should toggle subtopic preview', () => {
+    expect(component.subtopicPreviewCardIsShown).toEqual(false);
+    component.toggleSubtopicPreview();
+    expect(component.subtopicPreviewCardIsShown).toEqual(true);
+    component.toggleSubtopicPreview();
+    expect(component.subtopicPreviewCardIsShown).toEqual(false);
+  });
+
+  it('should call topicEditorRoutingService to navigate To Topic Editor', () => {
+    let navigateSpy = spyOn(topicEditorRoutingService, 'navigateToMainTab');
+    component.navigateToTopicEditor();
     expect(navigateSpy).toHaveBeenCalled();
+  });
+
+  it('should call initEditor when topic is initialized', () => {
+    spyOn(component, 'initEditor').and.callThrough();
+    topicInitializedEventEmitter.emit();
+    expect(component.initEditor).toHaveBeenCalledTimes(1);
+    topicReinitializedEventEmitter.emit();
+    expect(component.initEditor).toHaveBeenCalledTimes(2);
+  });
+
+  it('should handle subtopic page loaded event', () => {
+    (topicEditorStateService.getSubtopicPage as jasmine.Spy).and.returnValue({
+      getPageContents: () => ({getHtml: () => 'test html'}),
+    } as SubtopicPage);
+    subtopicPageLoadedEventEmitter.emit();
+    expect(component.htmlData).toEqual('test html');
+  });
+
+  it('should update html data when the rich-text editor emits a new value', () => {
+    component.htmlData = 'old html';
+
+    component.onHtmlDataChange('new html');
+
+    expect(component.htmlData).toEqual('new html');
+  });
+
+  it('should reset html data to empty string for a non-string value', () => {
+    component.htmlData = 'old html';
+
+    component.onHtmlDataChange(null);
+
+    expect(component.htmlData).toEqual('');
+  });
+
+  it(
+    'should subscribe to onStudyGuideLoaded when restructured' +
+      ' study guides feature is enabled',
+    () => {
+      spyOn(
+        component,
+        'isShowRestructuredStudyGuidesFeatureEnabled'
+      ).and.returnValue(true);
+      let newStudyGuide = StudyGuide.createDefault('new_study_guide_id', 2);
+      let mockSections: StudyGuideSection[] = [];
+      spyOn(newStudyGuide, 'getSections').and.returnValue(mockSections);
+      (topicEditorStateService.getStudyGuide as jasmine.Spy).and.returnValue(
+        newStudyGuide
+      );
+      component.ngOnInit();
+      studyGuideLoadedEventEmitter.emit();
+      expect(component.studyGuide).toBe(newStudyGuide);
+      expect(component.sections).toBe(mockSections);
+      expect(topicEditorStateService.getStudyGuide).toHaveBeenCalled();
+    }
+  );
+
+  it('should hide the html data input on canceling', () => {
+    component.schemaEditorIsShown = true;
+    component.htmlDataBeforeUpdate = 'original html';
+    component.htmlData = 'modified html';
+    spyOn(component, 'updateHtmlData');
+    component.cancelHtmlDataChange();
+    expect(component.htmlData).toEqual('original html');
+    expect(component.updateHtmlData).toHaveBeenCalled();
+    expect(component.schemaEditorIsShown).toEqual(false);
+  });
+
+  it('should redirect to topic editor if subtopic id is invalid', () => {
+    spyOn(topicEditorRoutingService, 'getSubtopicIdFromUrl').and.returnValue(
+      99
+    );
+    let navigateSpy = spyOn(topicEditorRoutingService, 'navigateToMainTab');
+    component.initEditor();
+    expect(navigateSpy).toHaveBeenCalled();
+  });
+
+  it('should call onSubtopicUrlFragmentChange when urlFragmentChange event is emitted', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    spyOn(component, 'onSubtopicUrlFragmentChange');
+    const childComponent = fixture.debugElement.query(
+      By.directive(UrlFragmentEditorComponent)
+    );
+    expect(childComponent).toBeTruthy();
+    const testFragment = 'test-subtopic-url-fragment';
+    childComponent.triggerEventHandler('urlFragmentChange', testFragment);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component.onSubtopicUrlFragmentChange).toHaveBeenCalledWith(
+      testFragment
+    );
+  });
+
+  it('should update editableUrlFragment and call updateSubtopicUrlFragment', () => {
+    spyOn(component, 'updateSubtopicUrlFragment');
+    const newUrlFragment = 'new-subtopic-url';
+    component.onSubtopicUrlFragmentChange(newUrlFragment);
+    expect(component.editableUrlFragment).toBe(newUrlFragment);
+    expect(component.updateSubtopicUrlFragment).toHaveBeenCalledWith(
+      newUrlFragment
+    );
+  });
+
+  it('should change active section index', () => {
+    component.sections = [
+      StudyGuideSection.create(
+        'Section 1',
+        'Section 1 content',
+        'section_heading_0',
+        'section_content_1'
+      ),
+      StudyGuideSection.create(
+        'Section 2',
+        'Section 2 content',
+        'section_heading_2',
+        'section_content_3'
+      ),
+    ];
+    component.activeSectionIndex = -1;
+    component.studyGuide = {
+      getSections: () => component.sections,
+    } as StudyGuide;
+
+    component.changeActiveSectionIndex(0);
+    expect(component.activeSectionIndex).toEqual(0);
+
+    component.changeActiveSectionIndex(0);
+    expect(component.activeSectionIndex).toEqual(-1);
+  });
+
+  it(
+    'should open delete study guide section modal when ' +
+      'clicking on delete button',
+    fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: new MockNgbModalRef(),
+        result: Promise.resolve(),
+      } as NgbModalRef);
+      let deleteSectionSpy = spyOn(
+        topicUpdateService,
+        'deleteSection'
+      ).and.callThrough();
+
+      component.ngOnInit();
+      component.deleteSection(0);
+      tick();
+
+      expect(modalSpy).toHaveBeenCalled();
+      expect(deleteSectionSpy).toHaveBeenCalled();
+    })
+  );
+
+  it(
+    'should close delete section modal when ' + 'clicking on cancel button',
+    fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: new MockNgbModalRef(),
+        result: Promise.reject(),
+      } as NgbModalRef);
+      let deleteSectionSpy = spyOn(
+        topicUpdateService,
+        'deleteSection'
+      ).and.callThrough();
+
+      component.ngOnInit();
+      component.deleteSection(0);
+      tick();
+
+      expect(modalSpy).toHaveBeenCalled();
+      expect(deleteSectionSpy).not.toHaveBeenCalled();
+    })
+  );
+
+  it(
+    'should open add section modal when ' + 'clicking on add button',
+    fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: new MockNgbModalRef(),
+        result: Promise.resolve({
+          sectionHeadingPlaintext: 'heading',
+          sectionContentHtml: 'content',
+        }),
+      } as NgbModalRef);
+      let addSectionSpy = spyOn(
+        topicUpdateService,
+        'addSection'
+      ).and.callThrough();
+
+      component.ngOnInit();
+      component.openAddSectionModal();
+      tick();
+
+      expect(modalSpy).toHaveBeenCalled();
+      expect(addSectionSpy).toHaveBeenCalled();
+    })
+  );
+
+  it(
+    'should close add section modal when ' + 'clicking on cancel button',
+    fakeAsync(() => {
+      let modalSpy = spyOn(ngbModal, 'open').and.returnValue({
+        componentInstance: new MockNgbModalRef(),
+        result: Promise.reject(),
+      } as NgbModalRef);
+      let addSectionSpy = spyOn(
+        topicUpdateService,
+        'addSection'
+      ).and.callThrough();
+
+      component.ngOnInit();
+      component.openAddSectionModal();
+      tick();
+
+      expect(modalSpy).toHaveBeenCalled();
+      expect(addSectionSpy).not.toHaveBeenCalled();
+    })
+  );
+
+  it('should initialize mobile view settings correctly', () => {
+    spyOn(wds, 'isWindowNarrow').and.returnValue(true);
+    component.ngOnInit();
+    expect(component.sectionsListIsShown).toEqual(false);
+    expect(component.skillsListIsShown).toEqual(false);
+  });
+
+  it('should initialize desktop view settings correctly', () => {
+    spyOn(wds, 'isWindowNarrow').and.returnValue(false);
+    component.ngOnInit();
+    expect(component.sectionsListIsShown).toEqual(true);
+    expect(component.skillsListIsShown).toEqual(true);
+  });
+
+  it('should return early from initEditor when topic url fragment is null', () => {
+    let topicWithoutUrlFragment = new Topic(
+      'id',
+      'Topic name',
+      'Abbrev',
+      '',
+      'Description',
+      'en',
+      [],
+      [],
+      [],
+      1,
+      1,
+      [],
+      'str',
+      '',
+      {},
+      false,
+      '',
+      '',
+      []
+    );
+    (topicEditorStateService.getTopic as jasmine.Spy).and.returnValue(
+      topicWithoutUrlFragment
+    );
+    spyOn(topicEditorStateService, 'loadSubtopicPage');
+
+    component.initEditor();
+
+    expect(topicEditorStateService.loadSubtopicPage).not.toHaveBeenCalled();
   });
 });

@@ -34,18 +34,23 @@
  * value.
  */
 
-import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {
+  Component,
+  Input,
+  OnChanges,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 
 @Component({
   selector: 'oppia-noninteractive-collapsible',
   templateUrl: './collapsible.component.html',
-  styleUrls: []
+  styleUrls: ['./collapsible.component.css'],
 })
 export class NoninteractiveCollapsible implements OnInit, OnChanges {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() headingWithValue!: string;
   @Input() contentWithValue!: string;
@@ -58,9 +63,11 @@ export class NoninteractiveCollapsible implements OnInit, OnChanges {
       return;
     }
     this.heading = this.htmlEscaperService.escapedJsonToObj(
-      this.headingWithValue) as string;
+      this.headingWithValue
+    ) as string;
     this.content = this.htmlEscaperService.escapedJsonToObj(
-      this.contentWithValue) as string;
+      this.contentWithValue
+    ) as string;
   }
 
   ngOnInit(): void {
@@ -73,8 +80,3 @@ export class NoninteractiveCollapsible implements OnInit, OnChanges {
     }
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaNoninteractiveCollapsible', downgradeComponent({
-    component: NoninteractiveCollapsible
-  }) as angular.IDirectiveFactory);

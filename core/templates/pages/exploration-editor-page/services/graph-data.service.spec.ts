@@ -15,111 +15,142 @@
 /**
  * @fileoverview Unit tests for GraphDataService.
  */
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {TestBed} from '@angular/core/testing';
 
-require('pages/exploration-editor-page/services/graph-data.service');
-require('pages/exploration-editor-page/services/exploration-property.service');
-/* eslint-disable-next-line max-len */
-require('pages/exploration-editor-page/services/exploration-init-state-name.service');
+import {GraphDataService} from 'pages/exploration-editor-page/services/graph-data.service';
+import {ExplorationInitStateNameService} from 'pages/exploration-editor-page/services/exploration-init-state-name.service';
+import {ExplorationStatesService} from 'pages/exploration-editor-page/services/exploration-states.service';
 
-describe('Graph Data Service', function() {
-  var GraphDataService;
-  var ExplorationInitStateNameService;
-  var ExplorationStatesService;
+describe('Graph Data Service', () => {
+  let graphDataService: GraphDataService;
+  let explorationInitStateNameService: ExplorationInitStateNameService;
+  let explorationStatesService: ExplorationStatesService;
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
-  beforeEach(angular.mock.inject(function($injector) {
-    GraphDataService = $injector.get('GraphDataService');
-    ExplorationInitStateNameService = $injector.get(
-      'ExplorationInitStateNameService');
-    ExplorationStatesService = $injector.get('ExplorationStatesService');
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+    });
 
-    ExplorationStatesService.init({
-      Hola: {
-        content: {content_id: 'content', html: ''},
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {},
-            default_outcome: {},
-            feedback_1: {},
-          },
-        },
-        param_changes: [],
-        interaction: {
-          answer_groups: [{
-            rule_specs: [{
-              rule_type: 'Contains',
-              inputs: {
-                x: {
-                  contentId: 'rule_input',
-                  normalizedStrSet: ['hola']
-                }
-              }
-            }],
-            outcome: {
-              dest: 'Me Llamo',
+    graphDataService = TestBed.inject(GraphDataService);
+    explorationInitStateNameService = TestBed.inject(
+      ExplorationInitStateNameService
+    );
+    explorationStatesService = TestBed.inject(ExplorationStatesService);
+
+    explorationStatesService.init(
+      {
+        Hola: {
+          content: {content_id: 'content', html: ''},
+          param_changes: [],
+          interaction: {
+            confirmed_unclassified_answers: [],
+            answer_groups: [
+              {
+                rule_specs: [
+                  {
+                    rule_type: 'Contains',
+                    inputs: {
+                      x: {
+                        contentId: 'rule_input',
+                        normalizedStrSet: ['hola'],
+                      },
+                    },
+                  },
+                ],
+                outcome: {
+                  dest: 'Me Llamo',
+                  dest_if_really_stuck: 'Me Llamo',
+                  feedback: {
+                    content_id: 'feedback_1',
+                    html: 'buen trabajo!',
+                  },
+                  labelled_as_correct: true,
+                  param_changes: [],
+                  refresher_exploration_id: null,
+                  missing_prerequisite_skill_id: null,
+                },
+                training_data: [],
+                tagged_skill_misconception_id: null,
+              },
+            ],
+            customization_args: {
+              placeholder: {
+                value: {
+                  content_id: 'ca_placeholder_0',
+                  unicode_str: '',
+                },
+              },
+              rows: {value: 1},
+              catchMisspellings: {
+                value: false,
+              },
+            },
+            default_outcome: {
+              dest: 'Hola',
+              dest_if_really_stuck: 'Hola',
               feedback: {
-                content_id: 'feedback_1',
-                html: 'buen trabajo!',
+                content_id: 'default_outcome',
+                html: 'try again!',
               },
               labelled_as_correct: true,
+              param_changes: [],
+              refresher_exploration_id: null,
+              missing_prerequisite_skill_id: null,
             },
-          }],
-          customization_args: {
-            placeholder: {
-              value: {
-                content_id: 'ca_placeholder_0',
-                unicode_str: ''
-              }
-            },
-            rows: { value: 1 }
+            hints: [],
+            id: 'TextInput',
+            solution: null,
           },
-          default_outcome: {
-            dest: 'Hola',
-            feedback: {
-              content_id: 'default_outcome',
-              html: 'try again!',
-            },
-            labelled_as_correct: false,
-          },
-          hints: [],
-          id: 'TextInput',
-          solution: null,
+          inapplicable_skill_misconception_ids: [],
+          linked_skill_id: null,
+          solicit_answer_details: false,
+          classifier_model_id: '0',
+          card_is_checkpoint: false,
         },
-        linked_skill_id: null,
-        solicit_answer_details: false,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {},
-            feedback_1: {},
-          },
-        },
-        classifier_model_id: 0,
       },
-    });
-  }));
+      false
+    );
+  });
 
-  it('should recompute graph data', function() {
+  it('should recompute graph data', () => {
     var graphData = {
       finalStateIds: [],
       initStateId: 'property_1',
-      links: [{
-        source: 'Hola',
-        target: 'Me Llamo'
-      }, {
-        source: 'Hola',
-        target: 'Hola'
-      }],
-      nodes: { Hola: 'Hola' }
+      links: [
+        {
+          source: 'Hola',
+          target: 'Me Llamo',
+          linkProperty: null,
+          connectsDestIfStuck: false,
+        },
+        {
+          source: 'Hola',
+          target: 'Me Llamo',
+          linkProperty: null,
+          connectsDestIfStuck: true,
+        },
+        {
+          source: 'Hola',
+          target: 'Hola',
+          linkProperty: null,
+          connectsDestIfStuck: false,
+        },
+        {
+          source: 'Hola',
+          target: 'Hola',
+          linkProperty: null,
+          connectsDestIfStuck: true,
+        },
+      ],
+      nodes: {Hola: 'Hola'},
     };
 
-    GraphDataService.recompute();
-    expect(GraphDataService.getGraphData()).toBeNull();
+    graphDataService.recompute();
+    expect(graphDataService.getGraphData()).toBeUndefined();
 
-    ExplorationInitStateNameService.init('property_1');
-    GraphDataService.recompute();
-    expect(GraphDataService.getGraphData()).toEqual(graphData);
+    explorationInitStateNameService.init('property_1');
+    graphDataService.recompute();
+    expect(graphDataService.getGraphData()).toEqual(graphData);
   });
 });

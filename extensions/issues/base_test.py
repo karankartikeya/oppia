@@ -16,94 +16,119 @@
 
 """Tests for the base issue specification."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.domain import playthrough_issue_registry
 from core.platform import models
 from core.tests import test_utils
 
-(stats_models,) = models.Registry.import_models([models.NAMES.statistics])
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import stats_models
+
+(stats_models,) = models.Registry.import_models([models.Names.STATISTICS])
 
 
 class IssueUnitTests(test_utils.GenericTestBase):
     """Test that the default issues are valid."""
 
-    def test_issue_properties_for_early_quit(self):
+    def test_issue_properties_for_early_quit(self) -> None:
         """Test the standard properties of early quit issue."""
 
         issue = playthrough_issue_registry.Registry.get_issue_by_type(
-            stats_models.ISSUE_TYPE_EARLY_QUIT)
+            stats_models.ISSUE_TYPE_EARLY_QUIT
+        )
 
         issue_dict = issue.to_dict()
-        self.assertItemsEqual(list(issue_dict.keys()), [
-            'customization_arg_specs'])
+        self.assertItemsEqual(
+            list(issue_dict.keys()), ['customization_arg_specs']
+        )
         self.assertEqual(
-            issue_dict['customization_arg_specs'], [{
-                'name': 'state_name',
-                'description': 'State name',
-                'schema': {
-                    'type': 'unicode',
+            issue_dict['customization_arg_specs'],
+            [
+                {
+                    'name': 'state_name',
+                    'description': 'State name',
+                    'schema': {
+                        'type': 'unicode',
+                    },
+                    'default_value': '',
                 },
-                'default_value': ''
-            }, {
-                'name': 'time_spent_in_exp_in_msecs',
-                'description': (
-                    'Time spent in the exploration before quitting in '
-                    'milliseconds'),
-                'schema': {
-                    'type': 'int',
+                {
+                    'name': 'time_spent_in_exp_in_msecs',
+                    'description': (
+                        'Time spent in the exploration before quitting in '
+                        'milliseconds'
+                    ),
+                    'schema': {
+                        'type': 'int',
+                    },
+                    'default_value': 0,
                 },
-                'default_value': 0
-            }])
+            ],
+        )
 
-    def test_issue_properties_for_multiple_incorrect_submissions(self):
+    def test_issue_properties_for_multiple_incorrect_submissions(self) -> None:
         """Test the standard properties of multiple incorrect submissions
         issue.
         """
 
         issue = playthrough_issue_registry.Registry.get_issue_by_type(
-            stats_models.ISSUE_TYPE_MULTIPLE_INCORRECT_SUBMISSIONS)
+            stats_models.ISSUE_TYPE_MULTIPLE_INCORRECT_SUBMISSIONS
+        )
 
         issue_dict = issue.to_dict()
-        self.assertItemsEqual(list(issue_dict.keys()), [
-            'customization_arg_specs'])
+        self.assertItemsEqual(
+            list(issue_dict.keys()), ['customization_arg_specs']
+        )
         self.assertEqual(
-            issue_dict['customization_arg_specs'], [{
-                'name': 'state_name',
-                'description': 'State name',
-                'schema': {
-                    'type': 'unicode',
+            issue_dict['customization_arg_specs'],
+            [
+                {
+                    'name': 'state_name',
+                    'description': 'State name',
+                    'schema': {
+                        'type': 'unicode',
+                    },
+                    'default_value': '',
                 },
-                'default_value': ''
-            }, {
-                'name': 'num_times_answered_incorrectly',
-                'description': (
-                    'Number of times incorrect answers were submitted'),
-                'schema': {
-                    'type': 'int',
+                {
+                    'name': 'num_times_answered_incorrectly',
+                    'description': (
+                        'Number of times incorrect answers were submitted'
+                    ),
+                    'schema': {
+                        'type': 'int',
+                    },
+                    'default_value': 0,
                 },
-                'default_value': 0
-            }])
+            ],
+        )
 
-    def test_issue_properties_for_cyclic_state_transitions(self):
+    def test_issue_properties_for_cyclic_state_transitions(self) -> None:
         """Test the standard properties of cyclic state transitions issue."""
 
         issue = playthrough_issue_registry.Registry.get_issue_by_type(
-            stats_models.ISSUE_TYPE_CYCLIC_STATE_TRANSITIONS)
+            stats_models.ISSUE_TYPE_CYCLIC_STATE_TRANSITIONS
+        )
 
         issue_dict = issue.to_dict()
-        self.assertItemsEqual(list(issue_dict.keys()), [
-            'customization_arg_specs'])
+        self.assertItemsEqual(
+            list(issue_dict.keys()), ['customization_arg_specs']
+        )
         self.assertEqual(
-            issue_dict['customization_arg_specs'], [{
-                'name': 'state_names',
-                'description': 'List of state names',
-                'schema': {
-                    'type': 'list',
-                    'items': {
-                        'type': 'unicode',
+            issue_dict['customization_arg_specs'],
+            [
+                {
+                    'name': 'state_names',
+                    'description': 'List of state names',
+                    'schema': {
+                        'type': 'list',
+                        'items': {
+                            'type': 'unicode',
+                        },
                     },
-                },
-                'default_value': []
-            }])
+                    'default_value': [],
+                }
+            ],
+        )

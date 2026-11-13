@@ -16,23 +16,84 @@
  * @fileoverview Component for the Story Editor Unpublish Modal Component.
  */
 
-import { Component } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
+import {Component} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {
+  STORY_PUBLICATION_ACTION_PERMANENT_UNPUBLISH,
+  STORY_PUBLICATION_ACTION_TEMPORARY_UNPUBLISH,
+} from 'domain/story/editable-story-backend-api.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
 
 @Component({
   selector: 'oppia-story-editor-unpublish-modal',
-  templateUrl: './story-editor-unpublish-modal.component.html'
+  templateUrl: './story-editor-unpublish-modal.component.html',
+  styleUrls: ['./story-editor-unpublish-modal.component.css'],
 })
 export class StoryEditorUnpublishModalComponent {
   constructor(
-     private activeModal: NgbActiveModal
+    private platformFeatureService: PlatformFeatureService,
+    private activeModal: NgbActiveModal
   ) {}
+
+  unpublishedChapters: number[] = [];
+
+  badContentReasonText: string =
+    'Bad content (no new explorations ' + 'will be added)';
+
+  splitChapterReasonText: string =
+    'Split Chapters' + ' (requires new explorations to be added)';
+
+  selectedReasonText: string = this.badContentReasonText;
+  unpublishingReason: string = 'BAD_CONTENT';
+
+  showingChoiceScreen: boolean = true;
+  mode:
+    | typeof STORY_PUBLICATION_ACTION_TEMPORARY_UNPUBLISH
+    | typeof STORY_PUBLICATION_ACTION_PERMANENT_UNPUBLISH =
+    STORY_PUBLICATION_ACTION_PERMANENT_UNPUBLISH;
+
+  selectTemporary(): void {
+    this.showingChoiceScreen = false;
+    this.mode = STORY_PUBLICATION_ACTION_TEMPORARY_UNPUBLISH;
+  }
+
+  selectPermanent(): void {
+    this.showingChoiceScreen = false;
+    this.mode = STORY_PUBLICATION_ACTION_PERMANENT_UNPUBLISH;
+  }
 
   cancel(): void {
     this.activeModal.dismiss();
   }
 
   confirm(): void {
-    this.activeModal.close();
+    if (this.isSerialChapterFeatureFlagEnabled()) {
+      this.activeModal.close({
+        mode: STORY_PUBLICATION_ACTION_PERMANENT_UNPUBLISH,
+        reason: this.unpublishingReason,
+      });
+      return;
+    }
+
+    if (!this.showingChoiceScreen) {
+      this.activeModal.close({
+        mode: this.mode,
+        reason: null,
+      });
+    }
+  }
+
+  isSerialChapterFeatureFlagEnabled(): boolean {
+    return this.platformFeatureService.status
+      .SerialChapterLaunchCurriculumAdminView.isEnabled;
+  }
+
+  setReason(reason: string): void {
+    this.unpublishingReason = reason;
+    if (reason === 'BAD_CONTENT') {
+      this.selectedReasonText = this.badContentReasonText;
+    } else if (reason === 'CHAPTER_NEEDS_SPLITTING') {
+      this.selectedReasonText = this.splitChapterReasonText;
+    }
   }
 }

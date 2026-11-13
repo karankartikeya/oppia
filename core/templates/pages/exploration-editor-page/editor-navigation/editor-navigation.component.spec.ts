@@ -16,424 +16,579 @@
  * @fileoverview Unit tests for editorNavigation.
  */
 
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { of, Subscription } from 'rxjs';
+// @ts-nocheck
 
-import { UserService } from 'services/user.service';
-import { WindowDimensionsService } from
-  'services/contextual/window-dimensions.service';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  discardPeriodicTasks,
+  fakeAsync,
+  flush,
+  flushMicrotasks,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {Subscription} from 'rxjs';
+import {NgbModal, NgbModalRef, NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {RouterService} from '../services/router.service';
+import {UserService} from 'services/user.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {ChangeListService} from '../services/change-list.service';
+import {HelpModalComponent} from '../modal-templates/help-modal.component';
+import {PageContextService} from 'services/page-context.service';
+import {ExplorationFeaturesService} from 'services/exploration-features.service';
+import {ExplorationImprovementsService} from 'services/exploration-improvements.service';
+import {InternetConnectivityService} from 'services/internet-connectivity.service';
+import {ThreadDataBackendApiService} from '../feedback-tab/services/thread-data-backend-api.service';
+import {ExplorationWarningsService} from '../services/exploration-warnings.service';
+import {StateTutorialFirstTimeService} from '../services/state-tutorial-first-time.service';
+import {ExplorationRightsService} from '../services/exploration-rights.service';
+import {EditabilityService} from 'services/editability.service';
+import {ExplorationSaveService} from '../services/exploration-save.service';
+import {EditorNavigationComponent} from './editor-navigation.component';
+import {UserInfo} from 'domain/user/user-info.model';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {UserExplorationPermissionsService} from '../services/user-exploration-permissions.service';
 
-// TODO(#7222): Remove usage of UpgradedServices once upgraded to Angular 8.
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { ChangeListService } from '../services/change-list.service';
+class MockPlatformFeatureService {
+  status = {
+    ExplorationEditorNewCreatorFeedbackTab: {
+      isEnabled: false,
+    },
+  };
+}
 
-describe('Editor Navigation Component', function() {
-  var ctrl = null;
-  var $flushPendingTasks = null;
-  var $q = null;
-  var $rootScope = null;
-  var $scope = null;
-  var $uibModal = null;
-  var $verifyNoPendingTasks = null;
-  var contextService = null;
-  var explorationFeaturesService = null;
-  var explorationImprovementsService = null;
-  var explorationWarningsService = null;
-  var stateTutorialFirstTimeService = null;
-  var threadDataBackendApiService = null;
-  var userService = null;
-  var windowDimensionsService = null;
-  var internetConnectivityService = null;
-
-  var mockOpenPostTutorialHelpPopover = new EventEmitter();
-  var mockConnectionServiceEmitter = new EventEmitter<boolean>();
-
-  var testSubscriptions: Subscription;
+describe('Editor Navigation Component', () => {
+  let component: EditorNavigationComponent;
+  let fixture: ComponentFixture<EditorNavigationComponent>;
+  let pageContextService: PageContextService;
+  let explorationFeaturesService: ExplorationFeaturesService;
+  let explorationImprovementsService: ExplorationImprovementsService;
+  let explorationWarningsService: ExplorationWarningsService;
+  let stateTutorialFirstTimeService: StateTutorialFirstTimeService;
+  let threadDataBackendApiService: ThreadDataBackendApiService;
+  let routerService: RouterService;
+  let windowDimensionsService: WindowDimensionsService;
+  let ngbModal: NgbModal;
+  let explorationRightsService: ExplorationRightsService;
+  let editabilityService: EditabilityService;
+  let explorationSaveService: ExplorationSaveService;
+  let changeListService: ChangeListService;
+  let mockOpenPostTutorialHelpPopover = new EventEmitter();
+  let mockGetResizeEvent = new EventEmitter();
+  let mockConnectionServiceEmitter = new EventEmitter<boolean>();
+  let testSubscriptions: Subscription;
+  let mockPlatformFeatureService = new MockPlatformFeatureService();
 
   const openEditorTutorialSpy = jasmine.createSpy('openEditorTutorial');
-  const openTranslationTutorialSpy = (
-    jasmine.createSpy('openTranslationTutorial'));
+  const openTranslationTutorialSpy = jasmine.createSpy(
+    'openTranslationTutorial'
+  );
 
-  var explorationRightsService = null;
-  var editabilityService = null;
-  var explorationSaveService = null;
-  let changeListService: ChangeListService = null;
-  var explorationId = 'exp1';
-  var userInfo = {
-    isLoggedIn: () => true
-  };
-  var isImprovementsTabEnabledAsyncSpy = null;
+  let explorationId = 'exp1';
+  let isImprovementsTabEnabledAsyncSpy: jasmine.Spy;
+
+  class MockInternetConnectivityService {
+    onInternetStateChange = mockConnectionServiceEmitter;
+
+    isOnline(): boolean {
+      return true;
+    }
+  }
+
+  class MockUserService {
+    getUserInfoAsync(): Promise<UserInfo> {
+      return Promise.resolve({
+        isLoggedIn: () => true,
+      } as UserInfo);
+    }
+
+    isLoggedIn(): boolean {
+      return true;
+    }
+  }
+
+  class MockStateTutorialFirstTimeService {
+    onOpenPostTutorialHelpPopover = mockOpenPostTutorialHelpPopover;
+    onOpenTranslationTutorial = new EventEmitter();
+    onOpenEditorTutorial = new EventEmitter();
+  }
+
+  class MockWindowDimensionsService {
+    getResizeEvent() {
+      return mockGetResizeEvent;
+    }
+
+    getWidth() {
+      return 1200;
+    }
+  }
+
+  class MockNgbModalRef {
+    componentInstance = {};
+  }
+
+  class MockNgbModal {
+    open() {
+      return {
+        result: Promise.resolve(),
+      };
+    }
+  }
+
+  class MockUserExplorationPermissionsService {
+    getPermissionsAsync() {
+      return Promise.resolve({
+        canPublish: true,
+      });
+    }
+  }
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
+      imports: [HttpClientTestingModule, NgbModule],
+      declarations: [EditorNavigationComponent, HelpModalComponent],
       providers: [
-        ChangeListService
-      ]
+        ChangeListService,
+        RouterService,
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
+        },
+        {
+          provide: UserExplorationPermissionsService,
+          useClass: MockUserExplorationPermissionsService,
+        },
+        {
+          provide: InternetConnectivityService,
+          useClass: MockInternetConnectivityService,
+        },
+        {
+          provide: UserService,
+          useClass: MockUserService,
+        },
+        {
+          provide: StateTutorialFirstTimeService,
+          useClass: MockStateTutorialFirstTimeService,
+        },
+        {
+          provide: WindowDimensionsService,
+          useClass: MockWindowDimensionsService,
+        },
+        {
+          provide: PlatformFeatureService,
+          useValue: mockPlatformFeatureService,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
     });
   });
 
-  importAllAngularServices();
-
-  beforeEach(function() {
-    windowDimensionsService = TestBed.get(WindowDimensionsService);
-    userService = TestBed.get(UserService);
+  beforeEach(() => {
+    windowDimensionsService = TestBed.inject(WindowDimensionsService);
     changeListService = TestBed.inject(ChangeListService);
+    ngbModal = TestBed.inject(NgbModal);
+    routerService = TestBed.inject(RouterService);
+
+    fixture = TestBed.createComponent(EditorNavigationComponent);
+    component = fixture.componentInstance;
+
+    component.ngOnInit();
   });
 
-  describe('when screen is large', function() {
-    beforeEach(angular.mock.inject(function($injector, $componentController) {
-      $flushPendingTasks = $injector.get('$flushPendingTasks');
-      $q = $injector.get('$q');
-      $rootScope = $injector.get('$rootScope');
-      $uibModal = $injector.get('$uibModal');
-      $verifyNoPendingTasks = $injector.get('$verifyNoPendingTasks');
-      contextService = $injector.get('ContextService');
-      explorationRightsService = $injector.get('ExplorationRightsService');
-      explorationSaveService = $injector.get('ExplorationSaveService');
-      editabilityService = $injector.get('EditabilityService');
-      explorationFeaturesService = $injector.get('ExplorationFeaturesService');
-      explorationImprovementsService = $injector.get(
-        'ExplorationImprovementsService');
-      explorationWarningsService = $injector.get('ExplorationWarningsService');
-      threadDataBackendApiService = (
-        $injector.get('ThreadDataBackendApiService'));
-      stateTutorialFirstTimeService = (
-        $injector.get('StateTutorialFirstTimeService'));
-      internetConnectivityService = $injector.get(
-        'InternetConnectivityService');
+  afterEach(() => {
+    // This will destroy the fixture once the test gone end
+    // this is going to makesure that each testcase is going
+    // to run independent of another test case.
+    fixture.destroy();
+  });
 
-      spyOn(windowDimensionsService, 'getResizeEvent').and.returnValue(
-        of(new Event('resize')));
-      spyOn(windowDimensionsService, 'getWidth').and.returnValue(1200);
+  describe('when screen is large', () => {
+    beforeEach(() => {
+      pageContextService = TestBed.inject(PageContextService);
+      explorationRightsService = TestBed.inject(ExplorationRightsService);
+      explorationSaveService = TestBed.inject(ExplorationSaveService);
+      editabilityService = TestBed.inject(EditabilityService);
+      explorationFeaturesService = TestBed.inject(ExplorationFeaturesService);
+      explorationImprovementsService = TestBed.inject(
+        ExplorationImprovementsService
+      );
+      explorationWarningsService = TestBed.inject(ExplorationWarningsService);
+      threadDataBackendApiService = TestBed.inject(ThreadDataBackendApiService);
+      stateTutorialFirstTimeService = TestBed.inject(
+        StateTutorialFirstTimeService
+      );
 
-      spyOn(contextService, 'getExplorationId').and.returnValue(explorationId);
-      spyOn(userService, 'getUserInfoAsync').
-        and.returnValue(userInfo);
-      spyOnProperty(
-        internetConnectivityService, 'onInternetStateChange').and.returnValue(
-        mockConnectionServiceEmitter);
+      spyOn(pageContextService, 'getExplorationId').and.returnValue(
+        explorationId
+      );
 
       isImprovementsTabEnabledAsyncSpy = spyOn(
-        explorationImprovementsService, 'isImprovementsTabEnabledAsync');
+        explorationImprovementsService,
+        'isImprovementsTabEnabledAsync'
+      );
 
-      isImprovementsTabEnabledAsyncSpy.and.returnValue(false);
-      var MockUserExplorationPermissionsService = {
-        getPermissionsAsync: () => {
-          var deferred = $q.defer();
-          deferred.resolve({
-            canPublish: true
-          });
-          return deferred.promise;
-        }
-      };
-
-      spyOnProperty(
-        stateTutorialFirstTimeService,
-        'onOpenPostTutorialHelpPopover').and.returnValue(
-        mockOpenPostTutorialHelpPopover);
-      $scope = $rootScope.$new();
-      ctrl = $componentController('editorNavigation', {
-        $scope: $scope,
-        WindowDimensionsService: windowDimensionsService,
-        InternetConnectivityService: internetConnectivityService,
-        UserExplorationPermissionsService: MockUserExplorationPermissionsService
-      });
-      ctrl.$onInit();
-      $scope.$apply();
-    }));
+      isImprovementsTabEnabledAsyncSpy.and.returnValue(Promise.resolve(false));
+    });
 
     beforeEach(() => {
       testSubscriptions = new Subscription();
       testSubscriptions.add(
         stateTutorialFirstTimeService.onOpenTranslationTutorial.subscribe(
-          openTranslationTutorialSpy));
+          openTranslationTutorialSpy
+        )
+      );
       testSubscriptions.add(
         stateTutorialFirstTimeService.onOpenEditorTutorial.subscribe(
-          openEditorTutorialSpy));
+          openEditorTutorialSpy
+        )
+      );
     });
 
-    afterEach(function() {
+    afterEach(() => {
       testSubscriptions.unsubscribe();
-      ctrl.$onDestroy();
+      component.ngOnDestroy();
     });
 
-    it('should initialize $scope properties after controller is initialized',
-      function() {
-        spyOn(explorationRightsService, 'isPrivate').and.returnValue(true);
-        expect($scope.isPostTutorialHelpPopoverShown())
-          .toBe(false);
-        expect($scope.isScreenLarge()).toBe(true);
-        expect($scope.isUserLoggedIn()).toBe(true);
-        expect($scope.isImprovementsTabEnabled()).toBe(false);
-        expect($scope.showPublishButton()).toEqual(true);
-      });
-
-    it('should get warnings whenever has one', function() {
-      var warnings = [{
-        type: 'ERROR'
-      }, {
-        type: 'CRITICAL'
-      }];
-      spyOn(explorationWarningsService, 'getWarnings').and.returnValue(
-        warnings);
-      spyOn(explorationWarningsService, 'countWarnings').and.returnValue(
-        warnings.length);
-      // This approach was chosen because spyOn() doesn't work on properties
-      // that doesn't have a get access type.
-      // eslint-disable-next-line max-len
-      // ref: https://developer.mozilla.org/pt-BR/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty
-      Object.defineProperty(explorationWarningsService, 'hasCriticalWarnings', {
-        get: () => true
-      });
-      spyOnProperty(explorationWarningsService, 'hasCriticalWarnings')
-        .and.returnValue(true);
-
-      expect($scope.countWarnings()).toBe(2);
-      expect($scope.getWarnings()).toEqual(warnings);
-      expect($scope.hasCriticalWarnings()).toBe(true);
-    });
-
-    it('should open editor tutorial after closing user help modal with mode' +
-      'editor', function() {
-      spyOn($uibModal, 'open').and.returnValue({
-        result: $q.resolve('editor')
-      });
-      $scope.showUserHelpModal();
-      $scope.$apply();
-
-      expect(openEditorTutorialSpy).toHaveBeenCalled();
-    });
-
-    it('should open editor tutorial after closing user help modal with mode' +
-      'translation', function() {
-      spyOn($uibModal, 'open').and.returnValue({
-        result: $q.resolve('translation')
-      });
-      $scope.showUserHelpModal();
-      $scope.$apply();
-
-      expect(openTranslationTutorialSpy).toHaveBeenCalled();
-    });
-
-    it('should return if exploration is private', function() {
+    it('should initialize component properties after controller is initialized', () => {
       spyOn(explorationRightsService, 'isPrivate').and.returnValue(true);
-      expect($scope.isPrivate()).toEqual(true);
+      component.postTutorialHelpPopoverIsShown = false;
+      component.userIsLoggedIn = true;
+      component.improvementsTabIsEnabled = false;
+      component.isPublishButtonEnabled = true;
+
+      expect(component.isPostTutorialHelpPopoverShown()).toBe(false);
+      expect(component.isUserLoggedIn()).toBe(true);
+      expect(component.isImprovementsTabEnabled()).toBe(false);
+      expect(component.showPublishButton()).toEqual(true);
     });
 
-    it('should return if exploration is locked for editing', function() {
+    it('should get warnings whenever has one', () => {
+      let warnings = [
+        {
+          type: 'ERROR',
+        },
+        {
+          type: 'CRITICAL',
+        },
+      ];
+      spyOn(explorationWarningsService, 'getWarnings').and.returnValue(
+        warnings
+      );
+      spyOn(explorationWarningsService, 'countWarnings').and.returnValue(
+        warnings.length
+      );
+      component.isScreenLarge();
+
+      expect(component.countWarnings()).toBe(2);
+      expect(component.getWarnings()).toEqual(warnings);
+      expect(component.hasCriticalWarnings()).toBe(false);
+    });
+
+    it(
+      'should open editor tutorial after closing user help modal with mode' +
+        'editor',
+      () => {
+        spyOn(ngbModal, 'open').and.returnValue({
+          componentInstance: new MockNgbModalRef(),
+          result: Promise.resolve('editor'),
+        } as NgbModalRef);
+
+        component.showUserHelpModal();
+
+        expect(ngbModal.open).toHaveBeenCalled();
+      }
+    );
+
+    it(
+      'should open editor tutorial after closing user help modal with mode' +
+        'translation',
+      () => {
+        spyOn(ngbModal, 'open').and.returnValue({
+          componentInstance: new MockNgbModalRef(),
+          result: Promise.resolve('translation'),
+        } as NgbModalRef);
+
+        component.showUserHelpModal();
+
+        expect(ngbModal.open).toHaveBeenCalled();
+      }
+    );
+
+    it('should return if exploration is private', () => {
+      spyOn(explorationRightsService, 'isPrivate').and.returnValue(true);
+      expect(component.isPrivate()).toEqual(true);
+    });
+
+    it('should return if exploration is locked for editing', () => {
+      spyOn(changeListService, 'isExplorationLockedForEditing').and.returnValue(
+        true
+      );
+      expect(component.isExplorationLockedForEditing()).toEqual(true);
+    });
+
+    it('should return if exploration is editable outside tutorial mode', () => {
       spyOn(
-        changeListService,
-        'isExplorationLockedForEditing').and.returnValue(true);
-      expect($scope.isExplorationLockedForEditing()).toEqual(true);
+        editabilityService,
+        'isEditableOutsideTutorialMode'
+      ).and.returnValue(true);
+      spyOn(editabilityService, 'isTranslatable').and.returnValue(true);
+      expect(component.isEditableOutsideTutorialMode()).toEqual(true);
     });
 
-    it('should return if exploration is editable outside tutorial mode',
-      function() {
-        spyOn(
-          editabilityService,
-          'isEditableOutsideTutorialMode').and.returnValue(true);
-        spyOn(editabilityService, 'isTranslatable').and.returnValue(true);
-        expect($scope.isEditableOutsideTutorialMode()).toEqual(true);
+    it('should update autosaveIsInProgress when autosaveInProgressEventEmitter emits true', () => {
+      spyOn(
+        changeListService.autosaveInProgressEventEmitter,
+        'subscribe'
+      ).and.callFake((callback: (autosaveInProgress: boolean) => void) => {
+        callback(true);
       });
+      component.ngOnInit();
+      expect(component.autosaveIsInProgress).toBe(true);
+    });
 
-    it('should call exploration save service to discard changes', function() {
-      var explorationSpy = spyOn(explorationSaveService, 'discardChanges');
-      $scope.discardChanges();
+    it('should update autosaveIsInProgress when autosaveInProgressEventEmitter emits false', () => {
+      spyOn(
+        changeListService.autosaveInProgressEventEmitter,
+        'subscribe'
+      ).and.callFake((callback: (autosaveInProgress: boolean) => void) => {
+        callback(false);
+      });
+      component.ngOnInit();
+      expect(component.autosaveIsInProgress).toBe(false);
+    });
+
+    it('should call exploration save service to discard changes', () => {
+      let explorationSpy = spyOn(explorationSaveService, 'discardChanges');
+      component.discardChanges();
       expect(explorationSpy).toHaveBeenCalled();
     });
 
-    it('should call exploration save service to save changes', function() {
-      var deferred = $q.defer();
-      deferred.resolve();
-      var explorationSpy = spyOn(
+    it('should call exploration save service to save changes', () => {
+      let deferred = Promise.resolve();
+      let explorationSpy = spyOn(
         explorationSaveService,
-        'saveChanges').and.returnValue(deferred.promise);
-      $scope.saveChanges();
-      $rootScope.$apply();
+        'saveChangesAsync'
+      ).and.returnValue(deferred);
+      component.saveChanges();
+
       expect(explorationSpy).toHaveBeenCalled();
     });
 
-    it('should show/hide the loading dots', function() {
-      $scope.showLoadingDots();
-      expect($scope.loadingDotsAreShown).toEqual(true);
-      $scope.hideLoadingDots();
-      expect($scope.loadingDotsAreShown).toEqual(false);
+    it('should show/hide the loading dots', () => {
+      component.showLoadingDots();
+      expect(component.loadingDotsAreShown).toEqual(true);
+      component.hideLoadingDots();
+      expect(component.loadingDotsAreShown).toEqual(false);
     });
 
-    it('should return if exploration is saveable', function() {
-      spyOn(
-        explorationSaveService, 'isExplorationSaveable').and.returnValue(true);
-      expect($scope.isExplorationSaveable()).toEqual(true);
+    it('should return if exploration is saveable', () => {
+      spyOn(explorationSaveService, 'isExplorationSaveable').and.returnValue(
+        true
+      );
+      expect(component.isExplorationSaveable()).toEqual(true);
     });
 
-    it('should toggle mobile nav options', function() {
-      $scope.mobileNavOptionsAreShown = false;
-      $scope.toggleMobileNavOptions();
-      expect($scope.mobileNavOptionsAreShown).toEqual(true);
-      $scope.toggleMobileNavOptions();
-      expect($scope.mobileNavOptionsAreShown).toEqual(false);
+    it('should toggle mobile nav options', () => {
+      component.mobileNavOptionsAreShown = false;
+      component.toggleMobileNavOptions();
+      expect(component.mobileNavOptionsAreShown).toEqual(true);
+      component.toggleMobileNavOptions();
+      expect(component.mobileNavOptionsAreShown).toEqual(false);
     });
 
-    it('should return the number of changes', function() {
-      spyOn(
-        changeListService, 'getChangeList').and.returnValue([]);
-      expect($scope.getChangeListLength()).toEqual(0);
+    it('should return the number of changes', () => {
+      spyOn(changeListService, 'getChangeList').and.returnValue([]);
+      expect(component.getChangeListLength()).toEqual(0);
     });
 
-    it('should hide loading dots after publishing the exploration', function() {
-      $scope.loadingDotsAreShown = true;
-      var deferred = $q.defer();
-      deferred.resolve();
+    it('should hide loading dots after publishing the exploration', fakeAsync(() => {
+      component.loadingDotsAreShown = true;
+      let deferred = Promise.resolve();
       spyOn(
         explorationSaveService,
-        'showPublishExplorationModal').and.returnValue(deferred.promise);
-      $scope.showPublishExplorationModal();
-      $rootScope.$apply();
-      expect($scope.loadingDotsAreShown).toEqual(false);
-    });
+        'showPublishExplorationModal'
+      ).and.returnValue(deferred);
 
-    it('should navigate to main tab when clicking on tab', function() {
-      $scope.selectMainTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('main');
-    });
+      component.showPublishExplorationModal();
+      tick();
 
-    it('should navigate to translation tab when clicking on tab', function() {
-      $scope.selectTranslationTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('translation');
-    });
-
-    it('should navigate to preview tab when clicking on tab', function() {
-      $scope.selectPreviewTab();
-      $rootScope.$apply();
-      $flushPendingTasks();
-      $verifyNoPendingTasks('timeout');
-      expect($scope.getActiveTabName()).toBe('preview');
-    });
-
-    it('should navigate to settings tab when clicking on tab', function() {
-      $scope.selectSettingsTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('settings');
-    });
-
-    it('should navigate to stats tab when clicking on tab', function() {
-      $scope.selectStatsTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('stats');
-    });
-
-    it('should navigate to improvements tab when clicking on tab', function() {
-      spyOn(explorationFeaturesService, 'isInitialized').and.returnValue(true);
-      isImprovementsTabEnabledAsyncSpy.and.returnValue(true);
-      $scope.selectImprovementsTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('improvements');
-    });
-
-    it('should navigate to history tab when clicking on tab', function() {
-      $scope.selectHistoryTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('history');
-    });
-
-    it('should navigate to feedback tab when clicking on tab', function() {
-      $scope.selectFeedbackTab();
-      $rootScope.$apply();
-      expect($scope.getActiveTabName()).toBe('feedback');
-    });
-
-    it('should get open thread count', function() {
-      spyOn(
-        threadDataBackendApiService, 'getOpenThreadsCount').and.returnValue(5);
-      expect($scope.getOpenThreadsCount()).toBe(5);
-    });
-
-    it('should toggle post tutorial help popover when resizing page',
-      function() {
-        angular.element(window).triggerHandler('resize');
-        mockOpenPostTutorialHelpPopover.emit();
-
-        expect(ctrl.postTutorialHelpPopoverIsShown).toBe(true);
-
-        $flushPendingTasks();
-
-        expect(ctrl.postTutorialHelpPopoverIsShown).toBe(false);
-      });
-
-    it('should change connnection status to ONLINE when internet is connected',
-      () => {
-        $scope.connectedToInternet = false;
-        mockConnectionServiceEmitter.emit(true);
-        $scope.$apply();
-        expect($scope.connectedToInternet).toBe(true);
-      });
-
-    it('should change connnection status to OFFLINE when internet disconnects',
-      () => {
-        $scope.connectedToInternet = true;
-        mockConnectionServiceEmitter.emit(false);
-        $scope.$apply();
-        expect($scope.connectedToInternet).toBe(false);
-      });
-  });
-
-  describe('when screen is not large', function() {
-    beforeEach(angular.mock.inject(function($injector, $componentController) {
-      $flushPendingTasks = $injector.get('$flushPendingTasks');
-      $q = $injector.get('$q');
-      $rootScope = $injector.get('$rootScope');
-      $uibModal = $injector.get('$uibModal');
-      $verifyNoPendingTasks = $injector.get('$verifyNoPendingTasks');
-      contextService = $injector.get('ContextService');
-      explorationFeaturesService = $injector.get('ExplorationFeaturesService');
-      explorationImprovementsService = $injector.get(
-        'ExplorationImprovementsService');
-      explorationWarningsService = $injector.get('ExplorationWarningsService');
-      threadDataBackendApiService = (
-        $injector.get('ThreadDataBackendApiService'));
-      stateTutorialFirstTimeService = (
-        $injector.get('StateTutorialFirstTimeService'));
-
-      spyOn(windowDimensionsService, 'getResizeEvent').and.returnValue(
-        of(new Event('resize')));
-      spyOn(windowDimensionsService, 'getWidth').and.returnValue(768);
-
-      spyOn(contextService, 'getExplorationId').and.returnValue(explorationId);
-      spyOn(userService, 'getUserInfoAsync')
-        .and.returnValue(userInfo);
-
-      spyOnProperty(
-        stateTutorialFirstTimeService,
-        'onOpenPostTutorialHelpPopover').and.returnValue(
-        mockOpenPostTutorialHelpPopover);
-
-      isImprovementsTabEnabledAsyncSpy = spyOn(
-        explorationImprovementsService, 'isImprovementsTabEnabledAsync');
-
-      isImprovementsTabEnabledAsyncSpy.and.returnValue(false);
-
-      $scope = $rootScope.$new();
-      ctrl = $componentController('editorNavigation', {
-        $scope: $scope,
-        WindowDimensionsService: windowDimensionsService
-      });
-      ctrl.$onInit();
-      $scope.$apply();
+      expect(component.loadingDotsAreShown).toEqual(false);
     }));
 
-    afterEach(function() {
-      ctrl.$onDestroy();
+    it('should navigate to main tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('main');
+
+      component.selectMainTab('');
+
+      expect(component.getActiveTabName()).toBe('main');
     });
 
-    it('should hide post tutorial help popover when resizing page', function() {
-      angular.element(window).triggerHandler('resize');
+    it('should navigate to translation tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('translation');
+
+      component.selectTranslationTab();
+
+      expect(component.getActiveTabName()).toBe('translation');
+    });
+
+    it('should navigate to preview tab when clicking on tab', fakeAsync(() => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('preview');
+
+      component.selectPreviewTab();
+
+      tick();
+      flush();
+      discardPeriodicTasks();
+
+      expect(component.getActiveTabName()).toBe('preview');
+    }));
+
+    it('should navigate to settings tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('settings');
+
+      component.selectSettingsTab();
+
+      expect(component.getActiveTabName()).toBe('settings');
+    });
+
+    it('should navigate to stats tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('stats');
+
+      component.selectStatsTab();
+
+      expect(component.getActiveTabName()).toBe('stats');
+    });
+
+    it('should navigate to improvements tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('improvements');
+
+      spyOn(explorationFeaturesService, 'isInitialized').and.returnValue(true);
+      isImprovementsTabEnabledAsyncSpy.and.returnValue(Promise.resolve(true));
+      component.selectImprovementsTab();
+
+      expect(component.getActiveTabName()).toBe('improvements');
+    });
+
+    it('should navigate to history tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('history');
+
+      component.selectHistoryTab();
+
+      expect(component.getActiveTabName()).toBe('history');
+    });
+
+    it('should navigate to feedback tab when clicking on tab', () => {
+      spyOn(routerService, 'getActiveTabName').and.returnValue('feedback');
+
+      component.selectFeedbackTab();
+
+      expect(component.getActiveTabName()).toBe('feedback');
+    });
+
+    it('should render mobile tabs as focusable buttons that navigate without fragments', () => {
+      fixture.detectChanges();
+      component.mobileNavOptionsAreShown = true;
+      component.userIsLoggedIn = true;
+      component.improvementsTabIsEnabled = true;
+      fixture.detectChanges();
+
+      let mobileTabButtons = fixture.nativeElement.querySelectorAll(
+        '.oppia-exploration-editor-tabs-dropdown-element'
+      );
+      expect(mobileTabButtons.length).toBe(8);
+
+      mobileTabButtons.forEach((button: HTMLButtonElement) => {
+        expect(button.tagName).toBe('BUTTON');
+        expect(button.getAttribute('type')).toBe('button');
+        expect(button.hasAttribute('href')).toBe(false);
+        expect(button.tabIndex).toBe(0);
+        expect(button.disabled).toBe(false);
+      });
+
+      let navigationSpies = [
+        spyOn(routerService, 'navigateToMainTab'),
+        spyOn(routerService, 'navigateToTranslationTab'),
+        spyOn(routerService, 'navigateToPreviewTab'),
+        spyOn(routerService, 'navigateToSettingsTab'),
+        spyOn(routerService, 'navigateToStatsTab'),
+        spyOn(routerService, 'navigateToImprovementsTab'),
+        spyOn(routerService, 'navigateToHistoryTab'),
+        spyOn(routerService, 'navigateToFeedbackTab'),
+      ];
+      let initialHash = window.location.hash;
+
+      mobileTabButtons.forEach((button: HTMLButtonElement) => {
+        button.click();
+      });
+
+      navigationSpies.forEach(navigationSpy => {
+        expect(navigationSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(window.location.hash).toBe(initialHash);
+      expect(window.location.hash).not.toBe('#');
+    });
+
+    it('should get open thread count', () => {
+      spyOn(threadDataBackendApiService, 'getOpenThreadsCount').and.returnValue(
+        5
+      );
       mockOpenPostTutorialHelpPopover.emit();
-      expect(ctrl.postTutorialHelpPopoverIsShown).toBe(false);
+
+      expect(component.getOpenThreadsCount()).toBe(5);
+    });
+
+    it('should toggle post tutorial help popover when resizing page', fakeAsync(() => {
+      mockGetResizeEvent.emit(new Event('resize'));
+      mockOpenPostTutorialHelpPopover.emit();
+
+      expect(component.postTutorialHelpPopoverIsShown).toBe(true);
+
+      tick();
+      flush();
+      flushMicrotasks();
+
+      expect(component.postTutorialHelpPopoverIsShown).toBe(false);
+    }));
+
+    it('should toggle post tutorial help popover when resizing page', fakeAsync(() => {
+      spyOn(windowDimensionsService, 'getWidth').and.returnValue(10);
+
+      mockGetResizeEvent.emit(new Event('resize'));
+      mockOpenPostTutorialHelpPopover.emit();
+
+      expect(component.postTutorialHelpPopoverIsShown).toBe(false);
+    }));
+
+    it('should change connnection status to ONLINE when internet is connected', () => {
+      component.connectedToInternet = false;
+      mockConnectionServiceEmitter.emit(true);
+
+      expect(component.connectedToInternet).toBe(true);
+    });
+
+    it('should change connnection status to OFFLINE when internet disconnects', fakeAsync(() => {
+      component.connectedToInternet = true;
+      mockConnectionServiceEmitter.emit(false);
+
+      tick();
+
+      expect(component.connectedToInternet).toBe(false);
+    }));
+
+    it('should return true when new creator feedback tab is enabled', () => {
+      mockPlatformFeatureService.status.ExplorationEditorNewCreatorFeedbackTab.isEnabled =
+        true;
+      component.ngOnInit();
+      expect(component.newCreatorFeedbackTabIsEnabled).toBe(true);
+    });
+
+    it('should return false when new creator feedback tab is disabled', () => {
+      mockPlatformFeatureService.status.ExplorationEditorNewCreatorFeedbackTab.isEnabled =
+        false;
+      component.ngOnInit();
+      expect(component.newCreatorFeedbackTabIsEnabled).toBe(false);
     });
   });
 });

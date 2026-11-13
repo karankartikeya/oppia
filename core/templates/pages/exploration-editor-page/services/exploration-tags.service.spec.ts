@@ -16,31 +16,33 @@
  * @fileoverview Unit tests for the ExplorationTagsService.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { ExplorationTagsService } from './exploration-tags.service';
+import {TestBed} from '@angular/core/testing';
+import {ExplorationPropertyService} from './exploration-property.service';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ExplorationTagsService} from './exploration-tags.service';
 
-describe('Exploration Tags Service', function() {
-  let explorationTagsService: ExplorationTagsService = null;
-
-  importAllAngularServices();
+describe('Exploration Tags Service', () => {
+  let explorationTagsService: ExplorationTagsService;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [ExplorationPropertyService],
+    });
+
     explorationTagsService = TestBed.inject(ExplorationTagsService);
   });
 
-  it('should test the child object properties', function() {
+  it('should test the child object properties', () => {
     expect(explorationTagsService.propertyName).toBe('tags');
     let NotNormalize = ['angularjs ', ' google  cloud  storage   ', ' python'];
     let Normalize = ['angularjs', 'google cloud storage', 'python'];
     let UpperCaseNotValid = ['Angularjs', 'google cloud storage', 'Python'];
     let NumberNotValid = ['angularjs', 'google cloud storage', 'Python123'];
     let SpecialNotValid = ['@ngularjs', 'google cloud storage', 'Python'];
-    expect(
-      explorationTagsService._normalize(NotNormalize)).toEqual(Normalize);
+    expect(explorationTagsService._normalize(NotNormalize)).toEqual(Normalize);
     expect(explorationTagsService._isValid(Normalize)).toBe(true);
-    expect(
-      explorationTagsService._isValid(UpperCaseNotValid)).toBe(false);
+    expect(explorationTagsService._isValid(UpperCaseNotValid)).toBe(false);
     expect(explorationTagsService._isValid(NumberNotValid)).toBe(false);
     expect(explorationTagsService._isValid(SpecialNotValid)).toBe(false);
   });

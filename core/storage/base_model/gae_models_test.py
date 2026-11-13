@@ -16,15 +16,12 @@
 
 """Tests for core.storage.base_model.gae_models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-import datetime
 import re
 import types
 
-from core import feconf
-from core import python_utils
+from core import feconf, utils
 from core.constants import constants
 from core.platform import models
 from core.tests import test_utils
@@ -32,10 +29,11 @@ from core.tests import test_utils
 from typing import Dict, List, Set, Union, cast
 
 MYPY = False
-if MYPY: # pragma: no cover
-    from mypy_imports import base_models
+if MYPY:  # pragma: no cover
+    from mypy_imports import base_models, datastore_services
 
-(base_models,) = models.Registry.import_models([models.NAMES.base_model])
+(base_models,) = models.Registry.import_models([models.Names.BASE_MODEL])
+datastore_services = models.Registry.import_datastore_services()
 
 
 class BaseModelUnitTests(test_utils.GenericTestBase):
@@ -46,65 +44,87 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
         for entity in base_models.BaseModel.get_all():
             entity.delete()
 
-        super(BaseModelUnitTests, self).tearDown()
+        super().tearDown()
 
     def test_get_deletion_policy(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The get_deletion_policy() method is missing from the '
                 'derived class. It should be implemented in the '
-                'derived class.')):
+                'derived class.'
+            ),
+        ):
             base_models.BaseModel.get_deletion_policy()
 
+    def test_apply_deletion_policy(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The apply_deletion_policy() method is missing from the '
+                'derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BaseModel.apply_deletion_policy('test_user_id')
+
     def test_has_reference_to_user_id(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The has_reference_to_user_id() method is missing from the '
                 'derived class. It should be implemented in the '
-                'derived class.')):
+                'derived class.'
+            ),
+        ):
             base_models.BaseModel.has_reference_to_user_id('user_id')
 
     def test_error_cases_for_get_method(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             base_models.BaseModel.EntityNotFoundError,
-            'Entity for class BaseModel with id Invalid id not found'):
+            'Entity for class BaseModel with id Invalid id not found',
+        ):
             base_models.BaseModel.get('Invalid id')
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             base_models.BaseModel.EntityNotFoundError,
-            'Entity for class BaseModel with id Invalid id not found'):
+            'Entity for class BaseModel with id Invalid id not found',
+        ):
             base_models.BaseModel.get('Invalid id', strict=True)
 
-        self.assertIsNone(
-            base_models.BaseModel.get('Invalid id', strict=False))
+        self.assertIsNone(base_models.BaseModel.get('Invalid id', strict=False))
 
     def test_base_model_export_data_raises_not_implemented_error(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The export_data() method is missing from the '
                 'derived class. It should be implemented in the '
-                'derived class.')):
+                'derived class.'
+            ),
+        ):
             base_models.BaseModel.export_data('')
 
     def test_get_model_association_to_user_raises_not_implemented_error(
-            self
+        self,
     ) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The get_model_association_to_user() method is missing from '
                 'the derived class. It should be implemented in the '
-                'derived class.')):
+                'derived class.'
+            ),
+        ):
             base_models.BaseModel.get_model_association_to_user()
 
     def test_export_data(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The export_data() method is missing from the derived '
-                'class. It should be implemented in the derived class.')):
+                'class. It should be implemented in the derived class.'
+            ),
+        ):
             base_models.BaseModel.export_data('user_id')
 
     def test_generic_query_put_get_and_delete_operations(self) -> None:
@@ -129,9 +149,9 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
         model.delete()
         all_models = base_models.BaseModel.get_all()
         self.assertEqual(all_models.count(), 0)
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             base_models.BaseModel.EntityNotFoundError,
-            'Entity for class BaseModel with id 4 not found'
+            f'Entity for class BaseModel with id {model_id} not found',
         ):
             model.get(model_id)
 
@@ -145,9 +165,11 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
         model.put()
         model_id = model.id
         self.assertIsNotNone(
-            base_models.BaseModel.get_by_id(model_id).created_on)
+            base_models.BaseModel.get_by_id(model_id).created_on
+        )
         self.assertIsNotNone(
-            base_models.BaseModel.get_by_id(model_id).last_updated)
+            base_models.BaseModel.get_by_id(model_id).last_updated
+        )
         last_updated = model.last_updated
 
         # Field last_updated won't get updated because update_last_updated_time
@@ -155,16 +177,16 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
         model.update_timestamps(update_last_updated_time=False)
         model.put()
         self.assertEqual(
-            base_models.BaseModel.get_by_id(model_id).last_updated,
-            last_updated)
+            base_models.BaseModel.get_by_id(model_id).last_updated, last_updated
+        )
 
         # Field last_updated will get updated because update_last_updated_time
         # is set to True (by default).
         model.update_timestamps()
         model.put()
         self.assertNotEqual(
-            base_models.BaseModel.get_by_id(model_id).last_updated,
-            last_updated)
+            base_models.BaseModel.get_by_id(model_id).last_updated, last_updated
+        )
 
     def test_put_without_update_timestamps(self) -> None:
         model = base_models.BaseModel()
@@ -177,7 +199,7 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
 
         # Immediately calling `put` again fails, because update_timestamps needs
         # to be called first.
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             Exception, re.escape('did not call update_timestamps()')
         ):
             model.put()
@@ -185,7 +207,7 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
         model = base_models.BaseModel.get_by_id(model.id)
 
         # Getting a fresh model requires update_timestamps too.
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             Exception, re.escape('did not call update_timestamps()')
         ):
             model.put()
@@ -202,7 +224,8 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
 
         # Field last_updated will get updated anyway because it is None.
         base_models.BaseModel.update_timestamps_multi(
-            models_1, update_last_updated_time=False)
+            models_1, update_last_updated_time=False
+        )
         base_models.BaseModel.put_multi(models_1)
         model_ids = [model.id for model in models_1]
         last_updated_values = []
@@ -214,28 +237,31 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
 
         # Field last_updated won't get updated because update_last_updated_time
         # is set to False and last_updated already has some value.
+        # Here we use cast because we are narrowing down the type from
+        # List[Optional[BaseModel]] to List[BaseModel].
         models_2_without_none = cast(
             List[base_models.BaseModel],
-            base_models.BaseModel.get_multi(model_ids)
+            base_models.BaseModel.get_multi(model_ids),
         )
         base_models.BaseModel.update_timestamps_multi(
-            models_2_without_none, update_last_updated_time=False)
+            models_2_without_none, update_last_updated_time=False
+        )
         base_models.BaseModel.put_multi(models_2_without_none)
-        for model_id, last_updated in python_utils.ZIP(
-                model_ids, last_updated_values):
+        for model_id, last_updated in zip(model_ids, last_updated_values):
             model = base_models.BaseModel.get_by_id(model_id)
             self.assertEqual(model.last_updated, last_updated)
 
         # Field last_updated will get updated because update_last_updated_time
         # is set to True (by default).
+        # Here we use cast because we are narrowing down the type from
+        # List[Optional[BaseModel]] to List[BaseModel].
         models_3_without_none = cast(
             List[base_models.BaseModel],
-            base_models.BaseModel.get_multi(model_ids)
+            base_models.BaseModel.get_multi(model_ids),
         )
         base_models.BaseModel.update_timestamps_multi(models_3_without_none)
         base_models.BaseModel.put_multi(models_3_without_none)
-        for model_id, last_updated in python_utils.ZIP(
-                model_ids, last_updated_values):
+        for model_id, last_updated in zip(model_ids, last_updated_values):
             model = base_models.BaseModel.get_by_id(model_id)
             self.assertNotEqual(model.last_updated, last_updated)
 
@@ -259,7 +285,8 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
         # For all the None ids, get_multi should return None at the appropriate
         # position.
         result = base_models.BaseModel.get_multi(
-            [model1_id, model2_id, None, model3_id, 'none', None])
+            [model1_id, model2_id, None, model3_id, 'none', None]
+        )
 
         self.assertEqual(result, [model1, None, None, model3, None, None])
 
@@ -282,8 +309,9 @@ class BaseModelUnitTests(test_utils.GenericTestBase):
 
         base_models.BaseModel.delete_multi([model1, model2, model3])
 
-        result = base_models.BaseModel.get_multi([
-            model1_id, model2_id, model3_id])
+        result = base_models.BaseModel.get_multi(
+            [model1_id, model2_id, model3_id]
+        )
 
         self.assertEqual(result, [None, None, None])
 
@@ -309,22 +337,23 @@ class BaseHumanMaintainedModelTests(test_utils.GenericTestBase):
     MODEL_ID = 'model1'
 
     def setUp(self) -> None:
-        super(BaseHumanMaintainedModelTests, self).setUp()
+        super().setUp()
         self.model_instance = TestBaseHumanMaintainedModel(id=self.MODEL_ID)
+
         def mock_put(self: base_models.BaseHumanMaintainedModel) -> None:
             """Function to modify and save the entities used for testing
             to the datastore.
             """
             self._last_updated_timestamp_is_fresh = True
-            self.last_updated_by_human = datetime.datetime.utcnow()
+            self.last_updated_by_human = utils.get_current_utc_datetime()
 
             # These if conditions can be removed once the auto_now property
             # is set True to these attributes.
             if self.created_on is None:
-                self.created_on = datetime.datetime.utcnow()
+                self.created_on = utils.get_current_utc_datetime()
 
             if self.last_updated is None:
-                self.last_updated = datetime.datetime.utcnow()
+                self.last_updated = utils.get_current_utc_datetime()
 
             # We are using BaseModel.put() to save the changes to the datastore
             # since the put() method which TestBaseHumanMaintainedModel class
@@ -336,59 +365,67 @@ class BaseHumanMaintainedModelTests(test_utils.GenericTestBase):
             self.model_instance.put()
 
     def test_put(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            NotImplementedError, 'Use put_for_human or put_for_bot instead'):
+        with self.assertRaisesRegex(
+            NotImplementedError, 'Use put_for_human or put_for_bot instead'
+        ):
             self.model_instance.put()
 
     def test_put_for_human(self) -> None:
         previous_last_updated_by_human = (
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human
+        )
         self.model_instance.update_timestamps()
         self.model_instance.put_for_human()
 
         self.assertNotEqual(
             previous_last_updated_by_human,
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human,
+        )
 
     def test_put_for_bot(self) -> None:
         previous_last_updated_by_human = (
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human
+        )
         self.model_instance.update_timestamps()
         self.model_instance.put_for_bot()
 
         self.assertEqual(
             previous_last_updated_by_human,
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human,
+        )
 
     def test_put_multi(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
-            'Use put_multi_for_human or put_multi_for_bot instead'):
+            'Use put_multi_for_human or put_multi_for_bot instead',
+        ):
             TestBaseHumanMaintainedModel.put_multi([])
 
     def test_put_multi_for_human(self) -> None:
         previous_last_updated_by_human = (
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human
+        )
 
         self.model_instance.update_timestamps()
-        TestBaseHumanMaintainedModel.put_multi_for_human(
-            [self.model_instance])
+        TestBaseHumanMaintainedModel.put_multi_for_human([self.model_instance])
 
         self.assertNotEqual(
             previous_last_updated_by_human,
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human,
+        )
 
     def test_put_multi_for_bot(self) -> None:
         previous_last_updated_by_human = (
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human
+        )
 
         self.model_instance.update_timestamps()
-        TestBaseHumanMaintainedModel.put_multi_for_bot(
-            [self.model_instance])
+        TestBaseHumanMaintainedModel.put_multi_for_bot([self.model_instance])
 
         self.assertEqual(
             previous_last_updated_by_human,
-            self.model_instance.last_updated_by_human)
+            self.model_instance.last_updated_by_human,
+        )
 
 
 class TestSnapshotMetadataModel(base_models.BaseSnapshotMetadataModel):
@@ -408,9 +445,7 @@ class TestCommitLogEntryModel(base_models.BaseCommitLogEntryModel):
 
     @classmethod
     def get_instance_id(
-            cls,
-            target_entity_id: str,
-            version: Union[int, str]
+        cls, target_entity_id: str, version: Union[int, str]
     ) -> str:
         """A function that returns the id of the log in BaseCommitLogEntryModel.
 
@@ -430,6 +465,14 @@ class TestVersionedModel(base_models.VersionedModel):
     SNAPSHOT_METADATA_CLASS = TestSnapshotMetadataModel
     SNAPSHOT_CONTENT_CLASS = TestSnapshotContentModel
     COMMIT_LOG_ENTRY_CLASS = TestCommitLogEntryModel
+    # Field to seed some content into different versions.
+    description = datastore_services.StringProperty(indexed=True)
+
+
+class TestBaseFeedbackModel(base_models.BaseFeedbackModel):
+    """Model that inherits BaseFeedbackModel for testing."""
+
+    ID_PREFIX = 'feedback.test'
 
 
 class BaseCommitLogEntryModelTests(test_utils.GenericTestBase):
@@ -437,25 +480,29 @@ class BaseCommitLogEntryModelTests(test_utils.GenericTestBase):
     def test_get_deletion_policy_is_locally_pseudonymize(self) -> None:
         self.assertEqual(
             base_models.BaseCommitLogEntryModel.get_deletion_policy(),
-            base_models.DELETION_POLICY.LOCALLY_PSEUDONYMIZE)
+            base_models.DELETION_POLICY.LOCALLY_PSEUDONYMIZE,
+        )
 
     def test_get_model_association_to_user_is_not_corresponding_to_user(
-            self
+        self,
     ) -> None:
         self.assertEqual(
             base_models.BaseCommitLogEntryModel.get_model_association_to_user(),
-            base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER)
+            base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER,
+        )
 
     def test_base_class_get_instance_id_raises_not_implemented_error(
-            self
+        self,
     ) -> None:
         # Raise NotImplementedError as _get_instance_id is to be overwritten
         # in child classes of BaseCommitLogEntryModel.
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The get_instance_id() method is missing from the derived '
-                'class. It should be implemented in the derived class.')):
+                'class. It should be implemented in the derived class.'
+            ),
+        ):
             base_models.BaseCommitLogEntryModel.get_commit('id', 1)
 
 
@@ -467,62 +514,86 @@ class BaseSnapshotMetadataModelTests(test_utils.GenericTestBase):
             committer_id='committer_id',
             commit_type='create',
             commit_cmds_user_ids=[
-                'commit_cmds_user_1_id', 'commit_cmds_user_2_id'],
-            content_user_ids=['content_user_1_id', 'content_user_2_id'])
+                'commit_cmds_user_1_id',
+                'commit_cmds_user_2_id',
+            ],
+            content_user_ids=['content_user_1_id', 'content_user_2_id'],
+        )
         model1.update_timestamps()
         model1.put()
         self.assertTrue(
-            base_models.BaseSnapshotMetadataModel
-            .has_reference_to_user_id('committer_id'))
+            base_models.BaseSnapshotMetadataModel.has_reference_to_user_id(
+                'committer_id'
+            )
+        )
         self.assertTrue(
-            base_models.BaseSnapshotMetadataModel
-            .has_reference_to_user_id('commit_cmds_user_1_id'))
+            base_models.BaseSnapshotMetadataModel.has_reference_to_user_id(
+                'commit_cmds_user_1_id'
+            )
+        )
         self.assertTrue(
-            base_models.BaseSnapshotMetadataModel
-            .has_reference_to_user_id('commit_cmds_user_2_id'))
+            base_models.BaseSnapshotMetadataModel.has_reference_to_user_id(
+                'commit_cmds_user_2_id'
+            )
+        )
         self.assertTrue(
-            base_models.BaseSnapshotMetadataModel
-            .has_reference_to_user_id('content_user_1_id'))
+            base_models.BaseSnapshotMetadataModel.has_reference_to_user_id(
+                'content_user_1_id'
+            )
+        )
         self.assertTrue(
-            base_models.BaseSnapshotMetadataModel
-            .has_reference_to_user_id('content_user_2_id'))
+            base_models.BaseSnapshotMetadataModel.has_reference_to_user_id(
+                'content_user_2_id'
+            )
+        )
         self.assertFalse(
-            base_models.BaseSnapshotMetadataModel
-            .has_reference_to_user_id('x_id'))
+            base_models.BaseSnapshotMetadataModel.has_reference_to_user_id(
+                'x_id'
+            )
+        )
 
     def test_get_version_string(self) -> None:
         model1 = base_models.BaseSnapshotMetadataModel(
-            id='model_id-1', committer_id='committer_id', commit_type='create')
+            id='model_id-1', committer_id='committer_id', commit_type='create'
+        )
         model1.update_timestamps()
         model1.put()
         self.assertEqual(model1.get_version_string(), '1')
 
     def test_get_unversioned_instance_id(self) -> None:
         model1 = base_models.BaseSnapshotMetadataModel(
-            id='model_id-1', committer_id='committer_id', commit_type='create')
+            id='model_id-1', committer_id='committer_id', commit_type='create'
+        )
         model1.update_timestamps()
         model1.put()
         self.assertEqual(model1.get_unversioned_instance_id(), 'model_id')
 
     def test_export_data_trivial(self) -> None:
-        user_data = (
-            base_models.BaseSnapshotMetadataModel.export_data('trivial_user'))
+        user_data = base_models.BaseSnapshotMetadataModel.export_data(
+            'trivial_user'
+        )
         expected_data: Dict[str, str] = {}
         self.assertEqual(user_data, expected_data)
 
     def test_export_data_nontrivial(self) -> None:
         version_model = TestVersionedModel(id='version_model')
         model1 = version_model.SNAPSHOT_METADATA_CLASS.create(
-            'model_id-1', 'committer_id', 'create', None, None)
+            'model_id-1', 'committer_id', 'create', None, []
+        )
         model1.update_timestamps()
         model1.put()
         model2 = version_model.SNAPSHOT_METADATA_CLASS.create(
-            'model_id-2', 'committer_id', 'create', 'Hi this is a commit.',
-            [{'cmd': 'some_command'}, {'cmd2': 'another_command'}])
+            'model_id-2',
+            'committer_id',
+            'create',
+            'Hi this is a commit.',
+            [{'cmd': 'some_command'}, {'cmd2': 'another_command'}],
+        )
         model2.update_timestamps()
         model2.put()
-        user_data = (
-            version_model.SNAPSHOT_METADATA_CLASS.export_data('committer_id'))
+        user_data = version_model.SNAPSHOT_METADATA_CLASS.export_data(
+            'committer_id'
+        )
         expected_data = {
             'model_id-1': {
                 'commit_type': 'create',
@@ -531,7 +602,42 @@ class BaseSnapshotMetadataModelTests(test_utils.GenericTestBase):
             'model_id-2': {
                 'commit_type': 'create',
                 'commit_message': 'Hi this is a commit.',
-            }
+            },
+        }
+        self.assertEqual(user_data, expected_data)
+
+    def test_export_when_commit_message_contains_user_id(self) -> None:
+        version_model = TestVersionedModel(id='version_model')
+        model1 = version_model.SNAPSHOT_METADATA_CLASS.create(
+            'model_id-1',
+            'committer_id',
+            'create',
+            'Test uid_abcdefghijabcdefghijabcdefghijab',
+            [],
+        )
+        model1.update_timestamps()
+        model1.put()
+        model2 = version_model.SNAPSHOT_METADATA_CLASS.create(
+            'model_id-2',
+            'committer_id',
+            'create',
+            'Hi this is a commit.',
+            [{'cmd': 'some_command'}, {'cmd2': 'another_command'}],
+        )
+        model2.update_timestamps()
+        model2.put()
+        user_data = version_model.SNAPSHOT_METADATA_CLASS.export_data(
+            'committer_id'
+        )
+        expected_data = {
+            'model_id-1': {
+                'commit_type': 'create',
+                'commit_message': 'Test <user ID>',
+            },
+            'model_id-2': {
+                'commit_type': 'create',
+                'commit_message': 'Hi this is a commit.',
+            },
         }
         self.assertEqual(user_data, expected_data)
 
@@ -556,10 +662,14 @@ class CommitLogEntryModelTests(test_utils.GenericTestBase):
 
     def test_get_commit(self) -> None:
         model1 = TestCommitLogEntryModel.create(
-            entity_id='id', committer_id='user',
-            commit_cmds={}, commit_type='create',
-            commit_message='New commit created.', version=1,
-            status=constants.ACTIVITY_STATUS_PUBLIC, community_owned=False
+            entity_id='id',
+            committer_id='user',
+            commit_cmds=[],
+            commit_type='create',
+            commit_message='New commit created.',
+            version=1,
+            status=constants.ACTIVITY_STATUS_PUBLIC,
+            community_owned=False,
         )
         model1.update_timestamps()
         model1.put()
@@ -571,22 +681,31 @@ class CommitLogEntryModelTests(test_utils.GenericTestBase):
         self.assertEqual(test_model.user_id, 'user')
         self.assertEqual(test_model.commit_type, 'create')
         self.assertEqual(
-            test_model.post_commit_status, constants.ACTIVITY_STATUS_PUBLIC)
+            test_model.post_commit_status, constants.ACTIVITY_STATUS_PUBLIC
+        )
         self.assertEqual(test_model.post_commit_community_owned, False)
         self.assertEqual(test_model.post_commit_is_private, False)
 
     def test_get_all_commits(self) -> None:
         model1 = TestCommitLogEntryModel.create(
-            entity_id='id', committer_id='user',
-            commit_cmds={}, commit_type='create',
-            commit_message='New commit created.', version=1,
-            status=constants.ACTIVITY_STATUS_PUBLIC, community_owned=False
+            entity_id='id',
+            committer_id='user',
+            commit_cmds=[],
+            commit_type='create',
+            commit_message='New commit created.',
+            version=1,
+            status=constants.ACTIVITY_STATUS_PUBLIC,
+            community_owned=False,
         )
         model2 = TestCommitLogEntryModel.create(
-            entity_id='id', committer_id='user',
-            commit_cmds={}, commit_type='edit',
-            commit_message='New commit created.', version=2,
-            status=constants.ACTIVITY_STATUS_PUBLIC, community_owned=False
+            entity_id='id',
+            committer_id='user',
+            commit_cmds=[],
+            commit_type='edit',
+            commit_message='New commit created.',
+            version=2,
+            status=constants.ACTIVITY_STATUS_PUBLIC,
+            community_owned=False,
         )
         model1.update_timestamps()
         model1.put()
@@ -604,67 +723,74 @@ class VersionedModelTests(test_utils.GenericTestBase):
     """Test methods for VersionedModel."""
 
     def test_retrieval_of_multiple_version_models_for_fake_id(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            ValueError, 'The given entity_id fake_id is invalid'):
-            TestVersionedModel.get_multi_versions(
-                'fake_id', [1, 2, 3])
+        with self.assertRaisesRegex(
+            ValueError, 'The given entity_id fake_id is invalid'
+        ):
+            TestVersionedModel.get_multi_versions('fake_id', [1, 2, 3])
 
     def test_commit_with_model_instance_deleted_raises_error(self) -> None:
         model1 = TestVersionedModel(id='model_id1')
         model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
         model1.delete(feconf.SYSTEM_COMMITTER_ID, 'delete')
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'This model instance has been deleted.'):
+        with self.assertRaisesRegex(
+            Exception, 'This model instance has been deleted.'
+        ):
             model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
     def test_trusted_commit_with_no_snapshot_metadata_raises_error(
-            self
+        self,
     ) -> None:
         model1 = TestVersionedModel(id='model_id1')
-        # TODO(#13528): Remove this test after the backend is fully
-        # type-annotated. Here ignore[assignment] is used to test method
-        # commit() for invalid SNAPSHOT_METADATA_CLASS.
-        model1.SNAPSHOT_METADATA_CLASS = None # type: ignore[assignment]
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'No snapshot metadata class defined.'):
+        # TODO(#13528): Here we use MyPy ignore because we remove this test
+        # after the backend is fully type-annotated. Here ignore[assignment]
+        # is used to test method commit() for invalid SNAPSHOT_METADATA_CLASS.
+        model1.SNAPSHOT_METADATA_CLASS = None  # type: ignore[assignment]
+        with self.assertRaisesRegex(
+            Exception, 'No snapshot metadata class defined.'
+        ):
             model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
         model1 = TestVersionedModel(id='model_id1')
-        # TODO(#13528): Remove this test after the backend is fully
-        # type-annotated. Here ignore[assignment] is used to test method
-        # commit() for invalid SNAPSHOT_CONTENT_CLASS.
-        model1.SNAPSHOT_CONTENT_CLASS = None # type: ignore[assignment]
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'No snapshot content class defined.'):
+        # TODO(#13528): Here we use MyPy ignore because we remove this test
+        # after the backend is fully type-annotated. Here ignore[assignment]
+        # is used to test method commit() for invalid SNAPSHOT_CONTENT_CLASS.
+        model1.SNAPSHOT_CONTENT_CLASS = None  # type: ignore[assignment]
+        with self.assertRaisesRegex(
+            Exception, 'No snapshot content class defined.'
+        ):
             model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
         model1 = TestVersionedModel(id='model_id1')
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'Expected commit_cmds to be a list of dicts, received'):
-            # TODO(#13528): Remove this test after the backend is fully
-            # type-annotated. Here ignore[arg-type] is used to test method
-            # commit() for invalid input type.
-            model1.commit(feconf.SYSTEM_COMMITTER_ID, '', {}) # type: ignore[arg-type]
+        with self.assertRaisesRegex(
+            Exception, 'Expected commit_cmds to be a list of dicts, received'
+        ):
+            # TODO(#13528): Here we use MyPy ignore because we remove this test
+            # after the backend is fully type-annotated. Here ignore[arg-type]
+            # is used to test method commit() for invalid input type.
+            model1.commit(feconf.SYSTEM_COMMITTER_ID, '', {})  # type: ignore[arg-type]
 
         model1 = TestVersionedModel(id='model_id1')
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'Expected commit_cmds to be a list of dicts, received'):
-            # TODO(#13528): Remove this test after the backend is fully
-            # type-annotated. Here ignore[list-item] is used to test method
-            # commit() for invalid input type.
-            model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [[]]) # type: ignore[list-item]
+        with self.assertRaisesRegex(
+            Exception, 'Expected commit_cmds to be a list of dicts, received'
+        ):
+            # TODO(#13528): Here we use MyPy ignore because we remove this test
+            # after the backend is fully type-annotated. Here ignore[list-item]
+            # is used to test method commit() for invalid input type.
+            model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [[]])  # type: ignore[list-item]
 
     def test_put_raises_not_implemented_error_for_versioned_models(
-            self
+        self,
     ) -> None:
         model1 = TestVersionedModel(id='model_id1')
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             NotImplementedError,
             re.escape(
                 'The put() method is missing from the derived '
-                'class. It should be implemented in the derived class.')):
+                'class. It should be implemented in the derived class.'
+            ),
+        ):
             model1.update_timestamps()
             model1.put()
 
@@ -677,17 +803,21 @@ class VersionedModelTests(test_utils.GenericTestBase):
         model_version_numbers = range(1, model.version + 1)
         model_snapshot_ids = [
             model.get_snapshot_id(model.id, version_number)
-            for version_number in model_version_numbers]
+            for version_number in model_version_numbers
+        ]
 
         model.delete(
-            feconf.SYSTEM_COMMITTER_ID, 'commit_msg', force_deletion=True)
+            feconf.SYSTEM_COMMITTER_ID, 'commit_msg', force_deletion=True
+        )
 
         self.assertIsNone(TestVersionedModel.get_by_id(model_id))
         for model_snapshot_id in model_snapshot_ids:
             self.assertIsNone(
-                TestSnapshotContentModel.get_by_id(model_snapshot_id))
+                TestSnapshotContentModel.get_by_id(model_snapshot_id)
+            )
             self.assertIsNone(
-                TestSnapshotMetadataModel.get_by_id(model_snapshot_id))
+                TestSnapshotMetadataModel.get_by_id(model_snapshot_id)
+            )
 
     def test_delete_multi(self) -> None:
         model_1_id = 'model_1_id'
@@ -698,7 +828,8 @@ class VersionedModelTests(test_utils.GenericTestBase):
         model_1_version_numbers = range(1, model_1.version + 1)
         model_1_snapshot_ids = [
             model_1.get_snapshot_id(model_1.id, version_number)
-            for version_number in model_1_version_numbers]
+            for version_number in model_1_version_numbers
+        ]
 
         model_2_id = 'model_2_id'
         model_2 = TestVersionedModel(id=model_2_id)
@@ -707,60 +838,67 @@ class VersionedModelTests(test_utils.GenericTestBase):
         model_2_version_numbers = range(1, model_2.version + 1)
         model_2_snapshot_ids = [
             model_2.get_snapshot_id(model_2.id, version_number)
-            for version_number in model_2_version_numbers]
+            for version_number in model_2_version_numbers
+        ]
 
         with self.swap(feconf, 'MAX_NUMBER_OF_OPS_IN_TRANSACTION', 2):
             TestVersionedModel.delete_multi(
                 [model_1_id, model_2_id],
                 feconf.SYSTEM_COMMITTER_ID,
                 'commit_msg',
-                force_deletion=True)
+                force_deletion=True,
+            )
 
         self.assertIsNone(TestVersionedModel.get_by_id(model_1_id))
         for model_snapshot_id in model_1_snapshot_ids:
             self.assertIsNone(
-                TestSnapshotContentModel.get_by_id(model_snapshot_id))
+                TestSnapshotContentModel.get_by_id(model_snapshot_id)
+            )
             self.assertIsNone(
-                TestSnapshotMetadataModel.get_by_id(model_snapshot_id))
+                TestSnapshotMetadataModel.get_by_id(model_snapshot_id)
+            )
 
         self.assertIsNone(TestVersionedModel.get_by_id(model_2_id))
         for model_snapshot_id in model_2_snapshot_ids:
             self.assertIsNone(
-                TestSnapshotContentModel.get_by_id(model_snapshot_id))
+                TestSnapshotContentModel.get_by_id(model_snapshot_id)
+            )
             self.assertIsNone(
-                TestSnapshotMetadataModel.get_by_id(model_snapshot_id))
+                TestSnapshotMetadataModel.get_by_id(model_snapshot_id)
+            )
 
     def test_commit_with_invalid_change_list_raises_error(self) -> None:
         model1 = TestVersionedModel(id='model_id1')
 
         # Test for invalid commit command.
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'Invalid commit_cmd:'):
+        with self.assertRaisesRegex(Exception, 'Invalid commit_cmd:'):
             model1.commit(
-                feconf.SYSTEM_COMMITTER_ID, '', [{'invalid_cmd': 'value'}])
+                feconf.SYSTEM_COMMITTER_ID, '', [{'invalid_cmd': 'value'}]
+            )
 
         # Test for invalid change list command.
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'Invalid change list command:'):
+        with self.assertRaisesRegex(Exception, 'Invalid change list command:'):
             model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [{'cmd': 'AUTO'}])
 
     def test_revert_raises_error_when_not_allowed(self) -> None:
         model1 = TestVersionedModel(id='model_id1')
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             Exception,
-            'Reverting objects of type TestVersionedModel is not allowed.'):
+            'Reverting objects of type TestVersionedModel is not allowed.',
+        ):
             model1.revert(model1, feconf.SYSTEM_COMMITTER_ID, '', 1)
 
     def test_get_snapshots_metadata_with_invalid_model_raises_error(
-            self
+        self,
     ) -> None:
         model1 = TestVersionedModel(id='model_id1')
         model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             Exception,
             'Invalid version number 10 for model TestVersionedModel with id '
-            'model_id1'):
+            'model_id1',
+        ):
             model1.get_snapshots_metadata('model_id1', [10])
 
     def test_get_version(self) -> None:
@@ -769,28 +907,30 @@ class VersionedModelTests(test_utils.GenericTestBase):
         model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
         version_model = TestVersionedModel.get_version('model_id1', 2)
-        # Ruling out the possibility of None for mypy type checking.
-        assert version_model is not None
         self.assertEqual(version_model.version, 2)
 
-        version_model = (
-            TestVersionedModel.get_version('nonexistent_id1', 4, strict=False))
-        self.assertIsNone(version_model)
+        test_version_model = TestVersionedModel.get_version(
+            'nonexistent_id1', 4, strict=False
+        )
+        self.assertIsNone(test_version_model)
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             base_models.BaseModel.EntityNotFoundError,
             'Entity for class TestVersionedModel with id nonexistent_id1 '
-            'not found'):
+            'not found',
+        ):
             TestVersionedModel.get_version('nonexistent_id1', 4, strict=True)
 
-        version_model = (
-            TestVersionedModel.get_version('model_id1', 4, strict=False))
-        self.assertIsNone(version_model)
+        test_version_model = TestVersionedModel.get_version(
+            'model_id1', 4, strict=False
+        )
+        self.assertIsNone(test_version_model)
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             base_models.BaseModel.EntityNotFoundError,
             'Entity for class TestSnapshotContentModel with id model_id1-4 '
-            'not found'):
+            'not found',
+        ):
             TestVersionedModel.get_version('model_id1', 4, strict=True)
 
     def test_get_multi_versions(self) -> None:
@@ -799,7 +939,8 @@ class VersionedModelTests(test_utils.GenericTestBase):
         model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
         models_by_version = TestVersionedModel.get_multi_versions(
-            'model_id1', [1, 2])
+            'model_id1', [1, 2]
+        )
         self.assertEqual(len(models_by_version), 2)
         self.assertEqual(models_by_version[0].version, 1)
         self.assertEqual(models_by_version[1].version, 2)
@@ -809,19 +950,72 @@ class VersionedModelTests(test_utils.GenericTestBase):
         model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
         model1.commit(feconf.SYSTEM_COMMITTER_ID, '', [])
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
+        with self.assertRaisesRegex(
             ValueError,
             'Requested version number 3 cannot be higher than the current '
-            'version number 2.'):
+            'version number 2.',
+        ):
             TestVersionedModel.get_multi_versions('model_id1', [1, 2, 3])
 
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            ValueError,
-            'At least one version number is invalid'):
-            # TODO(#13528): Remove this test after the backend is fully
-            # type-annotated. Here ignore[list-item] is used to test method
-            # get_multi_versions() for invalid input type.
-            TestVersionedModel.get_multi_versions('model_id1', [1, 1.5, 2]) # type: ignore[list-item]
+        with self.assertRaisesRegex(
+            ValueError, 'At least one version number is invalid'
+        ):
+            # TODO(#13528): Here we use MyPy ignore because we remove this test
+            # after the backend is fully type-annotated. Here ignore[list-item]
+            # is used to test method get_multi_versions() for invalid input
+            # type.
+            TestVersionedModel.get_multi_versions('model_id1', [1, 1.5, 2])  # type: ignore[list-item]
+
+    def test_versioned_models_have_correct_names_for_related_classes(
+        self,
+    ) -> None:
+        all_model_classes = models.Registry.get_all_storage_model_classes()
+        all_versioned_classes = [
+            clazz
+            for clazz in all_model_classes
+            if issubclass(clazz, base_models.VersionedModel)
+        ]
+        self.assertGreater(len(all_versioned_classes), 0)
+
+        for clazz in all_versioned_classes:
+            class_name = clazz.__name__
+
+            self.assertTrue(class_name.endswith('Model'))
+            class_name_root = class_name[: -len('Model')]
+            expected_snapshot_metadata_class_name = (
+                '%sSnapshotMetadataModel' % class_name_root
+            )
+            expected_snapshot_content_class_name = (
+                '%sSnapshotContentModel' % class_name_root
+            )
+            expected_commit_log_entry_class_name = (
+                '%sCommitLogEntryModel' % class_name_root
+            )
+
+            # The following two assertions enforce that both classes are not
+            # None, otherwise MyPy will complain that those optional fields
+            # does not have a `__name__` attribute.
+            assert clazz.SNAPSHOT_METADATA_CLASS is not None
+            assert clazz.SNAPSHOT_CONTENT_CLASS is not None
+
+            self.assertEqual(
+                expected_snapshot_metadata_class_name,
+                clazz.SNAPSHOT_METADATA_CLASS.__name__,
+                'Incorrect snapshot metadata class name: %s' % class_name,
+            )
+            self.assertEqual(
+                expected_snapshot_content_class_name,
+                clazz.SNAPSHOT_CONTENT_CLASS.__name__,
+                'Incorrect snapshot content class name: %s' % class_name,
+            )
+            # Some VersionedModels don't have an associated commit log entry
+            # class.
+            if clazz.COMMIT_LOG_ENTRY_CLASS is not None:
+                self.assertEqual(
+                    expected_commit_log_entry_class_name,
+                    clazz.COMMIT_LOG_ENTRY_CLASS.__name__,
+                    'Incorrect commit log entry class name: %s' % class_name,
+                )
 
 
 class TestBaseModel(base_models.BaseModel):
@@ -838,11 +1032,540 @@ class BaseModelTests(test_utils.GenericTestBase):
 
         # Swap dependent method get_by_id to simulate collision every time.
         get_by_id_swap = self.swap(
-            TestBaseModel, 'get_by_id', types.MethodType(
-                lambda _, __: True, TestBaseModel))
+            TestBaseModel,
+            'get_by_id',
+            types.MethodType(lambda _, __: True, TestBaseModel),
+        )
 
-        assert_raises_regexp_context_manager = self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            Exception, 'New id generator is producing too many collisions.')
+        assert_raises_regexp_context_manager = self.assertRaisesRegex(
+            Exception, 'New id generator is producing too many collisions.'
+        )
 
         with assert_raises_regexp_context_manager, get_by_id_swap:
             TestBaseModel.get_new_id('exploration')
+
+    def test_get_version_multi(self) -> None:
+        """Test fetching multiple versions of multiple entities."""
+        model1 = TestVersionedModel(id='model_id1')
+        model1.commit(feconf.SYSTEM_COMMITTER_ID, 'First commit', [])
+        model1.commit(feconf.SYSTEM_COMMITTER_ID, 'Second commit', [])
+        model2 = TestVersionedModel(id='model_id2')
+        model2.commit(feconf.SYSTEM_COMMITTER_ID, 'First commit', [])
+
+        results = TestVersionedModel.get_version_multi(
+            [
+                ('model_id1', 1),
+                ('model_id1', 2),
+                ('model_id2', 1),
+                ('model_id1', None),
+                ('nonexistent', 1),
+            ]
+        )
+
+        self.assertEqual(len(results), 5)
+
+        self.assertIsNotNone(results[0])
+        assert results[0] is not None
+        self.assertEqual(results[0].id, 'model_id1')
+        self.assertEqual(results[0].version, 1)
+
+        self.assertIsNotNone(results[1])
+        assert results[1] is not None
+        self.assertEqual(results[1].id, 'model_id1')
+        self.assertEqual(results[1].version, 2)
+
+        self.assertIsNotNone(results[2])
+        assert results[2] is not None
+        self.assertEqual(results[2].id, 'model_id2')
+        self.assertEqual(results[2].version, 1)
+
+        self.assertIsNotNone(results[3])
+        assert results[3] is not None
+        self.assertEqual(results[3].id, 'model_id1')
+        self.assertEqual(results[3].version, 2)
+
+        self.assertIsNone(results[4])
+
+    def test_get_version_multi_with_invalid_version(self) -> None:
+        """Test fetching versions with invalid version numbers."""
+        model = TestVersionedModel(id='model_id1')
+        model.commit(feconf.SYSTEM_COMMITTER_ID, 'First commit', [])
+
+        results = TestVersionedModel.get_version_multi([('model_id1', 999)])
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(results[0])
+
+    def test_get_version_multi_deleted(self) -> None:
+        """Test fetching deleted models returns None."""
+        model = TestVersionedModel(id='model_id1')
+        model.commit(feconf.SYSTEM_COMMITTER_ID, 'First commit', [])
+        model.delete(feconf.SYSTEM_COMMITTER_ID, 'Delete model')
+
+        results = TestVersionedModel.get_version_multi([('model_id1', 1)])
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(results[0])
+
+    def test_get_version_multi_empty_list(self) -> None:
+        """Test fetching with empty list of IDs."""
+        results = TestVersionedModel.get_version_multi([])
+        self.assertEqual(results, [])
+
+    def test_get_version_multi_with_multiple_snapshots(self) -> None:
+        """Test fetching multiple versions with snapshots."""
+        model = TestVersionedModel(id='model_id1')
+
+        for i in range(3):
+            model.commit(
+                feconf.SYSTEM_COMMITTER_ID,
+                'Commit %d' % (i + 1),
+                [{'cmd': 'create_new'}],
+            )
+
+        results = TestVersionedModel.get_version_multi(
+            [('model_id1', 1), ('model_id1', 2), ('model_id1', 3)]
+        )
+
+        self.assertEqual(len(results), 3)
+        for i, result in enumerate(results, start=1):
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertEqual(result.id, 'model_id1')
+            self.assertEqual(result.version, i)
+
+    def test_get_version_multi_with_same_id_different_versions(self) -> None:
+        """Test fetching multiple versions of same model different content."""
+        model = TestVersionedModel(id='model_id1')
+
+        model.description = 'Version 1 content'
+        model.commit(feconf.SYSTEM_COMMITTER_ID, 'First commit', [])
+
+        model.description = 'Version 2 content'
+        model.commit(feconf.SYSTEM_COMMITTER_ID, 'Second commit', [])
+
+        results = TestVersionedModel.get_version_multi(
+            [('model_id1', 1), ('model_id1', 1), ('model_id1', 2)]
+        )
+
+        self.assertEqual(len(results), 3)
+
+        assert results[0] is not None
+        assert results[1] is not None
+        assert results[2] is not None
+
+        self.assertEqual(results[0].version, 1)
+        self.assertEqual(results[1].version, 1)
+        self.assertEqual(results[2].version, 2)
+
+        self.assertEqual(results[0].description, 'Version 1 content')
+        self.assertEqual(results[1].description, 'Version 1 content')
+        self.assertEqual(results[2].description, 'Version 2 content')
+
+
+class BaseFeedbackModelTests(test_utils.GenericTestBase):
+    """Tests for BaseFeedbackModel."""
+
+    def _create_feedback_model(
+        self,
+        model_id: str,
+        status: str = feconf.STATUS_CHOICES_OPEN,
+    ) -> None:
+        """Creates a TestBaseFeedbackModel with the given creation time."""
+        model = TestBaseFeedbackModel(
+            id=model_id,
+            author_id='user_id',
+            feedback_text='Feedback text',
+            status=status,
+            exploration_id='exp_id',
+            lesson_metadata_schema_version=1,
+            lesson_metadata={},
+        )
+        model.update_timestamps()
+        model.put()
+
+    def test_get_deletion_policy(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The get_deletion_policy() method is missing from the '
+                'derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BaseFeedbackModel.get_deletion_policy()
+
+    def test_has_reference_to_user_id(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The has_reference_to_user_id() method is missing from the '
+                'derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BaseFeedbackModel.has_reference_to_user_id('user_id')
+
+    def test_get_model_association_to_user_raises_not_implemented_error(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The get_model_association_to_user() method is missing from '
+                'the derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BaseFeedbackModel.get_model_association_to_user()
+
+    def test_base_model_export_data_raises_not_implemented_error(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The export_data() method is missing from the derived '
+                'class. It should be implemented in the derived class.'
+            ),
+        ):
+            base_models.BaseFeedbackModel.export_data('user_id')
+
+    def test_generate_new_id_raises_error_when_id_prefix_is_empty(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            Exception,
+            'Subclasses of BaseFeedbackModel must define a non-empty '
+            'ID_PREFIX',
+        ):
+            base_models.BaseFeedbackModel._generate_new_id()  # pylint: disable=protected-access
+
+    def test_fetch_page_returns_cursor_for_next_page(self) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+        self._create_feedback_model('feedback_3')
+
+        feedback_models, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=2
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_3', 'feedback_2'],
+        )
+        self.assertIsNotNone(next_cursor)
+        self.assertTrue(more)
+
+    def test_fetch_page_returns_no_cursor_when_final_page_is_full(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+
+        feedback_models, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=2
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_2', 'feedback_1'],
+        )
+        self.assertIsNone(next_cursor)
+        self.assertFalse(more)
+
+    def test_fetch_page_accepts_cursor_for_later_page(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+        self._create_feedback_model('feedback_3')
+
+        _, next_cursor, _ = TestBaseFeedbackModel.fetch_page(page_size=2)
+        assert next_cursor is not None
+
+        feedback_models, final_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=2, cursor=next_cursor
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_1'],
+        )
+        self.assertIsNone(final_cursor)
+        self.assertFalse(more)
+
+    def test_fetch_page_with_single_status_filter_paginates_by_cursor(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model(
+            'feedback_2', status=feconf.STATUS_CHOICES_FIXED
+        )
+        self._create_feedback_model('feedback_3')
+
+        first_page, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=1, status_filter=[feconf.STATUS_CHOICES_OPEN]
+        )
+        assert next_cursor is not None
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in first_page],
+            ['feedback_3'],
+        )
+        self.assertTrue(more)
+
+        final_page, final_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=1,
+            status_filter=[feconf.STATUS_CHOICES_OPEN],
+            cursor=next_cursor,
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in final_page],
+            ['feedback_1'],
+        )
+        self.assertIsNone(final_cursor)
+        self.assertFalse(more)
+
+    def test_fetch_page_with_multiple_status_filters_returns_matches(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model(
+            'feedback_2', status=feconf.STATUS_CHOICES_FIXED
+        )
+        self._create_feedback_model(
+            'feedback_3', status=feconf.STATUS_CHOICES_COMPLIMENT
+        )
+
+        feedback_models, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=10,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_2', 'feedback_1'],
+        )
+        self.assertIsNone(next_cursor)
+        self.assertFalse(more)
+
+    def test_fetch_page_with_multiple_status_filters_paginates_by_offset(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+        self._create_feedback_model('feedback_3')
+
+        first_page, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=1,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+        )
+        assert next_cursor is not None
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in first_page],
+            ['feedback_3'],
+        )
+        self.assertTrue(more)
+
+        second_page, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=1,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+            cursor=next_cursor,
+        )
+        assert next_cursor is not None
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in second_page],
+            ['feedback_2'],
+        )
+        self.assertTrue(more)
+
+        final_page, final_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=1,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+            cursor=next_cursor,
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in final_page],
+            ['feedback_1'],
+        )
+        self.assertIsNone(final_cursor)
+        self.assertFalse(more)
+
+    def test_fetch_page_with_invalid_status_filter_raises_error(self) -> None:
+        self._create_feedback_model('feedback_1')
+
+        with self.assertRaisesRegex(
+            Exception,
+            r'Invalid status filter values: \[\'invalid_status\'\]\. '
+            'Expected statuses to be chosen from feconf.STATUS_CHOICES',
+        ):
+            TestBaseFeedbackModel.fetch_page(
+                page_size=10,
+                status_filter=['open', 'invalid_status'],
+            )
+
+        with self.assertRaisesRegex(
+            Exception,
+            r'Invalid status filter values: \[\'not_a_real_status\'\]\. '
+            'Expected statuses to be chosen from feconf.STATUS_CHOICES',
+        ):
+            TestBaseFeedbackModel.fetch_page(
+                page_size=10,
+                status_filter=['not_a_real_status'],
+            )
+
+    def test_fetch_page_with_multiple_statuses_treats_invalid_cursor_as_zero_offset(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+
+        feedback_models, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=1,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+            cursor='not-a-number',
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_2'],
+        )
+        self.assertTrue(more)
+        self.assertIsNotNone(next_cursor)
+
+    def test_fetch_page_with_multiple_statuses_reports_no_more_on_full_final_page(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+
+        feedback_models, next_cursor, more = TestBaseFeedbackModel.fetch_page(
+            page_size=2,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+        )
+
+        self.assertEqual(len(feedback_models), 2)
+        self.assertIsNone(next_cursor)
+        self.assertFalse(more)
+
+    def test_fetch_page_with_multiple_statuses_orders_by_last_updated(
+        self,
+    ) -> None:
+        self._create_feedback_model(
+            'feedback_1', status=feconf.STATUS_CHOICES_FIXED
+        )
+        self._create_feedback_model('feedback_2')
+        # Re-saving feedback_1 makes it the most recently updated entry.
+        resaved_model = TestBaseFeedbackModel.get_by_id('feedback_1')
+        assert resaved_model is not None
+        resaved_model.update_timestamps()
+        resaved_model.put()
+
+        feedback_models, _, _ = TestBaseFeedbackModel.fetch_page(
+            page_size=10,
+            status_filter=[
+                feconf.STATUS_CHOICES_OPEN,
+                feconf.STATUS_CHOICES_FIXED,
+            ],
+            order_by_last_updated=True,
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_1', 'feedback_2'],
+        )
+
+    def test_fetch_page_with_single_status_orders_by_last_updated(
+        self,
+    ) -> None:
+        self._create_feedback_model('feedback_1')
+        self._create_feedback_model('feedback_2')
+        # Re-saving feedback_1 makes it the most recently updated entry.
+        resaved_model = TestBaseFeedbackModel.get_by_id('feedback_1')
+        assert resaved_model is not None
+        resaved_model.update_timestamps()
+        resaved_model.put()
+
+        feedback_models, _, _ = TestBaseFeedbackModel.fetch_page(
+            page_size=10, order_by_last_updated=True
+        )
+
+        self.assertEqual(
+            [feedback_model.id for feedback_model in feedback_models],
+            ['feedback_1', 'feedback_2'],
+        )
+
+
+class BaseFeatureFlagConfigModelUnitTests(test_utils.GenericTestBase):
+    """Test BaseFeatureFlagConfigModel class."""
+
+    def test_get_deletion_policy(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The get_deletion_policy() method is missing from the '
+                'derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BaseFeatureFlagConfigModel.get_deletion_policy()
+
+    def test_get_model_association_to_user_raises_not_implemented_error(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The get_model_association_to_user() method is missing from '
+                'the derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BaseFeatureFlagConfigModel.get_model_association_to_user()
+
+
+class BasePlatformParameterConfigModelTests(test_utils.GenericTestBase):
+    """Test BasePlatformParameterConfigModel class."""
+
+    def test_get_deletion_policy(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The get_deletion_policy() method is missing from the '
+                'derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BasePlatformParameterConfigModel.get_deletion_policy()
+
+    def test_get_model_association_to_user_raises_not_implemented_error(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            re.escape(
+                'The get_model_association_to_user() method is missing from '
+                'the derived class. It should be implemented in the '
+                'derived class.'
+            ),
+        ):
+            base_models.BasePlatformParameterConfigModel.get_model_association_to_user()

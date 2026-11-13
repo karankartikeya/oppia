@@ -17,8 +17,9 @@
  * tab and shift-tab.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
+
+export type KeyboardEventName = 'enter' | 'tab' | 'shiftTab';
 
 interface KeyFunc {
   shiftKeyIsPressed: boolean;
@@ -27,33 +28,23 @@ interface KeyFunc {
 
 interface KeyboardEventToCodes {
   [keys: string]: KeyFunc;
-  enter: {
-    shiftKeyIsPressed: boolean;
-    keyCode: number;
-  };
-  tab: {
-    shiftKeyIsPressed: boolean;
-    keyCode: number;
-  };
-  shiftTab: {
-    shiftKeyIsPressed: boolean;
-    keyCode: number;
-  };
+  enter: KeyFunc;
+  tab: KeyFunc;
+  shiftTab: KeyFunc;
 }
 
-export interface EventToCodes {
-  [keys: string]: string;
-  enter: string;
-  tab: string;
-  shiftTab: string;
-}
+// Each key is optional because a menu item only handles the keyboard events
+// that make sense at its position in the menu. For example, the first item of a
+// menu closes it on shift+tab (since shift+tab moves focus out of the menu),
+// whereas the items after it only handle enter.
+export type EventToCodes = Partial<Record<KeyboardEventName, string>>;
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class NavigationService {
   // This property is initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   activeMenuName!: string;
   ACTION_OPEN: string = 'open';
@@ -61,34 +52,35 @@ export class NavigationService {
   KEYBOARD_EVENT_TO_KEY_CODES: KeyboardEventToCodes = {
     enter: {
       shiftKeyIsPressed: false,
-      keyCode: 13
+      keyCode: 13,
     },
     tab: {
       shiftKeyIsPressed: false,
-      keyCode: 9
+      keyCode: 9,
     },
     shiftTab: {
       shiftKeyIsPressed: true,
-      keyCode: 9
-    }
+      keyCode: 9,
+    },
   };
 
   constructor() {}
 
   /**
-  * Opens the submenu.
-  * @param {object} evt
-  * @param {String} menuName - name of menu, on which
-  * open/close action to be performed (category,language).
-  */
-  openSubmenu(evt: KeyboardEvent, menuName: string): void {
+   * Opens the submenu.
+   * @param {object} evt
+   * @param {String} menuName - name of menu, on which
+   * open/close action to be performed (category,language).
+   */
+  openSubmenu(evt: Event, menuName: string): void {
     // Focus on the current target before opening its submenu.
     this.activeMenuName = menuName;
   }
 
-  closeSubmenu(evt: KeyboardEvent): void {
+  closeSubmenu(evt: Event): void {
     this.activeMenuName = '';
   }
+
   /**
    * Handles keydown events on menus.
    * @param {object} evt
@@ -101,19 +93,22 @@ export class NavigationService {
    *  onMenuKeypress($event, 'category', {enter: 'open'})
    */
   onMenuKeypress(
-      evt: KeyboardEvent,
-      menuName: string,
-      eventsTobeHandled: EventToCodes): void {
-    let targetEvents = Object.keys(eventsTobeHandled);
+    evt: KeyboardEvent,
+    menuName: string,
+    eventsTobeHandled: EventToCodes
+  ): void {
+    // 'Object.keys()' widens the keys to 'string', so they are narrowed back
+    // to 'KeyboardEventName' here, which is all that 'EventToCodes' allows.
+    let targetEvents = Object.keys(eventsTobeHandled) as KeyboardEventName[];
     for (let i = 0; i < targetEvents.length; i++) {
-      let keyCodeSpec =
-        this.KEYBOARD_EVENT_TO_KEY_CODES[targetEvents[i]];
-      if (keyCodeSpec.keyCode === evt.keyCode &&
-        evt.shiftKey === keyCodeSpec.shiftKeyIsPressed) {
+      let keyCodeSpec = this.KEYBOARD_EVENT_TO_KEY_CODES[targetEvents[i]];
+      if (
+        keyCodeSpec.keyCode === evt.keyCode &&
+        evt.shiftKey === keyCodeSpec.shiftKeyIsPressed
+      ) {
         if (eventsTobeHandled[targetEvents[i]] === this.ACTION_OPEN) {
           this.openSubmenu(evt, menuName);
-        } else if (eventsTobeHandled[targetEvents[i]] ===
-          this.ACTION_CLOSE) {
+        } else if (eventsTobeHandled[targetEvents[i]] === this.ACTION_CLOSE) {
           this.closeSubmenu(evt);
         } else {
           throw new Error('Invalid action type.');
@@ -122,6 +117,3 @@ export class NavigationService {
     }
   }
 }
-
-angular.module('oppia').factory('NavigationService',
-  downgradeInjectable(NavigationService));

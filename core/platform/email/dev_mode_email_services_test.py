@@ -16,21 +16,24 @@
 
 """Tests for the email services API wrapper in DEV_MODE."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import logging
 import textwrap
 
-from core import feconf
 from core.platform.email import dev_mode_email_services
 from core.tests import test_utils
 
-from typing import Any, Dict, Union
+from typing import Dict, Union
 
 
 class EmailTests(test_utils.GenericTestBase):
     """Tests for sending emails."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.admin_email_address = 'testadmin@example.com'
+        self.system_email_address = 'system@example.com'
 
     def test_send_mail_logs_to_terminal(self) -> None:
         """In DEV Mode, platforms email_service API that sends a singular email
@@ -38,12 +41,11 @@ class EmailTests(test_utils.GenericTestBase):
         """
         observed_log_messages = []
 
-        def _mock_logging_function(msg: str, *args: Any) -> None:
+        def _mock_logging_function(msg: str, *args: str) -> None:
             """Mocks logging.info()."""
             observed_log_messages.append(msg % args)
 
-        msg_body = (
-            """
+        msg_body = """
             EmailService.SendMail
             From: %s
             To: %s
@@ -54,30 +56,43 @@ class EmailTests(test_utils.GenericTestBase):
             Body:
                 Content-type: text/html
                 Data length: %d
+                Html content: %s
 
+            Cc: None
             Bcc: None
             Reply_to: None
             Recipient Variables:
                 Length: 0
+
+            Attachments: None
             """ % (
-                feconf.SYSTEM_EMAIL_ADDRESS, feconf.ADMIN_EMAIL_ADDRESS,
-                'subject', 4, 4))
+            self.system_email_address,
+            self.admin_email_address,
+            'subject',
+            4,
+            4,
+            'html',
+        )
         logging_info_email_body = textwrap.dedent(msg_body)
         logging_info_notification = (
-            'You are not currently sending out real emails since this is a ' +
-            'dev environment. Emails are sent out in the production' +
-            ' environment.')
+            'You are not currently sending out real emails since this is a '
+            'dev environment. Emails are sent out in the production'
+            ' environment.'
+        )
 
-        allow_emailing = self.swap(feconf, 'CAN_SEND_EMAILS', True)
-        with allow_emailing, (
-            self.swap(logging, 'info', _mock_logging_function)):
+        with self.swap(logging, 'info', _mock_logging_function):
             dev_mode_email_services.send_email_to_recipients(
-                feconf.SYSTEM_EMAIL_ADDRESS, [feconf.ADMIN_EMAIL_ADDRESS],
-                'subject', 'body', 'html')
+                self.system_email_address,
+                [self.admin_email_address],
+                'subject',
+                'body',
+                'html',
+            )
         self.assertEqual(len(observed_log_messages), 2)
         self.assertEqual(
             observed_log_messages,
-            [logging_info_email_body, logging_info_notification])
+            [logging_info_email_body, logging_info_notification],
+        )
 
     def test_send_mail_to_multiple_recipients_logs_to_terminal(self) -> None:
         """In DEV Mode, platform email_services that sends mail to multiple
@@ -85,21 +100,20 @@ class EmailTests(test_utils.GenericTestBase):
         """
         observed_log_messages = []
 
-        def _mock_logging_function(msg: str, *args: Any) -> None:
+        def _mock_logging_function(msg: str, *args: str) -> None:
             """Mocks logging.info()."""
             observed_log_messages.append(msg % args)
 
         recipient_email_list_str = 'a@a.com b@b.com c@c.com... Total: 4 emails.'
         bcc_email_list_str = 'e@e.com f@f.com g@g.com... Total: 4 emails.'
-        recipient_variables: Dict[str, Dict[str, Union[str, float]]] = (
-            {
-                'a@a.com': {'first': 'Bob', 'id': 1},
-                'b@b.com': {'first': 'Jane', 'id': 2},
-                'c@c.com': {'first': 'Rob', 'id': 3},
-                'd@d.com': {'first': 'Emily', 'id': 4},
-            })
-        msg_body = (
-            """
+        cc_email_list_str = 'a@n.com b@n.com c@n.com... Total: 5 emails.'
+        recipient_variables: Dict[str, Dict[str, Union[str, float]]] = {
+            'a@a.com': {'first': 'Bob', 'id': 1},
+            'b@b.com': {'first': 'Jane', 'id': 2},
+            'c@c.com': {'first': 'Rob', 'id': 3},
+            'd@d.com': {'first': 'Emily', 'id': 4},
+        }
+        msg_body = """
             EmailService.SendMail
             From: %s
             To: %s
@@ -110,32 +124,52 @@ class EmailTests(test_utils.GenericTestBase):
             Body:
                 Content-type: text/html
                 Data length: %d
+                Html content: %s
 
+            Cc: %s
             Bcc: %s
             Reply_to: %s
             Recipient Variables:
                 Length: %d
+
+            Attachments: %s
             """ % (
-                feconf.SYSTEM_EMAIL_ADDRESS, recipient_email_list_str,
-                'subject', 4, 4, bcc_email_list_str, '123',
-                len(recipient_variables)))
+            self.system_email_address,
+            recipient_email_list_str,
+            'subject',
+            4,
+            4,
+            'html',
+            cc_email_list_str,
+            bcc_email_list_str,
+            '123',
+            len(recipient_variables),
+            'attachment.txt',
+        )
         logging_info_email_body = textwrap.dedent(msg_body)
         logging_info_notification = (
-            'You are not currently sending out real emails since this is a ' +
-            'dev environment. Emails are sent out in the production' +
-            ' environment.')
+            'You are not currently sending out real emails since this is a '
+            'dev environment. Emails are sent out in the production'
+            ' environment.'
+        )
 
-        allow_emailing = self.swap(feconf, 'CAN_SEND_EMAILS', True)
-        with allow_emailing, (
-            self.swap(logging, 'info', _mock_logging_function)):
+        with self.swap(logging, 'info', _mock_logging_function):
             dev_mode_email_services.send_email_to_recipients(
-                feconf.SYSTEM_EMAIL_ADDRESS,
+                self.system_email_address,
                 ['a@a.com', 'b@b.com', 'c@c.com', 'd@d.com'],
-                'subject', 'body', 'html',
+                'subject',
+                'body',
+                'html',
+                cc=['a@n.com', 'b@n.com', 'c@n.com', 'd@n.com', 'e@n.com'],
                 bcc=['e@e.com', 'f@f.com', 'g@g.com', 'h@h.com'],
                 reply_to='123',
-                recipient_variables=recipient_variables)
+                recipient_variables=recipient_variables,
+                attachments=[
+                    {'filename': 'attachment.txt', 'path': '/dummypath'}
+                ],
+            )
         self.assertEqual(len(observed_log_messages), 2)
         self.assertEqual(
             observed_log_messages,
-            [logging_info_email_body, logging_info_notification])
+            [logging_info_email_body, logging_info_notification],
+        )

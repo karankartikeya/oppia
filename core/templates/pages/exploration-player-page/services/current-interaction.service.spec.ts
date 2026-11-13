@@ -16,47 +16,69 @@
  * @fileoverview Unit tests for CurrentInteractionService.
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { CurrentInteractionService } from
-  'pages/exploration-player-page/services/current-interaction.service';
-import { UrlService } from 'services/contextual/url.service';
+import {
+  CurrentInteractionService,
+  OnSubmitFn,
+  ValidityCheckFn,
+} from './current-interaction.service';
+import {UrlService} from '../../../services/contextual/url.service';
+import {PlayerPositionService} from './player-position.service';
+import {PlayerTranscriptService} from './player-transcript.service';
+import {StateCard} from '../../../domain/state_card/state-card.model';
+import {PageContextService} from '../../../services/page-context.service';
+import {InteractionRulesService} from './answer-classification.service';
+import {Interaction} from '../../../domain/exploration/interaction.model';
+import {InteractionCustomizationArgs} from 'interactions/customization-args-defs';
 
 describe('Current Interaction Service', () => {
-  let urlService: UrlService = null;
-  let currentInteractionService: CurrentInteractionService = null;
+  let urlService: UrlService;
+  let currentInteractionService: CurrentInteractionService;
+  let pageContextService: PageContextService;
   let DUMMY_ANSWER = 'dummy_answer';
+  let playerTranscriptService: PlayerTranscriptService;
+  let playerPositionService: PlayerPositionService;
+  let interactionRulesService: InteractionRulesService;
+  const displayedCard = new StateCard('', '', '', {} as Interaction, [], '');
 
-  // This mock is required since ContextService is used in
+  // This mock is required since PageContextService is used in
   // CurrentInteractionService to obtain the explorationId. So, in the
   // tests also we need to create a mock environment of exploration editor
-  // since ContextService will error if it is used outside the context
+  // since PageContextService will error if it is used outside the context
   // of an exploration.
   beforeEach(() => {
-    urlService = TestBed.get(UrlService);
+    urlService = TestBed.inject(UrlService);
     spyOn(urlService, 'getPathname').and.callFake(() => {
       return '/explore/123';
     });
-    currentInteractionService = TestBed.get(CurrentInteractionService);
+    currentInteractionService = TestBed.inject(CurrentInteractionService);
+    playerTranscriptService = TestBed.inject(PlayerTranscriptService);
+    playerPositionService = TestBed.inject(PlayerPositionService);
+    pageContextService = TestBed.inject(PageContextService);
   });
-
 
   it('should properly register onSubmitFn and submitAnswerFn', () => {
     let answerState = null;
-    let dummyOnSubmitFn = (answer, interactionRulesService) => {
+    let dummyOnSubmitFn: OnSubmitFn = (answer: Object) => {
       answerState = answer;
+    };
+    let dummyValidityCheckFn: ValidityCheckFn = () => {
+      return false;
     };
 
     currentInteractionService.setOnSubmitFn(dummyOnSubmitFn);
-    currentInteractionService.onSubmit(DUMMY_ANSWER, null);
+    currentInteractionService.onSubmit(DUMMY_ANSWER, interactionRulesService);
     expect(answerState).toEqual(DUMMY_ANSWER);
 
     answerState = null;
     let dummySubmitAnswerFn = () => {
-      currentInteractionService.onSubmit(DUMMY_ANSWER, null);
+      currentInteractionService.onSubmit(DUMMY_ANSWER, interactionRulesService);
     };
     currentInteractionService.registerCurrentInteraction(
-      dummySubmitAnswerFn, null);
+      dummySubmitAnswerFn,
+      dummyValidityCheckFn
+    );
     currentInteractionService.submitAnswer();
     expect(answerState).toEqual(DUMMY_ANSWER);
   });
@@ -69,9 +91,41 @@ describe('Current Interaction Service', () => {
       return false;
     };
     currentInteractionService.registerCurrentInteraction(
-      dummySubmitAnswerFn, dummyValidityCheckFn);
+      dummySubmitAnswerFn,
+      dummyValidityCheckFn
+    );
     expect(currentInteractionService.isSubmitButtonDisabled()).toBe(
-      !dummyValidityCheckFn());
+      !dummyValidityCheckFn()
+    );
+  });
+
+  it('should properly clear the registered onSubmitFn', () => {
+    let answerState = null;
+    let dummyOnSubmitFn: OnSubmitFn = (answer: Object) => {
+      answerState = answer;
+    };
+
+    currentInteractionService.setOnSubmitFn(dummyOnSubmitFn);
+    currentInteractionService.clearOnSubmitFn(dummyOnSubmitFn);
+    expect(() => {
+      currentInteractionService.onSubmit(DUMMY_ANSWER, interactionRulesService);
+    }).toThrowError('No onSubmit function has been registered.');
+    expect(answerState).toBeNull();
+  });
+
+  it('should not clear an onSubmitFn registered by another component', () => {
+    let answerState = null;
+    let firstOnSubmitFn: OnSubmitFn = (answer: Object) => {
+      answerState = answer;
+    };
+    let secondOnSubmitFn: OnSubmitFn = () => {
+      answerState = 'second';
+    };
+
+    currentInteractionService.setOnSubmitFn(firstOnSubmitFn);
+    currentInteractionService.clearOnSubmitFn(secondOnSubmitFn);
+    currentInteractionService.onSubmit(DUMMY_ANSWER, interactionRulesService);
+    expect(answerState).toEqual(DUMMY_ANSWER);
   });
 
   it('should handle case where validityCheckFn is null', () => {
@@ -79,14 +133,29 @@ describe('Current Interaction Service', () => {
       return false;
     };
     currentInteractionService.registerCurrentInteraction(
-      dummySubmitAnswerFn, null);
+      dummySubmitAnswerFn,
+      null
+    );
     expect(currentInteractionService.isSubmitButtonDisabled()).toBe(false);
   });
 
   it('should handle case where submitAnswerFn is null', () => {
-    currentInteractionService.registerCurrentInteraction(
-      null, null);
+    currentInteractionService.registerCurrentInteraction(null, null);
     expect(currentInteractionService.isSubmitButtonDisabled()).toBe(true);
+  });
+
+  it('should report whether a submit answer function is registered', () => {
+    const dummySubmitAnswerFn = () => {
+      return false;
+    };
+    currentInteractionService.registerCurrentInteraction(
+      dummySubmitAnswerFn,
+      null
+    );
+    expect(currentInteractionService.isSubmitAnswerFnRegistered()).toBe(true);
+
+    currentInteractionService.registerCurrentInteraction(null, null);
+    expect(currentInteractionService.isSubmitAnswerFnRegistered()).toBe(false);
   });
 
   it('should properly register and clear presubmit hooks', () => {
@@ -103,15 +172,137 @@ describe('Current Interaction Service', () => {
     currentInteractionService.registerPresubmitHook(hookB);
 
     currentInteractionService.setOnSubmitFn(() => {});
-    currentInteractionService.onSubmit(null, null);
+    currentInteractionService.onSubmit(DUMMY_ANSWER, interactionRulesService);
 
     expect(hookStateA).toEqual(1);
     expect(hookStateB).toEqual(3);
 
     currentInteractionService.clearPresubmitHooks();
-    currentInteractionService.onSubmit(null, null);
+    currentInteractionService.onSubmit(DUMMY_ANSWER, interactionRulesService);
 
     expect(hookStateA).toEqual(1);
     expect(hookStateB).toEqual(3);
+  });
+
+  it('should throw error on submitting when submitAnswerFn is null', () => {
+    let interaction = new Interaction(
+      [],
+      [],
+      {} as InteractionCustomizationArgs,
+      null,
+      [],
+      null,
+      null
+    );
+    spyOn(playerPositionService, 'getDisplayedCardIndex').and.returnValue(1);
+    spyOn(playerTranscriptService, 'getCard').and.returnValue(
+      StateCard.createNewCard(
+        'First State',
+        'Content HTML',
+        '<oppia-text-input-html></oppia-text-input-html>',
+        interaction,
+        ''
+      )
+    );
+    spyOn(pageContextService, 'getExplorationId').and.returnValue('abc');
+    spyOn(pageContextService, 'getPageContext').and.returnValue('learner');
+
+    let additionalInfo =
+      '\nUndefined submit answer debug logs:' +
+      '\nInteraction ID: null' +
+      '\nExploration ID: abc' +
+      '\nState Name: First State' +
+      '\nContext: learner' +
+      '\nErrored at index: 1';
+
+    currentInteractionService.registerCurrentInteraction(null, null);
+
+    expect(() => currentInteractionService.submitAnswer()).toThrowError(
+      'The current interaction did not ' +
+        'register a _submitAnswerFn.' +
+        additionalInfo
+    );
+  });
+
+  it('should update view with new answer', () => {
+    // Here, toBeDefined is used instead of testing with a value
+    // because currentInteractionService.onAnswerChanged$ returns
+    // observable of answerChangedSubject which is a private static
+    // member of the class CurrentInteractionService and hence cannot
+    // be accessed from outside. And the first toBeDefined is used
+    // just to verify that updateViewWithNewAnswer is a defined function.
+
+    expect(currentInteractionService.updateViewWithNewAnswer).toBeDefined();
+    currentInteractionService.updateViewWithNewAnswer();
+
+    expect(currentInteractionService.onAnswerChanged$).toBeDefined();
+  });
+
+  it('should return display card', () => {
+    spyOn(playerPositionService, 'getDisplayedCardIndex').and.returnValue(1);
+    spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+
+    expect(currentInteractionService.getDisplayedCard()).toEqual(displayedCard);
+  });
+
+  it('should update current answer', () => {
+    spyOn(displayedCard, 'updateCurrentAnswer');
+    spyOn(currentInteractionService, 'getDisplayedCard').and.returnValue(
+      displayedCard
+    );
+
+    currentInteractionService.updateCurrentAnswer('answer');
+
+    expect(displayedCard.updateCurrentAnswer).toHaveBeenCalledWith('answer');
+  });
+
+  it('should check if "no response error" should be displayed', () => {
+    spyOn(currentInteractionService, 'getDisplayedCard').and.returnValue(
+      displayedCard
+    );
+    spyOn(displayedCard, 'showNoResponseError').and.returnValue(true);
+
+    expect(currentInteractionService.showNoResponseError()).toBe(true);
+  });
+  it('should return false for no response error when no card is displayed', () => {
+    spyOn(currentInteractionService, 'getDisplayedCard').and.returnValue(
+      undefined
+    );
+
+    expect(currentInteractionService.showNoResponseError()).toBe(false);
+  });
+  it('should update answer validity using updateAnswerIsValid', () => {
+    spyOn(currentInteractionService, 'getDisplayedCard').and.returnValue(
+      displayedCard
+    );
+    spyOn(displayedCard, 'updateAnswerIsValid');
+
+    currentInteractionService.updateAnswerIsValid(true);
+    expect(displayedCard.updateAnswerIsValid).toHaveBeenCalledWith(true);
+
+    currentInteractionService.updateAnswerIsValid(false);
+    expect(displayedCard.updateAnswerIsValid).toHaveBeenCalledWith(false);
+  });
+
+  it('should check invalid response error visibility', () => {
+    spyOn(currentInteractionService, 'getDisplayedCard').and.returnValue(
+      displayedCard
+    );
+    spyOn(displayedCard, 'showInvalidResponseError').and.returnValues(
+      true,
+      false
+    );
+
+    expect(currentInteractionService.showInvalidResponseError()).toBe(true);
+    expect(currentInteractionService.showInvalidResponseError()).toBe(false);
+    expect(displayedCard.showInvalidResponseError).toHaveBeenCalledTimes(2);
+  });
+
+  it('should return false for invalid response error when no card is displayed', () => {
+    spyOn(currentInteractionService, 'getDisplayedCard').and.returnValue(
+      undefined
+    );
+
+    expect(currentInteractionService.showInvalidResponseError()).toBe(false);
   });
 });

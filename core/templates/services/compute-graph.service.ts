@@ -17,21 +17,22 @@
  * exploration.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { States } from 'domain/exploration/StatesObjectFactory';
+import {States} from 'domain/exploration/states.model';
 
 export interface GraphLink {
   source: string;
   target: string;
+  linkProperty: string | null;
+  connectsDestIfStuck: boolean;
 }
 
 export interface GraphNodes {
   [stateName: string]: string;
 }
 
-interface GraphData {
+export interface GraphData {
   finalStateIds: string[];
   initStateId: string;
   links: GraphLink[];
@@ -39,15 +40,15 @@ interface GraphData {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ComputeGraphService {
   _computeGraphData(initStateId: string, states: States): GraphData {
     let nodes: Record<string, string> = {};
-    let links: { source: string; target: string; }[] = [];
+    let links: GraphLink[] = [];
     let finalStateIds = states.getFinalStateNames();
 
-    states.getStateNames().forEach(function(stateName) {
+    states.getStateNames().forEach(function (stateName) {
       let interaction = states.getState(stateName).interaction;
       nodes[stateName] = stateName;
       if (interaction.id) {
@@ -56,28 +57,56 @@ export class ComputeGraphService {
           links.push({
             source: stateName,
             target: groups[h].outcome.dest,
+            linkProperty: null,
+            connectsDestIfStuck: false,
           });
+          if (groups[h].outcome.destIfReallyStuck) {
+            links.push({
+              source: stateName,
+              // This throws "TS2322: Type 'string | null' is not assignable
+              // to type 'string'" We need to suppress this error because the
+              // value is explicitly checked above in the if condition. This
+              // error is thrown because the type of outcome.destIfReallyStuck
+              // is string | null.
+              // @ts-ignore
+              target: groups[h].outcome.destIfReallyStuck,
+              linkProperty: null,
+              connectsDestIfStuck: true,
+            });
+          }
         }
 
         if (interaction.defaultOutcome) {
           links.push({
             source: stateName,
             target: interaction.defaultOutcome.dest,
+            linkProperty: null,
+            connectsDestIfStuck: false,
           });
+          if (interaction.defaultOutcome.destIfReallyStuck) {
+            links.push({
+              source: stateName,
+              target: interaction.defaultOutcome.destIfReallyStuck,
+              linkProperty: null,
+              connectsDestIfStuck: true,
+            });
+          }
         }
       }
     });
-
     return {
       finalStateIds: finalStateIds,
       initStateId: initStateId,
       links: links,
-      nodes: nodes
+      nodes: nodes,
     };
   }
 
   _computeBfsTraversalOfStates(
-      initStateId: string, states: States, sourceStateName: string): string[] {
+    initStateId: string,
+    states: States,
+    sourceStateName: string
+  ): string[] {
     let stateGraph = this._computeGraphData(initStateId, states);
     let stateNamesInBfsOrder: string[] = [];
     let queue: string[] = [];
@@ -107,11 +136,14 @@ export class ComputeGraphService {
   }
 
   computeBfsTraversalOfStates(
-      initStateId: string, states: States, sourceStateName: string): string[] {
+    initStateId: string,
+    states: States,
+    sourceStateName: string
+  ): string[] {
     return this._computeBfsTraversalOfStates(
-      initStateId, states, sourceStateName);
+      initStateId,
+      states,
+      sourceStateName
+    );
   }
 }
-
-angular.module('oppia').factory(
-  'ComputeGraphService', downgradeInjectable(ComputeGraphService));

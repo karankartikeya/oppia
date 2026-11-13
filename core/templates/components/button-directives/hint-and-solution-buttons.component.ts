@@ -16,81 +16,109 @@
  * @fileoverview Component for hint and solution buttons.
  */
 
-import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { StateCard } from 'domain/state_card/state-card.model';
-import { ExplorationPlayerStateService } from 'pages/exploration-player-page/services/exploration-player-state.service';
-import { HintAndSolutionModalService } from 'pages/exploration-player-page/services/hint-and-solution-modal.service';
-import { HintsAndSolutionManagerService } from 'pages/exploration-player-page/services/hints-and-solution-manager.service';
-import { PlayerPositionService } from 'pages/exploration-player-page/services/player-position.service';
-import { PlayerTranscriptService } from 'pages/exploration-player-page/services/player-transcript.service';
-import { StatsReportingService } from 'pages/exploration-player-page/services/stats-reporting.service';
-import { Subscription } from 'rxjs';
-import { ContextService } from 'services/context.service';
+import {
+  ChangeDetectorRef,
+  Component,
+  OnDestroy,
+  OnInit,
+  ViewEncapsulation,
+} from '@angular/core';
+import {ExplorationModeService} from 'pages/exploration-player-page/services/exploration-mode.service';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {HintAndSolutionModalService} from 'pages/exploration-player-page/services/hint-and-solution-modal.service';
+import {HintsAndSolutionManagerService} from 'pages/exploration-player-page/services/hints-and-solution-manager.service';
+import {PlayerPositionService} from 'pages/exploration-player-page/services/player-position.service';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {StatsReportingService} from 'pages/exploration-player-page/services/stats-reporting.service';
+import {Subscription} from 'rxjs';
+import {PageContextService} from 'services/page-context.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {UrlService} from 'services/contextual/url.service';
 
 @Component({
   selector: 'oppia-hint-and-solution-buttons',
-  templateUrl: './hint-and-solution-buttons.component.html'
+  templateUrl: './hint-and-solution-buttons.component.html',
+  styleUrls: ['./hint-and-solution-buttons.component.css'],
+  encapsulation: ViewEncapsulation.None,
 })
 export class HintAndSolutionButtonsComponent implements OnInit, OnDestroy {
   directiveSubscriptions = new Subscription();
-  private _editorPreviewMode: boolean;
+  // These properties below are initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  private _editorPreviewMode!: boolean;
+  // Active hint index is null when no hint is active. Otherwise, it is the
+  // index of the active hint.
+  activeHintIndex!: number | null;
+  displayedCard!: StateCard;
   hintIndexes: number[] = [];
-  activeHintIndex: number;
+  iframed!: boolean;
   solutionModalIsActive: boolean = false;
-  displayedCard: StateCard;
   currentlyOnLatestCard: boolean = true;
   isVisible: boolean = true;
+  isTooltipForSolutionVisible: boolean = true;
 
   constructor(
     private changeDetectorRef: ChangeDetectorRef,
-    private contextService: ContextService,
-    private explorationPlayerStateService: ExplorationPlayerStateService,
+    private pageContextService: PageContextService,
+    private urlService: UrlService,
+    private explorationModeService: ExplorationModeService,
     private hintAndSolutionModalService: HintAndSolutionModalService,
     private hintsAndSolutionManagerService: HintsAndSolutionManagerService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
     private playerPositionService: PlayerPositionService,
     private playerTranscriptService: PlayerTranscriptService,
     private statsReportingService: StatsReportingService
   ) {}
 
   ngOnInit(): void {
-    this._editorPreviewMode = this.contextService.isInExplorationEditorPage();
+    this._editorPreviewMode =
+      this.pageContextService.isInExplorationEditorPage();
+    this.iframed = this.urlService.isIframed();
     this.resetLocalHintsArray();
     this.directiveSubscriptions.add(
       this.playerPositionService.onNewCardOpened.subscribe(
         (newCard: StateCard) => {
           this.displayedCard = newCard;
           this.hintsAndSolutionManagerService.reset(
-            newCard.getHints(), newCard.getSolution());
+            newCard.getHints(),
+            newCard.getSolution()
+          );
           this.resetLocalHintsArray();
         }
       )
     );
     this.directiveSubscriptions.add(
       this.playerPositionService.onActiveCardChanged.subscribe(() => {
-        let displayedCardIndex = (
-          this.playerPositionService.getDisplayedCardIndex());
-        this.currentlyOnLatestCard = (
-          this.playerTranscriptService.isLastCard(displayedCardIndex));
+        let displayedCardIndex =
+          this.playerPositionService.getDisplayedCardIndex();
+        this.currentlyOnLatestCard =
+          this.playerTranscriptService.isLastCard(displayedCardIndex);
         if (this.currentlyOnLatestCard) {
           this.resetLocalHintsArray();
         }
-      }));
+      })
+    );
     this.directiveSubscriptions.add(
       this.hintsAndSolutionManagerService.onHintConsumed.subscribe(() => {
         this.changeDetectorRef.detectChanges();
       })
     );
     this.directiveSubscriptions.add(
-      this.hintsAndSolutionManagerService.onSolutionViewedEventEmitter
-        .subscribe(() => {
+      this.hintsAndSolutionManagerService.onSolutionViewedEventEmitter.subscribe(
+        () => {
           this.changeDetectorRef.detectChanges();
-        })
+        }
+      )
     );
   }
 
   ngOnDestroy(): void {
     this.directiveSubscriptions.unsubscribe();
+  }
+
+  isLanguageRTL(): boolean {
+    return this.i18nLanguageCodeService.isCurrentLanguageRTL();
   }
 
   resetLocalHintsArray(): void {
@@ -105,9 +133,9 @@ export class HintAndSolutionButtonsComponent implements OnInit, OnDestroy {
     return (
       this.hintsAndSolutionManagerService.isHintViewable(index) &&
       this.displayedCard &&
-      this.displayedCard.doesInteractionSupportHints());
+      this.displayedCard.doesInteractionSupportHints()
+    );
   }
-
 
   isSolutionButtonVisible(): boolean {
     return this.hintsAndSolutionManagerService.isSolutionViewable();
@@ -115,8 +143,7 @@ export class HintAndSolutionButtonsComponent implements OnInit, OnDestroy {
 
   displayHintModal(index: number): void {
     this.activeHintIndex = index;
-    let promise = (
-      this.hintAndSolutionModalService.displayHintModal(index));
+    let promise = this.hintAndSolutionModalService.displayHintModal(index);
     promise.result.then(null, () => {
       this.activeHintIndex = null;
     });
@@ -128,24 +155,26 @@ export class HintAndSolutionButtonsComponent implements OnInit, OnDestroy {
     if (this.hintsAndSolutionManagerService.isSolutionConsumed()) {
       this.displaySolutionModal();
     } else {
-      let interstitialModalPromise = (
-        this.hintAndSolutionModalService
-          .displaySolutionInterstitialModal());
-      interstitialModalPromise.result.then(() => {
-        this.displaySolutionModal();
-      }, () => {
-        this.solutionModalIsActive = false;
-      });
+      let interstitialModalPromise =
+        this.hintAndSolutionModalService.displaySolutionInterstitialModal();
+      interstitialModalPromise.result.then(
+        () => {
+          this.displaySolutionModal();
+        },
+        () => {
+          this.solutionModalIsActive = false;
+        }
+      );
     }
   }
 
   displaySolutionModal(): void {
     this.solutionModalIsActive = true;
-    let inQuestionMode = (
-      this.explorationPlayerStateService.isInQuestionMode());
+    let inQuestionMode = this.explorationModeService.isInQuestionMode();
     if (!this._editorPreviewMode && !inQuestionMode) {
       this.statsReportingService.recordSolutionHit(
-        this.playerPositionService.getCurrentStateName());
+        this.playerPositionService.getCurrentStateName()
+      );
     }
     let promise = this.hintAndSolutionModalService.displaySolutionModal();
     promise.result.then(null, () => {
@@ -157,6 +186,10 @@ export class HintAndSolutionButtonsComponent implements OnInit, OnDestroy {
     return this.hintsAndSolutionManagerService.isHintTooltipOpen();
   }
 
+  isSolutionTooltipVisible(): boolean {
+    return this.hintsAndSolutionManagerService.isSolutionTooltipOpen();
+  }
+
   isHintConsumed(hintIndex: number): boolean {
     return this.hintsAndSolutionManagerService.isHintConsumed(hintIndex);
   }
@@ -165,8 +198,3 @@ export class HintAndSolutionButtonsComponent implements OnInit, OnDestroy {
     return this.hintsAndSolutionManagerService.isSolutionConsumed();
   }
 }
-
-angular.module('oppia').directive('oppiaHintAndSolutionButtons',
-  downgradeComponent({
-    component: HintAndSolutionButtonsComponent
-  }) as angular.IDirectiveFactory);

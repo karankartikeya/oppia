@@ -34,17 +34,25 @@
  * value.
  */
 
-import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { ImageDimensions, ImagePreloaderService } from 'pages/exploration-player-page/services/image-preloader.service';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { ContextService } from 'services/context.service';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ImageLocalStorageService } from 'services/image-local-storage.service';
-import { AppConstants } from 'app.constants';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
-import { SafeResourceUrl } from '@angular/platform-browser';
+import {
+  Component,
+  Input,
+  OnChanges,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {
+  ImageDimensions,
+  ImagePreloaderService,
+} from 'pages/exploration-player-page/services/image-preloader.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {AppConstants} from 'app.constants';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
+import {SafeResourceUrl} from '@angular/platform-browser';
 
 interface Dimension {
   height: string;
@@ -53,25 +61,30 @@ interface Dimension {
 @Component({
   selector: 'oppia-noninteractive-image',
   templateUrl: './image.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class NoninteractiveImage implements OnInit, OnChanges {
-  @Input() filepathWithValue: string;
+  @Input() altTextIsDisplayed: boolean = false;
   @Input() altWithValue: string = '';
   @Input() captionWithValue: string = '';
-  filepath: string;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() filepathWithValue!: string;
+  filepath!: string;
+  dimensions!: ImageDimensions;
+  miniatureImageContainerStyle!: Dimension;
+  imageContainerStyle!: Dimension;
+  loadingIndicatorStyle!: Dimension;
   imageUrl: SafeResourceUrl | string = '';
   imageAltText: string = '';
   imageCaption: string = '';
-  loadingIndicatorUrl;
+  loadingIndicatorUrl: string = '';
   isLoadingIndicatorShown: boolean = false;
   isTryAgainShown: boolean = false;
-  dimensions: ImageDimensions;
-  imageContainerStyle: Dimension;
-  loadingIndicatorStyle: Dimension;
   constructor(
     private assetsBackendApiService: AssetsBackendApiService,
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
     private htmlEscaperService: HtmlEscaperService,
     private imageLocalStorageService: ImageLocalStorageService,
     private imagePreloaderService: ImagePreloaderService,
@@ -81,22 +94,31 @@ export class NoninteractiveImage implements OnInit, OnChanges {
 
   private _updateViewOnNewImage(): void {
     if (
-      !this.filepathWithValue || !this.altWithValue || !this.captionWithValue
+      !this.filepathWithValue ||
+      !this.altWithValue ||
+      !this.captionWithValue
     ) {
       return;
     }
     this.filepath = this.htmlEscaperService.escapedJsonToObj(
-      this.filepathWithValue) as string;
+      this.filepathWithValue
+    ) as string;
     if (!this.filepath) {
       return;
     }
     this.loadingIndicatorUrl = this.urlInterpolationService.getStaticImageUrl(
-      AppConstants.LOADING_INDICATOR_URL);
+      AppConstants.LOADING_INDICATOR_URL
+    );
     this.dimensions = this.imagePreloaderService.getDimensionsOfImage(
-      this.filepath);
+      this.filepath
+    );
     this.imageContainerStyle = {
       height: this.dimensions.height + 'px',
-      width: this.dimensions.width + 'px'
+      width: this.dimensions.width + 'px',
+    };
+    this.miniatureImageContainerStyle = {
+      height: '50px',
+      width: '50px',
     };
     // If viewing a concept card in the exploration player, don't use the
     // preloader service. Since, in that service, the image file names are
@@ -107,12 +129,12 @@ export class NoninteractiveImage implements OnInit, OnChanges {
     // preloader service beforehand.
     if (
       this.imagePreloaderService.inExplorationPlayer() &&
-      this.contextService.getEntityType() !== AppConstants.ENTITY_TYPE.SKILL
+      this.pageContextService.getEntityType() !== AppConstants.ENTITY_TYPE.SKILL
     ) {
       const loadingIndicatorSize = this.dimensions.height < 124 ? 24 : 120;
       this.loadingIndicatorStyle = {
         height: loadingIndicatorSize + 'px',
-        width: loadingIndicatorSize + 'px'
+        width: loadingIndicatorSize + 'px',
       };
 
       this.loadImage();
@@ -128,43 +150,67 @@ export class NoninteractiveImage implements OnInit, OnChanges {
         // target entity's images in the translatable content which needs
         // to be fetched from the server.
         if (
-          this.contextService.getImageSaveDestination() ===
-                AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE && (
-            this.imageLocalStorageService.isInStorage(this.filepath))) {
+          this.pageContextService.getImageSaveDestination() ===
+            AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE &&
+          this.imageLocalStorageService.isInStorage(this.filepath)
+        ) {
           const base64Url = this.imageLocalStorageService.getRawImageData(
-            this.filepath);
-          const mimeType = base64Url.split(';')[0];
-          if (mimeType === 'data:image/svg+xml') {
-            this.imageUrl = this.svgSanitizerService.getTrustedSvgResourceUrl(
-              base64Url);
-          } else {
-            this.imageUrl = base64Url;
+            this.filepath
+          );
+          if (base64Url) {
+            const mimeType = base64Url.split(';')[0];
+            if (mimeType === AppConstants.SVG_MIME_TYPE) {
+              const svgResourceUrl =
+                this.svgSanitizerService.getTrustedSvgResourceUrl(base64Url);
+              if (svgResourceUrl) {
+                this.imageUrl = svgResourceUrl;
+              }
+            } else {
+              this.imageUrl = base64Url;
+            }
           }
         } else {
-          this.imageUrl = this.assetsBackendApiService.getImageUrlForPreview(
-            this.contextService.getEntityType(),
-            this.contextService.getEntityId(),
-            this.filepath);
+          const entityType = this.pageContextService.getEntityType();
+          if (entityType) {
+            this.imageUrl = this.assetsBackendApiService.getImageUrlForPreview(
+              entityType,
+              this.pageContextService.getEntityId(),
+              this.filepath
+            );
+          }
         }
-      } catch (e) {
-        const additionalInfo = (
-          '\nEntity type: ' + this.contextService.getEntityType() +
-          '\nEntity ID: ' + this.contextService.getEntityId() +
-          '\nFilepath: ' + this.filepath);
-        e.message += additionalInfo;
+        // Unknown type is used because we don't know which type of error is
+        // thrown.
+      } catch (e: unknown) {
+        const entityType = this.pageContextService.getEntityType();
+        if (entityType) {
+          const additionalInfo =
+            '\nEntity type: ' +
+            entityType +
+            '\nEntity ID: ' +
+            this.pageContextService.getEntityId() +
+            '\nFilepath: ' +
+            this.filepath;
+          if (e instanceof Error) {
+            e.message += additionalInfo;
+          }
+        }
         throw e;
       }
-
-      this.imageCaption = '';
-      if (this.captionWithValue) {
-        this.imageCaption = this.htmlEscaperService.escapedJsonToObj(
-          this.captionWithValue) as string;
-      }
-      this.imageAltText = '';
-      if (this.altWithValue) {
-        this.imageAltText = this.htmlEscaperService.escapedJsonToObj(
-          this.altWithValue) as string;
-      }
+    }
+    // We set the alt text and caption for the image, regardless of when
+    // user is in the exploration player or not in the exploration player.
+    this.imageAltText = '';
+    if (this.altWithValue) {
+      this.imageAltText = this.htmlEscaperService.escapedJsonToObj(
+        this.altWithValue
+      ) as string;
+    }
+    this.imageCaption = '';
+    if (this.captionWithValue) {
+      this.imageCaption = this.htmlEscaperService.escapedJsonToObj(
+        this.captionWithValue
+      ) as string;
     }
   }
 
@@ -175,15 +221,20 @@ export class NoninteractiveImage implements OnInit, OnChanges {
   loadImage(): void {
     this.isLoadingIndicatorShown = true;
     this.isTryAgainShown = false;
-    this.imagePreloaderService.getImageUrlAsync(
-      this.filepath).then(objectUrl => {
-      this.isTryAgainShown = false;
-      this.isLoadingIndicatorShown = false;
-      this.imageUrl = objectUrl;
-    }, () => {
-      this.isTryAgainShown = true;
-      this.isLoadingIndicatorShown = false;
-    });
+    this.imagePreloaderService.getImageUrlAsync(this.filepath).then(
+      objectUrl => {
+        this.isTryAgainShown = false;
+        this.isLoadingIndicatorShown = false;
+        if (objectUrl === null) {
+          throw new Error('Object url is null');
+        }
+        this.imageUrl = objectUrl;
+      },
+      () => {
+        this.isTryAgainShown = true;
+        this.isLoadingIndicatorShown = false;
+      }
+    );
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -196,8 +247,3 @@ export class NoninteractiveImage implements OnInit, OnChanges {
     }
   }
 }
-
-angular.module('oppia').directive('oppiaNoninteractiveImage',
-  downgradeComponent({
-    component: NoninteractiveImage
-  }) as angular.IDirectiveFactory);

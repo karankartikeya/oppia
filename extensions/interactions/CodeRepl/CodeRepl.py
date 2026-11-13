@@ -16,77 +16,89 @@
 
 """Python configuration for CodeRepl interaction."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.interactions import base
+
+from typing import List
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class CodeRepl(base.BaseInteraction):
     """Interaction that allows programs to be input."""
 
-    name = 'Code Editor'
-    description = 'Allows learners to enter code and get it evaluated.'
-    display_mode = base.DISPLAY_MODE_SUPPLEMENTAL
-    is_trainable = True
-    _dependency_ids = ['skulpt', 'codemirror']
-    answer_type = 'CodeEvaluation'
-    instructions = 'Type code in the editor'
-    narrow_instructions = 'Go to code editor'
-    needs_summary = True
-    can_have_solution = True
-    show_generic_submit_button = True
+    name: str = 'Code Editor'
+    description: str = 'Allows learners to enter code and get it evaluated.'
+    display_mode: str = base.DISPLAY_MODE_SUPPLEMENTAL
+    is_trainable: bool = True
+    _dependency_ids: List[str] = ['skulpt', 'codemirror']
+    answer_type: str = 'CodeEvaluation'
+    instructions: str = 'I18N_INTERACTIONS_CODE_REPL_INSTRUCTION'
+    narrow_instructions: str = 'I18N_INTERACTIONS_CODE_REPL_NARROW_INSTRUCTION'
+    needs_summary: bool = True
+    can_have_solution: bool = True
+    show_generic_submit_button: bool = True
 
     # Language options 'lua', 'scheme', 'coffeescript', 'javascript', and
     # 'ruby' have been removed for possible later re-release.
-    _customization_arg_specs = [{
-        'name': 'language',
-        'description': 'Programming language',
-        'schema': {
-            'type': 'unicode',
-            'choices': [
-                'python',
-            ]
-        },
-        'default_value': 'python'
-    }, {
-        'name': 'placeholder',
-        'description': 'Initial code displayed',
-        'schema': {
-            'type': 'unicode',
-            'ui_config': {
-                'coding_mode': 'none',
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'language',
+            'description': 'Programming language',
+            'schema': {
+                'type': 'unicode',
+                'choices': [
+                    'python',
+                ],
             },
+            'default_value': 'python',
         },
-        'default_value': '# Type your code here.'
-    }, {
-        'name': 'preCode',
-        'description': 'Code to prepend to the learner\'s submission',
-        'schema': {
-            'type': 'unicode',
-            'ui_config': {
-                'coding_mode': 'none',
+        {
+            'name': 'placeholder',
+            'description': 'Initial code displayed',
+            'schema': {
+                'type': 'unicode',
+                'ui_config': {
+                    'coding_mode': 'none',
+                },
             },
+            'default_value': '# Type your code here.',
         },
-        'default_value': ''
-    }, {
-        'name': 'postCode',
-        'description': 'Code to append after the learner\'s submission',
-        'schema': {
-            'type': 'unicode',
-            'ui_config': {
-                'coding_mode': 'none',
+        {
+            'name': 'preCode',
+            'description': 'Code to prepend to the learner\'s submission',
+            'schema': {
+                'type': 'unicode',
+                'ui_config': {
+                    'coding_mode': 'none',
+                },
             },
+            'default_value': '',
         },
-        'default_value': ''
-    }]
+        {
+            'name': 'postCode',
+            'description': 'Code to append after the learner\'s submission',
+            'schema': {
+                'type': 'unicode',
+                'ui_config': {
+                    'coding_mode': 'none',
+                },
+            },
+            'default_value': '',
+        },
+    ]
 
-    _answer_visualization_specs = [{
-        'id': 'FrequencyTable',
-        'options': {
-            'column_headers': ['Answer', 'Count'],
-            'title': 'Top 10 answers',
-        },
-        'calculation_id': 'Top10AnswerFrequencies',
-        'addressed_info_is_supported': True,
-    }]
+    _answer_visualization_specs: List[base.AnswerVisualizationSpecsDict] = [
+        {
+            'id': 'FrequencyTable',
+            'options': {
+                'column_headers': ['Answer', 'Count'],
+                'title': 'Top 10 answers',
+            },
+            'calculation_id': 'Top10AnswerFrequencies',
+            'addressed_info_is_supported': True,
+        }
+    ]

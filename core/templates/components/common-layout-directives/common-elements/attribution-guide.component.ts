@@ -16,19 +16,21 @@
  * @fileoverview Component for the attribution guide.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, OnInit, ViewChild, ViewEncapsulation} from '@angular/core';
+import {NgbTooltip} from '@ng-bootstrap/ng-bootstrap';
 
-import { BrowserCheckerService } from
-  'domain/utilities/browser-checker.service';
-import { AttributionService } from 'services/attribution.service';
-import { ContextService } from 'services/context.service';
-import { UrlService } from 'services/contextual/url.service';
+import {BrowserCheckerService} from 'domain/utilities/browser-checker.service';
+import {AttributionService} from 'services/attribution.service';
+import {PageContextService} from 'services/page-context.service';
+import {UrlService} from 'services/contextual/url.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
 
 @Component({
   selector: 'attribution-guide',
   templateUrl: './attribution-guide.component.html',
-  styleUrls: []
+  styleUrls: ['./attribution-guide.component.css'],
+  encapsulation: ViewEncapsulation.None,
 })
 export class AttributionGuideComponent implements OnInit {
   deviceUsedIsMobile: boolean = false;
@@ -36,27 +38,37 @@ export class AttributionGuideComponent implements OnInit {
   generateAttibutionIsAllowed: boolean = false;
   maskIsShown: boolean = false;
   printAttributionLink: string = '';
+  @ViewChild('htmlAttributionTooltip', {static: false})
+  htmlAttributionTooltip!: NgbTooltip;
+  @ViewChild('printAttributionTooltip', {static: false})
+  printAttributionTooltip!: NgbTooltip;
   constructor(
     private attributionService: AttributionService,
     private browserCheckerService: BrowserCheckerService,
-    private contextService: ContextService,
-    private urlService: UrlService
+    private pageContextService: PageContextService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
+    private urlService: UrlService,
+    private windowDimensionsService: WindowDimensionsService
   ) {}
 
   ngOnInit(): void {
     this.deviceUsedIsMobile = this.browserCheckerService.isMobileDevice();
     this.iframed = this.urlService.isIframed();
-    this.printAttributionLink = (
-      '<a href=\"https://creativecommons.org/licenses/by-sa/4.0/\" ' +
-      'rel=\"noopener\" target=\"_blank\"><span ' +
-      'class=\"oppia-attribution-licence-link\">CC BY SA 4.0 license</span>' +
-      '<span class=\"material-icons oppia-open-new-tab-icon\">' +
-      'open_in_new</span></a>');
-    this.generateAttibutionIsAllowed = (
-      this.attributionService.isGenerateAttributionAllowed());
+    this.printAttributionLink =
+      '<a href="https://creativecommons.org/licenses/by-sa/4.0/" ' +
+      'rel="noopener" target="_blank"><span ' +
+      'class="oppia-attribution-licence-link">CC BY SA 4.0 license</span>' +
+      '<span class="fas fa-external-link-alt oppia-open-new-tab-icon">' +
+      '</span></a>';
+    this.generateAttibutionIsAllowed =
+      this.attributionService.isGenerateAttributionAllowed();
     if (this.generateAttibutionIsAllowed) {
       this.attributionService.init();
     }
+  }
+
+  checkMobileView(): boolean {
+    return this.windowDimensionsService.getWidth() <= 1024;
   }
 
   getAttributionModalStatus(): boolean {
@@ -86,14 +98,19 @@ export class AttributionGuideComponent implements OnInit {
   }
 
   getExplorationId(): string {
-    return this.contextService.getExplorationId();
+    return this.pageContextService.getExplorationId();
   }
 
-  copyAttribution(className: string): void {
-    const codeDiv = document.getElementsByClassName(className)[0];
+  copyAttribution(className: string, tooltip: NgbTooltip | undefined): void {
+    const codeDiv = document.getElementsByClassName(
+      className
+    )[0] as HTMLElement;
+    if (!codeDiv) {
+      return;
+    }
     const range = document.createRange();
-    range.setStartBefore(<Node>(<HTMLDivElement>codeDiv).firstChild);
-    range.setEndAfter(<Node>(<HTMLDivElement>codeDiv).lastChild);
+    range.setStartBefore(codeDiv.firstChild as Node);
+    range.setEndAfter(codeDiv.lastChild as Node);
     // 'getSelection()' will not return 'null' since it is not called on an
     // undisplayed <iframe>. That is why we can use '?'.
     const selection = window.getSelection();
@@ -101,11 +118,14 @@ export class AttributionGuideComponent implements OnInit {
     selection?.addRange(range);
     document.execCommand('copy');
     selection?.removeAllRanges();
-    $(codeDiv).tooltip('show');
-    setTimeout(() => $(codeDiv).tooltip('hide'), 1000);
+    this.showCopiedTooltip(tooltip);
+  }
+
+  private showCopiedTooltip(tooltip: NgbTooltip | undefined): void {
+    if (!tooltip) {
+      return;
+    }
+    tooltip.open();
+    setTimeout(() => tooltip.close(), 1000);
   }
 }
-
-angular.module('oppia').directive(
-  'attributionGuide', downgradeComponent(
-    {component: AttributionGuideComponent}));

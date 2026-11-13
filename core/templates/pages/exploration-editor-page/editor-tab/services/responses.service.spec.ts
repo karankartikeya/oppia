@@ -17,82 +17,70 @@
  */
 
 import {HttpClientTestingModule} from '@angular/common/http/testing';
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import {EventEmitter} from '@angular/core';
+import {fakeAsync, TestBed} from '@angular/core/testing';
 
-import { AnswerGroupObjectFactory } from 'domain/exploration/AnswerGroupObjectFactory';
-import { AlertsService } from 'services/alerts.service';
-import { ExplorationHtmlFormatterService } from 'services/exploration-html-formatter.service';
-import { InteractionObjectFactory } from 'domain/exploration/InteractionObjectFactory';
-import { LoggerService } from 'services/contextual/logger.service';
-import { OutcomeObjectFactory } from 'domain/exploration/OutcomeObjectFactory';
-import { ResponsesService } from 'pages/exploration-editor-page/editor-tab/services/responses.service';
+import {AnswerGroup} from 'domain/exploration/answer-group.model';
+import {AlertsService} from 'services/alerts.service';
+import {ExplorationHtmlFormatterService} from 'services/exploration-html-formatter.service';
+import {Interaction} from 'domain/exploration/interaction.model';
+import {LoggerService} from 'services/contextual/logger.service';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {ResponsesService} from 'pages/exploration-editor-page/editor-tab/services/responses.service';
 import {
   StateEditorService,
   // eslint-disable-next-line max-len
 } from 'components/state-editor/state-editor-properties-services/state-editor.service';
-import { StateInteractionIdService } from 'components/state-editor/state-editor-properties-services/state-interaction-id.service';
-import { StateSolutionService } from 'components/state-editor/state-editor-properties-services/state-solution.service';
-import {
-  SubtitledHtml,
-} from 'domain/exploration/subtitled-html.model';
+import {StateInteractionIdService} from 'components/state-editor/state-editor-properties-services/state-interaction-id.service';
+import {StateSolutionService} from 'components/state-editor/state-editor-properties-services/state-solution.service';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {Rule} from 'domain/exploration/rule.model';
+import {Solution} from 'domain/exploration/solution.model';
+import {StateCustomizationArgsService} from 'components/state-editor/state-editor-properties-services/state-customization-args.service';
 
 describe('Responses Service', () => {
-  let alertsService: AlertsService = null;
-  let answerGroupObjectFactory: AnswerGroupObjectFactory = null;
-  let explorationHtmlFormatterService: ExplorationHtmlFormatterService = null;
-  let interactionData = null;
-  let interactionDataWithRules = null;
-  let interactionObjectFactory: InteractionObjectFactory = null;
-  let loggerService: LoggerService = null;
-  let outcomeObjectFactory: OutcomeObjectFactory = null;
-  let responsesService: ResponsesService = null;
-  let savedMemento = null;
-  let stateEditorService: StateEditorService = null;
-  let stateInteractionIdService: StateInteractionIdService = null;
-  let stateSolutionService: StateSolutionService = null;
+  let alertsService: AlertsService;
+  let explorationHtmlFormatterService: ExplorationHtmlFormatterService;
+  let interactionData: Interaction;
+  let interactionDataWithRules: Interaction;
+  let loggerService: LoggerService;
+  let responsesService: ResponsesService;
+  let savedMemento: Solution;
+  let stateEditorService: StateEditorService;
+  let stateInteractionIdService: StateInteractionIdService;
+  let stateSolutionService: StateSolutionService;
+  let stateCustomizationArgsService: StateCustomizationArgsService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
+      imports: [HttpClientTestingModule],
     });
-    answerGroupObjectFactory = TestBed.get(AnswerGroupObjectFactory);
-    alertsService = TestBed.get(AlertsService);
-    explorationHtmlFormatterService = TestBed.get(
+    alertsService = TestBed.inject(AlertsService);
+    explorationHtmlFormatterService = TestBed.inject(
       ExplorationHtmlFormatterService
     );
-    loggerService = TestBed.get(LoggerService);
-    outcomeObjectFactory = TestBed.get(OutcomeObjectFactory);
-    responsesService = TestBed.get(ResponsesService);
-    interactionObjectFactory = TestBed.get(InteractionObjectFactory);
-    stateEditorService = TestBed.get(StateEditorService);
-    stateInteractionIdService = TestBed.get(StateInteractionIdService);
-    stateSolutionService = TestBed.get(StateSolutionService);
+    loggerService = TestBed.inject(LoggerService);
+    responsesService = TestBed.inject(ResponsesService);
+    stateEditorService = TestBed.inject(StateEditorService);
+    stateInteractionIdService = TestBed.inject(StateInteractionIdService);
+    stateSolutionService = TestBed.inject(StateSolutionService);
+    stateCustomizationArgsService = TestBed.inject(
+      StateCustomizationArgsService
+    );
 
-    savedMemento = {
-      ehfs: explorationHtmlFormatterService,
-      shof: SubtitledHtml,
-      answerIsExclusive: true,
-      correctAnswer: 'This is the correct answer',
-      explanation: new SubtitledHtml('', 'tesster'),
-      toBackendDict: jasmine.createSpy('toBackendDict'),
-      getSummary: jasmine.createSpy('getSummary'),
-      setCorrectAnswer: jasmine.createSpy('setCorrectAnswer'),
-      setExplanation: jasmine.createSpy('setExplanation'),
-      getOppiaSolutionExplanationResponseHtml: jasmine.createSpy(
-        'getOppiaSolutionExplanationResponseHtml'
-      ),
-      getOppiaShortAnswerResponseHtml: jasmine.createSpy(
-        'getOppiaShortAnswerResponseHtml'
-      ),
-    };
+    savedMemento = new Solution(
+      true,
+      'This is the correct answer',
+      new SubtitledHtml('', 'tesster')
+    );
 
-    interactionData = interactionObjectFactory.createFromBackendDict({
+    interactionData = Interaction.createFromBackendDict({
       id: 'TextInput',
       answer_groups: [
         {
           outcome: {
             dest: 'State',
+            dest_if_really_stuck: null,
             feedback: {
               html: '',
               content_id: 'This is a new feedback text',
@@ -109,6 +97,7 @@ describe('Responses Service', () => {
       ],
       default_outcome: {
         dest: 'Hola',
+        dest_if_really_stuck: null,
         feedback: {
           content_id: '',
           html: '',
@@ -126,6 +115,9 @@ describe('Responses Service', () => {
         placeholder: {
           value: 1,
         },
+        catchMisspellings: {
+          value: false,
+        },
       },
       hints: [],
       solution: {
@@ -138,12 +130,13 @@ describe('Responses Service', () => {
       },
     });
 
-    interactionDataWithRules = interactionObjectFactory.createFromBackendDict({
+    interactionDataWithRules = Interaction.createFromBackendDict({
       id: 'TextInput',
       answer_groups: [
         {
           outcome: {
             dest: '',
+            dest_if_really_stuck: null,
             feedback: {
               content_id: 'feedback_1',
               html: '',
@@ -168,6 +161,7 @@ describe('Responses Service', () => {
       ],
       default_outcome: {
         dest: 'Hola',
+        dest_if_really_stuck: null,
         feedback: {
           content_id: '',
           html: '',
@@ -184,6 +178,9 @@ describe('Responses Service', () => {
         },
         placeholder: {
           value: 1,
+        },
+        catchMisspellings: {
+          value: false,
         },
       },
       hints: [],
@@ -240,7 +237,7 @@ describe('Responses Service', () => {
     responsesService.init(interactionData);
     stateEditorService.setInteraction(interactionData);
 
-    const updatedDefaultOutcome = outcomeObjectFactory.createNew(
+    const updatedDefaultOutcome = Outcome.createNew(
       'Hola',
       'new_id',
       'This is a new feedback text',
@@ -262,54 +259,38 @@ describe('Responses Service', () => {
     responsesService.init(interactionData);
     stateEditorService.setInteraction(interactionData);
 
-    const updatedAnswerGroup = {
-      rules: [
-        {
-          type: 'Contains',
-          inputs: {
+    const updatedAnswerGroup = new AnswerGroup(
+      [
+        new Rule(
+          'Contains',
+          {
             x: {
               contentId: 'rule_input_Contains',
-              normalizedStrSet: ['correct']
+              normalizedStrSet: ['correct'],
             },
           },
-          inputTypes: {},
-          toBackendDict: jasmine.createSpy('toBackendDict'),
-        },
+          {}
+        ),
       ],
-      outcome: {
-        dest: 'State',
-        feedback: new SubtitledHtml('', 'This is a new feedback text'),
-        refresherExplorationId: 'test',
-        missingPrerequisiteSkillId: 'test_skill_id',
-        labelledAsCorrect: true,
-        paramChanges: [],
-        toBackendDict: jasmine.createSpy('toBackendDict'),
-        setDestination: jasmine.createSpy('setDestination'),
-        hasNonemptyFeedback: jasmine.createSpy('hasNonemptyFeedback'),
-        isConfusing: jasmine.createSpy('isConfusing'),
-      },
-      trainingData: ['This is training data text'],
-      taggedSkillMisconceptionId: '',
-      toBackendDict: jasmine.createSpy('toBackendDict'),
-    };
+      new Outcome(
+        'State',
+        null,
+        new SubtitledHtml('', 'This is a new feedback text'),
+        true,
+        [],
+        'test',
+        'test_skill_id'
+      ),
+      ['This is training data text'],
+      ''
+    );
+
     const callbackSpy = jasmine.createSpy('callback');
     responsesService.updateAnswerGroup(0, updatedAnswerGroup, callbackSpy);
 
     // Reassign only updated properties.
     const expectedAnswerGroup = interactionData.answerGroups;
-    expectedAnswerGroup[0].rules = updatedAnswerGroup.rules;
-    expectedAnswerGroup[0].taggedSkillMisconceptionId =
-      updatedAnswerGroup.taggedSkillMisconceptionId;
-    expectedAnswerGroup[0].outcome.feedback =
-      updatedAnswerGroup.outcome.feedback;
-    expectedAnswerGroup[0].outcome.dest = updatedAnswerGroup.outcome.dest;
-    expectedAnswerGroup[0].outcome.refresherExplorationId =
-      updatedAnswerGroup.outcome.refresherExplorationId;
-    expectedAnswerGroup[0].outcome.missingPrerequisiteSkillId =
-      updatedAnswerGroup.outcome.missingPrerequisiteSkillId;
-    expectedAnswerGroup[0].outcome.labelledAsCorrect =
-      updatedAnswerGroup.outcome.labelledAsCorrect;
-    expectedAnswerGroup[0].trainingData = updatedAnswerGroup.trainingData;
+    expectedAnswerGroup[0] = updatedAnswerGroup;
 
     expect(callbackSpy).toHaveBeenCalledWith(expectedAnswerGroup);
     expect(responsesService.getAnswerGroup(0)).toEqual(expectedAnswerGroup[0]);
@@ -320,16 +301,7 @@ describe('Responses Service', () => {
     stateEditorService.setInteraction(interactionData);
 
     const updatedAnswerGroup = {
-      rules: [
-        {
-          type: 'Contains',
-          inputs: {
-            x: 'correct',
-          },
-          inputTypes: {},
-          toBackendDict: jasmine.createSpy('toBackendDict'),
-        },
-      ],
+      rules: [new Rule('Contains', {x: 'correct'}, {})],
       outcome: {
         dest: 'State',
         feedback: new SubtitledHtml('', 'This is a new feedback text'),
@@ -345,6 +317,7 @@ describe('Responses Service', () => {
       taggedSkillMisconceptionId: '',
       feedback: new SubtitledHtml('', 'This is a new feedback text'),
       dest: 'State',
+      destIfReallyStuck: 'destIfReallyStuck',
       refresherExplorationId: 'test',
       missingPrerequisiteSkillId: 'test_skill_id',
       labelledAsCorrect: true,
@@ -368,6 +341,8 @@ describe('Responses Service', () => {
     expectedAnswerGroup[0].outcome.feedback =
       updatedAnswerGroup.outcome.feedback;
     expectedAnswerGroup[0].outcome.dest = updatedAnswerGroup.outcome.dest;
+    expectedAnswerGroup[0].outcome.destIfReallyStuck =
+      updatedAnswerGroup.destIfReallyStuck;
     expectedAnswerGroup[0].outcome.refresherExplorationId =
       updatedAnswerGroup.outcome.refresherExplorationId;
     expectedAnswerGroup[0].outcome.missingPrerequisiteSkillId =
@@ -399,6 +374,7 @@ describe('Responses Service', () => {
       ],
       outcome: {
         dest: 'State',
+        destIfReallyStuck: null,
         feedback: new SubtitledHtml('', 'This is a new feedback text'),
         refresherExplorationId: 'test',
         missingPrerequisiteSkillId: 'test_skill_id',
@@ -412,6 +388,7 @@ describe('Responses Service', () => {
       taggedSkillMisconceptionId: '',
       feedback: 'This is a new feedback text',
       dest: 'State',
+      dest_if_really_stuck: null,
       refresherExplorationId: '',
       missingPrerequisiteSkillId: '',
       labelledAsCorrect: true,
@@ -801,20 +778,19 @@ describe('Responses Service', () => {
     );
   });
 
-  it('should change interaction when id does not exist in any answer group',
-    () => {
-      responsesService.init(interactionData);
-      stateEditorService.setInteraction(interactionData);
+  it('should change interaction when id does not exist in any answer group', () => {
+    responsesService.init(interactionData);
+    stateEditorService.setInteraction(interactionData);
 
-      const newInteractionId = 'Continue';
-      const callbackSpy = jasmine.createSpy('callback');
-      responsesService.onInteractionIdChanged(newInteractionId, callbackSpy);
+    const newInteractionId = 'Continue';
+    const callbackSpy = jasmine.createSpy('callback');
+    responsesService.onInteractionIdChanged(newInteractionId, callbackSpy);
 
-      expect(callbackSpy).toHaveBeenCalledWith(
-        [],
-        interactionData.defaultOutcome
-      );
-    });
+    expect(callbackSpy).toHaveBeenCalledWith(
+      [],
+      interactionData.defaultOutcome
+    );
+  });
 
   it('should change interaction', () => {
     stateInteractionIdService.init('stateName', 'TextInput');
@@ -838,7 +814,7 @@ describe('Responses Service', () => {
     const callbackSpy = jasmine.createSpy('callback');
     responsesService.onInteractionIdChanged(newInteractionId, callbackSpy);
 
-    const expectedDefaultOutcomeCreated = outcomeObjectFactory.createNew(
+    const expectedDefaultOutcomeCreated = Outcome.createNew(
       'State',
       'default_outcome',
       '',
@@ -871,14 +847,14 @@ describe('Responses Service', () => {
     stateSolutionService.savedMemento = savedMemento;
 
     const updatedAnswerGroups = [
-      answerGroupObjectFactory.createNew(
+      AnswerGroup.createNew(
         [],
-        outcomeObjectFactory.createNew('Hola', '1', 'Feedback text', []),
+        Outcome.createNew('Hola', '1', 'Feedback text', []),
         ['Training data text'],
         '0'
       ),
     ];
-    const updatedDefaultOutcome = outcomeObjectFactory.createNew(
+    const updatedDefaultOutcome = Outcome.createNew(
       'State',
       'new_id',
       'This is a new feedback text',
@@ -914,14 +890,14 @@ describe('Responses Service', () => {
     stateSolutionService.savedMemento = savedMemento;
 
     const updatedAnswerGroups = [
-      answerGroupObjectFactory.createNew(
+      AnswerGroup.createNew(
         [],
-        outcomeObjectFactory.createNew('Hola', '1', 'Feedback text', []),
+        Outcome.createNew('Hola', '1', 'Feedback text', []),
         ['Training data text'],
         '0'
       ),
     ];
-    let updatedDefaultOutcome = outcomeObjectFactory.createNew(
+    let updatedDefaultOutcome = Outcome.createNew(
       'State',
       'new_id',
       'This is a new feedback text',
@@ -931,7 +907,7 @@ describe('Responses Service', () => {
     // Save first time.
     responsesService.save(updatedAnswerGroups, updatedDefaultOutcome, () => {});
 
-    updatedDefaultOutcome = outcomeObjectFactory.createNew(
+    updatedDefaultOutcome = Outcome.createNew(
       'Hola',
       'new_id',
       'This is a new feedback text',
@@ -958,6 +934,79 @@ describe('Responses Service', () => {
     );
   });
 
+  it('should get oppia short answer', () => {
+    const interaction = new Interaction(
+      [],
+      [],
+      {
+        choices: {
+          value: [new SubtitledHtml('This is a choice', 'id1')],
+        },
+      },
+      null,
+      [],
+      'MultipleChoiceInput',
+      null
+    );
+    const solution = new Solution(
+      false,
+      'This is a correct answer!',
+      new SubtitledHtml('This is the explanation', 'solution')
+    );
+    const expectedShortAnswerHtml = {
+      prefix: 'One',
+      answer:
+        '<oppia-short-response-0 answer="&amp;quot;' +
+        'This is a correct answer!&amp;quot;" choices="' +
+        '[{&amp;quot;_html&amp;quot;:&amp;quot;This is a choice' +
+        '&amp;quot;,&amp;quot;_contentId&amp;quot;:' +
+        '&amp;quot;id1&amp;quot;}]"></oppia-short-response-0>',
+    };
+
+    spyOn(
+      explorationHtmlFormatterService,
+      'getShortAnswerHtml'
+    ).and.returnValue(expectedShortAnswerHtml.answer);
+
+    const shortAnswerResponse =
+      responsesService.getOppiaShortAnswerResponseHtml(interaction, solution);
+
+    expect(shortAnswerResponse).toEqual(expectedShortAnswerHtml);
+    expect(
+      explorationHtmlFormatterService.getShortAnswerHtml
+    ).toHaveBeenCalledWith(
+      solution.correctAnswer,
+      interaction.id,
+      interaction.customizationArgs
+    );
+  });
+
+  it("should throw an error if Interaction's id is null", () => {
+    const interaction = new Interaction(
+      [],
+      [],
+      {
+        choices: {
+          value: [new SubtitledHtml('This is a choice', '')],
+        },
+      },
+      null,
+      [],
+      null,
+      null
+    );
+
+    const solution = new Solution(
+      false,
+      'This is a correct answer!',
+      new SubtitledHtml('This is the explanation', 'solution')
+    );
+
+    expect(() => {
+      responsesService.getOppiaShortAnswerResponseHtml(interaction, solution);
+    }).toThrowError('Interaction id is possibly null.');
+  });
+
   it('should fetch EventEmitters', () => {
     let answerGroupsChangedEventEmitter = new EventEmitter();
     let initializeAnswerGroupsEventEmitter = new EventEmitter();
@@ -967,5 +1016,60 @@ describe('Responses Service', () => {
     expect(responsesService.onInitializeAnswerGroups).toEqual(
       initializeAnswerGroupsEventEmitter
     );
+  });
+
+  it('should throw error if background image are empty', fakeAsync(() => {
+    const updatedDefaultOutcome = Outcome.createNew(
+      'Hola',
+      'new_id',
+      'This is a new feedback text',
+      []
+    );
+    const callbackSpy = jasmine.createSpy('callback');
+    interactionData.defaultOutcome = null;
+    responsesService.init(interactionData);
+    responsesService.updateDefaultOutcome(updatedDefaultOutcome, callbackSpy);
+    expect(callbackSpy).not.toHaveBeenCalled();
+  }));
+
+  it(
+    'should return false when interaction is MultipleChoiceInput and ' +
+      'answer choices are null',
+    () => {
+      responsesService.init(interactionData);
+      stateInteractionIdService.init('stateName', 'MultipleChoiceInput');
+      responsesService.updateAnswerChoices(null);
+
+      expect(responsesService.shouldHideDefaultAnswerGroup()).toBe(false);
+    }
+  );
+
+  it(
+    'should return false when interaction is ItemSelectionInput with ' +
+      'maxAllowableSelectionCount 1 and answer choices are null',
+    () => {
+      responsesService.init(interactionData);
+      stateInteractionIdService.init('stateName', 'ItemSelectionInput');
+      stateCustomizationArgsService.savedMemento = {
+        maxAllowableSelectionCount: {
+          value: 1,
+        },
+      };
+      responsesService.updateAnswerChoices(null);
+
+      expect(responsesService.shouldHideDefaultAnswerGroup()).toBe(false);
+    }
+  );
+
+  it('should do nothing when new answer choices are null', () => {
+    responsesService.init(interactionData);
+    stateInteractionIdService.init('stateName', 'ItemSelectionInput');
+    responsesService.updateAnswerChoices([{val: 'a', label: ''}]);
+
+    const callbackSpy = jasmine.createSpy('callback');
+    responsesService.handleCustomArgsUpdate(null, callbackSpy);
+
+    expect(callbackSpy).not.toHaveBeenCalled();
+    expect(responsesService.getAnswerChoices()).toBeNull();
   });
 });

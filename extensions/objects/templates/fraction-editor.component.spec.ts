@@ -16,18 +16,19 @@
  * @fileoverview Unit tests for fraction editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { FractionEditorComponent } from './fraction-editor.component';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {FractionEditorComponent} from './fraction-editor.component';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
 
 describe('FractionEditorComponent', () => {
   let component: FractionEditorComponent;
   let fixture: ComponentFixture<FractionEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [FractionEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      declarations: [MockTranslatePipe, FractionEditorComponent],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -39,7 +40,7 @@ describe('FractionEditorComponent', () => {
       isNegative: false,
       wholeNumber: 0,
       numerator: 1,
-      denominator: 2
+      denominator: 2,
     };
   });
 
@@ -55,43 +56,26 @@ describe('FractionEditorComponent', () => {
     component.validateFraction('1/2');
 
     expect(component.currentFractionValueIsValid).toBeTrue();
-    expect(component.errorMessage).toBe('');
-    expect(component.eventBus.emit).toHaveBeenCalledWith(
-      jasmine.objectContaining({
-        message: {
-          value: false,
-          modalId: undefined
-        },
-        type: 'ObjectFormValidityChangeEvent'
-      }));
+    expect(component.errorMessageI18nKey).toBe('');
   });
 
-  it('should display error message when user enters an invalid fraction',
-    () => {
-      spyOn(component.eventBus, 'emit');
+  it('should display error message when user enters an invalid fraction', () => {
+    spyOn(component.eventBus, 'emit');
 
-      component.validateFraction('1?2');
+    component.validateFraction('1?2');
 
-      expect(component.currentFractionValueIsValid).toBeFalse();
-      expect(component.errorMessage).toBe(
-        'Please only use numerical digits, spaces or forward slashes (/)'
-      );
-      expect(component.eventBus.emit).toHaveBeenCalledWith(
-        jasmine.objectContaining({
-          message: {
-            value: true,
-            modalId: undefined
-          },
-          type: 'ObjectFormValidityChangeEvent'
-        }));
-    });
+    expect(component.currentFractionValueIsValid).toBeFalse();
+    expect(component.errorMessageI18nKey).toBe(
+      'I18N_INTERACTIONS_FRACTIONS_INVALID_CHARS'
+    );
+  });
 
   it('should display error message when user enter an empty fraction', () => {
     component.validateFraction('');
 
     expect(component.currentFractionValueIsValid).toBeFalse();
-    expect(component.errorMessage).toBe(
-      'Please enter a non-empty fraction value.'
+    expect(component.errorMessageI18nKey).toBe(
+      'I18N_INTERACTIONS_FRACTIONS_NON_EMPTY'
     );
   });
 });

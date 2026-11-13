@@ -16,21 +16,18 @@
  * @fileoverview Unit tests for NonExistentExplorations.
  */
 
-import { NonExistentExplorations } from
-  'domain/learner_dashboard/non-existent-explorations.model';
+import {NonExistentExplorations} from 'domain/learner_dashboard/non-existent-explorations.model';
 
 describe('Non existent explorations model', () => {
   it('should correctly convert backend dict to object', () => {
     let backendDict = {
       incomplete_explorations: 1,
       completed_explorations: 2,
-      exploration_playlist: 3,
     };
 
     let object = NonExistentExplorations.createFromBackendDict(backendDict);
 
     expect(object.incompleteExplorations).toEqual(1);
     expect(object.completedExplorations).toEqual(2);
-    expect(object.explorationPlaylist).toEqual(3);
   });
 });

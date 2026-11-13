@@ -20,7 +20,11 @@
  * followed by the name of the arg.
  */
 
-angular.module('oppia').component('oppiaShortResponseEndExploration', {
-  controllerAs: '$ctrl',
-  controller: [function() {}]
-});
+import {Component} from '@angular/core';
+
+@Component({
+  selector: 'oppia-short-response-end-exploration',
+  templateUrl: './end-exploration-short-response.component.html',
+  styleUrls: [],
+})
+export class ShortResponseEndExplorationComponent {}

@@ -1,29 +1,30 @@
 <div class="h-100">
-  <div ng-if="!$ctrl.solutionEditorIsOpen"
-       class="h-100"
-       ng-attr-title="Edit solution">
+  <div class="h-100"
+       title="Edit solution">
     <div class="oppia-readonly-rule-tile"
-         ng-class="{'oppia-editable-section': $ctrl.isEditable}">
+         [ngClass]="{'oppia-editable-section': isEditable}">
       <div class="oppia-rule-preview oppia-transition-200">
-        <div ng-if="$ctrl.isEditable"
-             class="oppia-click-to-start-editing"
-             ng-click="$ctrl.onOpenSolutionEditor()">
-          <i class="material-icons oppia-editor-edit-icon float-right"
+        <div *ngIf="isEditable"
+             class="oppia-click-to-start-editing e2e-test-edit-solution"
+             (click)="openEditorModal()">
+          <i class="material-icons oppia-editor-edit-icon float-end"
+             tabindex="0"
+             (keydown.enter)="openEditorModal()"
+             aria-label="Edit Solution"
+             role="button"
              title="Edit Solution">&#xE254;
           </i>
         </div>
-        <strong>
-          <[$ctrl.StateSolutionService.savedMemento.answerIsExclusive ? 'The only' : 'One']> solution is...
+        <strong tabindex="0">
+          {{stateSolutionService.savedMemento.answerIsExclusive ? 'The only' : 'One'}} solution is...
         </strong>
-        <span>
-          <angular-html-bind html-data="$ctrl.getAnswerHtml()">
-          </angular-html-bind>
+        <span tabindex="0">
+          <oppia-interaction-display [htmlData]="getAnswerHtml()">
+          </oppia-interaction-display>
         </span>
       </div>
     </div>
   </div>
   <br>
-  <solution-explanation-editor on-save-solution="$ctrl.onSaveSolution"
-                               show-mark-all-audio-as-needing-update-modal-if-required="$ctrl.showMarkAllAudioAsNeedingUpdateModalIfRequired">
-  </solution-explanation-editor>
+  <oppia-solution-explanation-editor (saveSolution)="updateNewSolution($event)"></oppia-solution-explanation-editor>
 </div>

@@ -16,25 +16,30 @@
  * @fileoverview Component for editing user roles.
  */
 
-import { Component, OnInit, Input } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
+import {Component, OnInit, Input} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 
-import { AdminBackendApiService } from 'domain/admin/admin-backend-api.service';
-import { AlertsService } from 'services/alerts.service';
-
+import {AdminBackendApiService} from 'domain/admin/admin-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
 
 @Component({
   selector: 'oppia-topic-manager-role-editor-modal',
   templateUrl: './topic-manager-role-editor-modal.component.html',
+  styleUrls: ['./topic-manager-role-editor-modal.component.css'],
 })
 export class TopicManagerRoleEditorModalComponent implements OnInit {
-  @Input() managedTopicIds;
-  @Input() topicIdToName;
-  @Input() username;
-
-  newTopicId = null;
-  topicIdsForSelection = [];
-  topicIdInUpdate = null;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() managedTopicIds!: string[];
+  @Input() topicIdToName!: {[topicId: string]: string};
+  @Input() username!: string;
+  // Set to null when there is no topic left in the list of topics to be
+  // updated. If this value is null, it also means that the 'Add' button
+  // should be disabled.
+  newTopicId: string | null = null;
+  topicIdInUpdate: string | null = null;
+  topicIdsForSelection: string[] = [];
 
   constructor(
     private activeModal: NgbActiveModal,
@@ -44,38 +49,56 @@ export class TopicManagerRoleEditorModalComponent implements OnInit {
 
   private updateTopicIdsForSelection(): void {
     this.topicIdsForSelection = Object.keys(this.topicIdToName).filter(
-      topicId => !this.managedTopicIds.includes(topicId));
+      topicId => !this.managedTopicIds.includes(topicId)
+    );
     this.newTopicId = this.topicIdsForSelection[0];
   }
 
   addTopic(): void {
+    if (this.newTopicId === null) {
+      throw new Error('Expected newTopicId to be non-null.');
+    }
     this.managedTopicIds.push(this.newTopicId);
     this.topicIdInUpdate = this.newTopicId;
     this.newTopicId = null;
-    this.adminBackendApiService.assignManagerToTopicAsync(
-      this.username, this.topicIdInUpdate).then(()=> {
-      this.topicIdInUpdate = null;
-      this.updateTopicIdsForSelection();
-    }, errorMessage => {
-      let topicIdIndex = this.managedTopicIds.indexOf(this.newTopicId);
-      this.managedTopicIds.splice(topicIdIndex, 1);
-      this.alertsService.addWarning(
-        errorMessage || 'Error communicating with server.');
-    });
+    this.adminBackendApiService
+      .assignManagerToTopicAsync(this.username, this.topicIdInUpdate)
+      .then(
+        () => {
+          this.topicIdInUpdate = null;
+          this.updateTopicIdsForSelection();
+        },
+        errorMessage => {
+          if (this.topicIdInUpdate !== null) {
+            let topicIdIndex = this.managedTopicIds.indexOf(
+              this.topicIdInUpdate
+            );
+            this.managedTopicIds.splice(topicIdIndex, 1);
+          }
+          this.alertsService.addWarning(
+            errorMessage || 'Error communicating with server.'
+          );
+        }
+      );
   }
 
   removeTopicId(topicIdToRemove: string): void {
     let topicIdIndex = this.managedTopicIds.indexOf(topicIdToRemove);
     this.topicIdInUpdate = topicIdToRemove;
-    this.adminBackendApiService.deassignManagerFromTopicAsync(
-      this.username, topicIdToRemove).then(() => {
-      this.managedTopicIds.splice(topicIdIndex, 1);
-      this.topicIdInUpdate = null;
-      this.updateTopicIdsForSelection();
-    }, errorMessage => {
-      this.alertsService.addWarning(
-        errorMessage || 'Error communicating with server.');
-    });
+    this.adminBackendApiService
+      .deassignManagerFromTopicAsync(this.username, topicIdToRemove)
+      .then(
+        () => {
+          this.managedTopicIds.splice(topicIdIndex, 1);
+          this.topicIdInUpdate = null;
+          this.updateTopicIdsForSelection();
+        },
+        errorMessage => {
+          this.alertsService.addWarning(
+            errorMessage || 'Error communicating with server.'
+          );
+        }
+      );
   }
 
   close(): void {

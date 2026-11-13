@@ -20,29 +20,24 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 
 @Component({
   selector: 'oppia-response-numeric-expression-input',
   templateUrl: './numeric-expression-input-response.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class ResponseNumericExpressionInput implements OnInit {
-  @Input() answer: string;
-  displayAnswer: Object;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() answer!: string;
+  displayAnswer!: Object;
 
-  constructor(
-    private htmlEscaperService: HtmlEscaperService
-  ) {}
+  constructor(private htmlEscaperService: HtmlEscaperService) {}
 
   ngOnInit(): void {
     this.displayAnswer = this.htmlEscaperService.escapedJsonToObj(this.answer);
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaResponseNumericExpressionInput', downgradeComponent(
-    {component: ResponseNumericExpressionInput}
-  ) as angular.IDirectiveFactory);

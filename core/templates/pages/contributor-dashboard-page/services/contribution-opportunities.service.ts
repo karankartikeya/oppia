@@ -16,15 +16,14 @@
  * @fileoverview A service for handling contribution opportunities in different
  * fields.
  */
-import { EventEmitter } from '@angular/core';
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {EventEmitter} from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { ContributionOpportunitiesBackendApiService } from 'pages/contributor-dashboard-page/services/contribution-opportunities-backend-api.service';
-import { SkillOpportunity } from 'domain/opportunity/skill-opportunity.model';
-import { ExplorationOpportunitySummary } from 'domain/opportunity/exploration-opportunity-summary.model';
-import { LoginRequiredModalContent } from 'pages/contributor-dashboard-page/modal-templates/login-required-modal.component';
-import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
+import {ContributionOpportunitiesBackendApiService} from 'pages/contributor-dashboard-page/services/contribution-opportunities-backend-api.service';
+import {SkillOpportunity} from 'domain/opportunity/skill-opportunity.model';
+import {ExplorationOpportunitySummary} from 'domain/opportunity/exploration-opportunity-summary.model';
+import {LoginRequiredModalContent} from 'pages/contributor-dashboard-page/modal-templates/login-required-modal.component';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 export interface SkillOpportunitiesDict {
   opportunities: SkillOpportunity[];
@@ -37,19 +36,25 @@ export interface ExplorationOpportunitiesDict {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ContributionOpportunitiesService {
   constructor(
-    private readonly contributionOpportunitiesBackendApiService:
-      ContributionOpportunitiesBackendApiService,
-      private readonly modalService: NgbModal) {}
+    private readonly contributionOpportunitiesBackendApiService: ContributionOpportunitiesBackendApiService,
+    private readonly modalService: NgbModal
+  ) {}
 
   private _reloadOpportunitiesEventEmitter = new EventEmitter<void>();
   private _removeOpportunitiesEventEmitter = new EventEmitter<string[]>();
+  private _pinnedOpportunitiesChanged: EventEmitter<Record<string, string>> =
+    new EventEmitter();
+
+  private _unpinnedOpportunitiesChanged: EventEmitter<Record<string, string>> =
+    new EventEmitter();
   // These properties are initialized using async methods
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+
   private _skillOpportunitiesCursor!: string;
   private _translationOpportunitiesCursor!: string;
   private _voiceoverOpportunitiesCursor!: string;
@@ -57,97 +62,193 @@ export class ContributionOpportunitiesService {
   private _moreTranslationOpportunitiesAvailable: boolean = true;
   private _moreVoiceoverOpportunitiesAvailable: boolean = true;
 
-  private async _getSkillOpportunitiesAsync(cursor: string):
-  Promise<SkillOpportunitiesDict> {
+  private async _getSkillOpportunitiesAsync(
+    cursor: string,
+    searchQuery?: string
+  ): Promise<SkillOpportunitiesDict> {
+    const query = searchQuery || '';
     return this.contributionOpportunitiesBackendApiService
-      .fetchSkillOpportunitiesAsync(cursor)
-      .then(({ opportunities, nextCursor, more }) => {
+      .fetchSkillOpportunitiesAsync(cursor, query)
+      .then(({opportunities, nextCursor, more}) => {
         this._skillOpportunitiesCursor = nextCursor;
         this._moreSkillOpportunitiesAvailable = more;
         return {
           opportunities: opportunities,
-          more: more
+          more: more,
         };
       });
   }
 
   private async _getTranslationOpportunitiesAsync(
-      languageCode: string, cursor: string) {
+    languageCode: string,
+    topicName: string,
+    cursor: string,
+    entityType?: string
+  ) {
     return this.contributionOpportunitiesBackendApiService
-      .fetchTranslationOpportunitiesAsync(languageCode, cursor)
-      .then(({ opportunities, nextCursor, more }) => {
+      .fetchTranslationOpportunitiesAsync(
+        languageCode,
+        topicName,
+        cursor,
+        entityType
+      )
+      .then(({opportunities, nextCursor, more}) => {
         this._translationOpportunitiesCursor = nextCursor;
         this._moreTranslationOpportunitiesAvailable = more;
         return {
           opportunities: opportunities,
-          more: more
+          more: more,
         };
       });
   }
 
-  private async _getVoiceoverOpportunitiesAsync(
-      languageCode: string, cursor: string) {
-    return this.contributionOpportunitiesBackendApiService
-      .fetchVoiceoverOpportunitiesAsync(languageCode, cursor)
-      .then(({ opportunities, nextCursor, more }) => {
-        this._voiceoverOpportunitiesCursor = nextCursor;
-        this._moreVoiceoverOpportunitiesAvailable = more;
-        return {
-          opportunities: opportunities,
-          more: more
-        };
-      });
+  private async _getTranslatableTopicNamesAsync() {
+    return this.contributionOpportunitiesBackendApiService.fetchTranslatableTopicNamesAsync();
   }
 
   showRequiresLoginModal(): void {
     this.modalService.open(LoginRequiredModalContent);
   }
 
-  async getSkillOpportunitiesAsync(): Promise<SkillOpportunitiesDict> {
-    return this._getSkillOpportunitiesAsync('');
+  async getSkillOpportunitiesAsync(
+    searchQuery?: string
+  ): Promise<SkillOpportunitiesDict> {
+    const query = searchQuery || '';
+    return this._getSkillOpportunitiesAsync('', query);
   }
 
-  async getTranslationOpportunitiesAsync(languageCode: string):
-  Promise<ExplorationOpportunitiesDict> {
-    return this._getTranslationOpportunitiesAsync(languageCode, '');
+  async getSkillOpportunitiesCountAsync(searchQuery?: string): Promise<number> {
+    const query = searchQuery || '';
+    return this.contributionOpportunitiesBackendApiService.fetchOpportunitiesCountAsync(
+      'skill',
+      query
+    );
   }
 
-  async getVoiceoverOpportunitiesAsync(languageCode: string):
-  Promise<ExplorationOpportunitiesDict> {
-    return this._getVoiceoverOpportunitiesAsync(languageCode, '');
+  async getTranslationOpportunitiesAsync(
+    languageCode: string,
+    topicName: string,
+    entityType?: string
+  ): Promise<ExplorationOpportunitiesDict> {
+    return this._getTranslationOpportunitiesAsync(
+      languageCode,
+      topicName,
+      '',
+      entityType
+    );
   }
 
-  async getMoreSkillOpportunitiesAsync(): Promise<SkillOpportunitiesDict> {
+  async getTranslationOpportunitiesCountAsync(
+    languageCode: string,
+    topicName: string,
+    entityType?: string
+  ): Promise<number> {
+    return this.contributionOpportunitiesBackendApiService.fetchOpportunitiesCountAsync(
+      'translation',
+      topicName,
+      languageCode,
+      entityType
+    );
+  }
+
+  async getMoreSkillOpportunitiesAsync(
+    searchQuery?: string
+  ): Promise<SkillOpportunitiesDict> {
+    const query = searchQuery || '';
     if (this._moreSkillOpportunitiesAvailable) {
-      return this._getSkillOpportunitiesAsync(this._skillOpportunitiesCursor);
+      return this._getSkillOpportunitiesAsync(
+        this._skillOpportunitiesCursor,
+        query
+      );
     }
+    throw new Error('No more skill opportunities available.');
   }
 
-  async getMoreTranslationOpportunitiesAsync(languageCode: string):
-  Promise<ExplorationOpportunitiesDict> {
+  async getMoreTranslationOpportunitiesAsync(
+    languageCode: string,
+    topicName: string,
+    entityType?: string
+  ): Promise<ExplorationOpportunitiesDict> {
     if (this._moreTranslationOpportunitiesAvailable) {
       return this._getTranslationOpportunitiesAsync(
-        languageCode, this._translationOpportunitiesCursor);
+        languageCode,
+        topicName,
+        this._translationOpportunitiesCursor,
+        entityType
+      );
     }
+    throw new Error('No more translation opportunities available.');
   }
 
-  async getMoreVoiceoverOpportunitiesAsync(languageCode: string):
-  Promise<ExplorationOpportunitiesDict> {
-    if (this._moreVoiceoverOpportunitiesAvailable) {
-      return this._getVoiceoverOpportunitiesAsync(
-        languageCode, this._voiceoverOpportunitiesCursor);
-    }
+  async getReviewableTranslationOpportunitiesAsync(
+    topicName: string,
+    languageCode?: string,
+    entityType?: string
+  ): Promise<ExplorationOpportunitiesDict> {
+    return this.contributionOpportunitiesBackendApiService
+      .fetchReviewableTranslationOpportunitiesAsync(
+        topicName,
+        languageCode,
+        entityType
+      )
+      .then(({opportunities}) => {
+        return {
+          opportunities: opportunities,
+          more: false,
+        };
+      });
+  }
+
+  async getTranslatableTopicNamesAsync(): Promise<string[]> {
+    return this._getTranslatableTopicNamesAsync();
   }
 
   get reloadOpportunitiesEventEmitter(): EventEmitter<void> {
     return this._reloadOpportunitiesEventEmitter;
   }
 
+  async pinReviewableTranslationOpportunityAsync(
+    topicName: string,
+    languageCode: string,
+    explorationId: string
+  ): Promise<void> {
+    this.pinnedOpportunitiesChanged.emit({
+      topicName,
+      languageCode,
+      explorationId,
+    });
+    return this.contributionOpportunitiesBackendApiService.pinTranslationOpportunity(
+      languageCode,
+      topicName,
+      explorationId
+    );
+  }
+
+  async unpinReviewableTranslationOpportunityAsync(
+    topicName: string,
+    languageCode: string,
+    explorationId: string
+  ): Promise<void> {
+    this.unpinnedOpportunitiesChanged.emit({
+      topicName,
+      languageCode,
+      explorationId,
+    });
+    return this.contributionOpportunitiesBackendApiService.unpinTranslationOpportunity(
+      languageCode,
+      topicName
+    );
+  }
+
   get removeOpportunitiesEventEmitter(): EventEmitter<string[]> {
     return this._removeOpportunitiesEventEmitter;
   }
-}
 
-angular.module('oppia').factory(
-  'ContributionOpportunitiesService',
-  downgradeInjectable(ContributionOpportunitiesService));
+  get pinnedOpportunitiesChanged(): EventEmitter<Record<string, string>> {
+    return this._pinnedOpportunitiesChanged;
+  }
+
+  get unpinnedOpportunitiesChanged(): EventEmitter<Record<string, string>> {
+    return this._unpinnedOpportunitiesChanged;
+  }
+}

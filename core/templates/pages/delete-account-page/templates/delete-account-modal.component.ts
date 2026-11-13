@@ -16,39 +16,46 @@
  * @fileoverview Component for delete account modal.
  */
 
-import { Component } from '@angular/core';
-import { OnInit } from '@angular/core';
-import { UserService } from 'services/user.service';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
+import {Component} from '@angular/core';
+import {OnInit} from '@angular/core';
+import {UserService} from 'services/user.service';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 
 @Component({
   selector: 'oppia-delete-account-modal',
-  templateUrl: './delete-account-modal.component.html'
+  templateUrl: './delete-account-modal.component.html',
 })
 export class DeleteAccountModalComponent implements OnInit {
-    expectedUsername: string;
-    username: string;
-    constructor(
-      private userService: UserService,
-      private ngbActiveModal: NgbActiveModal,
-    ) {}
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  expectedUsername!: string;
+  username!: string;
+  constructor(
+    private userService: UserService,
+    private ngbActiveModal: NgbActiveModal
+  ) {}
 
-    ngOnInit(): void {
-      this.expectedUsername = null;
-      this.userService.getUserInfoAsync().then((userInfo) => {
-        this.expectedUsername = userInfo.getUsername();
-      });
-    }
+  ngOnInit(): void {
+    this.userService.getUserInfoAsync().then(userInfo => {
+      const expectedUsername = userInfo.getUsername();
 
-    isValid(): boolean {
-      return this.username === this.expectedUsername;
-    }
+      if (expectedUsername === null) {
+        throw new Error('Cannot fetch username.');
+      }
+      this.expectedUsername = expectedUsername;
+    });
+  }
 
-    confirm(): void {
-      this.ngbActiveModal.close();
-    }
+  isValid(): boolean {
+    return this.username === this.expectedUsername;
+  }
 
-    cancel(): void {
-      this.ngbActiveModal.dismiss();
-    }
+  confirm(): void {
+    this.ngbActiveModal.close();
+  }
+
+  cancel(): void {
+    this.ngbActiveModal.dismiss();
+  }
 }

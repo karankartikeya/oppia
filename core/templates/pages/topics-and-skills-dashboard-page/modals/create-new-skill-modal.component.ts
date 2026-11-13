@@ -16,55 +16,85 @@
  * @fileoverview Modal for the creating new skill.
  */
 
-import { ChangeDetectorRef, Component } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { AppConstants } from 'app.constants';
-import constants from 'assets/constants';
-import { SkillCreationService } from 'components/entity-creation-services/skill-creation.service';
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
-import { Rubric } from 'domain/skill/rubric.model';
-import { SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
-import { ContextService } from 'services/context.service';
-import { ImageLocalStorageService } from 'services/image-local-storage.service';
-import { TopicsAndSkillsDashboardPageConstants } from '../topics-and-skills-dashboard-page.constants';
+import {ChangeDetectorRef, Component} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {AppConstants} from 'app.constants';
+import {SkillCreationService} from 'components/entity-creation-services/skill-creation.service';
+import {
+  SubtitledHtml,
+  SubtitledHtmlBackendDict,
+} from 'domain/exploration/subtitled-html.model';
+import {Rubric} from 'domain/skill/rubric.model';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {PageContextService} from 'services/page-context.service';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {TopicsAndSkillsDashboardPageConstants} from '../topics-and-skills-dashboard-page.constants';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {ValidatorsService} from 'services/validators.service';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
+
+// The schema for the concept-card explanation rich-text editor. The 'html'
+// type is fixed by the object literal below, so it is captured in this
+// interface to keep the schema assignable to the schema-based-editor input.
+interface SkillConceptCardSchema {
+  type: 'html';
+  ui_config: object;
+}
 
 @Component({
   selector: 'oppia-create-new-skill-modal',
-  templateUrl: './create-new-skill-modal.component.html'
+  templateUrl: './create-new-skill-modal.component.html',
+  styleUrls: ['./create-new-skill-modal.component.css'],
 })
 export class CreateNewSkillModalComponent {
   rubrics = [
-    Rubric.create(constants.SKILL_DIFFICULTIES[0], []),
-    Rubric.create(constants.SKILL_DIFFICULTIES[1], ['']),
-    Rubric.create(constants.SKILL_DIFFICULTIES[2], [])];
+    Rubric.create(AppConstants.SKILL_DIFFICULTIES[0], []),
+    Rubric.create(AppConstants.SKILL_DIFFICULTIES[1], ['']),
+    Rubric.create(AppConstants.SKILL_DIFFICULTIES[2], []),
+  ];
+
+  workedExampleLimitExceeded!: boolean;
   newSkillDescription: string = '';
   errorMsg: string = '';
   skillDescriptionExists: boolean = true;
   conceptCardExplanationEditorIsShown: boolean = false;
   bindableDict = {displayedConceptCardExplanation: ''};
-  HTML_SCHEMA: {type: string} = { type: 'html' };
-  MAX_CHARS_IN_SKILL_DESCRIPTION = (
-    constants.MAX_CHARS_IN_SKILL_DESCRIPTION);
-  newExplanationObject = null;
+  HTML_SCHEMA: SkillConceptCardSchema = {
+    type: 'html',
+    ui_config: {
+      rte_component_config_id: 'SKILL_AND_STUDY_GUIDE_EDITOR_COMPONENTS',
+    },
+  };
+  MAX_CHARS_IN_SKILL_DESCRIPTION = AppConstants.MAX_CHARS_IN_SKILL_DESCRIPTION;
+
+  // This property is initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  newExplanationObject!: SubtitledHtmlBackendDict;
+  skillEditorWorkedExampleLimit: number =
+    AppConstants.SKILL_EDITOR_WORKED_EXAMPLE_LIMIT;
 
   constructor(
     private ngbActiveModal: NgbActiveModal,
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
     private imageLocalStorageService: ImageLocalStorageService,
     private skillCreationService: SkillCreationService,
     private skillEditorStateService: SkillEditorStateService,
-    private skillObjectFactory: SkillObjectFactory,
-    private changeDetectorRef: ChangeDetectorRef
+    private changeDetectorRef: ChangeDetectorRef,
+    private platformFeatureService: PlatformFeatureService,
+    private validatorsService: ValidatorsService
   ) {}
 
   ngOnInit(): void {
-    this.contextService.setImageSaveDestinationToLocalStorage();
+    this.pageContextService.setImageSaveDestinationToLocalStorage();
   }
 
-  updateExplanation($event: string): void {
-    if ($event !== this.bindableDict.displayedConceptCardExplanation) {
-      this.bindableDict.displayedConceptCardExplanation = $event;
+  updateExplanation($event: SchemaDefaultValue): void {
+    // The schema editor may emit non-string values (e.g. null) in some edge
+    // cases, so non-string values are reset to the empty string.
+    const explanation = typeof $event === 'string' ? $event : '';
+    if (explanation !== this.bindableDict.displayedConceptCardExplanation) {
+      this.bindableDict.displayedConceptCardExplanation = explanation;
       this.changeDetectorRef.detectChanges();
     }
   }
@@ -73,22 +103,20 @@ export class CreateNewSkillModalComponent {
     this.conceptCardExplanationEditorIsShown = true;
   }
 
-  getHtmlSchema(): { type: string } {
+  getHtmlSchema(): SkillConceptCardSchema {
     return this.HTML_SCHEMA;
   }
 
   setErrorMessageIfNeeded(): void {
-    if (
-      !this.skillObjectFactory.hasValidDescription(
-        this.newSkillDescription)) {
-      this.errorMsg = (
+    if (!this.validatorsService.hasValidDescription(this.newSkillDescription)) {
+      this.errorMsg =
         'Please use a non-empty description consisting of ' +
-          'alphanumeric characters, spaces and/or hyphens.');
+        'alphanumeric characters, spaces and/or hyphens.';
     }
     if (this.skillDescriptionExists) {
-      this.errorMsg = (
+      this.errorMsg =
         'This description already exists. Please choose a ' +
-            'new name or modify the existing skill.');
+        'new name or modify the existing skill.';
     }
   }
 
@@ -96,6 +124,21 @@ export class CreateNewSkillModalComponent {
     this.skillDescriptionExists = skillDescriptionExists;
     this.setErrorMessageIfNeeded();
   }
+
+  checkExtraWorkedexample(): boolean {
+    const workedexampleRegex =
+      /<oppia-noninteractive-workedexample.*?>.*?<\/oppia-noninteractive-workedexample>/g;
+    const matches =
+      this.bindableDict.displayedConceptCardExplanation.match(
+        workedexampleRegex
+      );
+
+    this.workedExampleLimitExceeded = !!(
+      matches && matches.length > this.skillEditorWorkedExampleLimit
+    );
+    return this.workedExampleLimitExceeded;
+  }
+
   updateSkillDescriptionAndCheckIfExists(): void {
     this.resetErrorMsg();
 
@@ -107,8 +150,9 @@ export class CreateNewSkillModalComponent {
     }
     if (
       this.skillCreationService.getSkillDescriptionStatus() !==
-          TopicsAndSkillsDashboardPageConstants.SKILL_DESCRIPTION_STATUS_VALUES
-            .STATUS_DISABLED) {
+      TopicsAndSkillsDashboardPageConstants.SKILL_DESCRIPTION_STATUS_VALUES
+        .STATUS_DISABLED
+    ) {
       this.rubrics[1].setExplanations([this.newSkillDescription]);
       this.skillCreationService.markChangeInSkillDescription();
     }
@@ -119,13 +163,12 @@ export class CreateNewSkillModalComponent {
   }
 
   saveConceptCardExplanation(): void {
-    const explanationObject: SubtitledHtml =
-    SubtitledHtml.createDefault(
+    const explanationObject: SubtitledHtml = SubtitledHtml.createDefault(
       this.bindableDict.displayedConceptCardExplanation,
-      AppConstants.COMPONENT_NAME_EXPLANATION);
+      AppConstants.COMPONENT_NAME_EXPLANATION
+    );
     this.newExplanationObject = explanationObject.toBackendDict();
-    this.bindableDict.displayedConceptCardExplanation = (
-      explanationObject.html);
+    this.bindableDict.displayedConceptCardExplanation = explanationObject.html;
   }
 
   createNewSkill(): void {
@@ -137,7 +180,7 @@ export class CreateNewSkillModalComponent {
     this.ngbActiveModal.close({
       description: this.newSkillDescription,
       rubrics: this.rubrics,
-      explanation: this.newExplanationObject
+      explanation: this.newExplanationObject,
     });
   }
 

@@ -16,14 +16,20 @@
  * @fileoverview Unit tests for the preventPageUnloadEventService.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { PreventPageUnloadEventService }
-  from 'services/prevent-page-unload-event.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
+import {TestBed} from '@angular/core/testing';
+import {PreventPageUnloadEventService} from 'services/prevent-page-unload-event.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {EventEmitter} from '@angular/core';
+import {SignInEventService} from 'services/sign-in-event.service';
 
-describe ('Prevent page unload event service', function() {
+class MockSignInEventService {
+  onUserSignIn = new EventEmitter<void>();
+}
+
+describe('Prevent page unload event service', function () {
   let preventPageUnloadEventService: PreventPageUnloadEventService;
   let windowRef: WindowRef;
+  let mockSignInEventService: MockSignInEventService;
 
   var reloadEvt = document.createEvent('Event');
   reloadEvt.initEvent('mockbeforeunload', true, true);
@@ -31,19 +37,26 @@ describe ('Prevent page unload event service', function() {
   reloadEvt.preventDefault = () => {};
 
   beforeEach(() => {
+    mockSignInEventService = new MockSignInEventService();
     TestBed.configureTestingModule({
-      providers: [PreventPageUnloadEventService]
+      providers: [
+        PreventPageUnloadEventService,
+        {
+          provide: SignInEventService,
+          useValue: mockSignInEventService,
+        },
+      ],
     });
     preventPageUnloadEventService = TestBed.inject(
-      PreventPageUnloadEventService);
+      PreventPageUnloadEventService
+    );
     windowRef = TestBed.inject(WindowRef);
   });
-
 
   // Mocking window object here because beforeunload requres the
   // full page to reload. Page reloads raise an error in karma.
   var mockWindow = {
-    addEventListener: function(eventname: string, callback: () => {}) {
+    addEventListener: function (eventname: string, callback: () => {}) {
       document.addEventListener('mock' + eventname, callback);
     },
     location: {
@@ -51,30 +64,30 @@ describe ('Prevent page unload event service', function() {
         if (val) {
           document.dispatchEvent(reloadEvt);
         }
-      }
-    }
-  };
+      },
+    },
+  } as Window;
 
   it('should adding listener', () => {
-    expect(preventPageUnloadEventService.isListenerActive()).toBeFalse();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(false);
 
     preventPageUnloadEventService.addListener();
 
-    expect(preventPageUnloadEventService.isListenerActive()).toBeTrue();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(true);
   });
 
   it('should removing listener', () => {
     spyOn(preventPageUnloadEventService, 'removeListener').and.callThrough();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeFalse();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(false);
     preventPageUnloadEventService.removeListener();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeFalse();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(false);
     preventPageUnloadEventService.addListener();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeTrue();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(true);
 
     preventPageUnloadEventService.removeListener();
 
     expect(preventPageUnloadEventService.removeListener).toHaveBeenCalled();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeFalse();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(false);
   });
 
   it('should test if Alert is displayed', () => {
@@ -85,7 +98,7 @@ describe ('Prevent page unload event service', function() {
     windowRef.nativeWindow.location.reload();
 
     expect(reloadEvt.preventDefault).toHaveBeenCalled();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeTrue();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(true);
   });
 
   it('should prevent multiple listeners', () => {
@@ -94,7 +107,7 @@ describe ('Prevent page unload event service', function() {
     expect(windowRef.nativeWindow.addEventListener).toHaveBeenCalledTimes(0);
     preventPageUnloadEventService.addListener();
     expect(windowRef.nativeWindow.addEventListener).toHaveBeenCalledTimes(1);
-    expect(preventPageUnloadEventService.isListenerActive()).toBeTrue();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(true);
 
     preventPageUnloadEventService.addListener();
 
@@ -118,7 +131,7 @@ describe ('Prevent page unload event service', function() {
     windowRef.nativeWindow.location.reload();
 
     expect(reloadEvt.preventDefault).toHaveBeenCalled();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeTrue();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(true);
   });
 
   it('should test if Alert is not displayed when a condition is passed', () => {
@@ -130,11 +143,20 @@ describe ('Prevent page unload event service', function() {
     spyOn(reloadEvt, 'preventDefault');
 
     // This throws "Expected 0 arguments, but got 1.". We need to suppress this
-    // error because the nativeWindow is mocked and allows 1 argument.
+    // error because the nativeWindow is mocked and allows 1 argument. This
+    // error is thrown because the nativeWindow is not mocked in the
+    // preventPageUnloadEventService.
     // @ts-ignore
     windowRef.nativeWindow.location.reload(validationCallback());
 
     expect(reloadEvt.preventDefault).not.toHaveBeenCalled();
-    expect(preventPageUnloadEventService.isListenerActive()).toBeTrue();
+    expect(preventPageUnloadEventService.isListenerActive()).toBe(true);
+  });
+
+  it('should remove listener on sign in', () => {
+    spyOn(preventPageUnloadEventService, 'removeListener');
+    mockSignInEventService.onUserSignIn.emit();
+
+    expect(preventPageUnloadEventService.removeListener).toHaveBeenCalled();
   });
 });

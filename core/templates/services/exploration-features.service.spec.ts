@@ -1,4 +1,3 @@
-
 // Copyright 2020 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +16,13 @@
  * @fileoverview Unit test for ExplorationFeaturesService
  */
 
-import { TestBed } from '@angular/core/testing';
-import { ParamChangeBackendDict } from 'domain/exploration/ParamChangeObjectFactory';
-
-import { ExplorationFeaturesService, ExplorationDataDict} from
-  'services/exploration-features.service';
-import { ExplorationFeatures } from './exploration-features-backend-api.service';
+import {TestBed} from '@angular/core/testing';
+import {ParamChangeBackendDict} from 'domain/exploration/param-change.model';
+import {
+  ExplorationFeaturesService,
+  ExplorationDataDict,
+} from 'services/exploration-features.service';
+import {ExplorationFeatures} from './exploration-features-backend-api.service';
 
 describe('ExplorationFeatureService', () => {
   let explorationFeatureService: ExplorationFeaturesService;
@@ -32,7 +32,7 @@ describe('ExplorationFeatureService', () => {
   let testParamChange: ParamChangeBackendDict;
 
   beforeEach(() => {
-    explorationFeatureService = TestBed.get(ExplorationFeaturesService);
+    explorationFeatureService = TestBed.inject(ExplorationFeaturesService);
     ExplorationFeaturesService.settings.areParametersEnabled = false;
     ExplorationFeaturesService.settings.isPlaythroughRecordingEnabled = false;
     ExplorationFeaturesService.serviceIsInitialized = false;
@@ -40,12 +40,12 @@ describe('ExplorationFeatureService', () => {
     // The property alwaysAskLearnersForAnswerDetails is not used. It is just
     // for complete the ExplorationFeatures interface.
     featureData = {
-      isExplorationWhitelisted: true,
-      alwaysAskLearnersForAnswerDetails: false
+      explorationIsCurated: true,
+      alwaysAskLearnersForAnswerDetails: false,
     };
     explorationData = {
       param_changes: [testParamChange],
-      states: {}
+      states: {},
     };
     explorationData2 = {
       param_changes: [],
@@ -53,24 +53,48 @@ describe('ExplorationFeatureService', () => {
         testState: {
           param_changes: [testParamChange],
           classifier_model_id: '',
-          content: null,
-          interaction: null,
+          content: {
+            content_id: 'content',
+            html: '',
+          },
+          interaction: {
+            answer_groups: [],
+            confirmed_unclassified_answers: [],
+            customization_args: {
+              buttonText: {
+                value: 'Continue',
+              },
+            },
+            default_outcome: {
+              dest: 'End State',
+              dest_if_really_stuck: null,
+              feedback: {
+                content_id: 'default_outcome',
+                html: '',
+              },
+              param_changes: [],
+              labelled_as_correct: true,
+              refresher_exploration_id: null,
+              missing_prerequisite_skill_id: null,
+            },
+            hints: [],
+            solution: null,
+            id: 'Continue',
+          },
           linked_skill_id: null,
-          recorded_voiceovers: null,
           solicit_answer_details: false,
           card_is_checkpoint: false,
-          written_translations: null,
-          next_content_id_index: 1,
-        }
-      }
+          inapplicable_skill_misconception_ids: [],
+        },
+      },
     };
     testParamChange = {
       name: 'param_1',
       generator_id: 'test_id',
       customization_args: {
         parse_with_jinja: true,
-        value: '1'
-      }
+        value: '1',
+      },
     };
   });
 
@@ -78,25 +102,27 @@ describe('ExplorationFeatureService', () => {
     explorationFeatureService.init(explorationData, featureData);
     expect(explorationFeatureService.isInitialized()).toEqual(true);
     expect(explorationFeatureService.areParametersEnabled()).toEqual(true);
-    expect(explorationFeatureService.isPlaythroughRecordingEnabled())
-      .toEqual(true);
+    expect(explorationFeatureService.isPlaythroughRecordingEnabled()).toEqual(
+      true
+    );
   });
 
   it('should init the exploration features from states', () => {
     explorationFeatureService.init(explorationData2, featureData);
     expect(explorationFeatureService.isInitialized()).toEqual(true);
     expect(explorationFeatureService.areParametersEnabled()).toEqual(true);
-    expect(explorationFeatureService.isPlaythroughRecordingEnabled())
-      .toEqual(true);
+    expect(explorationFeatureService.isPlaythroughRecordingEnabled()).toEqual(
+      true
+    );
   });
 
-  it('should not init the exploration feature if service is initialized',
-    () => {
-      ExplorationFeaturesService.serviceIsInitialized = true;
-      explorationFeatureService.init(explorationData, featureData);
-      expect(explorationFeatureService.isInitialized()).toEqual(true);
-      expect(explorationFeatureService.areParametersEnabled()).toEqual(false);
-      expect(explorationFeatureService.isPlaythroughRecordingEnabled())
-        .toEqual(false);
-    });
+  it('should not init the exploration feature if service is initialized', () => {
+    ExplorationFeaturesService.serviceIsInitialized = true;
+    explorationFeatureService.init(explorationData, featureData);
+    expect(explorationFeatureService.isInitialized()).toEqual(true);
+    expect(explorationFeatureService.areParametersEnabled()).toEqual(false);
+    expect(explorationFeatureService.isPlaythroughRecordingEnabled()).toEqual(
+      false
+    );
+  });
 });

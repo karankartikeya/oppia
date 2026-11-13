@@ -17,22 +17,17 @@
  */
 
 import 'pages/common-imports';
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { AppConstants } from 'app.constants';
-import { enableProdMode } from '@angular/core';
-import { AppModule } from './app.module';
-import { LoggerService } from 'services/contextual/logger.service';
+import {platformBrowserDynamic} from '@angular/platform-browser-dynamic';
+import {AppConstants} from 'app.constants';
+import {enableProdMode} from '@angular/core';
+import {AppModule} from './app.module';
+import {LoggerService} from 'services/contextual/logger.service';
 
 if (!AppConstants.DEV_MODE) {
   enableProdMode();
 }
 
 const loggerService = new LoggerService();
-platformBrowserDynamic().bootstrapModule(AppModule).catch(
-  (err) => loggerService.error(err)
-);
-
-// This prevents angular pages to cause side effects to hybrid pages.
-// TODO(#13080): Remove window.name statement from import.ts files
-// after migration is complete.
-window.name = '';
+platformBrowserDynamic()
+  .bootstrapModule(AppModule)
+  .catch(err => loggerService.error(err));

@@ -16,32 +16,43 @@
  * @fileoverview Component for the skill description editor.
  */
 
-import { Subscription } from 'rxjs';
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { SkillUpdateService } from 'domain/skill/skill-update.service';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
-import { Skill, SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-import { SkillRights } from 'domain/skill/skill-rights.model';
+import {Subscription} from 'rxjs';
+import {
+  Component,
+  EventEmitter,
+  OnDestroy,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {SkillUpdateService} from 'domain/skill/skill-update.service';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {Skill} from 'domain/skill/skill.model';
+import {AppConstants} from 'app.constants';
+import {SkillRights} from 'domain/skill/skill-rights.model';
+import {ValidatorsService} from 'services/validators.service';
 
 @Component({
   selector: 'oppia-skill-description-editor',
-  templateUrl: './skill-description-editor.component.html'
+  templateUrl: './skill-description-editor.component.html',
+  styleUrls: ['./skill-description-editor.component.css'],
 })
 export class SkillDescriptionEditorComponent implements OnInit, OnDestroy {
+  @Output() onSaveDescription = new EventEmitter<void>();
   errorMsg: string = '';
   directiveSubscriptions = new Subscription();
-  MAX_CHARS_IN_SKILL_DESCRIPTION = (
-    AppConstants.MAX_CHARS_IN_SKILL_DESCRIPTION);
-  skillRights: SkillRights = null;
-  skill: Skill = null;
-  skillDescriptionEditorIsShown: boolean = null;
-  tmpSkillDescription: string = null;
+  MAX_CHARS_IN_SKILL_DESCRIPTION = AppConstants.MAX_CHARS_IN_SKILL_DESCRIPTION;
+
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  skillRights!: SkillRights;
+  skill!: Skill;
+  tmpSkillDescription!: string;
+  skillDescriptionEditorIsShown: boolean = false;
   constructor(
     private skillUpdateService: SkillUpdateService,
     private skillEditorStateService: SkillEditorStateService,
-    private skillObjectFactory: SkillObjectFactory
+    private validatorsService: ValidatorsService
   ) {}
 
   canEditSkillDescription(): boolean {
@@ -56,16 +67,17 @@ export class SkillDescriptionEditorComponent implements OnInit, OnDestroy {
     if (newSkillDescription === this.skill.getDescription()) {
       return;
     }
-    if (this.skillObjectFactory.hasValidDescription(
-      newSkillDescription)) {
+    if (this.validatorsService.hasValidDescription(newSkillDescription)) {
       this.skillDescriptionEditorIsShown = false;
       this.skillUpdateService.setSkillDescription(
         this.skill,
-        newSkillDescription);
+        newSkillDescription
+      );
+      this.onSaveDescription.emit();
     } else {
-      this.errorMsg = (
+      this.errorMsg =
         'Please use a non-empty description consisting of ' +
-        'alphanumeric characters, spaces and/or hyphens.');
+        'alphanumeric characters, spaces and/or hyphens.';
     }
   }
 
@@ -80,12 +92,8 @@ export class SkillDescriptionEditorComponent implements OnInit, OnDestroy {
     this.errorMsg = '';
     this.directiveSubscriptions.add(
       this.skillEditorStateService.onSkillChange.subscribe(
-        () => this.tmpSkillDescription = this.skill.getDescription()
+        () => (this.tmpSkillDescription = this.skill.getDescription())
       )
     );
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaSkillDescriptionEditor', downgradeComponent(
-    {component: SkillDescriptionEditorComponent}));

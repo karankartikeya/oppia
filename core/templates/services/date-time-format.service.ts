@@ -17,30 +17,30 @@
  * since the Epoch to human-readable dates.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class DateTimeFormatService {
-/**
-  * This function returns the time (using locale conventions) if the local
-  * datetime representation has the same date as the current date. Else if the
-  * local datetime representation has the same year as the current date, it
-  * returns the date in the format 'MMM D'. Else, it returns the full date in
-  * the format 'MM/DD/YY'.
-  * @param {number} millisSinceEpoch - milliseconds since Epoch
-  * @returns {string} - a date
-  */
+  /**
+   * This function returns the time (using locale conventions) if the local
+   * datetime representation has the same date as the current date. Else if the
+   * local datetime representation has the same year as the current date, it
+   * returns the date in the format 'MMM D'. Else, it returns the full date in
+   * the format 'MM/DD/YY'.
+   * @param {number} millisSinceEpoch - milliseconds since Epoch
+   * @returns {string} - a date
+   */
   getLocaleAbbreviatedDatetimeString(millisSinceEpoch: number): string {
     let date = new Date(millisSinceEpoch);
     if (date.toLocaleDateString() === new Date().toLocaleDateString()) {
       return date.toLocaleTimeString([], {
         hour: 'numeric',
         minute: 'numeric',
-        hour12: true
+        hour12: true,
       });
     } else if (date.getFullYear() === new Date().getFullYear()) {
       // Moment will return Oct 10.
@@ -50,6 +50,7 @@ export class DateTimeFormatService {
       return dayjs(date).format('MM/DD/YY');
     }
   }
+
   /**
    * This function converts a millisecond date to a date in the
    * format 'MMM D HH:mm A' along with time.
@@ -77,6 +78,7 @@ export class DateTimeFormatService {
     // Dayjs will return Monday, January 18, 2021 at 12:30 PM.
     return dayjs(date).format('dddd, MMMM D, YYYY [at] h:mm A');
   }
+
   /**
    * This function converts a millisecond date to a date string, using locale
    * conventions.
@@ -87,6 +89,7 @@ export class DateTimeFormatService {
     let date = new Date(millisSinceEpoch);
     return date.toLocaleDateString();
   }
+
   /**
    * This function returns whether the date is at most one week before the
    * current date.
@@ -98,7 +101,15 @@ export class DateTimeFormatService {
     let ONE_WEEK_IN_MILLIS = 7 * 24 * 60 * 60 * 1000;
     return new Date().getTime() - millisSinceEpoch < ONE_WEEK_IN_MILLIS;
   }
-}
 
-angular.module('oppia').factory(
-  'DateTimeFormatService', downgradeInjectable(DateTimeFormatService));
+  /**
+   * This function returns the relative time from now.
+   * @param {number} millisSinceEpoch - milliseconds since Epoch
+   * @returns {string} string representing the relative time from now
+   */
+  getRelativeTimeFromNow(millisSinceEpoch: number): string {
+    dayjs.extend(relativeTime);
+    let date = new Date(millisSinceEpoch);
+    return dayjs(date).fromNow();
+  }
+}

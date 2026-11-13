@@ -1,8 +1,7 @@
-class FirebaseError(Exception):
+# TODO(#24855): Depend on official stubs rather than maintaining our own.
 
+class FirebaseError(Exception):
     def __init__(self, code: str = ..., message: str = ...): ...
 
-
 class UnknownError(Exception): ...
-
 class InternalError(Exception): ...

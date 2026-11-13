@@ -1,4 +1,4 @@
-// Copyright 2018 The Oppia Authors. All Rights Reserved.
+// Copyright 2022 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,212 +16,264 @@
  * @fileoverview Component for the topic editor page.
  */
 
-require('interactions/interactionsQuestionsRequires.ts');
-require('objects/objectComponentsRequires.ts');
+import {Component, OnDestroy, OnInit} from '@angular/core';
+import {UndoRedoService} from 'domain/editor/undo_redo/undo-redo.service';
+import {Topic} from 'domain/topic/topic-object.model';
+import {TopicRights} from 'domain/topic/topic-rights.model';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {Subscription} from 'rxjs';
+import {BottomNavbarStatusService} from 'services/bottom-navbar-status.service';
+import {PageContextService} from 'services/page-context.service';
+import {ConfirmQuestionExitModalComponent} from 'components/question-directives/modal-templates/confirm-question-exit-modal.component';
+import {QuestionUndoRedoService} from 'domain/editor/undo_redo/question-undo-redo.service';
+import {UrlService} from 'services/contextual/url.service';
+import {LoaderService} from 'services/loader.service';
+import {PageTitleService} from 'services/page-title.service';
+import {PreventPageUnloadEventService} from 'services/prevent-page-unload-event.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {TopicEditorRoutingService} from './services/topic-editor-routing.service';
+import {TopicEditorStateService} from './services/topic-editor-state.service';
 
-require('base-components/base-content.component.ts');
-require(
-  'components/forms/schema-based-editors/schema-based-editor.directive.ts');
-require('directives/angular-html-bind.directive.ts');
-require('services/bottom-navbar-status.service.ts');
-require('pages/topic-editor-page/editor-tab/topic-editor-tab.directive.ts');
-require(
-  'pages/topic-editor-page/subtopic-editor/subtopic-preview-tab.component.ts');
-require(
-  'pages/topic-editor-page/subtopic-editor/subtopic-editor-tab.component.ts');
-require(
-  'pages/topic-editor-page/questions-tab/topic-questions-tab.component.ts');
+@Component({
+  selector: 'oppia-topic-editor-page',
+  templateUrl: './topic-editor-page.component.html',
+  styleUrls: ['./topic-editor-page.component.css'],
+})
+export class TopicEditorPageComponent implements OnInit, OnDestroy {
+  topic: Topic | null = null;
+  validationIssues: string[] = [];
+  prepublishValidationIssues: string[] = [];
+  warningsAreShown = false;
+  topicRights: TopicRights | null = null;
+  cancelNavigationOnce = false;
 
-require('pages/topic-editor-page/services/topic-editor-routing.service.ts');
-require('pages/topic-editor-page/services/topic-editor-state.service.ts');
-require('services/context.service.ts');
-require('services/contextual/url.service.ts');
-require('services/page-title.service.ts');
-require('domain/editor/undo_redo/undo-redo.service.ts');
-require('pages/topic-editor-page/topic-editor-page.constants.ajs.ts');
-require('pages/interaction-specs.constants.ajs.ts');
-require('pages/topic-editor-page/preview-tab/topic-preview-tab.component.ts');
-require('services/loader.service.ts');
-require('services/prevent-page-unload-event.service.ts');
+  constructor(
+    private bottomNavbarStatusService: BottomNavbarStatusService,
+    private pageContextService: PageContextService,
+    private loaderService: LoaderService,
+    private pageTitleService: PageTitleService,
+    private platformFeatureService: PlatformFeatureService,
+    private preventPageUnloadEventService: PreventPageUnloadEventService,
+    private ngbModal: NgbModal,
+    private questionUndoRedoService: QuestionUndoRedoService,
+    private topicEditorRoutingService: TopicEditorRoutingService,
+    private topicEditorStateService: TopicEditorStateService,
+    private undoRedoService: UndoRedoService,
+    private urlService: UrlService
+  ) {}
 
-import { Subscription } from 'rxjs';
+  directiveSubscriptions = new Subscription();
 
-angular.module('oppia').directive('topicEditorPage', [
-  'UrlInterpolationService', function(
-      UrlInterpolationService) {
-    return {
-      restrict: 'E',
-      scope: {},
-      bindToController: {},
-      templateUrl: UrlInterpolationService.getDirectiveTemplateUrl(
-        '/pages/topic-editor-page/topic-editor-page.component.html'),
-      controllerAs: '$ctrl',
-      controller: [
-        '$rootScope', 'BottomNavbarStatusService', 'ContextService',
-        'LoaderService', 'PageTitleService', 'PreventPageUnloadEventService',
-        'TopicEditorRoutingService', 'TopicEditorStateService',
-        'UndoRedoService', 'UrlService',
-        function(
-            $rootScope, BottomNavbarStatusService, ContextService,
-            LoaderService, PageTitleService, PreventPageUnloadEventService,
-            TopicEditorRoutingService, TopicEditorStateService,
-            UndoRedoService, UrlService) {
-          var ctrl = this;
-          ctrl.directiveSubscriptions = new Subscription();
-          ctrl.getActiveTabName = function() {
-            return TopicEditorRoutingService.getActiveTabName();
-          };
-          ctrl.getEntityType = function() {
-            return ContextService.getEntityType();
-          };
+  getActiveTabName(): string {
+    return this.topicEditorRoutingService.getActiveTabName();
+  }
 
-          var setDocumentTitle = function() {
-            let topicName = TopicEditorStateService.getTopic().getName();
-            PageTitleService.setDocumentTitle(
-              topicName + ' - Oppia');
-            PageTitleService.setNavbarSubtitleForMobileView(topicName);
-            ctrl.topic = TopicEditorStateService.getTopic();
-            ctrl._validateTopic();
-          };
+  getEntityType(): string {
+    return this.pageContextService.getEntityType() || '';
+  }
 
-          ctrl.getChangeListLength = function() {
-            return UndoRedoService.getChangeCount();
-          };
-          ctrl.isInTopicEditorTabs = function() {
-            var activeTab = TopicEditorRoutingService.getActiveTabName();
-            return !activeTab.startsWith('subtopic');
-          };
-          ctrl.openTopicViewer = function() {
-            var activeTab = TopicEditorRoutingService.getActiveTabName();
-            var lastSubtopicIdVisited = (
-              TopicEditorRoutingService.getLastSubtopicIdVisited());
-            if (!activeTab.startsWith('subtopic') && !lastSubtopicIdVisited) {
-              TopicEditorRoutingService.navigateToTopicPreviewTab();
-            } else {
-              var subtopicId = TopicEditorRoutingService.getSubtopicIdFromUrl();
-              TopicEditorRoutingService.navigateToSubtopicPreviewTab(
-                subtopicId);
-            }
-          };
-          ctrl.isInPreviewTab = function() {
-            var activeTab = TopicEditorRoutingService.getActiveTabName();
-            return (
-              activeTab === 'subtopic_preview' ||
-                activeTab === 'topic_preview');
-          };
-          ctrl.selectMainTab = function() {
-            const activeTab = ctrl.getActiveTabName();
-            const subtopicId = (
-              TopicEditorRoutingService.getSubtopicIdFromUrl() ||
-                TopicEditorRoutingService.getLastSubtopicIdVisited());
-            const lastTabVisited = (
-              TopicEditorRoutingService.getLastTabVisited());
-            if (activeTab.startsWith('subtopic') ||
-                lastTabVisited === 'subtopic') {
-              TopicEditorRoutingService.navigateToSubtopicEditorWithId(
-                subtopicId);
-              return;
-            }
-            TopicEditorRoutingService.navigateToMainTab();
-          };
-          ctrl.isMainEditorTabSelected = function() {
-            const activeTab = ctrl.getActiveTabName();
-            return activeTab === 'main' || activeTab === 'subtopic_editor';
-          };
-          ctrl.selectQuestionsTab = function() {
-            TopicEditorRoutingService.navigateToQuestionsTab();
-          };
-          ctrl.getNavbarText = function() {
-            if (TopicEditorStateService.hasLoadedTopic()) {
-              const activeTab = ctrl.getActiveTabName();
-              if (activeTab === 'main') {
-                return 'Topic Editor';
-              } else if (activeTab === 'subtopic_editor') {
-                return 'Subtopic Editor';
-              } else if (activeTab === 'subtopic_preview') {
-                return 'Subtopic Preview';
-              } else if (activeTab === 'questions') {
-                return 'Question Editor';
-              } else if (activeTab === 'topic_preview') {
-                return 'Topic Preview';
-              }
-            }
-          };
-          ctrl._validateTopic = function() {
-            ctrl.validationIssues = ctrl.topic.validate();
-            if (TopicEditorStateService.getTopicWithNameExists()) {
-              ctrl.validationIssues.push(
-                'A topic with this name already exists.');
-            }
-            if (TopicEditorStateService.getTopicWithUrlFragmentExists()) {
-              ctrl.validationIssues.push(
-                'Topic URL fragment already exists.');
-            }
-            var prepublishTopicValidationIssues = (
-              ctrl.topic.prepublishValidate());
-            var subtopicPrepublishValidationIssues = (
-              [].concat.apply([], ctrl.topic.getSubtopics().map(
-                (subtopic) => subtopic.prepublishValidate())));
-            ctrl.prepublishValidationIssues = (
-              prepublishTopicValidationIssues.concat(
-                subtopicPrepublishValidationIssues));
-          };
+  setDocumentTitle(): void {
+    let topicName = this.topicEditorStateService.getTopic()?.getName();
+    if (!topicName) {
+      return;
+    }
+    this.pageTitleService.setDocumentTitle(topicName + ' - Oppia');
+    this.pageTitleService.setNavbarSubtitleForMobileView(topicName);
+    this.topic = this.topicEditorStateService.getTopic();
+    this._validateTopic();
+  }
 
-          ctrl.getWarningsCount = function() {
-            return ctrl.validationIssues.length;
-          };
+  getChangeListLength(): number {
+    return this.undoRedoService.getChangeCount();
+  }
 
-          ctrl.getTotalWarningsCount = function() {
-            var validationIssuesCount = ctrl.validationIssues.length;
-            var prepublishValidationIssuesCount = (
-              ctrl.prepublishValidationIssues.length);
-            return validationIssuesCount + prepublishValidationIssuesCount;
-          };
+  isInTopicEditorTabs(): boolean {
+    let activeTab = this.topicEditorRoutingService.getActiveTabName();
+    return !activeTab.startsWith('subtopic');
+  }
 
-          ctrl.$onInit = function() {
-            LoaderService.showLoadingScreen('Loading Topic');
-            ctrl.directiveSubscriptions.add(
-              TopicEditorStateService.onTopicInitialized.subscribe(
-                () => {
-                  LoaderService.hideLoadingScreen();
-                  setDocumentTitle();
-                  $rootScope.$applyAsync();
-                }
-              ));
-            ctrl.directiveSubscriptions.add(
-              TopicEditorStateService.onTopicReinitialized.subscribe(
-                () => {
-                  setDocumentTitle();
-                  $rootScope.$applyAsync();
-                }
-              ));
-            // This subscription can be removed once this component is migrated.
-            ctrl.directiveSubscriptions.add(
-              TopicEditorRoutingService.updateViewEventEmitter.subscribe(
-                () => {
-                  $rootScope.$applyAsync();
-                }
-              )
-            );
-            TopicEditorStateService.loadTopic(UrlService.getTopicIdFromUrl());
-            PageTitleService.setNavbarTitleForMobileView('Topic Editor');
-            PreventPageUnloadEventService.addListener(
-              UndoRedoService.getChangeCount.bind(UndoRedoService));
-            ctrl.validationIssues = [];
-            ctrl.prepublishValidationIssues = [];
-            ctrl.warningsAreShown = false;
-            BottomNavbarStatusService.markBottomNavbarStatus(true);
-            ctrl.directiveSubscriptions.add(
-              UndoRedoService.getUndoRedoChangeEventEmitter().subscribe(
-                () => setDocumentTitle()
-              )
-            );
-          };
+  confirmBeforeLeavingQuestions(run: () => void): void {
+    const active = this.getActiveTabName();
 
-          ctrl.$onDestroy = function() {
-            ctrl.directiveSubscriptions.unsubscribe();
-          };
+    if (active === 'questions' && this.questionUndoRedoService.hasChanges()) {
+      if (this.cancelNavigationOnce) {
+        this.cancelNavigationOnce = false;
+        return;
+      }
+
+      const modalRef = this.ngbModal.open(ConfirmQuestionExitModalComponent, {
+        backdrop: true,
+      });
+
+      modalRef.result.then(
+        () => {
+          this.questionUndoRedoService.clearChanges();
+          this.cancelNavigationOnce = false;
+          run();
+        },
+        () => {
+          // Cancel pressed → remember this once.
+          this.cancelNavigationOnce = true;
         }
-      ]
-    };
-  }]);
+      );
+    } else {
+      run();
+    }
+  }
+
+  openTopicViewer(): void {
+    this.confirmBeforeLeavingQuestions(() => {
+      const activeTab = this.topicEditorRoutingService.getActiveTabName();
+      const lastSubtopicIdVisited =
+        this.topicEditorRoutingService.getLastSubtopicIdVisited();
+
+      if (!activeTab.startsWith('subtopic') && !lastSubtopicIdVisited) {
+        this.topicEditorRoutingService.navigateToTopicPreviewTab();
+      } else {
+        const subtopicIdFromUrl =
+          this.topicEditorRoutingService.getSubtopicIdFromUrl();
+        const subtopicId = activeTab.startsWith('subtopic')
+          ? subtopicIdFromUrl !== null &&
+            subtopicIdFromUrl !== undefined &&
+            !Number.isNaN(subtopicIdFromUrl)
+            ? subtopicIdFromUrl
+            : lastSubtopicIdVisited
+          : lastSubtopicIdVisited;
+        this.topicEditorRoutingService.navigateToSubtopicPreviewTab(subtopicId);
+      }
+    });
+  }
+
+  selectMainTab(): void {
+    this.confirmBeforeLeavingQuestions(() => {
+      const activeTab = this.getActiveTabName();
+      const subtopicIdFromUrl =
+        this.topicEditorRoutingService.getSubtopicIdFromUrl();
+      const lastSubtopicIdVisited =
+        this.topicEditorRoutingService.getLastSubtopicIdVisited();
+      const subtopicId =
+        subtopicIdFromUrl !== null &&
+        subtopicIdFromUrl !== undefined &&
+        !Number.isNaN(subtopicIdFromUrl)
+          ? subtopicIdFromUrl
+          : lastSubtopicIdVisited;
+      const lastTabVisited = this.topicEditorRoutingService.getLastTabVisited();
+
+      if (activeTab.startsWith('subtopic') || lastTabVisited === 'subtopic') {
+        this.topicEditorRoutingService.navigateToSubtopicEditorWithId(
+          subtopicId
+        );
+        return;
+      }
+      this.topicEditorRoutingService.navigateToMainTab();
+    });
+  }
+
+  isInPreviewTab(): boolean {
+    let activeTab = this.topicEditorRoutingService.getActiveTabName();
+    return activeTab === 'subtopic_preview' || activeTab === 'topic_preview';
+  }
+
+  hideWarnings(): void {
+    this.warningsAreShown = false;
+  }
+
+  isMainEditorTabSelected(): boolean {
+    const activeTab = this.getActiveTabName();
+    return activeTab === 'main' || activeTab === 'subtopic_editor';
+  }
+
+  selectQuestionsTab(): void {
+    this.topicEditorRoutingService.navigateToQuestionsTab();
+  }
+
+  getNavbarText(): string {
+    if (this.topicEditorStateService.hasLoadedTopic()) {
+      const activeTab = this.getActiveTabName();
+      if (activeTab === 'main') {
+        return 'Topic Editor';
+      } else if (activeTab === 'subtopic_editor') {
+        return 'Subtopic Editor';
+      } else if (activeTab === 'subtopic_preview') {
+        return 'Subtopic Preview';
+      } else if (activeTab === 'questions') {
+        return 'Question Editor';
+      } else if (activeTab === 'topic_preview') {
+        return 'Topic Preview';
+      }
+    }
+    return 'Topic Editor';
+  }
+
+  _validateTopic(): void {
+    if (!this.topic) {
+      return;
+    }
+    this.validationIssues = this.topic.validate();
+    if (this.topicEditorStateService.getTopicWithNameExists()) {
+      this.validationIssues.push('A topic with this name already exists.');
+    }
+    if (this.topicEditorStateService.getTopicWithUrlFragmentExists()) {
+      this.validationIssues.push('Topic URL fragment already exists.');
+    }
+    let prepublishTopicValidationIssues = this.topic.prepublishValidate();
+    let subtopicPrepublishValidationIssues: string[] = [];
+    this.topic.getSubtopics().forEach(subtopic => {
+      subtopicPrepublishValidationIssues =
+        subtopicPrepublishValidationIssues.concat(
+          subtopic.prepublishValidate()
+        );
+    });
+    this.prepublishValidationIssues = prepublishTopicValidationIssues.concat(
+      subtopicPrepublishValidationIssues
+    );
+  }
+
+  getWarningsCount(): number {
+    return this.validationIssues.length;
+  }
+
+  getTotalWarningsCount(): number {
+    let validationIssuesCount = this.validationIssues.length;
+    let prepublishValidationIssuesCount =
+      this.prepublishValidationIssues.length;
+    return validationIssuesCount + prepublishValidationIssuesCount;
+  }
+
+  ngOnInit(): void {
+    this.loaderService.showLoadingScreen('Loading Topic');
+    this.directiveSubscriptions.add(
+      this.topicEditorStateService.onTopicInitialized.subscribe(() => {
+        this.loaderService.hideLoadingScreen();
+        this.setDocumentTitle();
+      })
+    );
+    this.directiveSubscriptions.add(
+      this.topicEditorStateService.onTopicReinitialized.subscribe(() => {
+        this.setDocumentTitle();
+      })
+    );
+    this.topicEditorStateService.loadTopic(this.urlService.getTopicIdFromUrl());
+    this.pageTitleService.setNavbarTitleForMobileView('Topic Editor');
+    this.preventPageUnloadEventService.addListener(() => {
+      return (
+        this.undoRedoService.getChangeCount() > 0 ||
+        this.questionUndoRedoService.hasChanges()
+      );
+    });
+    this.validationIssues = [];
+    this.prepublishValidationIssues = [];
+    this.warningsAreShown = false;
+    this.bottomNavbarStatusService.markBottomNavbarStatus(true);
+    this.topicRights = this.topicEditorStateService.getTopicRights();
+    this.directiveSubscriptions.add(
+      this.undoRedoService
+        .getUndoRedoChangeEventEmitter()
+        .subscribe(() => this.setDocumentTitle())
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

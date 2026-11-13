@@ -16,82 +16,98 @@
 
 """Python configuration for ItemSelectionInput interaction."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.interactions import base
+
+from typing import List
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class ItemSelectionInput(base.BaseInteraction):
     """Interaction for item selection input."""
 
-    name = 'Item Selection'
-    description = (
-        'Allows learners to select various options.')
-    display_mode = base.DISPLAY_MODE_INLINE
-    _dependency_ids = []
-    answer_type = 'SetOfTranslatableHtmlContentIds'
+    name: str = 'Item Selection'
+    description: str = 'Allows learners to select various options.'
+    display_mode: str = base.DISPLAY_MODE_INLINE
+    _dependency_ids: List[str] = []
+    answer_type: str = 'SetOfTranslatableHtmlContentIds'
     # Radio buttons get unselected when specifying a solution. This needs to be
     # fixed before solution feature can support this interaction.
-    can_have_solution = False
-    # ItemSelectionInput's submit button is dynamic and is handled
-    # separately.
-    show_generic_submit_button = False
+    can_have_solution: bool = False
+    # ItemSelectionInput interaction must contain a generic submit button.
+    show_generic_submit_button: bool = True
 
-    _customization_arg_specs = [{
-        'name': 'minAllowableSelectionCount',
-        'description': 'Minimum number of selections permitted.',
-        'schema': {
-            'type': 'int',
-            'validators': [{
-                'id': 'is_at_least',
-                'min_value': 0,
-            }],
-        },
-        'default_value': 1,
-    }, {
-        'name': 'maxAllowableSelectionCount',
-        'description': 'Maximum number of selections permitted',
-        'schema': {
-            'type': 'int',
-            'validators': [{
-                'id': 'is_at_least',
-                'min_value': 1,
-            }],
-        },
-        'default_value': 1,
-    }, {
-        'name': 'choices',
-        'description': 'Items for selection',
-        'schema': {
-            'type': 'list',
-            'items': {
-                'type': 'custom',
-                'obj_type': 'SubtitledHtml',
-                'replacement_ui_config': {
-                    'html': {
-                        'hide_complex_extensions': True,
-                        'placeholder': 'Sample item answer',
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'minAllowableSelectionCount',
+            'description': 'Minimum number of selections permitted',
+            'schema': {
+                'type': 'int',
+                'validators': [
+                    {
+                        'id': 'is_at_least',
+                        'min_value': 0,
                     }
-                }
+                ],
             },
-            'ui_config': {
-                'add_element_text': 'Add item for selection',
-            }
+            'default_value': 1,
         },
-        'default_value': [{
-            'content_id': None,
-            'html': ''
-        }],
-    }]
+        {
+            'name': 'maxAllowableSelectionCount',
+            'description': 'Maximum number of selections permitted',
+            'schema': {
+                'type': 'int',
+                'validators': [
+                    {
+                        'id': 'is_at_least',
+                        'min_value': 1,
+                    }
+                ],
+            },
+            'default_value': 1,
+        },
+        {
+            'name': 'choices',
+            'description': 'Items for selection',
+            'schema': {
+                'type': 'list',
+                'validators': [{'id': 'has_unique_subtitled_contents'}],
+                'items': {
+                    'type': 'custom',
+                    'obj_type': 'SubtitledHtml',
+                    'validators': [{'id': 'has_subtitled_html_non_empty'}],
+                    'replacement_ui_config': {
+                        'rte_component_config_id': 'ALL_COMPONENTS',
+                        'html': {
+                            'hide_complex_extensions': True,
+                            'placeholder': 'Sample item answer',
+                        },
+                    },
+                },
+                'ui_config': {
+                    'add_element_text': 'Add item for selection',
+                },
+            },
+            'default_value': [{'content_id': None, 'html': ''}],
+        },
+    ]
 
-    _answer_visualization_specs = [{
-        # Table with keyed answer counts for top N answers.
-        'id': 'EnumeratedFrequencyTable',
-        'options': {
-            'column_headers': ['Answer (click to expand/collapse)', 'Count'],
-            'title': 'Top answers',
-        },
-        'calculation_id': 'Top10AnswerFrequencies',
-        'addressed_info_is_supported': True,
-    }]
+    _answer_visualization_specs: List[base.AnswerVisualizationSpecsDict] = [
+        {
+            # Table with keyed answer counts for top N answers.
+            'id': 'EnumeratedFrequencyTable',
+            'options': {
+                'column_headers': [
+                    'Answer (click to expand/collapse)',
+                    'Count',
+                ],
+                'title': 'Top answers',
+            },
+            'calculation_id': 'Top10AnswerFrequencies',
+            'addressed_info_is_supported': True,
+        }
+    ]

@@ -16,20 +16,38 @@
  * @fileoverview Unit tests for Moderator Page Component.
  */
 
-import { ComponentFixture, fakeAsync, TestBed, waitForAsync }
-  from '@angular/core/testing';
-import { NgbNavModule } from '@ng-bootstrap/ng-bootstrap';
-import { SchemaBasedEditorDirective }
-  from 'components/forms/schema-based-editors/schema-based-editor.directive';
-import { ThreadMessage, ThreadMessageBackendDict }
-  from 'domain/feedback_message/ThreadMessage.model';
-import { AlertsService } from 'services/alerts.service';
-import { DateTimeFormatService } from 'services/date-time-format.service';
-import { LoaderService } from 'services/loader.service';
-import { ModeratorPageComponent } from './moderator-page.component';
-import { ActivityIdTypeDict, FeaturedActivityResponse,
-  ModeratorPageBackendApiService, RecentCommitResponse, RecentFeedbackMessages }
-  from './services/moderator-page-backend-api.service';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {NgbNavModule} from '@ng-bootstrap/ng-bootstrap';
+import {
+  ThreadMessage,
+  ThreadMessageBackendDict,
+} from 'domain/feedback_message/ThreadMessage.model';
+import {AlertsService} from 'services/alerts.service';
+import {DateTimeFormatService} from 'services/date-time-format.service';
+import {LoaderService} from 'services/loader.service';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
+import {ModeratorPageComponent} from './moderator-page.component';
+import {
+  ActivityIdTypeDict,
+  FeaturedActivityResponse,
+  ModeratorPageBackendApiService,
+  RecentCommitResponse,
+  RecentFeedbackMessages,
+} from './services/moderator-page-backend-api.service';
+
+interface MockErrorResponse {
+  status: number;
+  error: {
+    error: string;
+  };
+}
 
 describe('Moderator Page Component', () => {
   let fixture: ComponentFixture<ModeratorPageComponent>;
@@ -37,6 +55,7 @@ describe('Moderator Page Component', () => {
   let loaderService: LoaderService;
   let datetimeFormatService: DateTimeFormatService;
   let alertsService: AlertsService;
+  let moderatorPageBackendApiService: ModeratorPageBackendApiService;
   let threadMessageBackendDict: ThreadMessageBackendDict = {
     author_username: 'author',
     created_on_msecs: 123,
@@ -45,103 +64,103 @@ describe('Moderator Page Component', () => {
     message_id: 12312,
     text: 'test_txt',
     updated_status: 'stastu',
-    updated_subject: 'asdf'
+    updated_subject: 'asdf',
   };
 
-  let message: ThreadMessage = ThreadMessage
-    .createFromBackendDict(threadMessageBackendDict);
+  let message: ThreadMessage = ThreadMessage.createFromBackendDict(
+    threadMessageBackendDict
+  );
 
   let recentCommits: RecentCommitResponse = {
     results: [],
     cursor: 'str1',
     more: true,
-    exp_ids_to_exp_data: [{
-      category: 'test_category',
-      title: 'test_title'
-    }]
+    exp_ids_to_exp_data: [
+      {
+        category: 'test_category',
+        title: 'test_title',
+      },
+    ],
   };
 
   let recentFeedbackMessages: RecentFeedbackMessages = {
     results: [threadMessageBackendDict],
     cursor: 'test',
-    more: true
+    more: true,
   };
 
   let activityResponse: FeaturedActivityResponse = {
-    featured_activity_references: []
+    featured_activity_references: [],
   };
 
   class MockModeratorPageBackendApiService {
     getRecentCommitsAsync() {
       return {
-        then: (
-            successCallback: (response: RecentCommitResponse) => void
-        ) => {
+        then: (successCallback: (response: RecentCommitResponse) => void) => {
           successCallback(recentCommits);
-        }
+        },
       };
     }
 
     getRecentFeedbackMessagesAsync() {
       return {
-        then: (
-            successCallback: (response: RecentFeedbackMessages) => void
-        ) => {
+        then: (successCallback: (response: RecentFeedbackMessages) => void) => {
           successCallback(recentFeedbackMessages);
-        }
+        },
       };
     }
 
     getFeaturedActivityReferencesAsync() {
       return {
         then: (
-            successCallback: (response: FeaturedActivityResponse) => void
+          successCallback: (response: FeaturedActivityResponse) => void
         ) => {
           successCallback(activityResponse);
-        }
+        },
       };
     }
 
     saveFeaturedActivityReferencesAsync(references: ActivityIdTypeDict[]) {
       return {
-        then: (
-            successCallback: () => void
-        ) => {
+        then: (successCallback: () => void) => {
           successCallback();
-        }
+          return {
+            catch: () => {},
+          };
+        },
       };
     }
   }
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        NgbNavModule
-      ],
-      declarations: [
-        ModeratorPageComponent,
-        SchemaBasedEditorDirective
-      ],
+      imports: [NgbNavModule],
+      declarations: [ModeratorPageComponent],
       providers: [
         {
           provide: ModeratorPageBackendApiService,
-          useClass: MockModeratorPageBackendApiService
-        }
-      ]
+          useClass: MockModeratorPageBackendApiService,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(ModeratorPageComponent);
     componentInstance = fixture.componentInstance;
-    loaderService = (TestBed.inject(LoaderService) as unknown) as
-      jasmine.SpyObj<LoaderService>;
-    datetimeFormatService = (
-      TestBed.inject(DateTimeFormatService) as unknown) as
-      jasmine.SpyObj<DateTimeFormatService>;
-    alertsService = (
-      TestBed.inject(AlertsService) as unknown) as
-      jasmine.SpyObj<AlertsService>;
+    loaderService = TestBed.inject(
+      LoaderService
+    ) as jasmine.SpyObj<LoaderService>;
+    datetimeFormatService = TestBed.inject(
+      DateTimeFormatService
+    ) as jasmine.SpyObj<DateTimeFormatService>;
+    alertsService = TestBed.inject(
+      AlertsService
+    ) as jasmine.SpyObj<AlertsService>;
+    moderatorPageBackendApiService = TestBed.inject(
+      ModeratorPageBackendApiService
+    );
   });
 
   it('should create', () => {
@@ -153,63 +172,75 @@ describe('Moderator Page Component', () => {
     spyOn(loaderService, 'hideLoadingScreen');
     componentInstance.explorationData = [];
     componentInstance.ngOnInit();
-    expect(componentInstance.explorationData)
-      .toEqual(recentCommits.exp_ids_to_exp_data);
+    expect(componentInstance.explorationData).toEqual(
+      recentCommits.exp_ids_to_exp_data
+    );
     expect(loaderService.showLoadingScreen).toHaveBeenCalled();
     expect(componentInstance.allCommits).toEqual(recentCommits.results);
     expect(loaderService.hideLoadingScreen).toHaveBeenCalled();
 
-    expect(componentInstance.allFeedbackMessages)
-      .toEqual(recentFeedbackMessages.results.map(
-        d => ThreadMessage.createFromBackendDict(d))
-      );
+    expect(componentInstance.allFeedbackMessages).toEqual(
+      recentFeedbackMessages.results.map(d =>
+        ThreadMessage.createFromBackendDict(d)
+      )
+    );
 
-    expect(componentInstance.displayedFeaturedActivityReferences)
-      .toEqual(activityResponse.featured_activity_references);
+    expect(componentInstance.displayedFeaturedActivityReferences).toEqual(
+      activityResponse.featured_activity_references
+    );
     expect(componentInstance.lastSavedFeaturedActivityReferences).toEqual(
-      componentInstance.displayedFeaturedActivityReferences);
+      componentInstance.displayedFeaturedActivityReferences
+    );
   }));
 
   it('should get date time as string', () => {
     let testDatetime: string = 'test_datetime';
-    spyOn(datetimeFormatService, 'getLocaleAbbreviatedDatetimeString')
-      .and.returnValue(testDatetime);
+    spyOn(
+      datetimeFormatService,
+      'getLocaleAbbreviatedDatetimeString'
+    ).and.returnValue(testDatetime);
     expect(componentInstance.getDatetimeAsString(100)).toEqual(testDatetime);
   });
 
   it('should tell if message is from exploration', () => {
-    expect(componentInstance.isMessageFromExploration(message)).toBeTrue();
+    expect(componentInstance.isMessageFromExploration(message)).toBe(true);
     message.entityType = 'other_than_exploration';
-    expect(componentInstance.isMessageFromExploration(message)).toBeFalse();
+    expect(componentInstance.isMessageFromExploration(message)).toBe(false);
   });
 
   it('should get exploration create url', () => {
-    expect(componentInstance.getExplorationCreateUrl('test'))
-      .toEqual('/create/test');
+    expect(componentInstance.getExplorationCreateUrl('test')).toEqual(
+      '/create/test'
+    );
   });
 
   it('should get activity create url', () => {
     let reference: ActivityIdTypeDict = {
       id: 'test_id',
-      type: 'exploration'
+      type: 'exploration',
     };
-    expect(componentInstance.getActivityCreateUrl(reference))
-      .toEqual('/create/' + reference.id);
+    expect(componentInstance.getActivityCreateUrl(reference)).toEqual(
+      '/create/' + reference.id
+    );
     reference.type = 'not_exploration';
-    expect(componentInstance.getActivityCreateUrl(reference))
-      .toEqual('/create_collection/' + reference.id);
+    expect(componentInstance.getActivityCreateUrl(reference)).toEqual(
+      '/create_collection/' + reference.id
+    );
   });
 
   it('should tell if save featured activies button is disabled', () => {
-    componentInstance.displayedFeaturedActivityReferences = componentInstance
-      .lastSavedFeaturedActivityReferences;
-    expect(componentInstance.isSaveFeaturedActivitiesButtonDisabled())
-      .toBeTrue();
-    componentInstance.displayedFeaturedActivityReferences = [];
-    componentInstance.lastSavedFeaturedActivityReferences = [
-      { id: 'not', type: 'equal' }];
-    expect(componentInstance.isSaveFeaturedActivitiesButtonDisabled())
-      .toBeFalse();
+    componentInstance.displayedFeaturedActivityReferences = [
+      {id: '', type: 'emptyID'},
+    ];
+    expect(componentInstance.isSaveFeaturedActivitiesButtonDisabled()).toBe(
+      true
+    );
+    componentInstance.displayedFeaturedActivityReferences = [
+      {id: 'is', type: 'not'},
+    ];
+    expect(componentInstance.isSaveFeaturedActivitiesButtonDisabled()).toBe(
+      false
+    );
   });
 
   it('should save featured activity references', () => {
@@ -221,18 +252,216 @@ describe('Moderator Page Component', () => {
   });
 
   it('should get schema', () => {
-    expect(componentInstance.getSchema())
-      .toEqual(componentInstance.FEATURED_ACTIVITY_REFERENCES_SCHEMA);
+    expect(componentInstance.getSchema()).toEqual(
+      componentInstance.FEATURED_ACTIVITY_REFERENCES_SCHEMA
+    );
   });
 
   it('should update displayed featured activity references', () => {
-    let newValue: ActivityIdTypeDict[] = [{
-      id: 'test_id',
-      type: 'exploration'
-    }];
+    let newValue: ActivityIdTypeDict[] = [
+      {
+        id: 'test_id',
+        type: 'exploration',
+      },
+    ];
     componentInstance.displayedFeaturedActivityReferences = [];
     componentInstance.updateDisplayedFeaturedActivityReferences(newValue);
-    expect(componentInstance.displayedFeaturedActivityReferences)
-      .toEqual(newValue);
+    expect(componentInstance.displayedFeaturedActivityReferences).toEqual(
+      newValue
+    );
   });
+
+  it('should expose featured activity references as schema default value', () => {
+    const references: ActivityIdTypeDict[] = [
+      {
+        id: 'test_id',
+        type: 'exploration',
+      },
+    ];
+    componentInstance.displayedFeaturedActivityReferences = references;
+
+    expect(
+      componentInstance.displayedFeaturedActivityReferencesAsSchemaDefault as ActivityIdTypeDict[]
+    ).toEqual(references);
+  });
+
+  it('should ignore non-array values when updating featured activity references', () => {
+    componentInstance.displayedFeaturedActivityReferences = [];
+    componentInstance.updateDisplayedFeaturedActivityReferences(null);
+    expect(componentInstance.displayedFeaturedActivityReferences).toEqual([]);
+  });
+
+  it('should reject featured activity references with malformed list items', () => {
+    const newValue: SchemaDefaultValue[] = [
+      {
+        id: 'test_id',
+      },
+      {
+        id: 'test_id_2',
+        type: 'exploration',
+      },
+    ];
+    componentInstance.displayedFeaturedActivityReferences = [];
+    componentInstance.updateDisplayedFeaturedActivityReferences(newValue);
+    expect(componentInstance.displayedFeaturedActivityReferences).toEqual([]);
+  });
+
+  it('should display error message for nonexistent exploration', fakeAsync(() => {
+    spyOn(alertsService, 'addWarning');
+
+    let newValue: ActivityIdTypeDict[] = [
+      {
+        id: 'dne_exploration',
+        type: 'exploration',
+      },
+    ];
+
+    componentInstance.displayedFeaturedActivityReferences = [];
+    componentInstance.updateDisplayedFeaturedActivityReferences(newValue);
+
+    const mockError: MockErrorResponse = {
+      status: 400,
+      error: {
+        error:
+          'These Exploration IDs do not exist: dne_exploration. Please enter a different ID.',
+      },
+    };
+
+    spyOn(
+      moderatorPageBackendApiService,
+      'saveFeaturedActivityReferencesAsync'
+    ).and.returnValue(Promise.reject(mockError));
+
+    componentInstance.saveFeaturedActivityReferences();
+    tick();
+
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
+      'These Exploration IDs do not exist: dne_exploration. Please enter a different ID.'
+    );
+  }));
+
+  it('should display error message for nonexistent collection', fakeAsync(() => {
+    spyOn(alertsService, 'addWarning');
+
+    let newValue: ActivityIdTypeDict[] = [
+      {
+        id: 'dne_collection',
+        type: 'collection',
+      },
+    ];
+
+    componentInstance.displayedFeaturedActivityReferences = [];
+    componentInstance.updateDisplayedFeaturedActivityReferences(newValue);
+
+    const mockError: MockErrorResponse = {
+      status: 400,
+      error: {
+        error:
+          'These Collection IDs do not exist: dne_collection. Please enter a different ID.',
+      },
+    };
+
+    spyOn(
+      moderatorPageBackendApiService,
+      'saveFeaturedActivityReferencesAsync'
+    ).and.returnValue(Promise.reject(mockError));
+
+    componentInstance.saveFeaturedActivityReferences();
+    tick();
+
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
+      'These Collection IDs do not exist: dne_collection. Please enter a different ID.'
+    );
+  }));
+
+  it('should display error message for private exploration', fakeAsync(() => {
+    spyOn(alertsService, 'addWarning');
+
+    let newValue: ActivityIdTypeDict[] = [
+      {
+        id: 'priv_exploration',
+        type: 'exploration',
+      },
+    ];
+
+    componentInstance.displayedFeaturedActivityReferences = [];
+    componentInstance.updateDisplayedFeaturedActivityReferences(newValue);
+
+    const mockError: MockErrorResponse = {
+      status: 400,
+      error: {
+        error:
+          'These Exploration IDs are private: priv_exploration. Please enter a different ID.',
+      },
+    };
+
+    spyOn(
+      moderatorPageBackendApiService,
+      'saveFeaturedActivityReferencesAsync'
+    ).and.returnValue(Promise.reject(mockError));
+
+    componentInstance.saveFeaturedActivityReferences();
+    tick();
+
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
+      'These Exploration IDs are private: priv_exploration. Please enter a different ID.'
+    );
+  }));
+
+  it('should display error message for private collection', fakeAsync(() => {
+    spyOn(alertsService, 'addWarning');
+
+    let newValue: ActivityIdTypeDict[] = [
+      {
+        id: 'priv_collection',
+        type: 'collection',
+      },
+    ];
+
+    componentInstance.displayedFeaturedActivityReferences = [];
+    componentInstance.updateDisplayedFeaturedActivityReferences(newValue);
+
+    const mockError: MockErrorResponse = {
+      status: 400,
+      error: {
+        error:
+          'These Collection IDs are private: priv_collection. Please enter a different ID.',
+      },
+    };
+
+    spyOn(
+      moderatorPageBackendApiService,
+      'saveFeaturedActivityReferencesAsync'
+    ).and.returnValue(Promise.reject(mockError));
+
+    componentInstance.saveFeaturedActivityReferences();
+    tick();
+
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
+      'These Collection IDs are private: priv_collection. Please enter a different ID.'
+    );
+  }));
+
+  it('should display message for miscellaneous errors', fakeAsync(() => {
+    spyOn(alertsService, 'addWarning');
+
+    const mockError: MockErrorResponse = {
+      status: 404,
+      error: {
+        error: '',
+      },
+    };
+
+    spyOn(
+      moderatorPageBackendApiService,
+      'saveFeaturedActivityReferencesAsync'
+    ).and.returnValue(Promise.reject(mockError));
+
+    componentInstance.saveFeaturedActivityReferences();
+    tick();
+
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
+      'An unexpected error occurred. Please try again later.'
+    );
+  }));
 });

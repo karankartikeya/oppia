@@ -16,26 +16,22 @@
  * @fileoverview Module for the participation playbook page.
  */
 
-import { NgModule } from '@angular/core';
-import { PlaybookPageComponent } from './playbook.component';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { PlaybookPageRootComponent } from './playbook-page-root.component';
-import { CommonModule } from '@angular/common';
-import { PlaybookPageRoutingModule } from './playbook-page-routing.module';
+import {NgModule} from '@angular/core';
+import {PlaybookPageComponent} from './playbook.component';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {PlaybookPageRootComponent} from './playbook-page-root.component';
+import {CommonModule} from '@angular/common';
+import {PlaybookPageRoutingModule} from './playbook-page-routing.module';
+import {RouterModule} from '@angular/router';
 
 @NgModule({
   imports: [
     CommonModule,
     SharedComponentsModule,
-    PlaybookPageRoutingModule
+    RouterModule,
+    PlaybookPageRoutingModule,
   ],
-  declarations: [
-    PlaybookPageComponent,
-    PlaybookPageRootComponent
-  ],
-  entryComponents: [
-    PlaybookPageComponent,
-    PlaybookPageRootComponent,
-  ]
+  declarations: [PlaybookPageComponent, PlaybookPageRootComponent],
+  entryComponents: [PlaybookPageComponent, PlaybookPageRootComponent],
 })
 export class PlaybookPageModule {}

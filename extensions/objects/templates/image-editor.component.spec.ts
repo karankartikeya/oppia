@@ -16,40 +16,51 @@
  * @fileoverview Unit tests for the image editor.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, waitForAsync, TestBed, tick, fakeAsync } from '@angular/core/testing';
-import { ImageEditorComponent } from './image-editor.component';
-import { ImageUploadHelperService } from 'services/image-upload-helper.service';
-import { ContextService } from 'services/context.service';
-import { ImagePreloaderService } from 'pages/exploration-player-page/services/image-preloader.service';
-import { AppConstants } from 'app.constants';
-import { ImageLocalStorageService } from 'services/image-local-storage.service';
-import { AlertsService } from 'services/alerts.service';
-import { CsrfTokenService } from 'services/csrf-token.service';
-import { SimpleChanges } from '@angular/core';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
-let gifshot = require('gifshot');
+// @ts-nocheck
 
-declare global {
-  interface Window {
-    GifFrames: Function;
-  }
-}
+import {
+  HttpClientTestingModule,
+  HttpTestingController,
+} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  waitForAsync,
+  TestBed,
+  tick,
+  fakeAsync,
+  flushMicrotasks,
+} from '@angular/core/testing';
+import {ImageEditorComponent} from './image-editor.component';
+import {ImageUploadHelperService} from 'services/image-upload-helper.service';
+import {PageContextService} from 'services/page-context.service';
+import {ImagePreloaderService} from 'pages/exploration-player-page/services/image-preloader.service';
+import {AppConstants} from 'app.constants';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {AlertsService} from 'services/alerts.service';
+import {SimpleChanges} from '@angular/core';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {GifFramesService} from 'third-party-imports/gif-frames.import';
+import {of} from 'rxjs';
+
+let gifshot = require('gifshot');
 
 describe('ImageEditor', () => {
   let component: ImageEditorComponent;
   let fixture: ComponentFixture<ImageEditorComponent>;
-  let csrfTokenService: CsrfTokenService;
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
   let imagePreloaderService: ImagePreloaderService;
   let imageUploadHelperService: ImageUploadHelperService;
   let imageLocalStorageService: ImageLocalStorageService;
   let alertsService: AlertsService;
   let svgSanitizerService: SvgSanitizerService;
+  let httpTestingController: HttpTestingController;
+  let gifFrames: GifFramesService;
+  let windowImageSpy: jasmine.Spy;
   let dimensionsOfImage = {
     width: 450,
-    height: 350
+    height: 350,
   };
 
   let dataGif = {
@@ -57,7 +68,7 @@ describe('ImageEditor', () => {
       lastModified: 1622307491398,
       name: '2442125.gif',
       size: 6700,
-      type: 'image/gif'
+      type: 'image/gif',
     },
     uploadedImageData:
       'data:image/gif;base64,R0lGODlhBAHIAPUhACEhIQgAUjExY1JajHN7rbXW//' +
@@ -203,7 +214,7 @@ describe('ImageEditor', () => {
     originalWidth: 260,
     originalHeight: 200,
     savedImageFilename: 'saved_file_name.gif',
-    savedImageUrl: 'assets/images'
+    savedImageUrl: 'assets/images',
   };
 
   let dataPng = {
@@ -211,7 +222,7 @@ describe('ImageEditor', () => {
       lastModified: 1622307491398,
       name: '2442125.png',
       size: 6500,
-      type: 'image/png'
+      type: 'image/png',
     },
     uploadedImageData:
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWgAAAFoCAAAAABfjj' +
@@ -293,12 +304,12 @@ describe('ImageEditor', () => {
     originalWidth: 360,
     originalHeight: 360,
     savedImageFilename: 'saved_file_name.gif',
-    savedImageUrl: 'assets/images'
+    savedImageUrl: 'assets/images',
   };
 
   // This is used to generate a mock Image file from the data URI
   // present above.
-  let localConvertImageDataToImageFile = (dataURI) => {
+  let localConvertImageDataToImageFile = (dataURI: string) => {
     var byteString = atob(dataURI.split(',')[1]);
     var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
     var ab = new ArrayBuffer(byteString.length);
@@ -311,90 +322,95 @@ describe('ImageEditor', () => {
   };
 
   class MockImageUploadHelperService {
-    convertImageDataToImageFile(dataURI) {
+    convertImageDataToImageFile(dataURI: string) {
       return dataURI;
     }
 
     generateImageFilename(
-        height: number, width: number, extension: string): string {
-      return 'img_' + '12345' + '_height_' + height + '_width_' + width +
-      '.' + extension;
+      height: number,
+      width: number,
+      extension: string
+    ): string {
+      return (
+        'img_' +
+        '12345' +
+        '_height_' +
+        height +
+        '_width_' +
+        width +
+        '.' +
+        extension
+      );
     }
   }
 
   class MockReaderObject {
-    onload = null;
-    result = null;
+    onload: ((this: FileReader, ev: ProgressEvent) => void) | null = null;
+    result: string | null = null;
     constructor() {
       this.onload = () => {
         return 'Fake onload executed';
       };
     }
-    readAsDataURL(file) {
-      this.onload();
+
+    readAsDataURL(file: File) {
+      if (this.onload) {
+        this.onload.call(new FileReader(), new ProgressEvent('load'));
+      }
       return 'The file is loaded';
     }
   }
 
-  class MockImageObject {
-    source = null;
-    onload = null;
-    constructor() {
-      this.onload = () => {
-        return 'Fake onload executed';
-      };
-    }
-    set src(url) {
-      this.onload();
-    }
-    addEventListener(txt, func, bool) {
-      func();
-    }
-  }
+  const createMockImageElement = (): HTMLImageElement => {
+    const imageElement = document.createElement('img');
+    Object.defineProperty(imageElement, 'src', {
+      set: () => {
+        imageElement.dispatchEvent(new Event('load'));
+        if (imageElement.onload) {
+          imageElement.onload(new Event('load'));
+        }
+      },
+    });
+    return imageElement;
+  };
 
   beforeEach(waitForAsync(() => {
-    TestBed.configureTestingModule(
-      {
-        imports: [HttpClientTestingModule],
-        declarations: [ImageEditorComponent],
-        providers: [
-          {
-            provide: ImageUploadHelperService,
-            useClass: MockImageUploadHelperService
-          },
-          ImageLocalStorageService],
-        schemas: [NO_ERRORS_SCHEMA]
-      }
-    ).compileComponents();
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [ImageEditorComponent, MockTranslatePipe],
+      providers: [
+        {
+          provide: ImageUploadHelperService,
+          useClass: MockImageUploadHelperService,
+        },
+        ImageLocalStorageService,
+        GifFramesService,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
   beforeEach(() => {
+    httpTestingController = TestBed.inject(HttpTestingController);
     svgSanitizerService = TestBed.inject(SvgSanitizerService);
     alertsService = TestBed.inject(AlertsService);
     imageUploadHelperService = TestBed.inject(ImageUploadHelperService);
     imageLocalStorageService = TestBed.inject(ImageLocalStorageService);
-    csrfTokenService = TestBed.inject(CsrfTokenService);
     imagePreloaderService = TestBed.inject(ImagePreloaderService);
-    contextService = TestBed.inject(ContextService);
-    fixture = TestBed.createComponent(
-      ImageEditorComponent);
+    pageContextService = TestBed.inject(PageContextService);
+    fixture = TestBed.createComponent(ImageEditorComponent);
     component = fixture.componentInstance;
-    spyOn(contextService, 'getEntityId').and.returnValue('2');
-    spyOn(contextService, 'getEntityType').and.returnValue('question');
-    // This throws "Argument of type 'mockImageObject' is not assignable to
-    // parameter of type 'HTMLImageElement'.". We need to suppress this
-    // error because 'HTMLImageElement' has around 250 more properties.
-    // We have only defined the properties we need in 'mockImageObject'.
-    // @ts-expect-error
-    spyOn(window, 'Image').and.returnValues(new MockImageObject(), {
-      src: null
-    });
-    // This throws "Argument of type 'mockReaderObject' is not assignable to
-    // parameter of type 'HTMLImageElement'.". We need to suppress this
-    // error because 'HTMLImageElement' has around 250 more properties.
-    // We have only defined the properties we need in 'mockReaderObject'.
-    // @ts-expect-error
-    spyOn(window, 'FileReader').and.returnValue(new MockReaderObject());
+    gifFrames = TestBed.inject(GifFramesService);
+    spyOn(pageContextService, 'getEntityId').and.returnValue('2');
+    spyOn(pageContextService, 'getEntityType').and.returnValue('question');
+    windowImageSpy = spyOn(window, 'Image');
+    windowImageSpy.and.returnValues(
+      createMockImageElement(),
+      document.createElement('img')
+    );
+    spyOn(window, 'FileReader').and.returnValue(
+      new MockReaderObject() as Partial<FileReader> as FileReader
+    );
 
     component.ngOnInit();
 
@@ -406,106 +422,105 @@ describe('ImageEditor', () => {
         // properties from type 'File': arrayBuffer, slice, stream, text"
         // We need to suppress this error because we only need the values given
         // below.
-        // @ts-expect-error
-        uploadedFile: {
-          lastModified: 1622307491398,
-          name: '2442125.svg',
-          size: 2599,
-          type: 'image/svg+xml'
-        },
+        uploadedFile: new File(['<svg></svg>'], '2442125.svg', {
+          type: 'image/svg+xml',
+          lastModified: 1622307491398 as unknown as number,
+        }),
         uploadedImageData:
-        'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb2' +
-        '5lPSJubyI/Pgo8IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHID' +
-        'IwMDEwOTA0Ly9FTiIKICJodHRwOi8vd3d3LnczLm9yZy9UUi8yMDAxL1JFQy1TVk' +
-        'ctMjAwMTA5MDQvRFREL3N2ZzEwLmR0ZCI+CjxzdmcgdmVyc2lvbj0iMS4wIiB4bW' +
-        'xucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiB3aWR0aD0iNzI2LjAwMD' +
-        'AwMHB0IiBoZWlnaHQ9IjEyODAuMDAwMDAwcHQiIHZpZXdCb3g9IjAgMCA3MjYuMD' +
-        'AwMDAwIDEyODAuMDAwMDAwIgogcHJlc2VydmVBc3BlY3RSYXRpbz0ieE1pZFlNaW' +
-        'QgbWVldCI+CjxtZXRhZGF0YT4KQ3JlYXRlZCBieSBwb3RyYWNlIDEuMTUsIHdyaX' +
-        'R0ZW4gYnkgUGV0ZXIgU2VsaW5nZXIgMjAwMS0yMDE3CjwvbWV0YWRhdGE+CjxnIH' +
-        'RyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLDEyODAuMDAwMDAwKSBzY2FsZS' +
-        'gwLjEwMDAwMCwtMC4xMDAwMDApIgpmaWxsPSIjMDAwMDAwIiBzdHJva2U9Im5vbm' +
-        'UiPgo8cGF0aCBkPSJNMzU3NSAxMjc2MyBjLTQ5OSAtNDUyIC03NzIgLTc2MSAtMT' +
-        'A2OCAtMTIwOSAtODUyIC0xMjg5IC0xMTIyCi0yODY4IC03OTEgLTQ2MjQgMTM3IC' +
-        '03MjcgMzk2IC0xNTIxIDcwOSAtMjE3NiBsNjQgLTEzNCAxMTMxIDAgMTEzMSAwID' +
-        'Y5IDE0NApjMzgwIDc5NiA2NzEgMTc4MCA3NzkgMjYzNiA3MSA1NjMgODAgMTE2MC' +
-        'AyNSAxNjUwIC0xMTYgMTAzOSAtNDczIDE5NTkgLTEwNzMKMjc2NSAtMjQyIDMyNC' +
-        'AtNDk5IDYwMSAtODQ3IDkxMyAtNDQgMzkgLTgzIDcyIC04NSA3MiAtMiAwIC0yMi' +
-        'AtMTcgLTQ0IC0zN3oKbTIyMiAtMzA3OCBjMzg2IC03MyA2ODIgLTM0NyA3ODUgLT' +
-        'cyNSAyMCAtNzQgMjMgLTEwNyAyMiAtMjU1IDAgLTE5NCAtMTUKLTI2NCAtODIgLT' +
-        'QwOSAtNTQgLTExNSAtMTEyIC0xOTggLTIwMSAtMjg3IC0xMjYgLTEyNiAtMjgyIC' +
-        '0yMTYgLTQ1MyAtMjYyCi03MCAtMTggLTEwOSAtMjIgLTI0OCAtMjIgLTE5NiAxIC' +
-        '0yNzYgMTggLTQzNSA5NiAtMjY5IDEzMSAtNDYyIDM3NSAtNTMxIDY3NAotMjggMT' +
-        'E4IC0yNiAzMjkgNCA0NDkgODMgMzMyIDMzNCA2MDIgNjYxIDcxMSAxMzUgNDQgMz' +
-        'M1IDU3IDQ3OCAzMHogbS0zMgotMjI4MCBjMzkgLTggMTEyIC0zNSAxNjMgLTYwID' +
-        'I2NCAtMTMxIDQxNSAtNDM1IDM1OCAtNzI1IC00NyAtMjM5IC0yMTcgLTQzNgotND' +
-        'Q4IC01MTcgLTEwNiAtMzggLTI3MyAtNDQgLTM4MSAtMTQgLTE5OSA1NCAtMzU1ID' +
-        'E4MCAtNDQxIDM1NiAtNDcgOTQgLTY4CjE4OSAtNjcgMzA1IDAgMTE1IDE4IDE4OC' +
-        'A3MyAzMDAgMzMgNjkgNTggMTAxIDEyNyAxNzAgNTMgNTMgMTA5IDk4IDE0NiAxMT' +
-        'cKNTggMzAgMTY0IDY4IDIxNSA3NiA1OCAxMCAxOTAgNiAyNTUgLTh6IG0tMzYgLT' +
-        'E2NTAgYzIyMSAtNTMgMzc5IC0yODUgMzQyCi01MDUgLTIyIC0xMzMgLTg4IC0yMz' +
-        'kgLTE5MSAtMzA5IC0xNDMgLTk1IC0zMjEgLTEwNyAtNDcxIC0zMCAtNTIgMjYgLT' +
-        'E0NQoxMTQgLTE3NiAxNjYgLTEzMiAyMjYgLTUwIDUyMiAxNzkgNjM5IDEwMyA1My' +
-        'AyMDQgNjUgMzE3IDM5eiIvPgo8cGF0aCBkPSJNNTUxMiA2MjI4IGMtMjMgLTczIC' +
-        '02NyAtMjM4IC05NyAtMzY3IC05MCAtMzgyIC0xNzkgLTYyNiAtMzg3Ci0xMDUzIC' +
-        '01NiAtMTE1IC05OSAtMjEwIC05NyAtMjEyIDE1IC0xMyAyNTAgLTE2NiA0MzQgLT' +
-        'I4MyA3ODYgLTQ5OSAxMjk0Ci03NTUgMTYwNCAtODA4IDIzNiAtNDEgMzI5IDU2ID' +
-        'I3NSAyODUgLTY1IDI4MCAtMzM3IDc1NiAtNzk0IDEzOTUgLTIxNyAzMDIKLTgxNy' +
-        'AxMDkyIC04ODQgMTE2MyAtMTAgMTAgLTIxIC0xNSAtNTQgLTEyMHoiLz4KPHBhdG' +
-        'ggZD0iTTE1NzMgNjE3OCBjLTU3NCAtNzI2IC0xMDQ5IC0xMzkyIC0xMjk4IC0xOD' +
-        'IzIC05MyAtMTYwIC0yMDAgLTM4NwotMjM2IC00OTggLTI3IC04MyAtMzMgLTExOC' +
-        'AtMzQgLTE4OSAwIC05MyAxMSAtMTE5IDY3IC0xNjEgMzQgLTI2IDE1NSAtMzQKMj' +
-        'QwIC0xNyAyNDMgNDcgNjYwIDI0NSAxMTk4IDU2OCAyOTQgMTc3IDgyMCA1MTUgOD' +
-        'IwIDUyOCAwIDQgLTQxIDg5IC05MCAxOTAKLTE0MyAyOTEgLTI0MiA1MjYgLTMwNS' +
-        'A3MjQgLTE0IDQ3IC01NiAyMDQgLTkxIDM1MCAtNTkgMjQzIC0xMjkgNDkwIC0xMz' +
-        'kgNDkwCi0yIDAgLTYxIC03MyAtMTMyIC0xNjJ6Ii8+CjxwYXRoIGQ9Ik0yNjc5ID' +
-        'QzODMgYy0zMDkgLTMyNCAtNTQwIC03NDEgLTY0OSAtMTE3MiAtNTkgLTIzNCAtOD' +
-        'EgLTQxNCAtODEKLTY3MSAwIC0yMzkgMTYgLTM5MSA2NyAtNjIwIDI4IC0xMjQgMT' +
-        'IxIC00MjAgMTMzIC00MjAgNCAwIDE3IDM5IDMwIDg4IDE0NQo1NjIgMzE2IDkzOS' +
-        'A0NjUgMTAyNyA1OCAzNCAxMjQgMzQgMTgyIDAgMjQxIC0xNDEgNDkyIC05MTYgNz' +
-        'M0IC0yMjY1IDI4IC0xNTcKNTMgLTI5NiA1NyAtMzEwIDYgLTI4IDMgLTQzIDczID' +
-        'M0NSAyMTUgMTE5MiA0MzcgMTkyNSA2NTQgMjE2MiA2NiA3MiAxMDQgOTMKMTY2ID' +
-        'kzIDE3NSAwIDM1MiAtMzE5IDUyNiAtOTQ4IDU5IC0yMTcgNTMgLTIwMSA2NiAtMT' +
-        'c5IDE4IDMzIDc4IDIyMCAxMDggMzM3CjExOCA0NjIgMTE2IDk1MiAtNSAxMzk1IC' +
-        '0xMTUgNDE4IC0zMzkgODIxIC02MjAgMTExNCBsLTk3IDEwMSAtODY4IDAgLTg2Ny' +
-        'AwCi03NCAtNzd6Ii8+CjwvZz4KPC9zdmc+Cg==',
+          'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb2' +
+          '5lPSJubyI/Pgo8IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHID' +
+          'IwMDEwOTA0Ly9FTiIKICJodHRwOi8vd3d3LnczLm9yZy9UUi8yMDAxL1JFQy1TVk' +
+          'ctMjAwMTA5MDQvRFREL3N2ZzEwLmR0ZCI+CjxzdmcgdmVyc2lvbj0iMS4wIiB4bW' +
+          'xucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiB3aWR0aD0iNzI2LjAwMD' +
+          'AwMHB0IiBoZWlnaHQ9IjEyODAuMDAwMDAwcHQiIHZpZXdCb3g9IjAgMCA3MjYuMD' +
+          'AwMDAwIDEyODAuMDAwMDAwIgogcHJlc2VydmVBc3BlY3RSYXRpbz0ieE1pZFlNaW' +
+          'QgbWVldCI+CjxtZXRhZGF0YT4KQ3JlYXRlZCBieSBwb3RyYWNlIDEuMTUsIHdyaX' +
+          'R0ZW4gYnkgUGV0ZXIgU2VsaW5nZXIgMjAwMS0yMDE3CjwvbWV0YWRhdGE+CjxnIH' +
+          'RyYW5zZm9ybT0idHJhbnNsYXRlKDAuMDAwMDAwLDEyODAuMDAwMDAwKSBzY2FsZS' +
+          'gwLjEwMDAwMCwtMC4xMDAwMDApIgpmaWxsPSIjMDAwMDAwIiBzdHJva2U9Im5vbm' +
+          'UiPgo8cGF0aCBkPSJNMzU3NSAxMjc2MyBjLTQ5OSAtNDUyIC03NzIgLTc2MSAtMT' +
+          'A2OCAtMTIwOSAtODUyIC0xMjg5IC0xMTIyCi0yODY4IC03OTEgLTQ2MjQgMTM3IC' +
+          '03MjcgMzk2IC0xNTIxIDcwOSAtMjE3NiBsNjQgLTEzNCAxMTMxIDAgMTEzMSAwID' +
+          'Y5IDE0NApjMzgwIDc5NiA2NzEgMTc4MCA3NzkgMjYzNiA3MSA1NjMgODAgMTE2MC' +
+          'AyNSAxNjUwIC0xMTYgMTAzOSAtNDczIDE5NTkgLTEwNzMKMjc2NSAtMjQyIDMyNC' +
+          'AtNDk5IDYwMSAtODQ3IDkxMyAtNDQgMzkgLTgzIDcyIC04NSA3MiAtMiAwIC0yMi' +
+          'AtMTcgLTQ0IC0zN3oKbTIyMiAtMzA3OCBjMzg2IC03MyA2ODIgLTM0NyA3ODUgLT' +
+          'cyNSAyMCAtNzQgMjMgLTEwNyAyMiAtMjU1IDAgLTE5NCAtMTUKLTI2NCAtODIgLT' +
+          'QwOSAtNTQgLTExNSAtMTEyIC0xOTggLTIwMSAtMjg3IC0xMjYgLTEyNiAtMjgyIC' +
+          '0yMTYgLTQ1MyAtMjYyCi03MCAtMTggLTEwOSAtMjIgLTI0OCAtMjIgLTE5NiAxIC' +
+          '0yNzYgMTggLTQzNSA5NiAtMjY5IDEzMSAtNDYyIDM3NSAtNTMxIDY3NAotMjggMT' +
+          'E4IC0yNiAzMjkgNCA0NDkgODMgMzMyIDMzNCA2MDIgNjYxIDcxMSAxMzUgNDQgMz' +
+          'M1IDU3IDQ3OCAzMHogbS0zMgotMjI4MCBjMzkgLTggMTEyIC0zNSAxNjMgLTYwID' +
+          'I2NCAtMTMxIDQxNSAtNDM1IDM1OCAtNzI1IC00NyAtMjM5IC0yMTcgLTQzNgotND' +
+          'Q4IC01MTcgLTEwNiAtMzggLTI3MyAtNDQgLTM4MSAtMTQgLTE5OSA1NCAtMzU1ID' +
+          'E4MCAtNDQxIDM1NiAtNDcgOTQgLTY4CjE4OSAtNjcgMzA1IDAgMTE1IDE4IDE4OC' +
+          'A3MyAzMDAgMzMgNjkgNTggMTAxIDEyNyAxNzAgNTMgNTMgMTA5IDk4IDE0NiAxMT' +
+          'cKNTggMzAgMTY0IDY4IDIxNSA3NiA1OCAxMCAxOTAgNiAyNTUgLTh6IG0tMzYgLT' +
+          'E2NTAgYzIyMSAtNTMgMzc5IC0yODUgMzQyCi01MDUgLTIyIC0xMzMgLTg4IC0yMz' +
+          'kgLTE5MSAtMzA5IC0xNDMgLTk1IC0zMjEgLTEwNyAtNDcxIC0zMCAtNTIgMjYgLT' +
+          'E0NQoxMTQgLTE3NiAxNjYgLTEzMiAyMjYgLTUwIDUyMiAxNzkgNjM5IDEwMyA1My' +
+          'AyMDQgNjUgMzE3IDM5eiIvPgo8cGF0aCBkPSJNNTUxMiA2MjI4IGMtMjMgLTczIC' +
+          '02NyAtMjM4IC05NyAtMzY3IC05MCAtMzgyIC0xNzkgLTYyNiAtMzg3Ci0xMDUzIC' +
+          '01NiAtMTE1IC05OSAtMjEwIC05NyAtMjEyIDE1IC0xMyAyNTAgLTE2NiA0MzQgLT' +
+          'I4MyA3ODYgLTQ5OSAxMjk0Ci03NTUgMTYwNCAtODA4IDIzNiAtNDEgMzI5IDU2ID' +
+          'I3NSAyODUgLTY1IDI4MCAtMzM3IDc1NiAtNzk0IDEzOTUgLTIxNyAzMDIKLTgxNy' +
+          'AxMDkyIC04ODQgMTE2MyAtMTAgMTAgLTIxIC0xNSAtNTQgLTEyMHoiLz4KPHBhdG' +
+          'ggZD0iTTE1NzMgNjE3OCBjLTU3NCAtNzI2IC0xMDQ5IC0xMzkyIC0xMjk4IC0xOD' +
+          'IzIC05MyAtMTYwIC0yMDAgLTM4NwotMjM2IC00OTggLTI3IC04MyAtMzMgLTExOC' +
+          'AtMzQgLTE4OSAwIC05MyAxMSAtMTE5IDY3IC0xNjEgMzQgLTI2IDE1NSAtMzQKMj' +
+          'QwIC0xNyAyNDMgNDcgNjYwIDI0NSAxMTk4IDU2OCAyOTQgMTc3IDgyMCA1MTUgOD' +
+          'IwIDUyOCAwIDQgLTQxIDg5IC05MCAxOTAKLTE0MyAyOTEgLTI0MiA1MjYgLTMwNS' +
+          'A3MjQgLTE0IDQ3IC01NiAyMDQgLTkxIDM1MCAtNTkgMjQzIC0xMjkgNDkwIC0xMz' +
+          'kgNDkwCi0yIDAgLTYxIC03MyAtMTMyIC0xNjJ6Ii8+CjxwYXRoIGQ9Ik0yNjc5ID' +
+          'QzODMgYy0zMDkgLTMyNCAtNTQwIC03NDEgLTY0OSAtMTE3MiAtNTkgLTIzNCAtOD' +
+          'EgLTQxNCAtODEKLTY3MSAwIC0yMzkgMTYgLTM5MSA2NyAtNjIwIDI4IC0xMjQgMT' +
+          'IxIC00MjAgMTMzIC00MjAgNCAwIDE3IDM5IDMwIDg4IDE0NQo1NjIgMzE2IDkzOS' +
+          'A0NjUgMTAyNyA1OCAzNCAxMjQgMzQgMTgyIDAgMjQxIC0xNDEgNDkyIC05MTYgNz' +
+          'M0IC0yMjY1IDI4IC0xNTcKNTMgLTI5NiA1NyAtMzEwIDYgLTI4IDMgLTQzIDczID' +
+          'M0NSAyMTUgMTE5MiA0MzcgMTkyNSA2NTQgMjE2MiA2NiA3MiAxMDQgOTMKMTY2ID' +
+          'kzIDE3NSAwIDM1MiAtMzE5IDUyNiAtOTQ4IDU5IC0yMTcgNTMgLTIwMSA2NiAtMT' +
+          'c5IDE4IDMzIDc4IDIyMCAxMDggMzM3CjExOCA0NjIgMTE2IDk1MiAtNSAxMzk1IC' +
+          '0xMTUgNDE4IC0zMzkgODIxIC02MjAgMTExNCBsLTk3IDEwMSAtODY4IDAgLTg2Ny' +
+          'AwCi03NCAtNzd6Ii8+CjwvZz4KPC9zdmc+Cg==',
         originalWidth: 968,
         originalHeight: 1707,
         savedImageFilename: 'saved_file_name.png',
-        savedImageUrl: 'assets/images'
+        savedImageUrl: 'assets/images',
       },
-      crop: false
+      crop: false,
     };
   });
 
   it('should set component properties on initialization', () => {
     component.ngOnInit();
 
-    expect(component.CROP_CURSORS[component.MOUSE_TOP_LEFT])
-      .toBe('nwse-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_TOP])
-      .toBe('ns-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_TOP_RIGHT])
-      .toBe('nesw-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_RIGHT])
-      .toBe('ew-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_BOTTOM_RIGHT])
-      .toBe('nwse-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_BOTTOM])
-      .toBe('ns-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_BOTTOM_LEFT])
-      .toBe('nesw-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_LEFT])
-      .toBe('ew-resize');
-    expect(component.CROP_CURSORS[component.MOUSE_INSIDE])
-      .toBe('move');
+    expect(component.CROP_CURSORS[component.MOUSE_TOP_LEFT]).toBe(
+      'nwse-resize'
+    );
+    expect(component.CROP_CURSORS[component.MOUSE_TOP]).toBe('ns-resize');
+    expect(component.CROP_CURSORS[component.MOUSE_TOP_RIGHT]).toBe(
+      'nesw-resize'
+    );
+    expect(component.CROP_CURSORS[component.MOUSE_RIGHT]).toBe('ew-resize');
+    expect(component.CROP_CURSORS[component.MOUSE_BOTTOM_RIGHT]).toBe(
+      'nwse-resize'
+    );
+    expect(component.CROP_CURSORS[component.MOUSE_BOTTOM]).toBe('ns-resize');
+    expect(component.CROP_CURSORS[component.MOUSE_BOTTOM_LEFT]).toBe(
+      'nesw-resize'
+    );
+    expect(component.CROP_CURSORS[component.MOUSE_LEFT]).toBe('ew-resize');
+    expect(component.CROP_CURSORS[component.MOUSE_INSIDE]).toBe('move');
     expect(component.data).toEqual({
-      mode: component.MODE_EMPTY, metadata: {}, crop: true });
+      mode: component.MODE_EMPTY,
+      metadata: {},
+      crop: true,
+    });
     expect(component.imageResizeRatio).toBe(1);
-    expect(component.cropArea).toEqual({ x1: 0, y1: 0, x2: 0, y2: 0 });
+    expect(component.cropArea).toEqual({x1: 0, y1: 0, x2: 0, y2: 0});
     expect(component.mousePositionWithinCropArea).toBe(null);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.lastMouseDownEventCoordinates).toEqual({ x: 0, y: 0 });
+    expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+    expect(component.lastMouseDownEventCoordinates).toEqual({x: 0, y: 0});
     expect(component.userIsDraggingCropArea).toBe(false);
     expect(component.userIsResizingCropArea).toBe(false);
     expect(component.cropAreaResizeDirection).toBe(null);
@@ -515,32 +530,39 @@ describe('ImageEditor', () => {
     expect(component.entityType).toBe('question');
   });
 
-  it('should stop resizing and dragging on when user releases ' +
-  'the mouse button', () => {
-    component.userIsDraggingCropArea = true;
-    component.userIsResizingCropArea = true;
+  it(
+    'should stop resizing and dragging on when user releases ' +
+      'the mouse button',
+    () => {
+      component.userIsDraggingCropArea = true;
+      component.userIsResizingCropArea = true;
 
-    window.dispatchEvent(new Event('mouseup'));
+      window.dispatchEvent(new Event('mouseup'));
 
-    expect(component.userIsDraggingCropArea).toBe(false);
-    expect(component.userIsResizingCropArea).toBe(false);
-  });
+      expect(component.userIsDraggingCropArea).toBe(false);
+      expect(component.userIsResizingCropArea).toBe(false);
+    }
+  );
 
   it('should retrieve existing graph when user edits an old graph', () => {
     component.value = 'file_1';
-    spyOn(imagePreloaderService, 'getDimensionsOfImage')
-      .and.returnValue(dimensionsOfImage);
+    spyOn(imagePreloaderService, 'getDimensionsOfImage').and.returnValue(
+      dimensionsOfImage
+    );
     spyOn(component, 'setSavedImageFilename');
 
     component.ngOnInit();
 
-    expect(component.setSavedImageFilename)
-      .toHaveBeenCalledWith('file_1', false);
-    expect(imagePreloaderService.getDimensionsOfImage)
-      .toHaveBeenCalledWith('file_1');
+    expect(component.setSavedImageFilename).toHaveBeenCalledWith(
+      'file_1',
+      false
+    );
+    expect(imagePreloaderService.getDimensionsOfImage).toHaveBeenCalledWith(
+      'file_1'
+    );
     expect(component.imageContainerStyle).toEqual({
       height: '350px',
-      width: '450px'
+      width: '450px',
     });
   });
 
@@ -551,35 +573,40 @@ describe('ImageEditor', () => {
     expect(component.validate(component.data)).toBe(true);
   });
 
-  it('should reset file path editor and delete file when user clicks' +
-  '\'Delete this image\'', () => {
-    spyOn(contextService, 'getImageSaveDestination').and.returnValue(
-      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE);
-    spyOn(imageLocalStorageService, 'isInStorage').and.returnValue(true);
-    spyOn(imageLocalStorageService, 'deleteImage');
+  it(
+    'should reset file path editor and delete file when user clicks' +
+      "'Delete this image'",
+    () => {
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+      );
+      spyOn(imageLocalStorageService, 'isInStorage').and.returnValue(true);
+      spyOn(imageLocalStorageService, 'deleteImage');
 
-    expect(component.data.mode).toBe(2);
-    expect(component.data.metadata).not.toEqual({});
-    expect(component.data.crop).toBe(false);
+      expect(component.data.mode).toBe(2);
+      expect(component.data.metadata).not.toEqual({});
+      expect(component.data.crop).toBe(false);
 
-    component.resetFilePathEditor();
+      component.resetFilePathEditor();
 
-    expect(imageLocalStorageService.deleteImage).toHaveBeenCalledWith(
-      'saved_file_name.png'
-    );
-    expect(component.data.mode).toBe(1);
-    expect(component.data.metadata).toEqual({});
-    expect(component.data.crop).toBe(true);
-    expect(component.imageResizeRatio).toBe(1);
-    expect(component.invalidTagsAndAttributes).toEqual({
-      tags: [],
-      attrs: []
-    });
-  });
+      expect(imageLocalStorageService.deleteImage).toHaveBeenCalledWith(
+        'saved_file_name.png'
+      );
+      expect(component.data.mode).toBe(1);
+      expect(component.data.metadata).toEqual({});
+      expect(component.data.crop).toBe(true);
+      expect(component.imageResizeRatio).toBe(1);
+      expect(component.invalidTagsAndAttributes).toEqual({
+        tags: [],
+        attrs: [],
+      });
+    }
+  );
 
   it('should reset file path editor', () => {
-    spyOn(contextService, 'getImageSaveDestination').and.returnValue(
-      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE);
+    spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+    );
     spyOn(imageLocalStorageService, 'isInStorage').and.returnValue(false);
     spyOn(imageLocalStorageService, 'deleteImage');
 
@@ -596,7 +623,7 @@ describe('ImageEditor', () => {
     expect(component.imageResizeRatio).toBe(1);
     expect(component.invalidTagsAndAttributes).toEqual({
       tags: [],
-      attrs: []
+      attrs: [],
     });
   });
 
@@ -613,7 +640,7 @@ describe('ImageEditor', () => {
   });
 
   it('should return false if file is not uploaded', () => {
-    component.data.metadata.savedImageFilename = null;
+    component.data.metadata.savedImageFilename = undefined;
 
     expect(component.validate(component.data)).toBe(false);
   });
@@ -624,7 +651,7 @@ describe('ImageEditor', () => {
       x1: 200,
       y1: 250,
       x2: 400,
-      y2: 460
+      y2: 460,
     };
     // Pre-check.
     expect(component.imageResizeRatio).toBe(1);
@@ -638,7 +665,7 @@ describe('ImageEditor', () => {
       x1: 0,
       y1: 0,
       x2: 968,
-      y2: 1707
+      y2: 1707,
     };
     // Pre-check.
     expect(component.imageResizeRatio).toBe(1);
@@ -654,17 +681,17 @@ describe('ImageEditor', () => {
       offsetTop: 0,
       offsetParent: null,
       classList: {
-        contains: (text) => {
+        contains: (text: string) => {
           return false;
-        }
-      }
+        },
+      },
     });
     component.userIsDraggingCropArea = true;
     component.cropArea = {
       x1: 20,
       y1: 20,
       x2: 40,
-      y2: 40
+      y2: 40,
     };
     component.cropAreaXWhenLastDown = 0;
     component.cropAreaYWhenLastDown = 0;
@@ -674,869 +701,936 @@ describe('ImageEditor', () => {
     expect(component.imageResizeRatio).toBe(1);
     expect(component.lastMouseDownEventCoordinates).toEqual({
       x: 0,
-      y: 0
+      y: 0,
     });
     expect(component.mouseLastKnownCoordinates).toEqual({
       x: 0,
-      y: 0
+      y: 0,
     });
 
     component.onMouseMoveOnImageArea(dummyMouseEvent);
 
     expect(component.mouseLastKnownCoordinates).toEqual({
       x: 468,
-      y: 216
+      y: 216,
     });
     expect(component.cropArea).toEqual({
       x1: 468,
       y1: 216,
       x2: 488,
-      y2: 236
+      y2: 236,
     });
   });
 
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the top left of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 468,
-      y1: 216,
-      x2: 660,
-      y2: 440
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the top of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 360,
-      y1: 216,
-      x2: 660,
-      y2: 440
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the top right of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_RIGHT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 360,
-      y1: 216,
-      x2: 468,
-      y2: 440
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the right of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_RIGHT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 360,
-      y1: 420,
-      x2: 468,
-      y2: 440
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the bottom right of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_BOTTOM_RIGHT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 360,
-      y1: 420,
-      x2: 468,
-      y2: 460
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the bottom of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_BOTTOM;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 460
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the bottom left of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_BOTTOM_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 468,
-      y1: 420,
-      x2: 660,
-      y2: 460
-    });
-  });
-
-  it('should update crop area while user is resizing the crop area towards' +
-  ' the left of the image', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = true;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    };
-    component.cropAreaResizeDirection = component.MOUSE_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropArea).toEqual({
-      x1: 468,
-      y1: 420,
-      x2: 660,
-      y2: 440
-    });
-  });
-
-  it('should update mouse position to top right when user points' +
-  ' mouse to the top right of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_RIGHT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 360,
-      y: 420
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_TOP_LEFT);
-  });
-
-  it('should update mouse position to top left when user points' +
-  ' mouse to the top left of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(660);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 660,
-      y: 420
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_TOP_RIGHT);
-  });
-
-  it('should update mouse position to bottom left when user points' +
-  ' mouse to the bottom left of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 360,
-      y: 560
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_BOTTOM_LEFT);
-  });
-
-  it('should update mouse position to bottom right when user points' +
-  ' mouse to the bottom right of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(660);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 660,
-      y: 560
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_BOTTOM_RIGHT);
-  });
-
-  it('should update mouse position to top when user points' +
-  ' mouse to the top of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(390);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 390,
-      y: 420
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_TOP);
-  });
-
-  it('should update mouse position to left when user points' +
-  ' mouse to the left of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(500);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 360,
-      y: 500
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_LEFT);
-  });
-
-  it('should update mouse position to right when user points' +
-  ' mouse to the right of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(660);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(500);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 660,
-      y: 500
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_RIGHT);
-  });
-
-  it('should update mouse position to bottom when user points' +
-  ' mouse to the bottom of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(400);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 400,
-      y: 560
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_BOTTOM);
-  });
-
-  it('should update mouse position to inside when user points' +
-  ' mouse to the inside of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(400);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(500);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 400,
-      y: 500
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBe(component.MOUSE_INSIDE);
-  });
-
-  it('should update mouse position to null when user points' +
-  ' mouse to the outside of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(200);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(200);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.userIsDraggingCropArea = false;
-    component.userIsResizingCropArea = false;
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
-    let dummyMouseEvent = new MouseEvent('Mousemove');
-
-    expect(component.imageResizeRatio).toEqual(1);
-    expect(component.mouseLastKnownCoordinates).toEqual({ x: 0, y: 0 });
-    expect(component.mousePositionWithinCropArea).toBeNull();
-
-    component.onMouseMoveOnImageArea(dummyMouseEvent);
-
-    expect(component.mouseLastKnownCoordinates).toEqual({
-      x: 200,
-      y: 200
-    });
-    expect(component.mousePositionWithinCropArea)
-      .toBeNull();
-  });
-
-  it('should update values when user presses the mouse button down inside the' +
-  ' crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.mousePositionWithinCropArea = component.MOUSE_INSIDE;
-    let dummyMouseEvent = new MouseEvent('Mousedown');
-
-    expect(component.lastMouseDownEventCoordinates).toEqual({
-      x: 0,
-      y: 0
-    });
-    expect(component.cropAreaXWhenLastDown).toBeUndefined();
-    expect(component.cropAreaYWhenLastDown).toBeUndefined();
-    expect(component.userIsDraggingCropArea).toBe(false);
-
-    component.onMouseDownOnCropArea(dummyMouseEvent);
-
-    expect(component.lastMouseDownEventCoordinates).toEqual({
-      x: 468,
-      y: 216
-    });
-    expect(component.cropAreaXWhenLastDown).toBe(360);
-    expect(component.cropAreaYWhenLastDown).toBe(420);
-    expect(component.userIsDraggingCropArea).toBe(true);
-  });
-
-  it('should update values when user presses the mouse button down on the' +
-  ' bottom of the crop area', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(400);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    component.cropArea = {
-      x1: 360,
-      y1: 420,
-      x2: 660,
-      y2: 560
-    };
-    component.mousePositionWithinCropArea = component.MOUSE_BOTTOM;
-    let dummyMouseEvent = new MouseEvent('Mousedown');
-
-    expect(component.lastMouseDownEventCoordinates).toEqual({
-      x: 0,
-      y: 0
-    });
-    expect(component.cropAreaResizeDirection).toBeNull();
-    expect(component.userIsResizingCropArea).toBe(false);
-
-    component.onMouseDownOnCropArea(dummyMouseEvent);
-
-    expect(component.lastMouseDownEventCoordinates).toEqual({
-      x: 400,
-      y: 560
-    });
-    expect(component.cropAreaResizeDirection).toBe(component.MOUSE_BOTTOM);
-    expect(component.userIsResizingCropArea).toBe(true);
-  });
-
-  it('should set dragging and resizing to false when user\'s mouse is over' +
-  ' the crop area', () =>{
-    let dummyMouseEvent = new MouseEvent('Mouseover');
-    spyOn(MouseEvent.prototype, 'preventDefault');
-
-    component.userIsDraggingCropArea = true;
-    component.userIsResizingCropArea = true;
-
-    component.onMouseUpOnCropArea(dummyMouseEvent);
-
-    expect(dummyMouseEvent.preventDefault).toHaveBeenCalled();
-    expect(component.userIsDraggingCropArea).toBe(false);
-    expect(component.userIsResizingCropArea).toBe(false);
-  });
-
-  it('should get dynamic styles for the main container when called', () => {
-    expect(component.getMainContainerDynamicStyles()).toBe('width: 490px');
-  });
-
-  it('should show border for the image container when user has not' +
-  ' uploaded a file', () => {
-    component.data.mode = component.MODE_EMPTY;
-
-    expect(component.getImageContainerDynamicStyles())
-      .toBe('border: 1px dotted #888');
-  });
-
-  it('should not show border for the image container when user has' +
-  ' uploaded a file', () => {
-    // Pre-check.
-    expect(component.data.mode).toBe(component.MODE_UPLOADED);
-
-    expect(component.getImageContainerDynamicStyles())
-      .toBe('border: none');
-  });
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the top left of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 468,
+        y1: 216,
+        x2: 660,
+        y2: 440,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the top of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 360,
+        y1: 216,
+        x2: 660,
+        y2: 440,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the top right of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_RIGHT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 360,
+        y1: 216,
+        x2: 468,
+        y2: 440,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the right of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_RIGHT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 360,
+        y1: 420,
+        x2: 468,
+        y2: 440,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the bottom right of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_BOTTOM_RIGHT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 360,
+        y1: 420,
+        x2: 468,
+        y2: 460,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the bottom of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_BOTTOM;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 460,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the bottom left of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_BOTTOM_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 468,
+        y1: 420,
+        x2: 660,
+        y2: 460,
+      });
+    }
+  );
+
+  it(
+    'should update crop area while user is resizing the crop area towards' +
+      ' the left of the image',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = true;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropArea).toEqual({
+        x1: 468,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      });
+    }
+  );
+
+  it(
+    'should update mouse position to top right when user points' +
+      ' mouse to the top right of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_RIGHT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 360,
+        y: 420,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(
+        component.MOUSE_TOP_LEFT
+      );
+    }
+  );
+
+  it(
+    'should update mouse position to top left when user points' +
+      ' mouse to the top left of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(660);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 660,
+        y: 420,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(
+        component.MOUSE_TOP_RIGHT
+      );
+    }
+  );
+
+  it(
+    'should update mouse position to bottom left when user points' +
+      ' mouse to the bottom left of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 360,
+        y: 560,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(
+        component.MOUSE_BOTTOM_LEFT
+      );
+    }
+  );
+
+  it(
+    'should update mouse position to bottom right when user points' +
+      ' mouse to the bottom right of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(660);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 660,
+        y: 560,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(
+        component.MOUSE_BOTTOM_RIGHT
+      );
+    }
+  );
+
+  it(
+    'should update mouse position to top when user points' +
+      ' mouse to the top of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(390);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 390,
+        y: 420,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(component.MOUSE_TOP);
+    }
+  );
+
+  it(
+    'should update mouse position to left when user points' +
+      ' mouse to the left of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(500);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 360,
+        y: 500,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(component.MOUSE_LEFT);
+    }
+  );
+
+  it(
+    'should update mouse position to right when user points' +
+      ' mouse to the right of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(660);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(500);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 660,
+        y: 500,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(component.MOUSE_RIGHT);
+    }
+  );
+
+  it(
+    'should update mouse position to bottom when user points' +
+      ' mouse to the bottom of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(400);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 400,
+        y: 560,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(
+        component.MOUSE_BOTTOM
+      );
+    }
+  );
+
+  it(
+    'should update mouse position to inside when user points' +
+      ' mouse to the inside of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(400);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(500);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 400,
+        y: 500,
+      });
+      expect(component.mousePositionWithinCropArea).toBe(
+        component.MOUSE_INSIDE
+      );
+    }
+  );
+
+  it(
+    'should update mouse position to null when user points' +
+      ' mouse to the outside of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(200);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(200);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.userIsDraggingCropArea = false;
+      component.userIsResizingCropArea = false;
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.cropAreaResizeDirection = component.MOUSE_TOP_LEFT;
+      let dummyMouseEvent = new MouseEvent('Mousemove');
+
+      expect(component.imageResizeRatio).toEqual(1);
+      expect(component.mouseLastKnownCoordinates).toEqual({x: 0, y: 0});
+      expect(component.mousePositionWithinCropArea).toBeNull();
+
+      component.onMouseMoveOnImageArea(dummyMouseEvent);
+
+      expect(component.mouseLastKnownCoordinates).toEqual({
+        x: 200,
+        y: 200,
+      });
+      expect(component.mousePositionWithinCropArea).toBeNull();
+    }
+  );
+
+  it(
+    'should update values when user presses the mouse button down inside the' +
+      ' crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(468);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(216);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.mousePositionWithinCropArea = component.MOUSE_INSIDE;
+      let dummyMouseEvent = new MouseEvent('Mousedown');
+
+      expect(component.lastMouseDownEventCoordinates).toEqual({
+        x: 0,
+        y: 0,
+      });
+      expect(component.cropAreaXWhenLastDown).toBe(0);
+      expect(component.cropAreaYWhenLastDown).toBe(0);
+      expect(component.userIsDraggingCropArea).toBe(false);
+
+      component.onMouseDownOnCropArea(dummyMouseEvent);
+
+      expect(component.lastMouseDownEventCoordinates).toEqual({
+        x: 468,
+        y: 216,
+      });
+      expect(component.cropAreaXWhenLastDown).toBe(360);
+      expect(component.cropAreaYWhenLastDown).toBe(420);
+      expect(component.userIsDraggingCropArea).toBe(true);
+    }
+  );
+
+  it(
+    'should update values when user presses the mouse button down on the' +
+      ' bottom of the crop area',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(400);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(560);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 560,
+      };
+      component.mousePositionWithinCropArea = component.MOUSE_BOTTOM;
+      let dummyMouseEvent = new MouseEvent('Mousedown');
+
+      expect(component.lastMouseDownEventCoordinates).toEqual({
+        x: 0,
+        y: 0,
+      });
+      expect(component.cropAreaResizeDirection).toBeNull();
+      expect(component.userIsResizingCropArea).toBe(false);
+
+      component.onMouseDownOnCropArea(dummyMouseEvent);
+
+      expect(component.lastMouseDownEventCoordinates).toEqual({
+        x: 400,
+        y: 560,
+      });
+      expect(component.cropAreaResizeDirection).toBe(component.MOUSE_BOTTOM);
+      expect(component.userIsResizingCropArea).toBe(true);
+    }
+  );
+
+  it(
+    "should set dragging and resizing to false when user's mouse is over" +
+      ' the crop area',
+    () => {
+      let dummyMouseEvent = new MouseEvent('Mouseover');
+
+      component.userIsDraggingCropArea = true;
+      component.userIsResizingCropArea = true;
+
+      component.onMouseUpOnCropArea(dummyMouseEvent);
+
+      expect(component.userIsDraggingCropArea).toBe(false);
+      expect(component.userIsResizingCropArea).toBe(false);
+    }
+  );
+
+  it(
+    'should show border for the image container when user has not' +
+      ' uploaded a file',
+    () => {
+      component.data.mode = component.MODE_EMPTY;
+
+      expect(component.getImageContainerDynamicStyles()).toBe(
+        'border: 1px dotted #888; width: 100%'
+      );
+    }
+  );
+
+  it(
+    'should not show border for the image container when user has' +
+      ' uploaded a file',
+    () => {
+      // Pre-check.
+      expect(component.data.mode).toBe(component.MODE_UPLOADED);
+
+      expect(component.getImageContainerDynamicStyles()).toBe(
+        'border: none; width: 490px'
+      );
+    }
+  );
 
   it('should not show tool bar when the user is cropping', () => {
     component.cropArea = {
       x1: 200,
       y1: 250,
       x2: 400,
-      y2: 460
+      y2: 460,
     };
 
     expect(component.getToolbarDynamicStyles()).toBe('visibility: hidden');
@@ -1547,58 +1641,36 @@ describe('ImageEditor', () => {
       x1: 0,
       y1: 0,
       x2: 968,
-      y2: 1707
+      y2: 1707,
     };
 
     expect(component.getToolbarDynamicStyles()).toBe('visibility: visible');
   });
 
-  it('should get dynamic styles for the crop button when user is' +
-  ' cropping', () => {
-    component.cropArea = {
-      x1: 200,
-      y1: 250,
-      x2: 400,
-      y2: 460
-    };
-
-    expect(component.getCropButtonBarDynamicStyles())
-      .toBe('left: 400px;top: 250px;');
-  });
-
-  it('should get crop are dynamic style when user is cropping the image',
+  it(
+    'should get dynamic styles for the crop button when user is' + ' cropping',
     () => {
       component.cropArea = {
-        x1: 360,
-        y1: 420,
-        x2: 660,
-        y2: 440
+        x1: 200,
+        y1: 250,
+        x2: 400,
+        y2: 460,
       };
-      component.mousePositionWithinCropArea = component.MOUSE_TOP_LEFT;
 
-      // Pre-check.
-      expect(component.imageResizeRatio).toBe(1);
-
-      var style = component.getCropAreaDynamicStyles();
-
-      expect(style).toBe(
-        'left: 360px; top: 420px; width: 300px; ' +
-        'height: 20px; cursor: nwse-resize; background: url(' +
-        component.data.metadata.uploadedImageData +
-        ') no-repeat; background-position: -363px -423px;' +
-        ' background-size: 490px 864px'
+      expect(component.getCropButtonBarDynamicStyles()).toBe(
+        'left: 400px;top: 250px;'
       );
-    });
+    }
+  );
 
-  it('should get default type cursor when user\'s mouse is outside the crop' +
-  ' area', () => {
+  it('should get crop are dynamic style when user is cropping the image', () => {
     component.cropArea = {
       x1: 360,
       y1: 420,
       x2: 660,
-      y2: 440
+      y2: 440,
     };
-    component.mousePositionWithinCropArea = null;
+    component.mousePositionWithinCropArea = component.MOUSE_TOP_LEFT;
 
     // Pre-check.
     expect(component.imageResizeRatio).toBe(1);
@@ -1607,72 +1679,139 @@ describe('ImageEditor', () => {
 
     expect(style).toBe(
       'left: 360px; top: 420px; width: 300px; ' +
-        'height: 20px; cursor: default; background: url(' +
+        'height: 20px; cursor: nwse-resize; background: url(' +
         component.data.metadata.uploadedImageData +
         ') no-repeat; background-position: -363px -423px;' +
         ' background-size: 490px 864px'
     );
   });
 
+  it(
+    "should get default type cursor when user's mouse is outside the crop" +
+      ' area',
+    () => {
+      component.cropArea = {
+        x1: 360,
+        y1: 420,
+        x2: 660,
+        y2: 440,
+      };
+      component.mousePositionWithinCropArea = null;
+
+      // Pre-check.
+      expect(component.imageResizeRatio).toBe(1);
+
+      var style = component.getCropAreaDynamicStyles();
+
+      expect(style).toBe(
+        'left: 360px; top: 420px; width: 300px; ' +
+          'height: 20px; cursor: default; background: url(' +
+          component.data.metadata.uploadedImageData +
+          ') no-repeat; background-position: -363px -423px;' +
+          ' background-size: 490px 864px'
+      );
+    }
+  );
+
   it('should return uploaded image dynamic style when called', () => {
-    expect(component.getUploadedImageDynamicStyles())
-      .toBe('width: 490px; height: 864px;');
+    expect(component.getUploadedImageDynamicStyles()).toBe(
+      'width: 490px; height: 864px;'
+    );
   });
 
-  it('should upload file when the user clicks \’Upload Image\’ image', () => {
+  it('should upload file when the user clicks ’Upload Image’ image', () => {
     spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
-          width: 0,
-          height: 0,
-          getContext: (txt) => {
-            return {
-              drawImage: (txt, x, y) => {
-                return;
-              },
-              getImageData: (x, y, width, height) => {
-                return 'data';
-              },
-              putImageData: (data, x, y) => {
-                return;
-              }
-            };
-          },
-          toDataURL: (str, x) => {
-            return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
+      jasmine.createSpy('createElement').and.returnValue({
+        width: 0,
+        height: 0,
+        getContext: (txt: string) => {
+          return {
+            drawImage: (txt: CanvasImageSource, x: number, y: number) => {
+              return;
+            },
+            getImageData: (
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            ) => {
+              return new ImageData(1, 1);
+            },
+            putImageData: (data: ImageData, x: number, y: number) => {
+              return;
+            },
+          };
+        },
+        toDataURL: (str: string, x: number) => {
+          return component.data.metadata.uploadedImageData as string;
+        },
+      })
     );
     let dataSvg = component.data.metadata;
-    component.data = { mode: component.MODE_EMPTY, metadata: {}, crop: true };
+    const uploadedFile = dataSvg.uploadedFile as File;
+    const uploadedImageData = dataSvg.uploadedImageData as string;
+    component.data = {mode: component.MODE_EMPTY, metadata: {}, crop: true};
     spyOn(svgSanitizerService, 'getTrustedSvgResourceUrl').and.returnValue(
-      dataSvg.uploadedImageData);
+      uploadedImageData
+    );
+    spyOn(
+      svgSanitizerService,
+      'getInvalidSvgTagsAndAttrsFromDataUri'
+    ).and.returnValue({tags: [], attrs: []});
+    spyOn(
+      svgSanitizerService,
+      'removeAllInvalidTagsAndAttributes'
+    ).and.returnValue(uploadedImageData.toString());
 
-    component.onFileChanged(dataSvg.uploadedFile);
+    component.onFileChanged(uploadedFile);
 
     expect(component.data).toEqual({
       mode: 2,
       metadata: {
-        uploadedFile: dataSvg.uploadedFile,
-        uploadedImageData: dataSvg.uploadedImageData,
+        uploadedFile: uploadedFile,
+        uploadedImageData: uploadedImageData,
         originalWidth: 300,
-        originalHeight: 150
+        originalHeight: 150,
       },
-      crop: false
+      crop: false,
     });
   });
 
-  it('should crop svg when user clicks the \'crop\' button', () => {
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func({image: obj.images});
+  it('should show inline warning if uploaded image cannot be read', () => {
+    component.data = {mode: component.MODE_EMPTY, metadata: {}, crop: true};
+
+    const mockImageObjectWithError = document.createElement('img');
+    Object.defineProperty(mockImageObjectWithError, 'src', {
+      set: () => {
+        mockImageObjectWithError.dispatchEvent(new Event('error'));
+        if (mockImageObjectWithError.onerror) {
+          mockImageObjectWithError.onerror(new Event('error'));
+        }
+      },
     });
+    windowImageSpy.and.returnValue(mockImageObjectWithError);
+
+    const file = new File(['invalid svg'], 'invalid.svg', {
+      type: 'image/svg+xml',
+    });
+    component.onFileChanged(file);
+
+    expect(component.invalidImageWarningIsShown).toBe(true);
+    expect(component.data.mode).toBe(component.MODE_EMPTY);
+  });
+
+  it("should crop svg when user clicks the 'crop' button", () => {
+    spyOn(gifshot, 'createGIF').and.callFake(
+      (obj: object, func: (response: object) => void) => {
+        func({image: obj.images});
+      }
+    );
     spyOn(component, 'updateDimensions').and.callThrough();
     component.cropArea = {
       x1: 0,
       y1: 0,
       x2: 140,
-      y2: 120
+      y2: 120,
     };
 
     expect(component.data.metadata.originalWidth).toBe(968);
@@ -1683,45 +1822,52 @@ describe('ImageEditor', () => {
     expect(component.updateDimensions).toHaveBeenCalledWith(
       jasmine.any(String),
       component.data.metadata.uploadedImageData as string,
-      276.57142857142856, 237.0612244897959);
+      276.57142857142856,
+      237.0612244897959
+    );
     expect(component.data.metadata.originalWidth).toBe(276.57142857142856);
     expect(component.data.metadata.originalHeight).toBe(237.0612244897959);
   });
 
-  it('should crop png when user clicks the \'crop\' button', () => {
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func({image: obj.images});
-    });
+  it("should crop png when user clicks the 'crop' button", () => {
+    spyOn(gifshot, 'createGIF').and.callFake(
+      (obj: object, func: (response: object) => void) => {
+        func({image: obj.images});
+      }
+    );
     spyOn(component, 'updateDimensions').and.callThrough();
     component.cropArea = {
       x1: 0,
       y1: 0,
       x2: 140,
-      y2: 120
+      y2: 120,
     };
     spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
-          width: 0,
-          height: 0,
-          getContext: (txt) => {
-            return {
-              drawImage: (txt, x, y) => {
-                return;
-              },
-              getImageData: (x, y, width, height) => {
-                return 'data';
-              },
-              putImageData: (data, x, y) => {
-                return;
-              }
-            };
-          },
-          toDataURL: (str, x) => {
-            return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
+      jasmine.createSpy('createElement').and.returnValue({
+        width: 0,
+        height: 0,
+        getContext: (txt: string) => {
+          return {
+            drawImage: (txt: string, x: number, y: number) => {
+              return;
+            },
+            getImageData: (
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            ) => {
+              return 'data';
+            },
+            putImageData: (data: string, x: number, y: number) => {
+              return;
+            },
+          };
+        },
+        toDataURL: (str: string, x: number) => {
+          return component.data.metadata.uploadedImageData;
+        },
+      })
     );
     // This throws an error "Type '{ lastModified: number; name:
     // string; size: number; type: string; }' is missing the following
@@ -1739,59 +1885,69 @@ describe('ImageEditor', () => {
     expect(component.updateDimensions).toHaveBeenCalledWith(
       jasmine.any(String),
       component.data.metadata.uploadedImageData,
-      140, 120);
+      140,
+      120
+    );
     expect(component.data.metadata.originalWidth).toBe(140);
     expect(component.data.metadata.originalHeight).toBe(120);
   });
 
-  it('should crop gif when user clicks the \'crop\' button', (done) => {
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func({image: dataGif.uploadedImageData});
-    });
+  it("should crop gif when user clicks the 'crop' button", done => {
+    spyOn(gifshot, 'createGIF').and.callFake(
+      (obj: object, func: (response: object) => void) => {
+        func({image: dataGif.uploadedImageData});
+      }
+    );
     component.cropArea = {
       x1: 0,
       y1: 0,
       x2: 140,
-      y2: 120
+      y2: 120,
     };
     spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
-          width: 0,
-          height: 0,
-          getContext: (txt) => {
-            return {
-              drawImage: (txt, x, y) => {
-                return;
-              },
-              getImageData: (x, y, width, height) => {
-                return 'data';
-              },
-              putImageData: (data, x, y) => {
-                return;
-              }
-            };
-          },
-          toDataURL: (str, x) => {
-            return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
+      jasmine.createSpy('createElement').and.returnValue({
+        width: 0,
+        height: 0,
+        getContext: (txt: string) => {
+          return {
+            drawImage: (txt: string, x: number, y: number) => {
+              return;
+            },
+            getImageData: (
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            ) => {
+              return 'data';
+            },
+            putImageData: (data: string, x: number, y: number) => {
+              return;
+            },
+          };
+        },
+        toDataURL: (str: string, x: number) => {
+          return component.data.metadata.uploadedImageData;
+        },
+      })
     );
-    spyOn(window, 'GifFrames').and.resolveTo([{
-      getImage: () => {
-        return {
-          toDataURL: () => {
-            return {
-              image: dataGif.uploadedImageData
-            };
-          }
-        };
+
+    // Replace gifFrames with a spy that returns a resolved promise.
+    spyOn(gifFrames, 'getFrames').and.resolveTo([
+      {
+        getImage: () => {
+          return {
+            toDataURL: () => {
+              return dataGif.uploadedImageData;
+            },
+          };
+        },
+        frameInfo: {
+          disposal: 1,
+        },
       },
-      frameInfo: {
-        disposal: 1
-      },
-    }] as unknown as never);
+    ] as never);
+
     // This throws an error "Type '{ lastModified: number; name:
     // string; size: number; type: string; }' is missing the following
     // properties from type 'File': arrayBuffer, slice, stream, text"
@@ -1812,44 +1968,389 @@ describe('ImageEditor', () => {
     }, 150);
   });
 
-  it('should cancel cropping image when user click the \'cancel\' button',
-    () => {
-      component.cropArea = {
-        x1: 0,
-        y1: 0,
-        x2: 140,
-        y2: 120
-      };
+  it("should cancel cropping image when user click the 'cancel' button", () => {
+    component.cropArea = {
+      x1: 0,
+      y1: 0,
+      x2: 140,
+      y2: 120,
+    };
 
-      component.cancelCropImage();
+    component.cancelCropImage();
 
-      expect(component.cropArea).toEqual({
-        x1: 0,
-        y1: 0,
-        x2: 490,
-        y2: 864
-      });
+    expect(component.cropArea).toEqual({
+      x1: 0,
+      y1: 0,
+      x2: 490,
+      y2: 864,
     });
+  });
 
-  it('should show help text when image uploaded by user is too big for the' +
-  ' card', () => {
-    // The help text should only be displayed if the width of the image is
-    // greater 490. Therefore the originalwidth is also tested below.
-    expect(component.data.metadata.originalWidth).toBe(968);
-    expect(component.getImageSizeHelp())
-      .toBe(
-        'This image has been automatically downsized to ensure ' +
-        'that it will fit in the card.'
+  it(
+    "should handle null resampled file for SVG in 'confirm crop'" + ' image',
+    () => {
+      spyOn(
+        imageUploadHelperService,
+        'convertImageDataToImageFile'
+      ).and.returnValue(null);
+      spyOn(alertsService, 'addWarning');
+
+      component.confirmCropImage();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Could not get resampled file.'
       );
-  });
+    }
+  );
 
-  it('should not show help text when image uploaded by user is not' +
-  ' too big for the card', () => {
-    // The help text should only be displayed if the width of the image is
-    // greater 490. Therefore the originalwidth is also tested below.
-    component.data.metadata.originalWidth = 400;
-    expect(component.getImageSizeHelp()).toBeNull();
-  });
+  it(
+    "should handle null resampled file for PNG in 'confirm crop'" + ' image',
+    () => {
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
+          width: 0,
+          height: 0,
+          getContext: (txt: string) => {
+            return {
+              drawImage: (txt: CanvasImageSource, x: number, y: number) => {
+                return;
+              },
+              getImageData: (
+                x: number,
+                y: number,
+                width: number,
+                height: number
+              ) => {
+                return 'data';
+              },
+              putImageData: (data: ImageData, x: number, y: number) => {
+                return;
+              },
+            };
+          },
+          toDataURL: (str: string, x: number) => {
+            return component.data.metadata.uploadedImageData;
+          },
+        })
+      );
+      // This throws "Argument of type '{ width: number; height: number;
+      // data: string; size: number; type: string; }' is missing the
+      // following properties from type 'File': arrayBuffer, slice, stream,
+      // text".
+      // We need to suppress this error because we only need the values
+      // given below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
+      spyOn(
+        imageUploadHelperService,
+        'convertImageDataToImageFile'
+      ).and.returnValue(null);
+      spyOn(alertsService, 'addWarning');
+
+      component.confirmCropImage();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Could not get resampled file.'
+      );
+    }
+  );
+
+  it('should not crop for GIF image when resample fails', fakeAsync(() => {
+    spyOn(gifshot, 'createGIF').and.callFake(
+      (obj: object, func: (response: object) => void) => {
+        func({image: dataGif.uploadedImageData});
+      }
+    );
+    spyOn(gifFrames, 'getFrames').and.resolveTo([
+      {
+        getImage: () => {
+          return {
+            toDataURL: () => {
+              return dataGif.uploadedImageData;
+            },
+            getContext: () => {
+              return {
+                drawImage: (txt: CanvasImageSource, x: number, y: number) => {
+                  return;
+                },
+              };
+            },
+            width: 100,
+            height: 100,
+          };
+        },
+        frameInfo: {
+          disposal: 1,
+        },
+      },
+    ] as never);
+    // This throws "Argument of type '{ width: number; height: number;
+    // data: string; size: number; type: string; }' is missing the
+    // following properties from type 'File': arrayBuffer, slice, stream,
+    // text".
+    // We need to suppress this error because we only need the values
+    // given below.
+    // @ts-expect-error
+    component.data.metadata = dataGif;
+    component.cropArea = {
+      x1: 0,
+      y1: 0,
+      x2: 140,
+      y2: 120,
+    };
+    spyOn(
+      imageUploadHelperService,
+      'convertImageDataToImageFile'
+    ).and.returnValue(null);
+    spyOn(alertsService, 'addWarning');
+
+    component.confirmCropImage();
+    tick();
+
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
+      'Could not get resampled file.'
+    );
+  }));
+
+  it(
+    'should throw error when canvas context is null in' +
+      ' getCroppedImageData',
+    () => {
+      let contextCallCount = 0;
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
+          width: 0,
+          height: 0,
+          getContext: (txt: string) => {
+            contextCallCount++;
+            if (contextCallCount === 1) {
+              return null;
+            }
+            return {
+              drawImage: (txt: CanvasImageSource, x: number, y: number) => {
+                return;
+              },
+              getImageData: (
+                x: number,
+                y: number,
+                width: number,
+                height: number
+              ) => {
+                return new ImageData(1, 1);
+              },
+              putImageData: (data: ImageData, x: number, y: number) => {
+                return;
+              },
+            };
+          },
+          toDataURL: (str: string, x: number) => {
+            return 'data:image/png;base64,abc';
+          },
+        })
+      );
+      // This throws "Argument of type '{ width: number; height: number;
+      // data: string; size: number; type: string; }' is missing the
+      // following properties from type 'File': arrayBuffer, slice, stream,
+      // text".
+      // We need to suppress this error because we only need the values
+      // given below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
+
+      expect(() => component.confirmCropImage()).toThrowError(
+        'Could not get canvas context.'
+      );
+    }
+  );
+
+  it(
+    'should throw error when crop canvas context is null in' +
+      ' getCroppedImageData',
+    () => {
+      let contextCallCount = 0;
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
+          width: 0,
+          height: 0,
+          getContext: (txt: string) => {
+            contextCallCount++;
+            if (contextCallCount === 2) {
+              return null;
+            }
+            return {
+              drawImage: (txt: CanvasImageSource, x: number, y: number) => {
+                return;
+              },
+              getImageData: (
+                x: number,
+                y: number,
+                width: number,
+                height: number
+              ) => {
+                return new ImageData(1, 1);
+              },
+              putImageData: (data: ImageData, x: number, y: number) => {
+                return;
+              },
+            };
+          },
+          toDataURL: (str: string, x: number) => {
+            return 'data:image/png;base64,abc';
+          },
+        })
+      );
+      // This throws "Argument of type '{ width: number; height: number;
+      // data: string; size: number; type: string; }' is missing the
+      // following properties from type 'File': arrayBuffer, slice, stream,
+      // text".
+      // We need to suppress this error because we only need the values
+      // given below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
+
+      expect(() => component.confirmCropImage()).toThrowError(
+        'Could not get canvas context.'
+      );
+    }
+  );
+
+  it(
+    'should throw error when crop canvas context is null in' +
+      ' getCroppedImageData',
+    async () => {
+      spyOn(document, 'createElement').and.returnValue({
+        width: 0,
+        height: 0,
+        getContext: (txt: string) => {
+          return null;
+        },
+        toDataURL: (str: string, x: number) => {
+          return 'data:image/png;base64,abc';
+        },
+      });
+
+      // This throws "Property 'getCroppedGIFDataAsync' is private". We
+      // need to suppress this error because we are testing the private
+      // method.
+      // @ts-expect-error
+      let promise = component.getCroppedGIFDataAsync(
+        0,
+        0,
+        100,
+        100,
+        'data:image/png;base64,abc'
+      );
+
+      await expectAsync(promise).toBeRejectedWithError(
+        'Could not get canvas context.'
+      );
+    }
+  );
+
+  it(
+    'should reject when crop canvas context is null in' +
+      ' getCroppedGIFDataAsync',
+    async () => {
+      let callCount = 0;
+      spyOn(document, 'createElement').and.callFake((tagName: string) => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            width: 0,
+            height: 0,
+            getContext: () => ({
+              drawImage: () => {},
+              getImageData: () => ({
+                data: new Uint8ClampedArray(40000),
+                width: 100,
+                height: 100,
+              }),
+            }),
+            toDataURL: () => 'data:image/png;base64,abc',
+          } as unknown as HTMLCanvasElement;
+        }
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => null,
+          toDataURL: () => 'data:image/png;base64,abc',
+        } as unknown as HTMLCanvasElement;
+      });
+
+      // This throws "Property 'getCroppedGIFDataAsync' is private". We
+      // need to suppress this error because we are testing the private
+      // method.
+      // @ts-expect-error
+      let promise = component.getCroppedGIFDataAsync(
+        0,
+        0,
+        100,
+        100,
+        'data:image/png;base64,abc'
+      );
+
+      await expectAsync(promise).toBeRejectedWithError(
+        'Could not get canvas context.'
+      );
+    }
+  );
+
+  it(
+    'should reject when image fails to load in' + ' getCroppedGIFDataAsync',
+    async () => {
+      const mockImageElement = document.createElement('img');
+      Object.defineProperty(mockImageElement, 'src', {
+        set: () => {
+          mockImageElement.dispatchEvent(new Event('error'));
+          if (mockImageElement.onerror) {
+            mockImageElement.onerror(new Event('error'));
+          }
+        },
+      });
+      windowImageSpy.and.returnValue(mockImageElement);
+
+      // This throws "Property 'getCroppedGIFDataAsync' is private". We
+      // need to suppress this error because we are testing the private
+      // method.
+      // @ts-expect-error
+      let promise = component.getCroppedGIFDataAsync(
+        0,
+        0,
+        100,
+        100,
+        'data:image/png;base64,abc'
+      );
+
+      await expectAsync(promise).toBeRejectedWithError(
+        'Image could not be loaded.'
+      );
+    }
+  );
+
+  it(
+    'should show help text when image uploaded by user is too big for the' +
+      ' card',
+    () => {
+      // The help text should only be displayed if the width of the image is
+      // greater 490. Therefore the originalwidth is also tested below.
+      expect(component.data.metadata.originalWidth).toBe(968);
+      expect(component.getImageSizeHelp()).toBe(
+        'This image has been automatically downsized to ensure ' +
+          'that it will fit in the card.'
+      );
+    }
+  );
+
+  it(
+    'should not show help text when image uploaded by user is not' +
+      ' too big for the card',
+    () => {
+      // The help text should only be displayed if the width of the image is
+      // greater 490. Therefore the originalwidth is also tested below.
+      component.data.metadata.originalWidth = 400;
+      expect(component.getImageSizeHelp()).toBeNull();
+    }
+  );
 
   it('should return true if the user is allowed to crop the image', () => {
     component.data.crop = true;
@@ -1876,11 +2377,13 @@ describe('ImageEditor', () => {
     expect(component.isImageUploaded()).toBe(true);
   });
 
-  it('should return false if the user has not uploaded or' +
-  ' saved the image', () => {
-    component.data.mode = component.MODE_EMPTY;
-    expect(component.isImageUploaded()).toBe(false);
-  });
+  it(
+    'should return false if the user has not uploaded or' + ' saved the image',
+    () => {
+      component.data.mode = component.MODE_EMPTY;
+      expect(component.isImageUploaded()).toBe(false);
+    }
+  );
 
   it('should return true if the user has saved image', () => {
     component.data.mode = component.MODE_SAVED;
@@ -1896,60 +2399,66 @@ describe('ImageEditor', () => {
     expect(component.getCurrentResizePercent()).toBe(100);
   });
 
-  it('should decrease iamge size when user decreases the image size' +
-  ' percentage by clicking the \'-\' button', (done) => {
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func(obj);
-    });
-    spyOn(component, 'validateProcessedFilesize').and.stub();
-    // This throws an error "Type '{ lastModified: number; name:
-    // string; size: number; type: string; }' is missing the following
-    // properties from type 'File': arrayBuffer, slice, stream, text"
-    // We need to suppress this error because we only need the values given
-    // below.
-    // @ts-expect-error
-    component.data.metadata = dataGif;
+  it(
+    'should decrease iamge size when user decreases the image size' +
+      " percentage by clicking the '-' button",
+    done => {
+      spyOn(gifshot, 'createGIF').and.callFake(
+        (obj: object, func: (response: object) => void) => {
+          func(obj);
+        }
+      );
+      spyOn(component, 'validateProcessedFilesize').and.stub();
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      // @ts-expect-error
+      component.data.metadata = dataGif;
 
-    component.decreaseResizePercent(20);
+      component.decreaseResizePercent(20);
 
-    setTimeout(() => {
-      expect(component.imageResizeRatio).toBe(0.8);
-      expect(component.validateProcessedFilesize).toHaveBeenCalled();
-      done();
-    }, 150);
-  });
+      setTimeout(() => {
+        expect(component.imageResizeRatio).toBe(0.8);
+        expect(component.validateProcessedFilesize).toHaveBeenCalled();
+        done();
+      }, 150);
+    }
+  );
 
-  it('should increase image size when user increases the image size' +
-  ' percentage by clicking the \'+\' button', (done) => {
-    spyOn(component, 'validateProcessedFilesize').and.stub();
-    spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
+  it(
+    'should increase image size when user increases the image size' +
+      " percentage by clicking the '+' button",
+    done => {
+      spyOn(component, 'validateProcessedFilesize').and.stub();
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
           width: 0,
           height: 0,
-          getContext: (txt) => {
+          getContext: (txt: string) => {
             return {
-              drawImage: (txt, x, y) => {
+              drawImage: (txt: string, x: number, y: number) => {
                 return;
-              }
+              },
             };
           },
-          toDataURL: (str, x) => {
+          toDataURL: (str: string, x: number) => {
             return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
-    );
-    component.imageResizeRatio = 0.2;
+          },
+        })
+      );
+      component.imageResizeRatio = 0.2;
 
-    component.increaseResizePercent(10);
+      component.increaseResizePercent(10);
 
-    setTimeout(() => {
-      expect(component.imageResizeRatio).toBeCloseTo(0.3);
-      expect(component.validateProcessedFilesize).toHaveBeenCalled();
-      done();
-    }, 150);
-  });
+      setTimeout(() => {
+        expect(component.imageResizeRatio).toBeCloseTo(0.3);
+        expect(component.validateProcessedFilesize).toHaveBeenCalled();
+        done();
+      }, 150);
+    }
+  );
 
   it('should calculate the Image dimensions when called', () => {
     expect(component.calculateTargetImageDimensions()).toEqual({
@@ -1961,17 +2470,10 @@ describe('ImageEditor', () => {
   it('should discard uploaded file when user clicks discard button', () => {
     component.processedImageIsTooLarge = true;
 
-    expect(component.data).toEqual({
-      mode: 2,
-      metadata: {
-        uploadedFile: {
-          lastModified: 1622307491398,
-          name: '2442125.svg',
-          size: 2599,
-          type: 'image/svg+xml'
-        },
-        uploadedImageData:
-        'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb2' +
+    expect(component.data.mode).toBe(2);
+    expect(component.data.metadata.uploadedFile).toEqual(jasmine.any(File));
+    expect(component.data.metadata.uploadedImageData).toBe(
+      'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb2' +
         '5lPSJubyI/Pgo8IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHID' +
         'IwMDEwOTA0Ly9FTiIKICJodHRwOi8vd3d3LnczLm9yZy9UUi8yMDAxL1JFQy1TVk' +
         'ctMjAwMTA5MDQvRFREL3N2ZzEwLmR0ZCI+CjxzdmcgdmVyc2lvbj0iMS4wIiB4bW' +
@@ -2025,14 +2527,15 @@ describe('ImageEditor', () => {
         'kzIDE3NSAwIDM1MiAtMzE5IDUyNiAtOTQ4IDU5IC0yMTcgNTMgLTIwMSA2NiAtMT' +
         'c5IDE4IDMzIDc4IDIyMCAxMDggMzM3CjExOCA0NjIgMTE2IDk1MiAtNSAxMzk1IC' +
         '0xMTUgNDE4IC0zMzkgODIxIC02MjAgMTExNCBsLTk3IDEwMSAtODY4IDAgLTg2Ny' +
-        'AwCi03NCAtNzd6Ii8+CjwvZz4KPC9zdmc+Cg==',
-        originalWidth: 968,
-        originalHeight: 1707,
-        savedImageFilename: 'saved_file_name.png',
-        savedImageUrl: 'assets/images'
-      },
-      crop: false
-    });
+        'AwCi03NCAtNzd6Ii8+CjwvZz4KPC9zdmc+Cg=='
+    );
+    expect(component.data.metadata.originalWidth).toBe(968);
+    expect(component.data.metadata.originalHeight).toBe(1707);
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'saved_file_name.png'
+    );
+    expect(component.data.metadata.savedImageUrl).toBe('assets/images');
+    expect(component.data.crop).toBe(false);
 
     component.discardUploadedFile();
 
@@ -2040,128 +2543,186 @@ describe('ImageEditor', () => {
     expect(component.data).toEqual({
       mode: component.MODE_EMPTY,
       metadata: {},
-      crop: true
+      crop: true,
     });
   });
 
-  it('should alert user with parsed error if it fails to post' +
-  ' image to server when user savesimage', fakeAsync(() => {
-    spyOn(alertsService, 'addWarning');
-    spyOn(csrfTokenService, 'getTokenAsync')
-      .and.resolveTo('sample-csrf-token');
-    spyOn(imagePreloaderService, 'getDimensionsOfImage')
-      .and.returnValue({width: 490, height: 327});
-    // @ts-ignore in order to ignore JQuery properties that should
-    // be declared.
-    spyOn($, 'ajax').and.callFake(() => {
-      let d = $.Deferred();
-      d.reject({
-        responseText: ')]}\',\n{"error": "Failed to upload exploration"}'
+  it(
+    'should alert user with parsed error if it fails to post' +
+      ' image to server when user savesimage',
+    fakeAsync(() => {
+      spyOn(alertsService, 'addWarning');
+      spyOn(imagePreloaderService, 'getDimensionsOfImage').and.returnValue({
+        width: 490,
+        height: 327,
       });
-      return d.promise();
-    });
 
-    let dimensions = {width: 490, height: 327};
+      let dimensions = {width: 490, height: 327};
 
-    let resampledFile = localConvertImageDataToImageFile(
-      component.data.metadata.uploadedImageData);
-
-    component.postImageToServer(
-      dimensions, resampledFile, 'gif');
-    tick();
-
-    expect(alertsService.addWarning)
-      .toHaveBeenCalledWith('Failed to upload exploration');
-  }));
-
-  it('should alert user with defualt error if it fails to post' +
-  ' image to server when user savesimage', fakeAsync(() => {
-    spyOn(alertsService, 'addWarning');
-    spyOn(csrfTokenService, 'getTokenAsync')
-      .and.resolveTo('sample-csrf-token');
-    spyOn(imagePreloaderService, 'getDimensionsOfImage')
-      .and.returnValue({width: 490, height: 327});
-    // @ts-ignore in order to ignore JQuery properties that should
-    // be declared.
-    spyOn($, 'ajax').and.callFake(() => {
-      let d = $.Deferred();
-      d.reject({
-        responseText: ')]}\',\n{"error": null}'
-      });
-      return d.promise();
-    });
-
-    let dimensions = {width: 490, height: 327};
-
-    let resampledFile = localConvertImageDataToImageFile(
-      component.data.metadata.uploadedImageData);
-
-    component.postImageToServer(
-      dimensions, resampledFile, 'gif');
-    tick();
-
-    expect(alertsService.addWarning)
-      .toHaveBeenCalledWith('Error communicating with server.');
-  }));
-
-  it('should save uploaded gif when user clicks \`Use Image\`' +
-  ' button', (done) => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func(obj);
-    });
-    spyOn(component, 'saveImage').and.callThrough();
-    spyOn(component, 'validateProcessedFilesize').and.stub();
-    spyOn(csrfTokenService, 'getTokenAsync').and.callFake(async() => {
-      return Promise.resolve('sample-csrf-token');
-    });
-    spyOn(contextService, 'getImageSaveDestination').and.returnValue(
-      AppConstants.IMAGE_SAVE_DESTINATION_SERVER);
-    // This throws an error "Type '{ lastModified: number; name:
-    // string; size: number; type: string; }' is missing the following
-    // properties from type 'File': arrayBuffer, slice, stream, text"
-    // We need to suppress this error because we only need the values given
-    // below.
-    // @ts-expect-error
-    component.data.metadata = dataGif;
-    // This throws "Argument of type '(options: any)' is not
-    // assignable to parameter of type 'jqXHR<any>'.". We need to suppress
-    // this error because we need to mock $.ajax to this function for
-    // testing purposes.
-    // @ts-expect-error
-    spyOn($, 'ajax').and.callFake((options: Promise) => {
-      let d = $.Deferred();
-      d.resolve(
-        options.dataFilter(
-          '12345{"filename":' +
-          ' "img_20210701_185457_qgrrul296o_height_200_width_260.gif"}'
-        )
+      let resampledFile = localConvertImageDataToImageFile(
+        component.data.metadata.uploadedImageData as string
       );
-      return d.promise();
-    });
 
-    component.saveUploadedFile();
+      component.postImageToServer(dimensions, resampledFile, 'gif');
+      tick(200);
 
-    setTimeout(() => {
+      let req = httpTestingController.expectOne(
+        '/createhandler/imageupload/question/2'
+      );
+      expect(req.request.method).toEqual('POST');
+      req.flush('Failed to upload image', {
+        status: 500,
+        statusText: 'Failed to upload image',
+      });
+
+      tick(100);
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Failed to upload image'
+      );
+
+      httpTestingController
+        .match(req => req.url.includes('/feature_flags_evaluation_handler'))
+        .forEach(req => req.flush({feature_flag_results: {}}));
+      httpTestingController.verify();
+    })
+  );
+
+  it(
+    'should alert user with default error if it fails to post' +
+      ' image to server when user savesimage',
+    fakeAsync(() => {
+      spyOn(alertsService, 'addWarning');
+      spyOn(imagePreloaderService, 'getDimensionsOfImage').and.returnValue({
+        width: 490,
+        height: 327,
+      });
+
+      let dimensions = {width: 490, height: 327};
+      let resampledFile = localConvertImageDataToImageFile(
+        component.data.metadata.uploadedImageData as string
+      );
+
+      component.postImageToServer(dimensions, resampledFile, 'gif');
+      tick(200);
+
+      let req = httpTestingController.expectOne(
+        '/createhandler/imageupload/question/2'
+      );
+      expect(req.request.method).toEqual('POST');
+      req.flush(null, {
+        status: 500,
+        statusText: 'Error',
+      });
+
+      flushMicrotasks();
+      tick(100);
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Error communicating with server.'
+      );
+      httpTestingController
+        .match(req => req.url.includes('/feature_flags_evaluation_handler'))
+        .forEach(req => req.flush({feature_flag_results: {}}));
+      httpTestingController.verify();
+    })
+  );
+
+  it(
+    'should alert user when server returns undefined in' + ' postImageToServer',
+    fakeAsync(() => {
+      spyOn(alertsService, 'addWarning');
+      // This throws "Property 'http' is private". We need to suppress
+      // this error because we are spying on the private http service.
+      // @ts-expect-error
+      spyOn(component.http, 'post').and.returnValue(of(undefined));
+
+      let dimensions = {width: 490, height: 327};
+      let resampledFile = localConvertImageDataToImageFile(
+        component.data.metadata.uploadedImageData as string
+      );
+
+      component.postImageToServer(dimensions, resampledFile, 'gif');
+      tick();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Error communicating with server.'
+      );
+    })
+  );
+
+  it(
+    'should save uploaded gif when user clicks `Use Image`' + ' button',
+    fakeAsync(() => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(gifshot, 'createGIF').and.callFake(
+        (obj: object, func: (response: object) => void) => {
+          func(obj);
+        }
+      );
+      spyOn(gifFrames, 'getFrames').and.resolveTo([
+        {
+          getImage: () => {
+            return {
+              toDataURL: () => {
+                return dataGif.uploadedImageData;
+              },
+            };
+          },
+          frameInfo: {
+            disposal: 1,
+          },
+        },
+      ] as never);
+
+      spyOn(component, 'saveImage').and.callThrough();
+      spyOn(component, 'validateProcessedFilesize').and.stub();
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_SERVER
+      );
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      // @ts-expect-error
+      component.data.metadata = dataGif;
+
+      component.saveUploadedFile();
+      tick(200);
+
+      let req = httpTestingController.expectOne(
+        '/createhandler/imageupload/question/2'
+      );
+      expect(req.request.method).toEqual('POST');
+      req.flush({
+        filename: 'img_20210701_185457_qgrrul296o_height_200_width_260.gif',
+      });
+      httpTestingController
+        .match(req => req.url.includes('/feature_flags_evaluation_handler'))
+        .forEach(req => req.flush({feature_flag_results: {}}));
+      httpTestingController.verify();
+
+      tick(100);
+
       expect(component.validateProcessedFilesize).toHaveBeenCalled();
       expect(component.saveImage).toHaveBeenCalled();
       expect(component.data.mode).toBe(component.MODE_SAVED);
-      done();
-    }, 150);
-  });
+    })
+  );
 
-  it('should not save uploaded gif when file size over 100 KB', (done) => {
+  it('should not save uploaded gif when file size over 100 KB', done => {
     spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
     spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
     spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
@@ -2169,17 +2730,19 @@ describe('ImageEditor', () => {
       offsetTop: 0,
       offsetParent: null,
       classList: {
-        contains: (text) => {
+        contains: (text: string) => {
           return false;
-        }
+        },
+      },
+    });
+    spyOn(gifshot, 'createGIF').and.callFake(
+      (obj: object, func: (response: object) => void) => {
+        func({
+          image: btoa('data:image/gif;base64,' + Array(102410).join('a')),
+          error: false,
+        });
       }
-    });
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func({
-        image: btoa('data:image/gif;base64,' + Array(102410).join('a')),
-        error: false
-      });
-    });
+    );
     spyOn(component, 'saveImage');
     spyOn(component, 'validateProcessedFilesize').and.callThrough();
     // This throws an error "Type '{ lastModified: number; name:
@@ -2201,146 +2764,208 @@ describe('ImageEditor', () => {
     }, 150);
   });
 
-  it('should alert user if resampled gif file is not obtained when the user' +
-  ' saves image', (done) => {
-    spyOn(alertsService, 'addWarning');
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    spyOn(gifshot, 'createGIF').and.callFake((obj, func) => {
-      func(obj);
-    });
-    spyOn(component, 'saveImage').and.callThrough();
-    spyOn(component, 'validateProcessedFilesize').and.stub();
-    spyOn(contextService, 'getImageSaveDestination').and.returnValue(
-      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE);
-    spyOn(csrfTokenService, 'getTokenAsync').and.callFake(async() => {
-      return Promise.resolve('sample-csrf-token');
-    });
-    // This throws an error "Type '{ lastModified: number; name:
-    // string; size: number; type: string; }' is missing the following
-    // properties from type 'File': arrayBuffer, slice, stream, text"
-    // We need to suppress this error because we only need the values given
-    // below.
-    // @ts-expect-error
-    component.data.metadata = dataGif;
-    // This throws "Argument of type '(options: any)' is not
-    // assignable to parameter of type 'jqXHR<any>'.". We need to suppress
-    // this error because we need to mock $.ajax to this function for
-    // testing purposes.
-    // @ts-expect-error
-    spyOn($, 'ajax').and.callFake((options: Promise) => {
-      let d = $.Deferred();
-      d.resolve(
-        options.dataFilter(
-          '12345{"filename":' +
-          ' "img_20210701_185457_qgrrul296o_height_200_width_260.gif"}'
-        )
+  it(
+    'should handle canvas context null when processing GIF frames' +
+      ' in processGIFImage',
+    fakeAsync(() => {
+      const frameData = [
+        {
+          getImage: () => {
+            return {
+              getContext: () => {
+                return null;
+              },
+              toDataURL: () => {
+                return 'data:image/png;base64,abc';
+              },
+              width: 100,
+              height: 100,
+            };
+          },
+          frameInfo: {
+            disposal: 2,
+          },
+        },
+      ];
+
+      let errorCaught: Error | null = null;
+      spyOn(gifFrames, 'getFrames').and.returnValue({
+        then: (callback: Function) => {
+          const result = Promise.resolve(callback(frameData));
+          result.catch((err: Error) => {
+            errorCaught = err;
+          });
+          return {
+            then: () => {},
+            catch: () => {},
+          };
+        },
+      });
+
+      spyOn(gifshot, 'createGIF').and.stub();
+
+      // This throws "Argument of type '{ width: number; height: number;
+      // data: string; size: number; type: string; }' is missing the
+      // following properties from type 'File': arrayBuffer, slice, stream,
+      // text".
+      // We need to suppress this error because we only need the values
+      // given below.
+      // @ts-expect-error
+      component.data.metadata = dataGif;
+      component.saveUploadedFile();
+      tick();
+
+      expect(errorCaught).not.toBeNull();
+      expect((errorCaught as Error).message).toBe(
+        'Could not get canvas context.'
       );
-      return d.promise();
-    });
-    spyOn(imageUploadHelperService, 'convertImageDataToImageFile')
-      .and.returnValue(null);
+    })
+  );
 
-    component.saveUploadedFile();
+  it(
+    'should alert user if resampled gif file is not obtained when the user' +
+      ' saves image',
+    fakeAsync(() => {
+      spyOn(alertsService, 'addWarning');
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(gifshot, 'createGIF').and.callFake(
+        (obj: object, func: (response: object) => void) => {
+          func(obj);
+        }
+      );
+      spyOn(gifFrames, 'getFrames').and.resolveTo([
+        {
+          getImage: () => {
+            return {
+              toDataURL: () => {
+                return dataGif.uploadedImageData;
+              },
+            };
+          },
+          frameInfo: {
+            disposal: 1,
+          },
+        },
+      ] as never);
+      spyOn(component, 'saveImage').and.callThrough();
+      spyOn(component, 'validateProcessedFilesize').and.stub();
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+      );
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      // @ts-expect-error
+      component.data.metadata = dataGif;
 
-    setTimeout(() => {
-      expect(alertsService.addWarning)
-        .toHaveBeenCalledWith('Could not get resampled file.');
+      spyOn(
+        imageUploadHelperService,
+        'convertImageDataToImageFile'
+      ).and.returnValue(null);
+
+      component.saveUploadedFile();
+      tick();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Could not get resampled file.'
+      );
       expect(component.data.mode).toBe(component.MODE_UPLOADED);
-      done();
-    }, 150);
-  });
+    })
+  );
 
-  it('should save uploaded svg when user clicks \`Use Image\`' +
-  ' button', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    spyOn(contextService, 'getImageSaveDestination').and.returnValue(
-      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE);
-    spyOn(component, 'setSavedImageFilename').and.callThrough();
-    spyOn(csrfTokenService, 'getTokenAsync')
-      .and.resolveTo('sample-csrf-token');
-    spyOn(component, 'saveImage').and.callThrough();
+  it(
+    'should save uploaded svg when user clicks `Use Image`' + ' button',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+      );
+      spyOn(component, 'setSavedImageFilename').and.callThrough();
+      spyOn(component, 'saveImage').and.callThrough();
 
-    component.saveUploadedFile();
+      component.saveUploadedFile();
 
-    expect(component.saveImage).toHaveBeenCalled();
-    expect(component.setSavedImageFilename).toHaveBeenCalled();
-    expect(component.data.mode).toBe(component.MODE_SAVED);
-  });
+      expect(component.saveImage).toHaveBeenCalled();
+      expect(component.setSavedImageFilename).toHaveBeenCalled();
+      expect(component.data.mode).toBe(component.MODE_SAVED);
+    }
+  );
 
-  it('should save uploaded png when user clicks \`Use Image\`' +
-  ' button', () => {
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
+  it(
+    'should save uploaded png when user clicks `Use Image`' + ' button',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
           width: 0,
           height: 0,
-          getContext: (txt) => {
+          getContext: (txt: string) => {
             return {
-              drawImage: (txt, x, y) => {
+              drawImage: (txt: string, x: number, y: number) => {
                 return;
-              }
+              },
             };
           },
-          toDataURL: (str, x) => {
+          toDataURL: (str: string, x: number) => {
             return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
-    );
-    spyOn(contextService, 'getImageSaveDestination').and.returnValue(
-      AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE);
-    spyOn(csrfTokenService, 'getTokenAsync')
-      .and.resolveTo('sample-csrf-token');
-    spyOn(component, 'saveImage').and.callThrough();
-    // This throws an error "Type '{ lastModified: number; name:
-    // string; size: number; type: string; }' is missing the following
-    // properties from type 'File': arrayBuffer, slice, stream, text"
-    // We need to suppress this error because we only need the values given
-    // below.
-    // @ts-expect-error
-    component.data.metadata = dataPng;
+          },
+        })
+      );
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+      );
+      spyOn(component, 'saveImage').and.callThrough();
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
 
-    component.saveUploadedFile();
+      component.saveUploadedFile();
 
-    expect(component.saveImage).toHaveBeenCalled();
-    expect(component.data.mode).toBe(component.MODE_SAVED);
-  });
+      expect(component.saveImage).toHaveBeenCalled();
+      expect(component.data.mode).toBe(component.MODE_SAVED);
+    }
+  );
 
-  it('should not save uploaded png when file size over 100 KB', () => {
+  it('should not save uploaded png when file size is over 100 KB', () => {
     spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
     spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
     spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
@@ -2348,175 +2973,373 @@ describe('ImageEditor', () => {
       offsetTop: 0,
       offsetParent: null,
       classList: {
-        contains: (text) => {
+        contains: (text: string) => {
           return false;
-        }
-      }
+        },
+      },
     });
     spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
-          width: 0,
-          height: 0,
-          getContext: (txt) => {
-            return {
-              drawImage: (txt, x, y) => {
-                return;
-              }
-            };
-          },
-          toDataURL: (str, x) => {
-            return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
+      jasmine.createSpy('createElement').and.returnValue({
+        width: 0,
+        height: 0,
+        getContext: (txt: string) => {
+          return {
+            drawImage: (txt: CanvasImageSource, x: number, y: number) => {
+              return;
+            },
+          };
+        },
+        toDataURL: (str: string, x: number) => {
+          return component.data.metadata.uploadedImageData as string;
+        },
+      })
     );
     spyOn(component, 'saveImage');
     component.data.metadata = {
-    // This throws an error "Type '{ lastModified: number; name:
-    // string; size: number; type: string; }' is missing the following
-    // properties from type 'File': arrayBuffer, slice, stream, text"
-    // We need to suppress this error because we only need the values given
-    // below.
-    // @ts-expect-error
-      uploadedFile: {
-        lastModified: 1622307491398,
-        name: '2442125.png',
-        size: 102410,
-        type: 'image/png'
-      },
-      uploadedImageData:
-        btoa('data:image/png;base64,' + Array(102410).join('a')),
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      uploadedFile: new File([new ArrayBuffer(1)], '2442125.png', {
+        type: 'image/png',
+        lastModified: 1622307491398 as unknown as number,
+      }),
+      uploadedImageData: btoa(
+        'data:image/png;base64,' + Array(102410).join('a')
+      ),
       originalWidth: 360,
       originalHeight: 360,
       savedImageFilename: 'saved_file_name.gif',
-      savedImageUrl: 'assets/images'
+      savedImageUrl: 'assets/images',
     };
 
     component.saveUploadedFile();
 
     expect(component.saveImage).not.toHaveBeenCalled();
+    expect(component.processedImageIsTooLarge).toBe(true);
     expect(component.data.mode).toBe(component.MODE_UPLOADED);
   });
 
-  it('should alert user if resampled png file is not obtained when the user' +
-  ' saves image', () => {
-    spyOn(alertsService, 'addWarning');
-    spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
-    spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
-    spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
-      offsetLeft: 0,
-      offsetTop: 0,
-      offsetParent: null,
-      classList: {
-        contains: (text) => {
-          return false;
-        }
-      }
-    });
-    spyOn(document, 'createElement').and.callFake(
-      jasmine.createSpy('createElement').and.returnValue(
-        {
+  it(
+    'should not save uploaded png when file size is over 1 MB even for' +
+      'entity type beign blog post',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
           width: 0,
           height: 0,
-          getContext: (txt) => {
+          getContext: (txt: string) => {
             return {
-              drawImage: (txt, x, y) => {
+              drawImage: (txt: string, x: number, y: number) => {
                 return;
-              }
+              },
             };
           },
-          toDataURL: (str, x) => {
+          toDataURL: (str: string, x: number) => {
             return component.data.metadata.uploadedImageData;
-          }
-        }
-      )
-    );
-    // This throws an error "Type '{ lastModified: number; name:
-    // string; size: number; type: string; }' is missing the following
-    // properties from type 'File': arrayBuffer, slice, stream, text"
-    // We need to suppress this error because we only need the values given
-    // below.
-    // @ts-expect-error
-    component.data.metadata = dataPng;
-    spyOn(component, 'saveImage');
-    spyOn(imageUploadHelperService, 'convertImageDataToImageFile')
-      .and.returnValue(null);
+          },
+        })
+      );
+      spyOn(component, 'saveImage');
+      component.data.metadata = {
+        // This throws an error "Type '{ lastModified: number; name:
+        // string; size: number; type: string; }' is missing the following
+        // properties from type 'File': arrayBuffer, slice, stream, text"
+        // We need to suppress this error because we only need the values given
+        // below.
+        uploadedFile: new File([new ArrayBuffer(1)], '2442125.png', {
+          type: 'image/png',
+          lastModified: 1622307491398 as unknown as number,
+        }),
+        uploadedImageData: btoa(
+          'data:image/png;base64,' + Array(10241024).join('a')
+        ),
+        originalWidth: 360,
+        originalHeight: 360,
+        savedImageFilename: 'saved_file_name.gif',
+        savedImageUrl: 'assets/images',
+      };
 
-    expect(component.data.mode).toBe(component.MODE_UPLOADED);
+      component.saveUploadedFile();
 
-    component.saveUploadedFile();
+      expect(component.saveImage).not.toHaveBeenCalled();
+      expect(component.processedImageIsTooLarge).toBe(true);
+      expect(component.data.mode).toBe(component.MODE_UPLOADED);
+    }
+  );
 
-    expect(alertsService.addWarning)
-      .toHaveBeenCalledWith('Could not get resampled file.');
-  });
+  it(
+    'should save uploaded png when file size is over 100 KB but less then 1' +
+      'MB incase the entity type of image is blog post.',
+    () => {
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
+          width: 0,
+          height: 0,
+          getContext: (txt: string) => {
+            return {
+              drawImage: (txt: string, x: number, y: number) => {
+                return;
+              },
+            };
+          },
+          toDataURL: (str: string, x: number) => {
+            return component.data.metadata.uploadedImageData;
+          },
+        })
+      );
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+      );
+      spyOn(component, 'saveImage').and.callThrough();
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
+      component.entityType = AppConstants.ENTITY_TYPE.BLOG_POST;
 
-  it('should warn user if no image file is detected when the user' +
-  ' is save image', () => {
-    spyOn(alertsService, 'addWarning');
-    component.data.metadata.uploadedFile = null;
+      component.saveUploadedFile();
 
-    component.saveUploadedFile();
+      expect(component.saveImage).toHaveBeenCalled();
+      expect(component.processedImageIsTooLarge).toBe(false);
+      expect(component.data.mode).toBe(component.MODE_SAVED);
+    }
+  );
 
-    expect(alertsService.addWarning)
-      .toHaveBeenCalledWith('No image file detected.');
-  });
+  it(
+    'should alert user if resampled png file is not obtained when the user' +
+      ' saves image',
+    () => {
+      spyOn(alertsService, 'addWarning');
+      spyOnProperty(MouseEvent.prototype, 'offsetX').and.returnValue(360);
+      spyOnProperty(MouseEvent.prototype, 'offsetY').and.returnValue(420);
+      spyOnProperty(MouseEvent.prototype, 'target').and.returnValue({
+        offsetLeft: 0,
+        offsetTop: 0,
+        offsetParent: null,
+        classList: {
+          contains: (text: string) => {
+            return false;
+          },
+        },
+      });
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
+          width: 0,
+          height: 0,
+          getContext: (txt: string) => {
+            return {
+              drawImage: (txt: string, x: number, y: number) => {
+                return;
+              },
+            };
+          },
+          toDataURL: (str: string, x: number) => {
+            return component.data.metadata.uploadedImageData;
+          },
+        })
+      );
+      // This throws an error "Type '{ lastModified: number; name:
+      // string; size: number; type: string; }' is missing the following
+      // properties from type 'File': arrayBuffer, slice, stream, text"
+      // We need to suppress this error because we only need the values given
+      // below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
+      spyOn(component, 'saveImage');
+      spyOn(
+        imageUploadHelperService,
+        'convertImageDataToImageFile'
+      ).and.returnValue(null);
 
-  it('should warn user if no image file is detected when the user' +
-  ' is save image', () => {
-    spyOn(alertsService, 'addWarning');
-    component.data.metadata.uploadedFile = null;
+      expect(component.data.mode).toBe(component.MODE_UPLOADED);
 
-    component.saveUploadedFile();
+      component.saveUploadedFile();
 
-    expect(alertsService.addWarning)
-      .toHaveBeenCalledWith('No image file detected.');
-  });
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Could not get resampled file.'
+      );
+    }
+  );
+
+  it(
+    'should warn user if no image file is detected when the user' +
+      ' is save image',
+    () => {
+      spyOn(alertsService, 'addWarning');
+      delete component.data.metadata.uploadedFile;
+
+      component.saveUploadedFile();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'No image file detected.'
+      );
+    }
+  );
+
+  it(
+    'should warn user if no image file is detected when the user' +
+      ' is save image',
+    () => {
+      spyOn(alertsService, 'addWarning');
+      delete component.data.metadata.uploadedFile;
+
+      component.saveUploadedFile();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'No image file detected.'
+      );
+    }
+  );
+
+  it(
+    'should handle null resampled file for SVG in' + ' saveUploadedFile',
+    () => {
+      spyOn(
+        imageUploadHelperService,
+        'convertImageDataToImageFile'
+      ).and.returnValue(null);
+      spyOn(alertsService, 'addWarning');
+
+      expect(component.data.mode).toBe(component.MODE_UPLOADED);
+
+      component.saveUploadedFile();
+
+      expect(alertsService.addWarning).toHaveBeenCalledWith(
+        'Could not get resampled file.'
+      );
+      expect(component.imageIsUploading).toBe(false);
+    }
+  );
+
+  it(
+    'should throw error when canvas context is null in' +
+      ' getResampledImageData',
+    () => {
+      spyOn(document, 'createElement').and.callFake(
+        jasmine.createSpy('createElement').and.returnValue({
+          width: 0,
+          height: 0,
+          getContext: (txt: string) => {
+            return null;
+          },
+          toDataURL: (str: string, x: number) => {
+            return 'data:image/png;base64,abc';
+          },
+        })
+      );
+      // This throws "Argument of type '{ width: number; height: number;
+      // data: string; size: number; type: string; }' is missing the
+      // following properties from type 'File': arrayBuffer, slice, stream,
+      // text".
+      // We need to suppress this error because we only need the values
+      // given below.
+      // @ts-expect-error
+      component.data.metadata = dataPng;
+
+      expect(() => component.saveUploadedFile()).toThrowError(
+        'Could not get canvas context.'
+      );
+    }
+  );
 
   it('should set file name when user saves image', () => {
     spyOn(alertsService, 'clearWarnings');
     spyOn(component.valueChanged, 'emit');
     spyOn(component.validityChange, 'emit');
 
-    expect(component.value).toBeUndefined();
-    expect(component.data.metadata.savedImageFilename)
-      .toBe('saved_file_name.png');
+    expect(component.value).toBe('');
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'saved_file_name.png'
+    );
 
     component.setSavedImageFilename('img_12345_height_250_width_250.png', true);
 
-    expect(component.data.metadata.savedImageFilename)
-      .toBe('img_12345_height_250_width_250.png');
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'img_12345_height_250_width_250.png'
+    );
     expect(component.value).toBe('img_12345_height_250_width_250.png');
-    expect(component.data.metadata.savedImageUrl)
-      .toBe(
-        '/assetsdevhandler/question/2/assets/image/' +
-        'img_12345_height_250_width_250.png');
+    expect(component.data.metadata.savedImageUrl).toBe(
+      '/assetsdevhandler/question/2/assets/image/' +
+        'img_12345_height_250_width_250.png'
+    );
     expect(alertsService.clearWarnings).toHaveBeenCalled();
     expect(component.valueChanged.emit).toHaveBeenCalled();
     expect(component.validityChange.emit).toHaveBeenCalled();
   });
+
+  it(
+    'should return empty string when raw image data is null from' +
+      ' local storage in getTrustedResourceUrlForImageFileName',
+    () => {
+      spyOn(pageContextService, 'getImageSaveDestination').and.returnValue(
+        AppConstants.IMAGE_SAVE_DESTINATION_LOCAL_STORAGE
+      );
+      spyOn(imageLocalStorageService, 'isInStorage').and.returnValue(true);
+      spyOn(imageLocalStorageService, 'getRawImageData').and.returnValue(null);
+
+      component.setSavedImageFilename(
+        'img_12345_height_250_width_250.png',
+        false
+      );
+
+      expect(component.data.metadata.savedImageUrl).toBe('');
+    }
+  );
 
   it('should not update parent when the component is reset', () => {
     spyOn(alertsService, 'clearWarnings');
     spyOn(component.valueChanged, 'emit');
     spyOn(component.validityChange, 'emit');
 
-    expect(component.value).toBeUndefined();
-    expect(component.data.metadata.savedImageFilename)
-      .toBe('saved_file_name.png');
+    expect(component.value).toBe('');
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'saved_file_name.png'
+    );
 
     component.setSavedImageFilename(
-      'img_12345_height_250_width_250.png', false);
+      'img_12345_height_250_width_250.png',
+      false
+    );
 
-    expect(component.data.metadata.savedImageFilename)
-      .toBe('img_12345_height_250_width_250.png');
-    expect(component.data.metadata.savedImageUrl)
-      .toBe(
-        '/assetsdevhandler/question/2/assets/image/' +
-      'img_12345_height_250_width_250.png');
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'img_12345_height_250_width_250.png'
+    );
+    expect(component.data.metadata.savedImageUrl).toBe(
+      '/assetsdevhandler/question/2/assets/image/' +
+        'img_12345_height_250_width_250.png'
+    );
     // The following values should not get updated when resetting the
     // component.
-    expect(component.value).toBeUndefined();
+    expect(component.value).toBe('');
     expect(alertsService.clearWarnings).not.toHaveBeenCalled();
     expect(component.valueChanged.emit).not.toHaveBeenCalled();
     expect(component.validityChange.emit).not.toHaveBeenCalled();
@@ -2528,15 +3351,30 @@ describe('ImageEditor', () => {
         currentValue: 'img_12345_height_250_width_250.png',
         previousValue: 'saved_file_name.png',
         firstChange: true,
-        isFirstChange: () => true
-      }
+        isFirstChange: () => true,
+      },
     };
-    expect(component.data.metadata.savedImageFilename)
-      .toBe('saved_file_name.png');
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'saved_file_name.png'
+    );
 
     component.ngOnChanges(changes);
 
-    expect(component.data.metadata.savedImageFilename)
-      .toBe('img_12345_height_250_width_250.png');
+    expect(component.data.metadata.savedImageFilename).toBe(
+      'img_12345_height_250_width_250.png'
+    );
+  });
+
+  it('should get issue URL from svg sanitizer service', () => {
+    const invalidTagsAndAttrs = {
+      tags: ['script'],
+      attrs: ['onclick'],
+    };
+    spyOn(svgSanitizerService, 'getIssueURL').and.returnValue('issue-url');
+
+    expect(component.getIssueURL(invalidTagsAndAttrs)).toBe('issue-url');
+    expect(svgSanitizerService.getIssueURL).toHaveBeenCalledWith(
+      invalidTagsAndAttrs
+    );
   });
 });

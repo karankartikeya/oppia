@@ -13,215 +13,367 @@
 // limitations under the License.
 
 /**
- * @fileoverview Unit test for State Solution Editor Component.
+ * @fileoverview Unit test for state solution editor component.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { SolutionObjectFactory } from 'domain/exploration/SolutionObjectFactory';
-import { SubtitledHtml } from 'domain/exploration/subtitled-html.model';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {Hint} from 'domain/exploration/hint-object.model';
+import {Solution} from 'domain/exploration/solution.model';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {ConvertToPlainTextPipe} from 'filters/string-utility-filters/convert-to-plain-text.pipe';
+import {SolutionValidityService} from 'pages/exploration-editor-page/editor-tab/services/solution-validity.service';
+import {SolutionVerificationService} from 'pages/exploration-editor-page/editor-tab/services/solution-verification.service';
+import {AlertsService} from 'services/alerts.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {EditabilityService} from 'services/editability.service';
+import {ExplorationHtmlFormatterService} from 'services/exploration-html-formatter.service';
+import {GenerateContentIdService} from 'services/generate-content-id.service';
+import {StateEditorService} from '../state-editor-properties-services/state-editor.service';
+import {StateHintsService} from '../state-editor-properties-services/state-hints.service';
+import {StateInteractionIdService} from '../state-editor-properties-services/state-interaction-id.service';
+import {StateSolutionService} from '../state-editor-properties-services/state-solution.service';
+import {StateSolutionEditorComponent} from './state-solution-editor.component';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
 
-describe('StateSolutionEditorComponent', () => {
-  let ctrl = null;
-  let $rootScope = null;
-  let $scope = null;
-  let $uibModal = null;
-  let $q = null;
-  let sof: SolutionObjectFactory;
-  let solution;
+describe('State Solution Editor Component', () => {
+  let component: StateSolutionEditorComponent;
+  let fixture: ComponentFixture<StateSolutionEditorComponent>;
+  let alertsService: AlertsService;
+  let convertToPlainTextPipe: ConvertToPlainTextPipe;
+  let editabilityService: EditabilityService;
+  let explorationHtmlFormatterService: ExplorationHtmlFormatterService;
+  var generateContentIdService: GenerateContentIdService;
+  let ngbModal: NgbModal;
+  let solutionValidityService: SolutionValidityService;
+  let solutionVerificationService: SolutionVerificationService;
+  let stateEditorService: StateEditorService;
+  let stateHintsService: StateHintsService;
+  let stateSolutionService: StateSolutionService;
+  let stateInteractionIdService: StateInteractionIdService;
+  let windowDimensionsService: WindowDimensionsService;
 
-  let ExplorationHtmlFormatterService = null;
-  let WindowDimensionsService = null;
-  let StateEditorService = null;
-  let StateSolutionService = null;
-  let StateInteractionIdService = null;
-  let SolutionValidityService = null;
-  let AlertsService = null;
-  let SolutionVerificationService = null;
+  let solution: Solution;
 
-  let answerEditorHtml = {
-    answerIsExclusive: true,
-    explanation: SubtitledHtml.createDefault(
-      'Explanation html', 'cont_1')
-  };
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [StateSolutionEditorComponent, MockTranslatePipe],
+      providers: [
+        AlertsService,
+        EditabilityService,
+        ExplorationHtmlFormatterService,
+        SolutionValidityService,
+        SolutionVerificationService,
+        StateEditorService,
+        StateHintsService,
+        StateSolutionService,
+        ConvertToPlainTextPipe,
+        StateInteractionIdService,
+        WindowDimensionsService,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  }));
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
+  beforeEach(() => {
+    fixture = TestBed.createComponent(StateSolutionEditorComponent);
+    component = fixture.componentInstance;
+    ngbModal = TestBed.inject(NgbModal);
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
-    $uibModal = $injector.get('$uibModal');
-    $q = $injector.get('$q');
+    convertToPlainTextPipe = TestBed.inject(ConvertToPlainTextPipe);
+    explorationHtmlFormatterService = TestBed.inject(
+      ExplorationHtmlFormatterService
+    );
+    editabilityService = TestBed.inject(EditabilityService);
+    windowDimensionsService = TestBed.inject(WindowDimensionsService);
+    stateEditorService = TestBed.inject(StateEditorService);
+    stateHintsService = TestBed.inject(StateHintsService);
+    stateSolutionService = TestBed.inject(StateSolutionService);
+    stateInteractionIdService = TestBed.inject(StateInteractionIdService);
+    solutionValidityService = TestBed.inject(SolutionValidityService);
+    alertsService = TestBed.inject(AlertsService);
+    solutionVerificationService = TestBed.inject(SolutionVerificationService);
+    generateContentIdService = TestBed.inject(GenerateContentIdService);
+    generateContentIdService.init(
+      () => 0,
+      () => {}
+    );
 
-    ExplorationHtmlFormatterService = $injector.get(
-      'ExplorationHtmlFormatterService');
-    WindowDimensionsService = $injector.get('WindowDimensionsService');
-    StateEditorService = $injector.get('StateEditorService');
-    StateSolutionService = $injector.get('StateSolutionService');
-    StateInteractionIdService = $injector.get('StateInteractionIdService');
-    SolutionValidityService = $injector.get('SolutionValidityService');
-    AlertsService = $injector.get('AlertsService');
-    SolutionVerificationService = $injector.get('SolutionVerificationService');
-    sof = TestBed.get(SolutionObjectFactory);
-
-    ctrl = $componentController('stateSolutionEditor', {
-      $scope: $scope
-    }, {
-      refreshWarnings: () => {
-        return () => {};
-      },
-      onSaveSolution: () => {}
-    });
-
-    solution = sof.createFromBackendDict({
+    solution = Solution.createFromBackendDict({
       answer_is_exclusive: false,
       correct_answer: 'This is a correct answer!',
       explanation: {
         content_id: 'solution',
-        html: 'This is the explanation to the answer'
-      }
+        html: 'This is the explanation to the answer',
+      },
     });
 
-    spyOn(ExplorationHtmlFormatterService, 'getInteractionHtml')
-      .and.returnValue(answerEditorHtml);
-    spyOn(WindowDimensionsService, 'isWindowNarrow').and.returnValue(false);
-  }));
+    spyOn(
+      explorationHtmlFormatterService,
+      'getInteractionHtml'
+    ).and.returnValue('answerEditorHtml');
+    spyOn(windowDimensionsService, 'isWindowNarrow').and.returnValue(false);
+  });
 
   it('should set component properties on initialization', () => {
-    ctrl.$onInit();
+    component.ngOnInit();
 
-    expect($scope.solutionCardIsShown).toBe(true);
-    expect($scope.correctAnswer).toBe(null);
-    expect($scope.inlineSolutionEditorIsActive).toBe(false);
-    expect($scope.SOLUTION_EDITOR_FOCUS_LABEL).toBe(
-      'currentCorrectAnswerEditorHtmlForSolutionEditor');
-    expect($scope.correctAnswerEditorHtml).toEqual(answerEditorHtml);
+    expect(component.solutionCardIsShown).toBeTrue();
+    expect(component.inlineSolutionEditorIsActive).toBeFalse();
+    expect(component.SOLUTION_EDITOR_FOCUS_LABEL).toBe(
+      'currentCorrectAnswerEditorHtmlForSolutionEditor'
+    );
+    expect(component.correctAnswerEditorHtml).toEqual('answerEditorHtml');
+  });
+
+  it('should throw error when interaction id is null on init', () => {
+    stateInteractionIdService.savedMemento = null;
+    expect(() => component.ngOnInit()).toThrowError(
+      'Expected interactionId to be non-null.'
+    );
   });
 
   it('should toggle solution card visibility', () => {
-    $scope.solutionCardIsShown = true;
+    component.solutionCardIsShown = true;
 
-    $scope.toggleSolutionCard();
+    component.toggleSolutionCard();
 
-    expect($scope.solutionCardIsShown).toBe(false);
+    expect(component.solutionCardIsShown).toBeFalse();
 
-    $scope.toggleSolutionCard();
+    component.toggleSolutionCard();
 
-    expect($scope.solutionCardIsShown).toBe(true);
+    expect(component.solutionCardIsShown).toBeTrue();
   });
 
-  it('should open delete solution modal when user clicks on delete', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve()
-    });
-    spyOn(StateEditorService, 'deleteCurrentSolutionValidity');
-    spyOn(StateSolutionService, 'saveDisplayedValue');
+  it('should open delete solution modal when user clicks on delete', fakeAsync(() => {
+    spyOn(ngbModal, 'open').and.returnValue({
+      result: Promise.resolve(),
+    } as NgbModalRef);
+    spyOn(stateEditorService, 'deleteCurrentSolutionValidity');
+    spyOn(stateSolutionService, 'saveDisplayedValue');
 
-    $scope.deleteSolution(0, new Event(''));
-    $scope.$apply();
+    const value = {
+      index: 0,
+      evt: new Event(''),
+    };
 
-    expect(StateEditorService.deleteCurrentSolutionValidity).toHaveBeenCalled();
-    expect(StateSolutionService.saveDisplayedValue).toHaveBeenCalled();
-  });
+    component.deleteSolution(value);
+    tick();
 
-  it('should close delete solution modal when user clicks cancel', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject()
-    });
+    expect(stateEditorService.deleteCurrentSolutionValidity).toHaveBeenCalled();
+    expect(stateSolutionService.saveDisplayedValue).toHaveBeenCalled();
+  }));
 
-    $scope.deleteSolution(0, new Event(''));
-    $scope.$apply();
+  it('should close delete solution modal when user clicks cancel', fakeAsync(() => {
+    spyOn(ngbModal, 'open').and.returnValue({
+      result: Promise.reject(),
+    } as NgbModalRef);
 
-    expect($uibModal.open).toHaveBeenCalled();
-  });
+    const value = {
+      index: 0,
+      evt: new Event(''),
+    };
 
-  it('should get invalid solution tooltip text', () => {
-    spyOn(StateEditorService, 'isInQuestionMode').and.returnValues(true, false);
+    component.deleteSolution(value);
+    tick();
+
+    expect(ngbModal.open).toHaveBeenCalled();
+  }));
+
+  it('should inject invalid solution tooltip text', () => {
+    spyOn(stateEditorService, 'isInQuestionMode').and.returnValues(true, false);
 
     // When in question mode.
-    expect($scope.getInvalidSolutionTooltip()).toBe(
-      'This solution doesn\'t correspond to an answer ' +
-      'marked as correct. Verify the rules specified for the ' +
-      'answers or change the solution.'
+    expect(component.getInvalidSolutionTooltip()).toBe(
+      "This solution doesn't correspond to an answer " +
+        'marked as correct. Verify the rules specified for the ' +
+        'answers or change the solution.'
     );
 
     // When not in question mode.
-    expect($scope.getInvalidSolutionTooltip()).toBe(
+    expect(component.getInvalidSolutionTooltip()).toBe(
       'This solution does not lead to another card. Verify the ' +
-      'responses specified or change the solution.'
+        'responses specified or change the solution.'
     );
   });
 
   it('should check if current solution is valid or not', () => {
-    spyOn(StateEditorService, 'isCurrentSolutionValid').and.returnValue(true);
+    spyOn(stateEditorService, 'isCurrentSolutionValid').and.returnValue(true);
 
-    expect($scope.isSolutionValid()).toBe(true);
+    expect(component.isSolutionValid()).toBeTrue();
+  });
+
+  it('should return the number of displayed hints', () => {
+    stateHintsService.displayed = [
+      new Hint(SubtitledHtml.createDefault('<h1>work</h1>', '0')),
+      new Hint(SubtitledHtml.createDefault('<h1>work</h1>', '0')),
+    ];
+
+    expect(component.displayedHintsLength()).toBe(2);
+  });
+
+  it('should check if in editable tutorial mode or not', () => {
+    spyOn(editabilityService, 'isEditableOutsideTutorialMode').and.returnValue(
+      true
+    );
+    spyOn(editabilityService, 'isEditable').and.returnValue(true);
+
+    expect(component.isEditable()).toBeTrue();
+  });
+
+  it('should return the saved solution', () => {
+    stateSolutionService.savedMemento = solution;
+
+    expect(component.savedMemento()).toEqual(solution);
   });
 
   it('should toggle activity of inline solution editor', () => {
-    $scope.inlineSolutionEditorIsActive = true;
+    component.inlineSolutionEditorIsActive = true;
 
-    $scope.toggleInlineSolutionEditorIsActive();
+    component.toggleInlineSolutionEditorIsActive();
 
-    expect($scope.inlineSolutionEditorIsActive).toBe(false);
+    expect(component.inlineSolutionEditorIsActive).toBeFalse();
 
-    $scope.toggleInlineSolutionEditorIsActive();
+    component.toggleInlineSolutionEditorIsActive();
 
-    expect($scope.inlineSolutionEditorIsActive).toBe(true);
+    expect(component.inlineSolutionEditorIsActive).toBeTrue();
   });
 
-  it('should get summary of solution', () => {
-    StateSolutionService.savedMemento = solution;
+  it('should inject summary of solution', () => {
+    stateSolutionService.savedMemento = solution;
+    spyOn(convertToPlainTextPipe, 'transform').and.callFake(response => {
+      return response;
+    });
 
-    expect($scope.getSolutionSummary()).toBe(
-      'One solution is "This is a correct answer!".' +
-      ' This is the explanation to the answer.');
+    expect(component.getSolutionSummary()).toBe(
+      'One solution is "&quot;This is a correct answer!&quot;".' +
+        ' This is the explanation to the answer.'
+    );
+  });
+
+  it('should throw error if solution is not saved yet', () => {
+    stateSolutionService.savedMemento = null;
+
+    expect(() => {
+      component.getSolutionSummary();
+    }).toThrowError('Expected solution to be non-null.');
+  });
+
+  it('should throw error when interaction id is null in getSolutionSummary', () => {
+    stateSolutionService.savedMemento = solution;
+    stateInteractionIdService.savedMemento = null;
+    expect(() => component.getSolutionSummary()).toThrowError(
+      'Expected interactionId to be non-null.'
+    );
   });
 
   it('should check if current interaction is linear or not', () => {
-    StateInteractionIdService.savedMemento = 'TextInput';
+    stateInteractionIdService.savedMemento = 'TextInput';
 
-    expect($scope.isCurrentInteractionLinear()).toBe(false);
+    expect(component.isCurrentInteractionLinear()).toBeFalse();
   });
 
-  it('should open add or update solution modal when user clicks on' +
-    ' \'+ ADD SOLUTION\'', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.resolve({
-        solution: solution
-      })
-    });
-    spyOn(SolutionVerificationService, 'verifySolution').and.returnValue(false);
-    spyOn(SolutionValidityService, 'updateValidity').and.stub();
-    spyOn(StateEditorService, 'isInQuestionMode').and.returnValues(true, false);
-    spyOn(AlertsService, 'addInfoMessage');
-
-    // In question mode.
-    $scope.openAddOrUpdateSolutionModal();
-    $scope.$apply();
-
-    expect(AlertsService.addInfoMessage).toHaveBeenCalledWith(
-      'The current solution does not correspond to a correct answer.', 4000
-    );
-
-    // Not in question mode.
-    $scope.openAddOrUpdateSolutionModal();
-    $scope.$apply();
-
-    expect(AlertsService.addInfoMessage).toHaveBeenCalledWith(
-      'The current solution does not lead to another card.', 4000
+  it('should throw error when saved memento is null in isCurrentInteractionLinear', () => {
+    stateInteractionIdService.savedMemento = null;
+    expect(() => component.isCurrentInteractionLinear()).toThrowError(
+      'Expected savedMemento to be non-null.'
     );
   });
 
-  it('should close add or update solution modal if user clicks cancel', () => {
-    spyOn($uibModal, 'open').and.returnValue({
-      result: $q.reject()
-    });
+  it(
+    'should open add or update solution modal when user clicks on' +
+      " '+ ADD SOLUTION'",
+    fakeAsync(() => {
+      spyOn(ngbModal, 'open').and.returnValue({
+        result: Promise.resolve({
+          solution: solution,
+        }),
+      } as NgbModalRef);
+      spyOn(solutionVerificationService, 'verifySolution').and.returnValue(
+        false
+      );
+      spyOn(solutionValidityService, 'updateValidity').and.stub();
+      spyOn(component.onSaveNextContentIdIndex, 'emit');
+      spyOn(stateEditorService, 'isInQuestionMode').and.returnValues(
+        true,
+        false
+      );
+      spyOn(alertsService, 'addInfoMessage');
+      spyOn(stateEditorService, 'getActiveStateName').and.returnValue(
+        'State 1'
+      );
 
-    $scope.openAddOrUpdateSolutionModal();
-    $scope.$apply();
+      // In question mode.
+      component.openAddOrUpdateSolutionModal();
+      tick();
 
-    expect($uibModal.open).toHaveBeenCalled();
+      expect(alertsService.addInfoMessage).toHaveBeenCalledWith(
+        'The current solution does not correspond to a correct answer.',
+        4000
+      );
+
+      // Not in question mode.
+      component.openAddOrUpdateSolutionModal();
+      tick();
+
+      expect(alertsService.addInfoMessage).toHaveBeenCalledWith(
+        'The current solution does not lead to another card.',
+        4000
+      );
+      expect(component.onSaveNextContentIdIndex.emit).toHaveBeenCalled();
+    })
+  );
+
+  it('should throw error if active state name is invalid', fakeAsync(() => {
+    spyOn(ngbModal, 'open').and.returnValue({
+      result: {
+        then: (
+          successCallback: (arg: {solution: Solution}) => void,
+          errorCallback
+        ) => {
+          successCallback({
+            solution: solution,
+          });
+        },
+      },
+    } as NgbModalRef);
+    spyOn(solutionVerificationService, 'verifySolution').and.returnValue(false);
+    spyOn(solutionValidityService, 'updateValidity').and.stub();
+    spyOn(stateEditorService, 'isInQuestionMode').and.returnValues(true, false);
+    spyOn(alertsService, 'addInfoMessage');
+    spyOn(stateEditorService, 'getActiveStateName').and.returnValue(null);
+
+    expect(function () {
+      component.openAddOrUpdateSolutionModal();
+      tick();
+    }).toThrowError('Expected active state name to be non-null.');
+  }));
+
+  it('should close add or update solution modal if user clicks cancel', fakeAsync(() => {
+    spyOn(ngbModal, 'open').and.returnValue({
+      result: Promise.reject(),
+    } as NgbModalRef);
+
+    component.openAddOrUpdateSolutionModal();
+    tick();
+
+    expect(ngbModal.open).toHaveBeenCalled();
+  }));
+
+  it('should save solution when user click', () => {
+    spyOn(component.saveSolution, 'emit');
+
+    component.onSaveSolution(solution);
+
+    expect(component.saveSolution.emit).toHaveBeenCalled();
   });
 });

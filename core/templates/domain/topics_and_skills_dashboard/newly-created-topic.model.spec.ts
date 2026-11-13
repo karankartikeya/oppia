@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /**
  * @fileoverview Unit tests for NewlyCreatedTopic model.
  */
 
-import { NewlyCreatedTopic } from
-  'domain/topics_and_skills_dashboard/newly-created-topic.model';
+import {NewlyCreatedTopic} from 'domain/topics_and_skills_dashboard/newly-created-topic.model';
 
 describe('Newly Created Topic Model', () => {
   let topic: NewlyCreatedTopic;
@@ -30,24 +28,33 @@ describe('Newly Created Topic Model', () => {
   it('should create a new default topic for the topics dashboard', () => {
     expect(topic.description).toEqual('');
     expect(topic.name).toEqual('');
+    expect(topic.pageTitleFragment).toEqual('');
   });
 
   it('should validate the new topic fields', () => {
-    expect(topic.isValid()).toBe(false);
-
-    topic.description = 'Topic description';
-    expect(topic.isValid()).toBe(false);
-
-    topic.name = 'TopicName1';
-    expect(topic.isValid()).toBe(false);
-
-    topic.urlFragment = 'url-fragment';
-    expect(topic.isValid()).toBe(true);
+    expect(topic.isValid()).toBeFalse();
 
     topic.description = '';
-    expect(topic.isValid()).toBe(false);
+    expect(topic.isValid()).toBeFalse();
+
+    topic.pageTitleFragment = '';
+    expect(topic.isValid()).toBeFalse();
 
     topic.description = 'Topic description';
+    expect(topic.isValid()).toBeFalse();
+
+    topic.urlFragment = 'url-fragment';
+    expect(topic.isValid()).toBeFalse();
+
+    topic.pageTitleFragment = 'testing';
+    expect(topic.isValid()).toBeFalse();
+
+    topic.name = 'TopicName1';
     expect(topic.isValid()).toBe(true);
+
+    // eslint-disable-next-line max-len
+    topic.pageTitleFragment =
+      'testatestatestatestatestatestatestatestatestatestatestatesta';
+    expect(topic.isValid()).toBeFalse();
   });
 });

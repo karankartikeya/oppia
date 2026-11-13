@@ -16,8 +16,7 @@
  * @fileoverview Unit tests for AugmentedSkillSummary.
  */
 
-import { AugmentedSkillSummary } from
-  'domain/skill/augmented-skill-summary.model';
+import {AugmentedSkillSummary} from 'domain/skill/augmented-skill-summary.model';
 
 describe('Augmented Skill Summary Model', () => {
   it('should correctly convert backend dict to domain object.', () => {
@@ -26,12 +25,11 @@ describe('Augmented Skill Summary Model', () => {
       skill_model_last_updated: 1594649197855.071,
       skill_model_created_on: 1594649197855.059,
       id: 'Q5JuLf64rzV0',
-      worked_examples_count: 0,
       description: 'Dummy Skill 1',
       misconception_count: 0,
       version: 1,
       classroom_names: ['classroom'],
-      topic_names: ['topic']
+      topic_names: ['topic'],
     };
 
     let skillSummary = AugmentedSkillSummary.createFromBackendDict(backendDict);
@@ -39,7 +37,6 @@ describe('Augmented Skill Summary Model', () => {
     expect(skillSummary.languageCode).toEqual('en');
     expect(skillSummary.id).toEqual('Q5JuLf64rzV0');
     expect(skillSummary.description).toEqual('Dummy Skill 1');
-    expect(skillSummary.workedExamplesCount).toEqual(0);
     expect(skillSummary.misconceptionCount).toEqual(0);
     expect(skillSummary.version).toEqual(1);
     expect(skillSummary.skillModelCreatedOn).toEqual(1594649197855.059);

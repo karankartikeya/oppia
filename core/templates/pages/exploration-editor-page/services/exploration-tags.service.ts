@@ -16,16 +16,15 @@
  * @fileoverview A data service that stores tags for the exploration.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { ExplorationPropertyService } from './exploration-property.service';
-import constants from 'assets/constants';
-import { AlertsService } from 'services/alerts.service';
-import { ChangeListService } from './change-list.service';
-import { LoggerService } from 'services/contextual/logger.service';
+import {Injectable} from '@angular/core';
+import {ExplorationPropertyService} from './exploration-property.service';
+import {AppConstants} from 'app.constants';
+import {AlertsService} from 'services/alerts.service';
+import {ChangeListService} from './change-list.service';
+import {LoggerService} from 'services/contextual/logger.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ExplorationTagsService extends ExplorationPropertyService {
   propertyName: string = 'tags';
@@ -36,28 +35,28 @@ export class ExplorationTagsService extends ExplorationPropertyService {
   ) {
     super(alertsService, changeListService, loggerService);
   }
+
   /**
-    *@param {string} value - tag array to be normalized
-    *(white spaces removed and '+' replaced with ' ')
-    *@return {string} -normalized array
-  */
-  // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-  _normalize(value) {
+   *@param {string[]} value - tag array to be normalized
+   *(white spaces removed and '+' replaced with ' ')
+   *@return {string} -normalized array
+   */
+  _normalize(value: string[]): string[] {
     for (let i = 0; i < value.length; i++) {
       value[i] = value[i].trim().replace(/\s+/g, ' ');
     }
-    // TODO(sll): Prevent duplicate tags from being added.
+
     return value;
   }
+
   /**
-    *@param {string} value -tag array to be matched with TAG_REGEX
-    *@return {boolean} -whether or not all tags match TAG_REGEX
-  */
-  // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-  _isValid(value) {
+   *@param {string[]} value -tag array to be matched with TAG_REGEX
+   *@return {boolean} -whether or not all tags match TAG_REGEX
+   */
+  _isValid(value: string[]): boolean {
     // Every tag should match the TAG_REGEX.
     for (let i = 0; i < value.length; i++) {
-      let tagRegex = new RegExp(constants.TAG_REGEX);
+      let tagRegex = new RegExp(AppConstants.TAG_REGEX);
       if (!value[i].match(tagRegex)) {
         return false;
       }
@@ -66,7 +65,3 @@ export class ExplorationTagsService extends ExplorationPropertyService {
     return true;
   }
 }
-
-angular.module('oppia').factory(
-  'ExplorationTagsService', downgradeInjectable(
-    ExplorationTagsService));

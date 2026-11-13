@@ -16,18 +16,11 @@
  * @fileoverview Unit test for GuppyConfigurationService
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { Component, OnInit } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {Component, OnInit} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
 
-import { GuppyConfigurationService } from
-  'services/guppy-configuration.service';
-
-declare global {
-  interface Window {
-    Guppy: Object;
-  }
-}
+import {GuppyConfigurationService} from 'services/guppy-configuration.service';
 
 class MockGuppy {
   constructor(id: string, config: Object) {}
@@ -35,13 +28,15 @@ class MockGuppy {
   asciimath(): string {
     return 'Dummy value';
   }
+
   configure(name: string, val: Object): void {}
   static event(name: string, handler: Function): void {
     handler({focused: true});
   }
+
   static configure(name: string, val: Object): void {}
-  static 'remove_global_symbol'(symbol: string): void {}
-  static 'add_global_symbol'(name: string, symbol: Object): void {}
+  static remove_global_symbol(symbol: string): void {}
+  static add_global_symbol(name: string, symbol: Object): void {}
 }
 
 class MockComponent {
@@ -57,7 +52,7 @@ class MockComponent {
 
 @Component({
   template: '',
-  selector: 'mock-component-b'
+  selector: 'mock-component-b',
 })
 class MockComponentB implements OnInit {
   constructor(private guppyConfigService: GuppyConfigurationService) {}
@@ -70,17 +65,25 @@ class MockComponentB implements OnInit {
 let guppyConfigurationService: GuppyConfigurationService;
 
 describe('GuppyConfigurationService', () => {
-  beforeAll(() => {
-    guppyConfigurationService = TestBed.get(GuppyConfigurationService);
-    window.Guppy = MockGuppy;
+  beforeEach(() => {
+    guppyConfigurationService = TestBed.inject(GuppyConfigurationService);
+    window.Guppy = MockGuppy as unknown as Guppy;
+    Guppy.kb = {
+      k_syms: {},
+    } as unknown as Object;
   });
 
   describe('Individual service', () => {
     it('should configure guppy if service is not initialized', () => {
       GuppyConfigurationService.serviceIsInitialized = false;
       spyOn(Guppy, 'remove_global_symbol');
+      spyOn(Guppy, 'configure');
       guppyConfigurationService.init();
       expect(Guppy.remove_global_symbol).toHaveBeenCalled();
+      expect(Guppy.configure).toHaveBeenCalledWith(
+        'empty_content',
+        '\\color{grey}{\\small \\text{Type a formula here.}}'
+      );
     });
 
     it('should not configure guppy if service is initialized', () => {
@@ -89,26 +92,70 @@ describe('GuppyConfigurationService', () => {
       guppyConfigurationService.init();
       expect(Guppy.remove_global_symbol).not.toHaveBeenCalled();
     });
-  });
 
+    it('should configure slash symbol when value is true', () => {
+      spyOn(Guppy, 'add_global_symbol');
+      guppyConfigurationService.changeDivSymbol(true);
+
+      expect(Guppy.add_global_symbol).toHaveBeenCalledWith(
+        '/',
+        jasmine.objectContaining({
+          attrs: jasmine.objectContaining({
+            type: 'fraction',
+          }),
+        })
+      );
+    });
+
+    it('should configure division symbol when value is false', () => {
+      spyOn(Guppy, 'add_global_symbol');
+      guppyConfigurationService.changeDivSymbol({value: false});
+
+      expect(Guppy.add_global_symbol).toHaveBeenCalledWith(
+        '/',
+        jasmine.objectContaining({
+          output: jasmine.objectContaining({
+            latex: '\\div',
+          }),
+        })
+      );
+    });
+
+    it('should use fraction shortcut when value is true', () => {
+      guppyConfigurationService.changeDivSymbol(true);
+
+      expect((Guppy.kb as {k_syms: Record<string, string>}).k_syms['/']).toBe(
+        'fraction'
+      );
+    });
+
+    it('should use slash shortcut when value is false', () => {
+      guppyConfigurationService.changeDivSymbol(false);
+
+      expect((Guppy.kb as {k_syms: Record<string, string>}).k_syms['/']).toBe(
+        '/'
+      );
+    });
+  });
+});
+
+describe('GuppyConfigurationService', () => {
   describe('Components calling the service', () => {
     let component: MockComponentB;
     let fixture: ComponentFixture<MockComponentB>;
 
     beforeEach(waitForAsync(() => {
-      TestBed.configureTestingModule(
-        {
-          imports: [HttpClientTestingModule],
-          declarations: [MockComponentB],
-        }
-      ).compileComponents();
+      TestBed.configureTestingModule({
+        imports: [HttpClientTestingModule],
+        declarations: [MockComponentB],
+      }).compileComponents();
+      guppyConfigurationService = TestBed.inject(GuppyConfigurationService);
+      window.Guppy = MockGuppy as unknown as Guppy;
     }));
     beforeEach(() => {
-      fixture = TestBed.createComponent(
-        MockComponentB);
+      fixture = TestBed.createComponent(MockComponentB);
       component = fixture.componentInstance;
     });
-
 
     it('should configure guppy on the first initialization', () => {
       GuppyConfigurationService.serviceIsInitialized = false;

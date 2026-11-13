@@ -16,10 +16,18 @@
  * @fileoverview Utility functions for unit testing in Angular.
  */
 
-import { Directive, ElementRef, Input, NgModule, Pipe } from '@angular/core';
+import {
+  Directive,
+  ElementRef,
+  EventEmitter,
+  Input,
+  NgModule,
+  Pipe,
+  PipeTransform,
+} from '@angular/core';
 
 @Pipe({name: 'translate'})
-export class MockTranslatePipe {
+export class MockTranslatePipe implements PipeTransform {
   transform(value: string): string {
     return value;
   }
@@ -32,7 +40,7 @@ export class MockCapitalizePipe {
 }
 
 @Directive({
-  selector: '[translate],[ngx-translate]'
+  selector: '[translate],[ngx-translate]',
 })
 export class MockTranslateDirective {
   @Input() set translate(key: string) {}
@@ -42,14 +50,17 @@ export class MockTranslateDirective {
   constructor(private element: ElementRef) {}
 }
 
+export class MockI18nService {
+  directionChangeEventEmitter = new EventEmitter<string>();
+  initialize(): void {}
+  updateViewToUserPreferredSiteLanguage(): void {}
+  removeUrlLangParam(): void {}
+  updateUserPreferredLanguage(newLangCode: string): void {}
+  handleLanguageUpdate(newLangCode: string): void {}
+}
+
 @NgModule({
-  declarations: [
-    MockTranslateDirective,
-    MockTranslatePipe
-  ],
-  exports: [
-    MockTranslateDirective,
-    MockTranslatePipe
-  ]
+  declarations: [MockTranslateDirective, MockTranslatePipe],
+  exports: [MockTranslateDirective, MockTranslatePipe],
 })
 export class MockTranslateModule {}

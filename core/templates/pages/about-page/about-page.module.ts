@@ -16,22 +16,32 @@
  * @fileoverview Module for the about page.
  */
 
-import { NgModule } from '@angular/core';
-import { AboutPageComponent } from './about-page.component';
-import { AboutPageRootComponent } from './about-page-root.component';
-import { AboutPageRoutingModule } from './about-page-routing.module';
-import { CommonModule } from '@angular/common';
-import { SharedComponentsModule } from 'components/shared-component.module';
+import {NgModule} from '@angular/core';
+import {AboutPageComponent} from './about-page.component';
+import {AboutPageRootComponent} from './about-page-root.component';
+import {AboutPageRoutingModule} from './about-page-routing.module';
+import {CommonModule} from '@angular/common';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {BarChartComponent} from './charts/bar-chart.component';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {CampaignBannerModule} from 'components/campaign-banner/campaign-banner-module';
+import {PartnershipsSectionComponent} from './partnerships-section/partnerships-section.component';
+import {CtaSectionComponent} from './cta-section/cta-section.component';
 
 @NgModule({
   imports: [
     CommonModule,
     SharedComponentsModule,
     AboutPageRoutingModule,
+    NgbModule,
+    CampaignBannerModule,
   ],
   declarations: [
     AboutPageComponent,
     AboutPageRootComponent,
+    BarChartComponent,
+    PartnershipsSectionComponent,
+    CtaSectionComponent,
   ],
 })
 export class AboutPageModule {}

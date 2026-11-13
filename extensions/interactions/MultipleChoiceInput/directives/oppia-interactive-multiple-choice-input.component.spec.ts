@@ -14,70 +14,114 @@
 
 /**
  * @fileoverview Unit tests for the MultipleChoiceInput interaction.
-  */
+ */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { InteractiveMultipleChoiceInputComponent } from './oppia-interactive-multiple-choice-input.component';
-import { BrowserCheckerService } from 'domain/utilities/browser-checker.service';
+// @ts-nocheck
+
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {
+  CurrentInteractionService,
+  SubmitAnswerFn,
+  ValidityCheckFn,
+  InteractionRulesService,
+} from 'pages/exploration-player-page/services/current-interaction.service';
+import {InteractiveMultipleChoiceInputComponent} from './oppia-interactive-multiple-choice-input.component';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {Interaction} from 'domain/exploration/interaction.model';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {TranslateModule} from '@ngx-translate/core';
+import {InteractionAnswer} from 'interactions/answer-defs';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
 
 describe('InteractiveMultipleChoiceInputComponent', () => {
   let component: InteractiveMultipleChoiceInputComponent;
   let fixture: ComponentFixture<InteractiveMultipleChoiceInputComponent>;
   let currentInteractionService: CurrentInteractionService;
-  let browserCheckerService: BrowserCheckerService;
+  let playerTranscriptService: PlayerTranscriptService;
+  let displayedCard: StateCard;
 
   class MockInteractionAttributesExtractorService {
-    getValuesFromAttributes(interactionId, attributes) {
+    getValuesFromAttributes(
+      interactionId: InteractionSpecsKey,
+      attributes: Record<string, string>
+    ) {
       return {
         showChoicesInShuffledOrder: {
-          value: JSON.parse(attributes.showChoicesInShuffledOrderWithValue)
+          value: JSON.parse(attributes.showChoicesInShuffledOrderWithValue),
         },
         choices: {
-          value: JSON.parse(attributes.choicesWithValue)
-        }
+          value: JSON.parse(attributes.choicesWithValue),
+        },
       };
     }
   }
 
   class MockCurrentInteractionService {
-    onSubmit(answer, rulesService) {
-      expect(answer).toBe(1);
+    onSubmit(answer: InteractionAnswer, rulesService: InteractionRulesService) {
+      return;
     }
-    registerCurrentInteraction(submitAnswerFn, validateExpressionFn) {
+
+    showNoResponseError(): boolean {
+      return false;
+    }
+
+    updateCurrentAnswer(answer: InteractionAnswer): void {}
+
+    registerCurrentInteraction(
+      submitAnswerFn: SubmitAnswerFn,
+      validateExpressionFn: ValidityCheckFn
+    ) {
       submitAnswerFn();
       validateExpressionFn();
     }
   }
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [InteractiveMultipleChoiceInputComponent],
+      imports: [
+        TranslateModule.forRoot({
+          useDefaultLang: true,
+          isolate: false,
+          extend: false,
+          defaultLanguage: 'en',
+        }),
+      ],
       providers: [
         {
           provide: InteractionAttributesExtractorService,
-          useClass: MockInteractionAttributesExtractorService
+          useClass: MockInteractionAttributesExtractorService,
         },
         {
           provide: CurrentInteractionService,
-          useClass: MockCurrentInteractionService
+          useClass: MockCurrentInteractionService,
         },
-        BrowserCheckerService
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
-    browserCheckerService = TestBed.inject(BrowserCheckerService);
     currentInteractionService = TestBed.inject(CurrentInteractionService);
     fixture = TestBed.createComponent(InteractiveMultipleChoiceInputComponent);
+    playerTranscriptService = TestBed.inject(PlayerTranscriptService);
     component = fixture.componentInstance;
 
+    let contentId: string = 'content_id';
+    let interaction = {} as Interaction;
+    displayedCard = new StateCard(
+      'test_name',
+      'content',
+      'interaction',
+      interaction,
+      [],
+      contentId
+    );
 
-    component.choicesWithValue = '[' +
+    component.choicesWithValue =
+      '[' +
       '{' +
       '    "html": "<p>opt1</p>",' +
       '    "contentId": "ca_choices_9"' +
@@ -94,95 +138,123 @@ describe('InteractiveMultipleChoiceInputComponent', () => {
       '    "html": "<p>opt4</p>",' +
       '    "contentId": "ca_choices_12"' +
       '}' +
-  ']';
+      ']';
     component.showChoicesInShuffledOrderWithValue = 'false';
   });
 
-  it('should initalise component when user selects multiple choice ' +
-  'interaction', () => {
-    spyOn(currentInteractionService, 'registerCurrentInteraction')
-      .and.callThrough();
-    component.ngOnInit();
+  it(
+    'should initalise component when user selects multiple choice ' +
+      'interaction',
+    () => {
+      spyOn(
+        currentInteractionService,
+        'registerCurrentInteraction'
+      ).and.callThrough();
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      spyOn(
+        playerTranscriptService,
+        'getNumSubmitsForLastCard'
+      ).and.returnValue(0);
+      component.ngOnInit();
 
-    expect(component.choices).toEqual([
-      {
-        originalIndex: 0,
-        value: '<p>opt1</p>'
-      },
-      {
-        originalIndex: 1,
-        value: '<p>opt2</p>'
-      },
-      {
-        originalIndex: 2,
-        value: '<p>opt3</p>'
-      },
-      {
-        originalIndex: 3,
-        value: '<p>opt4</p>'
-      }
-    ]);
+      expect(component.choices).toEqual([
+        {
+          originalIndex: 0,
+          choice: {html: '<p>opt1</p>', contentId: 'ca_choices_9'},
+        },
+        {
+          originalIndex: 1,
+          choice: {html: '<p>opt2</p>', contentId: 'ca_choices_10'},
+        },
+        {
+          originalIndex: 2,
+          choice: {html: '<p>opt3</p>', contentId: 'ca_choices_11'},
+        },
+        {
+          originalIndex: 3,
+          choice: {html: '<p>opt4</p>', contentId: 'ca_choices_12'},
+        },
+      ]);
 
-    expect(component.answer).toBeNull();
-    expect(currentInteractionService.registerCurrentInteraction)
-      .toHaveBeenCalled();
+      expect(component.answer).toBeNull();
+      expect(
+        currentInteractionService.registerCurrentInteraction
+      ).toHaveBeenCalled();
+    }
+  );
+
+  it('should restore selected choice from lastAnswer', () => {
+    spyOn(
+      currentInteractionService,
+      'registerCurrentInteraction'
+    ).and.callThrough();
+    spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+    spyOn(playerTranscriptService, 'getNumSubmitsForLastCard').and.returnValue(
+      0
+    );
+    component.lastAnswer = 2;
+
+    fixture.detectChanges();
+
+    const buttons = fixture.nativeElement.querySelectorAll(
+      'button.multiple-choice-option'
+    );
+    expect(buttons[2].classList.contains('selected')).toBeTrue();
+    expect(buttons[0].classList.contains('selected')).toBeFalse();
   });
 
-  it('should initalise component when user selects multiple choice ' +
-  'interaction', () => {
-    spyOn(currentInteractionService, 'registerCurrentInteraction')
-      .and.callThrough();
-    component.showChoicesInShuffledOrderWithValue = 'true';
+  it(
+    'should initialise component when user selects multiple choice ' +
+      'interaction. Should persist the order when component is reinitiated',
+    () => {
+      spyOn(
+        currentInteractionService,
+        'registerCurrentInteraction'
+      ).and.callThrough();
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      spyOn(
+        playerTranscriptService,
+        'getNumSubmitsForLastCard'
+      ).and.returnValues(0, 1);
+      component.showChoicesInShuffledOrderWithValue = 'true';
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    // We cannot test if the choices have been shuffled because
-    // each time a different order will come. Since the shuffling is random
-    // there is a possibility that the choices may not be shuffled.
-    // Therefore testing the order can result in flakiness in the
-    // frontend tests.
-  });
+      const choices = component.choices;
+
+      // We cannot test if the choices have been shuffled because
+      // each time a different order will come. Since the shuffling is random
+      // there is a possibility that the choices may not be shuffled.
+      // Therefore testing the order can result in flakiness in the
+      // frontend tests.
+
+      component.ngOnInit();
+      expect(component.choices).toEqual(choices);
+    }
+  );
 
   it('should update selected answer when user selects an option', () => {
     let dummyMouseEvent = new MouseEvent('Mouse');
-    spyOn(browserCheckerService, 'isMobileDevice').and.returnValue(false);
-    spyOn(document, 'querySelector')
-      .withArgs('button.multiple-choice-option.selected').and.returnValue({
-        // This throws "Type '{ add: () => void; remove: () => void; }'
-        // is missing the following properties from type 'DOMTokenList':
-        // length, value, contains, item, and 4 more". We need to suppress
-        // this error because typescript expects more
-        // properties than just one add and remove.
-        // We need only add and remove for testing purposes.
-        // @ts-expect-error
-        classList: {
-          add: () => {
-            return;
-          },
-          remove: () => {
-            return;
-          }
-        }
-      });
-    spyOnProperty(dummyMouseEvent, 'currentTarget').and.returnValue(
-      {
-        classList: {
-          add: () => {
-            return;
-          },
-          remove: () => {
-            return;
-          }
-        }
-
-      }
+    component.errorMessageI18nKey = 'Some error';
+    const updateCurrentAnswerSpy = spyOn(
+      currentInteractionService,
+      'updateCurrentAnswer'
     );
-    spyOn(component, 'submitAnswer');
-
-    component.selectAnswer(dummyMouseEvent, '1');
+    spyOnProperty(dummyMouseEvent, 'currentTarget').and.returnValue({
+      classList: {
+        add: () => {
+          return;
+        },
+        remove: () => {
+          return;
+        },
+      },
+    });
+    component.selectAnswer(dummyMouseEvent, 1);
 
     expect(component.answer).toBe(1);
-    expect(component.submitAnswer).toHaveBeenCalled();
+    expect(updateCurrentAnswerSpy).toHaveBeenCalledWith(1);
+    expect(component.errorMessageI18nKey).toEqual('');
   });
 
   it('should not update the answer if the user does not select any', () => {
@@ -194,55 +266,47 @@ describe('InteractiveMultipleChoiceInputComponent', () => {
     expect(component.answer).toBe(1);
   });
 
-  it('should not submit answer when user selects option if user is on' +
-  ' a mobile', () => {
-    let dummyMouseEvent = new MouseEvent('Mouse');
-    spyOn(browserCheckerService, 'isMobileDevice').and.returnValue(true);
-    spyOn(document, 'querySelectorAll')
-      .withArgs('button.multiple-choice-option.selected').and.returnValue([{
-        // This throws "Type '{ add: () => void; remove: () => void; }'
-        // is missing the following properties from type 'DOMTokenList':
-        // length, value, contains, item, and 4 more". We need to suppress
-        // this error because typescript expects around more
-        // properties than just one add and remove.
-        // We need only add and remove for testing purposes.
-        // @ts-expect-error
+  it(
+    'should not submit answer when user selects option if user is on' +
+      ' a mobile',
+    () => {
+      let dummyMouseEvent = new MouseEvent('Mouse');
+      component.errorMessageI18nKey = 'Some error';
+      const updateCurrentAnswerSpy = spyOn(
+        currentInteractionService,
+        'updateCurrentAnswer'
+      );
+      spyOnProperty(dummyMouseEvent, 'currentTarget').and.returnValue({
         classList: {
           add: () => {
             return;
           },
           remove: () => {
             return;
-          }
-        }
-      }]);
-    spyOnProperty(dummyMouseEvent, 'currentTarget').and.returnValue(
-      {
-        classList: {
-          add: () => {
-            return;
           },
-          remove: () => {
-            return;
-          }
-        }
+        },
+      });
+      spyOn(component, 'submitAnswer');
 
-      }
-    );
-    spyOn(component, 'submitAnswer');
+      component.selectAnswer(dummyMouseEvent, 1);
 
-    component.selectAnswer(dummyMouseEvent, '1');
-
-    expect(component.submitAnswer).not.toHaveBeenCalled();
-  });
+      expect(component.submitAnswer).not.toHaveBeenCalled();
+      expect(updateCurrentAnswerSpy).toHaveBeenCalledWith(1);
+      expect(component.errorMessageI18nKey).toEqual('');
+    }
+  );
 
   it('should submit answer when user submits answer', () => {
     component.answer = 1;
     spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+    spyOn(currentInteractionService, 'showNoResponseError');
 
     component.submitAnswer();
 
     expect(currentInteractionService.onSubmit).toHaveBeenCalled();
+    expect(
+      currentInteractionService.showNoResponseError
+    ).not.toHaveBeenCalled();
   });
 
   it('should not submit answer when no answer is selected', () => {
@@ -252,5 +316,37 @@ describe('InteractiveMultipleChoiceInputComponent', () => {
     component.submitAnswer();
 
     expect(currentInteractionService.onSubmit).not.toHaveBeenCalled();
+    expect(component.errorMessageI18nKey).toEqual('');
+  });
+
+  it('should show "no response error" if no answer is selected', () => {
+    component.answer = null;
+    spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+    spyOn(currentInteractionService, 'showNoResponseError').and.returnValue(
+      true
+    );
+
+    component.submitAnswer();
+
+    expect(currentInteractionService.onSubmit).not.toHaveBeenCalled();
+    expect(component.errorMessageI18nKey).toEqual(
+      'I18N_INTERACTIONS_ITEM_SELECTION_NO_RESPONSE'
+    );
+  });
+
+  it('should call submitAnswer when Enter key is pressed', () => {
+    component.answer = 1;
+    spyOn(component, 'submitAnswer');
+    spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+    spyOn(currentInteractionService, 'showNoResponseError');
+    const event = new KeyboardEvent('keydown', {key: 'Enter'});
+
+    component.handleEnterKey(event);
+
+    expect(component.submitAnswer).toHaveBeenCalled();
+    expect(currentInteractionService.onSubmit).not.toHaveBeenCalled();
+    expect(
+      currentInteractionService.showNoResponseError
+    ).not.toHaveBeenCalled();
   });
 });

@@ -17,12 +17,14 @@
  * domain object.
  */
 
-import { BaseUndoRedo } from './base-undo-redo.service';
+import {Injectable} from '@angular/core';
+import {BaseUndoRedo} from 'domain/editor/undo_redo/base-undo-redo.service';
 
-angular.module('oppia').factory('QuestionUndoRedoService', [
-  function() {
-    var child = new BaseUndoRedo();
-    child.init();
-    return child;
+@Injectable({
+  providedIn: 'root',
+})
+export class QuestionUndoRedoService extends BaseUndoRedo {
+  constructor() {
+    super();
   }
-]);
+}

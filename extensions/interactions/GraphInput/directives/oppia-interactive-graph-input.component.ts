@@ -20,35 +20,38 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnDestroy, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { GraphAnswer } from 'interactions/answer-defs';
-import { GraphInputCustomizationArgs } from 'interactions/customization-args-defs';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
+import {Component, Input, OnDestroy, OnInit} from '@angular/core';
+import {GraphAnswer} from 'interactions/answer-defs';
+import {GraphInputCustomizationArgs} from 'interactions/customization-args-defs';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
 import cloneDeep from 'lodash/cloneDeep';
-import { InteractionRulesService } from 'pages/exploration-player-page/services/answer-classification.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { PlayerPositionService } from 'pages/exploration-player-page/services/player-position.service';
-import { Subscription } from 'rxjs';
-import { GraphInputRulesService } from './graph-input-rules.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {PlayerPositionService} from 'pages/exploration-player-page/services/player-position.service';
+import {Subscription} from 'rxjs';
+import {GraphInputRulesService} from './graph-input-rules.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
 
 @Component({
   selector: 'oppia-interactive-graph-input',
   templateUrl: './graph-input-interaction.component.html',
-  styleUrls: []
+  styleUrls: ['./graph-input-interaction.component.css'],
 })
 export class InteractiveGraphInput implements OnInit, OnDestroy {
-  @Input() graphWithValue: string;
-  @Input() canAddVertexWithValue: string;
-  @Input() canDeleteVertexWithValue: string;
-  @Input() canMoveVertexWithValue: string;
-  @Input() canEditVertexLabelWithValue: string;
-  @Input() canAddEdgeWithValue: string;
-  @Input() canDeleteEdgeWithValue: string;
-  @Input() canEditEdgeWeightWithValue: string;
-  @Input() lastAnswer: null | GraphAnswer = null;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() graphWithValue!: string;
+  @Input() canAddVertexWithValue!: string;
+  @Input() canDeleteVertexWithValue!: string;
+  @Input() canMoveVertexWithValue!: string;
+  @Input() canEditVertexLabelWithValue!: string;
+  @Input() canAddEdgeWithValue!: string;
+  @Input() canDeleteEdgeWithValue!: string;
+  @Input() canEditEdgeWeightWithValue!: string;
+  // Last answer is null if graph is submitted for the first time.
+  @Input() lastAnswer!: GraphAnswer | null;
 
-  graph: GraphAnswer;
+  graph!: GraphAnswer;
   canAddVertex: boolean = false;
   canDeleteVertex: boolean = false;
   canMoveVertex: boolean = true;
@@ -64,25 +67,23 @@ export class InteractiveGraphInput implements OnInit, OnDestroy {
   constructor(
     private currentInteractionService: CurrentInteractionService,
     private graphInputRulesService: GraphInputRulesService,
-    private interactionAttributesExtractorService:
-      InteractionAttributesExtractorService,
+    private interactionAttributesExtractorService: InteractionAttributesExtractorService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
     private playerPositionService: PlayerPositionService
   ) {}
 
   ngOnInit(): void {
     this.componentSubscriptions.add(
-      this.playerPositionService.onNewCardAvailable.subscribe(
-        () => {
-          this.interactionIsActive = false;
-          this.canAddVertex = false;
-          this.canDeleteVertex = false;
-          this.canEditVertexLabel = false;
-          this.canMoveVertex = false;
-          this.canAddEdge = false;
-          this.canDeleteEdge = false;
-          this.canEditEdgeWeight = false;
-        }
-      )
+      this.playerPositionService.onNewCardAvailable.subscribe(() => {
+        this.interactionIsActive = false;
+        this.canAddVertex = false;
+        this.canDeleteVertex = false;
+        this.canEditVertexLabel = false;
+        this.canMoveVertex = false;
+        this.canAddEdge = false;
+        this.canDeleteEdge = false;
+        this.canEditEdgeWeight = false;
+      })
     );
 
     this.errorMessage = '';
@@ -91,17 +92,19 @@ export class InteractiveGraphInput implements OnInit, OnDestroy {
       edges: [],
       isDirected: false,
       isWeighted: false,
-      isLabeled: false
+      isLabeled: false,
     };
-    this.interactionIsActive = (this.lastAnswer === null);
+    this.interactionIsActive = this.lastAnswer === null;
 
     this.currentInteractionService.registerCurrentInteraction(
-      () => this.submitGraph(), () => this.validityCheckFn());
+      () => this.submitGraph(),
+      () => this.validityCheckFn()
+    );
 
-    if (this.interactionIsActive) {
-      this.resetGraph();
-    } else {
+    if (!this.interactionIsActive && this.lastAnswer !== null) {
       this.graph = this.lastAnswer;
+    } else {
+      this.resetGraph();
     }
     const {
       canAddVertex,
@@ -110,24 +113,24 @@ export class InteractiveGraphInput implements OnInit, OnDestroy {
       canMoveVertex,
       canAddEdge,
       canDeleteEdge,
-      canEditEdgeWeight
+      canEditEdgeWeight,
     } = this.interactionAttributesExtractorService.getValuesFromAttributes(
       'GraphInput',
       this._getAttrs()
     ) as GraphInputCustomizationArgs;
     this.canAddVertex = this.interactionIsActive ? canAddVertex.value : false;
-    this.canDeleteVertex = this.interactionIsActive ?
-      canDeleteVertex.value : false;
-    this.canEditVertexLabel = this.interactionIsActive ?
-      canEditVertexLabel.value : false;
-    this.canMoveVertex = this.interactionIsActive ?
-      canMoveVertex.value : false;
-    this.canAddEdge = this.interactionIsActive ?
-      canAddEdge.value : false;
-    this.canDeleteEdge = this.interactionIsActive ?
-      canDeleteEdge.value : false;
-    this.canEditEdgeWeight = this.interactionIsActive ?
-      canEditEdgeWeight.value : false;
+    this.canDeleteVertex = this.interactionIsActive
+      ? canDeleteVertex.value
+      : false;
+    this.canEditVertexLabel = this.interactionIsActive
+      ? canEditVertexLabel.value
+      : false;
+    this.canMoveVertex = this.interactionIsActive ? canMoveVertex.value : false;
+    this.canAddEdge = this.interactionIsActive ? canAddEdge.value : false;
+    this.canDeleteEdge = this.interactionIsActive ? canDeleteEdge.value : false;
+    this.canEditEdgeWeight = this.interactionIsActive
+      ? canEditEdgeWeight.value
+      : false;
   }
 
   private _getAttrs() {
@@ -139,23 +142,27 @@ export class InteractiveGraphInput implements OnInit, OnDestroy {
       canEditVertexLabelWithValue: this.canEditVertexLabelWithValue,
       canAddEdgeWithValue: this.canAddEdgeWithValue,
       canDeleteEdgeWithValue: this.canDeleteEdgeWithValue,
-      canEditEdgeWeightWithValue: this.canEditEdgeWeightWithValue
+      canEditEdgeWeightWithValue: this.canEditEdgeWeightWithValue,
     };
   }
 
   submitGraph(): void {
     this.currentInteractionService.onSubmit(
-      cloneDeep<GraphAnswer>(this.graph) as unknown as string,
-      this.graphInputRulesService as unknown as InteractionRulesService);
+      cloneDeep<GraphAnswer>(this.graph),
+      this.graphInputRulesService
+    );
+  }
+
+  isLanguageRTL(): boolean {
+    return this.i18nLanguageCodeService.isCurrentLanguageRTL();
   }
 
   resetGraph(): void {
-    const {
-      graph
-    } = this.interactionAttributesExtractorService.getValuesFromAttributes(
-      'GraphInput',
-      this._getAttrs()
-    ) as GraphInputCustomizationArgs;
+    const {graph} =
+      this.interactionAttributesExtractorService.getValuesFromAttributes(
+        'GraphInput',
+        this._getAttrs()
+      ) as GraphInputCustomizationArgs;
     let parsedGraph = graph.value;
     if (this.checkValidGraph(parsedGraph)) {
       this.graph = parsedGraph;
@@ -177,7 +184,3 @@ export class InteractiveGraphInput implements OnInit, OnDestroy {
     this.componentSubscriptions.unsubscribe();
   }
 }
-angular.module('oppia').directive(
-  'oppiaInteractiveGraphInput', downgradeComponent({
-    component: InteractiveGraphInput
-  }) as angular.IDirectiveFactory);

@@ -16,15 +16,13 @@
 
 """Jobs that are run by CRON scheduler."""
 
-from __future__ import absolute_import
 from __future__ import annotations
-from __future__ import unicode_literals
 
 from core import feconf
 from core.domain import user_services
-from core.jobs import base_jobs
-from core.jobs import job_utils
+from core.jobs import base_jobs, job_utils
 from core.jobs.io import ndb_io
+from core.jobs.transforms import job_result_transforms
 from core.jobs.types import job_run_result
 from core.platform import models
 
@@ -32,11 +30,10 @@ import apache_beam as beam
 from typing import Iterable
 
 MYPY = False
-if MYPY: # pragma: no cover
-    from mypy_imports import datastore_services
-    from mypy_imports import user_models
+if MYPY:  # pragma: no cover
+    from mypy_imports import datastore_services, user_models
 
-(user_models,) = models.Registry.import_models([models.NAMES.user])
+(user_models,) = models.Registry.import_models([models.Names.USER])
 
 datastore_services = models.Registry.import_datastore_services()
 
@@ -47,16 +44,12 @@ class CollectWeeklyDashboardStatsJob(base_jobs.JobBase):
     """
 
     def run(self) -> beam.PCollection[job_run_result.JobRunResult]:
-        user_settings_models = (
-            self.pipeline
-            | 'Get all UserSettingsModels' >> (
-                ndb_io.GetModels(user_models.UserSettingsModel.get_all()))
+        user_settings_models = self.pipeline | 'Get all UserSettingsModels' >> (
+            ndb_io.GetModels(user_models.UserSettingsModel.get_all())
         )
 
-        old_user_stats_models = (
-            self.pipeline
-            | 'Get all UserStatsModels' >> (
-                ndb_io.GetModels(user_models.UserStatsModel.get_all()))
+        old_user_stats_models = self.pipeline | 'Get all UserStatsModels' >> (
+            ndb_io.GetModels(user_models.UserStatsModel.get_all())
         )
 
         # Creates UserStatsModels if it does not exists.
@@ -68,58 +61,57 @@ class CollectWeeklyDashboardStatsJob(base_jobs.JobBase):
             # (model.id, (user_settings_models,)).
             | 'Group models with same ID' >> beam.GroupBy(lambda m: m.id)
             # Discards model.id from the PCollection.
-            | 'Get rid of key' >> beam.Values() # pylint: disable=no-value-for-parameter
+            | 'Get rid of key'
+            >> beam.Values()  # pylint: disable=no-value-for-parameter
             # Only keep groupings that indicate that
             # the UserStatsModel is missing.
-            | 'Filter pairs of models' >> beam.Filter(
+            | 'Filter pairs of models'
+            >> beam.Filter(
                 lambda models: (
-                    len(list(models)) == 1 and
-                    isinstance(list(models)[0], user_models.UserSettingsModel)
-                ))
+                    len(list(models)) == 1
+                    and isinstance(
+                        list(models)[0], user_models.UserSettingsModel
+                    )
+                )
+            )
             # Choosing the first element.
-            | 'Transform tuples into models' >> beam.Map(
-                lambda models: list(models)[0])
+            | 'Transform tuples into models'
+            >> beam.Map(lambda models: list(models)[0])
             # Creates the missing UserStatsModels.
-            | 'Create new user stat models' >> beam.ParDo(
-                CreateUserStatsModel())
+            | 'Create new user stat models'
+            >> beam.ParDo(CreateUserStatsModel())
         )
 
         unused_put_result = (
             (new_user_stats_models, old_user_stats_models)
             | 'Merge new and old models together' >> beam.Flatten()
-            | 'Update the dashboard stats' >> beam.ParDo(
-                UpdateWeeklyCreatorStats())
+            | 'Update the dashboard stats'
+            >> beam.ParDo(UpdateWeeklyCreatorStats())
             | 'Put models into the datastore' >> ndb_io.PutModels()
         )
 
         new_user_stats_job_result = (
             new_user_stats_models
-            | 'Count all new models' >> beam.combiners.Count.Globally()
-            | 'Only create result for new models when > 0' >> (
-                beam.Filter(lambda x: x > 0))
-            | 'Create result for new models' >> beam.Map(
-                lambda x: job_run_result.JobRunResult(
-                    stdout='SUCCESS NEW %s' % x)
-            )
+            | 'Create new job run result'
+            >> (job_result_transforms.CountObjectsToJobRunResult('NEW MODELS'))
         )
         old_user_stats_job_result = (
             old_user_stats_models
-            | 'Count all old models' >> beam.combiners.Count.Globally()
-            | 'Only create result for old models when > 0' >> (
-                beam.Filter(lambda x: x > 0))
-            | 'Create result for old models' >> beam.Map(
-                lambda x: job_run_result.JobRunResult(
-                    stdout='SUCCESS OLD %s' % x)
-            )
+            | 'Create old job run result'
+            >> (job_result_transforms.CountObjectsToJobRunResult('OLD MODELS'))
         )
 
         return (
-            (new_user_stats_job_result, old_user_stats_job_result)
-            | 'Merge new and old results together' >> beam.Flatten()
-        )
+            new_user_stats_job_result,
+            old_user_stats_job_result,
+        ) | 'Merge new and old results together' >> beam.Flatten()
 
 
-class CreateUserStatsModel(beam.DoFn): # type: ignore[misc]
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that DoFn class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'DoFn' (has type 'Any')), we added an ignore here.
+class CreateUserStatsModel(beam.DoFn):  # type: ignore[misc]
     """DoFn to create empty user stats model."""
 
     def process(
@@ -135,13 +127,18 @@ class CreateUserStatsModel(beam.DoFn): # type: ignore[misc]
             UserStatsModel. The created user stats model.
         """
         with datastore_services.get_ndb_context():
-            user_stats_model = (
-                user_models.UserStatsModel(id=user_settings_model.id))
+            user_stats_model = user_models.UserStatsModel(
+                id=user_settings_model.id
+            )
         user_stats_model.update_timestamps()
         yield user_stats_model
 
 
-class UpdateWeeklyCreatorStats(beam.DoFn): # type: ignore[misc]
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that DoFn class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'DoFn' (has type 'Any')), we added an ignore here.
+class UpdateWeeklyCreatorStats(beam.DoFn):  # type: ignore[misc]
     """DoFn to update weekly dashboard stats in the user stats model."""
 
     def process(
@@ -161,13 +158,13 @@ class UpdateWeeklyCreatorStats(beam.DoFn): # type: ignore[misc]
         schema_version = model.schema_version
 
         if schema_version != feconf.CURRENT_DASHBOARD_STATS_SCHEMA_VERSION:
-            user_services.migrate_dashboard_stats_to_latest_schema(model) # type: ignore[no-untyped-call]
+            user_services.migrate_dashboard_stats_to_latest_schema(model)
 
         weekly_creator_stats = {
-            user_services.get_current_date_as_string(): { # type: ignore[no-untyped-call]
+            user_services.get_current_date_as_string(): {
                 'num_ratings': model.num_ratings or 0,
                 'average_ratings': model.average_ratings,
-                'total_plays': model.total_plays or 0
+                'total_plays': model.total_plays or 0,
             }
         }
         model.weekly_creator_stats_list.append(weekly_creator_stats)

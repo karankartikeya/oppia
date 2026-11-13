@@ -18,38 +18,36 @@
  * retrieving the collection, saving it, and listening for changes.
  */
 
-import { EventEmitter, Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { CollectionRightsBackendApiService } from 'domain/collection/collection-rights-backend-api.service';
-import { CollectionRights } from 'domain/collection/collection-rights.model';
-import { Collection } from 'domain/collection/collection.model';
-import { EditableCollectionBackendApiService } from 'domain/collection/editable-collection-backend-api.service';
-import { UndoRedoService } from 'domain/editor/undo_redo/undo-redo.service';
-import { AlertsService } from 'services/alerts.service';
+import {EventEmitter, Injectable} from '@angular/core';
+import {CollectionRightsBackendApiService} from 'domain/collection/collection-rights-backend-api.service';
+import {CollectionRights} from 'domain/collection/collection-rights.model';
+import {Collection} from 'domain/collection/collection.model';
+import {EditableCollectionBackendApiService} from 'domain/collection/editable-collection-backend-api.service';
+import {UndoRedoService} from 'domain/editor/undo_redo/undo-redo.service';
+import {AlertsService} from 'services/alerts.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class CollectionEditorStateService {
   private _collection: Collection = Collection.createEmptyCollection();
   private _collectionRights: CollectionRights =
-  CollectionRights.createEmptyCollectionRights();
+    CollectionRights.createEmptyCollectionRights();
+
   private _collectionIsInitialized: boolean = false;
   private _collectionIsLoading: boolean = false;
   private _collectionIsBeingSaved: boolean = false;
-  private _collectionInitializedEventEmitter: EventEmitter<void> = (
-  new EventEmitter());
+  private _collectionInitializedEventEmitter: EventEmitter<void> =
+    new EventEmitter();
 
   constructor(
     private alertsService: AlertsService,
-    private collectionRightsBackendApiService:
-    CollectionRightsBackendApiService,
-    private editableCollectionBackendApiService:
-    EditableCollectionBackendApiService,
+    private collectionRightsBackendApiService: CollectionRightsBackendApiService,
+    private editableCollectionBackendApiService: EditableCollectionBackendApiService,
     private undoRedoService: UndoRedoService
-  ) { }
+  ) {}
 
-  private _setCollection(collection: Collection) {
+  private _setCollection(collection: Collection): void {
     this._collection.copyFromCollection(collection);
     if (this._collectionIsInitialized) {
       this._collectionInitializedEventEmitter.emit();
@@ -74,26 +72,33 @@ export class CollectionEditorStateService {
    */
   loadCollection(collectionId: string): void {
     this._collectionIsLoading = true;
-    this.editableCollectionBackendApiService.fetchCollectionAsync(
-      collectionId).then(
-      (newCollectionObject) => {
-        this._updateCollection(newCollectionObject);
-      },
-      (error) => {
-        this.alertsService.addWarning(
-          error || 'There was an error when loading the collection.');
-        this._collectionIsLoading = false;
-      });
-    this.collectionRightsBackendApiService.fetchCollectionRightsAsync(
-      collectionId).then((newBackendCollectionRightsObject) => {
-      this._setCollectionRights(newBackendCollectionRightsObject);
-      this._collectionIsLoading = false;
-    }, (error) => {
-      this.alertsService.addWarning(
-        error ||
-          'There was an error when loading the collection rights.');
-      this._collectionIsLoading = false;
-    });
+    this.editableCollectionBackendApiService
+      .fetchCollectionAsync(collectionId)
+      .then(
+        (newCollectionObject: Collection) => {
+          this._updateCollection(newCollectionObject);
+        },
+        error => {
+          this.alertsService.addWarning(
+            error || 'There was an error when loading the collection.'
+          );
+          this._collectionIsLoading = false;
+        }
+      );
+    this.collectionRightsBackendApiService
+      .fetchCollectionRightsAsync(collectionId)
+      .then(
+        (newBackendCollectionRightsObject: CollectionRights) => {
+          this._setCollectionRights(newBackendCollectionRightsObject);
+          this._collectionIsLoading = false;
+        },
+        error => {
+          this.alertsService.addWarning(
+            error || 'There was an error when loading the collection rights.'
+          );
+          this._collectionIsLoading = false;
+        }
+      );
   }
 
   /**
@@ -169,9 +174,10 @@ export class CollectionEditorStateService {
    * shares behavior with setCollection(), when it succeeds.
    */
   saveCollection(commitMessage: string, successCallback?: () => void): boolean {
-    if (!this._collectionIsInitialized) {
-      this.alertsService.fatalWarning(
-        'Cannot save a collection before one is loaded.');
+    const collectionId = this._collection.getId();
+    const collectionVersion = this._collection.getVersion();
+    if (!collectionId || !this._collectionIsInitialized || !collectionVersion) {
+      return false;
     }
 
     // Don't attempt to save the collection if there are no changes pending.
@@ -179,22 +185,30 @@ export class CollectionEditorStateService {
       return false;
     }
     this._collectionIsBeingSaved = true;
-    this.editableCollectionBackendApiService.updateCollectionAsync(
-      this._collection.getId(), this._collection.getVersion(),
-      commitMessage, this.undoRedoService.getCommittableChangeList()).then(
-      (collectionObject) => {
-        this._updateCollection(collectionObject);
-        this.undoRedoService.clearChanges();
-        this._collectionIsBeingSaved = false;
+    this.editableCollectionBackendApiService
+      .updateCollectionAsync(
+        collectionId,
+        collectionVersion,
+        commitMessage,
+        this.undoRedoService.getCommittableChangeList()
+      )
+      .then(
+        (collectionObject: Collection) => {
+          this._updateCollection(collectionObject);
+          this.undoRedoService.clearChanges();
+          this._collectionIsBeingSaved = false;
 
-        if (successCallback) {
-          successCallback();
+          if (successCallback) {
+            successCallback();
+          }
+        },
+        error => {
+          this.alertsService.addWarning(
+            error || 'There was an error when saving the collection.'
+          );
+          this._collectionIsBeingSaved = false;
         }
-      }, (error) => {
-        this.alertsService.addWarning(
-          error || 'There was an error when saving the collection.');
-        this._collectionIsBeingSaved = false;
-      });
+      );
     return true;
   }
 
@@ -210,6 +224,3 @@ export class CollectionEditorStateService {
     return this._collectionInitializedEventEmitter;
   }
 }
-
-angular.module('oppia').factory('CollectionEditorStateService',
-  downgradeInjectable(CollectionEditorStateService));

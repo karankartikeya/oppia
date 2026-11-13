@@ -34,19 +34,24 @@
  * value.
  */
 
-import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ContextService } from 'services/context.service';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {
+  Component,
+  Input,
+  OnChanges,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
+import {PageContextService} from 'services/page-context.service';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 
 @Component({
   selector: 'oppia-noninteractive-link',
   templateUrl: './link.component.html',
-  styleUrls: []
+  styleUrls: [],
 })
 export class NoninteractiveLink implements OnInit, OnChanges {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() urlWithValue!: string;
   @Input() textWithValue!: string;
@@ -55,15 +60,17 @@ export class NoninteractiveLink implements OnInit, OnChanges {
   showUrlInTooltip: boolean = false;
   tabIndexVal: number = 0;
   constructor(
-    private contextService: ContextService,
-    private htmlEscaperService: HtmlEscaperService) {}
+    private pageContextService: PageContextService,
+    private htmlEscaperService: HtmlEscaperService
+  ) {}
 
   private _updateViewOnLinkChange(): void {
     if (!this.urlWithValue || !this.textWithValue) {
       return;
     }
-    let untrustedUrl = encodeURI(this.htmlEscaperService.escapedJsonToObj(
-      this.urlWithValue) as string);
+    let untrustedUrl = encodeURI(
+      this.htmlEscaperService.escapedJsonToObj(this.urlWithValue) as string
+    );
     if (
       !untrustedUrl.startsWith('http://') &&
       !untrustedUrl.startsWith('https://')
@@ -76,8 +83,9 @@ export class NoninteractiveLink implements OnInit, OnChanges {
       // This is done for backward-compatibility; some old explorations
       // have content parts that don't include a 'text' attribute on
       // their links.
-      this.text = (
-        this.htmlEscaperService.escapedJsonToObj(this.textWithValue) as string);
+      this.text = this.htmlEscaperService.escapedJsonToObj(
+        this.textWithValue
+      ) as string;
       // Note that this second 'if' condition is needed because a link
       // may have an empty 'text' value.
       if (this.text) {
@@ -89,7 +97,7 @@ export class NoninteractiveLink implements OnInit, OnChanges {
 
     // This following check disables the link in Editor being caught
     // by tabbing while in Exploration Editor mode.
-    if (this.contextService.isInExplorationEditorMode()) {
+    if (this.pageContextService.isInExplorationEditorMode()) {
       this.tabIndexVal = -1;
     }
   }
@@ -104,8 +112,3 @@ export class NoninteractiveLink implements OnInit, OnChanges {
     }
   }
 }
-
-angular.module('oppia').directive('oppiaNoninteractiveLink',
-  downgradeComponent({
-    component: NoninteractiveLink
-  }));

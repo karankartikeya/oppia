@@ -16,18 +16,22 @@
  * @fileoverview Component for the main tab of the collection editor.
  */
 
-import { Component } from '@angular/core';
-import { CollectionNode } from 'domain/collection/collection-node.model';
-import { Collection } from 'domain/collection/collection.model';
-import { CollectionEditorStateService } from '../services/collection-editor-state.service';
-import { CollectionLinearizerService } from '../services/collection-linearizer.service';
+import {Component} from '@angular/core';
+import {CollectionNode} from 'domain/collection/collection-node.model';
+import {Collection} from 'domain/collection/collection.model';
+import {CollectionEditorStateService} from '../services/collection-editor-state.service';
+import {CollectionLinearizerService} from '../services/collection-linearizer.service';
 
 @Component({
   selector: 'oppia-collection-editor-tab',
-  templateUrl: './collection-editor-tab.component.html'
+  templateUrl: './collection-editor-tab.component.html',
+  styleUrls: ['./collection-editor-tab.component.css'],
 })
 export class CollectionEditorTabComponent {
-  collection: Collection;
+  // This property is initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  collection!: Collection;
 
   constructor(
     private collectionEditorStateService: CollectionEditorStateService,
@@ -40,7 +44,8 @@ export class CollectionEditorTabComponent {
 
   getLinearlySortedNodes(): CollectionNode[] {
     return this.collectionLinearizerService.getCollectionNodesInPlayableOrder(
-      this.collection);
+      this.collection
+    );
   }
 
   hasLoadedCollection(): boolean {

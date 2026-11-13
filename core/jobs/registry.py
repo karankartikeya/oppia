@@ -23,12 +23,9 @@ TODO(#11475): Add lint checks that ensure all "jobs.*_jobs" modules are imported
 into this file.
 """
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.jobs import base_jobs
-
-from typing import List, Type
 
 # IMPORTANT: These modules MUST be imported! DO NOT DELETE!
 # We need each module to execute so that the class definitions trigger the
@@ -44,14 +41,79 @@ from typing import List, Type
 # We need this to happen for every job in this registry file, because the
 # registry depends on JobMetaclass to handle the responsibility of keeping track
 # of every job.
-from core.jobs.batch_jobs import blog_validation_jobs              # pylint: disable=unused-import  # isort: skip
-from core.jobs.batch_jobs import (                                 # pylint: disable=unused-import  # isort: skip
-    exp_recommendation_computation_jobs)
-from core.jobs.batch_jobs import exp_search_indexing_jobs          # pylint: disable=unused-import  # isort: skip
-from core.jobs.batch_jobs import model_validation_jobs             # pylint: disable=unused-import  # isort: skip
-from core.jobs.batch_jobs import opportunity_management_jobs       # pylint: disable=unused-import  # isort: skip
-from core.jobs.batch_jobs import suggestion_stats_computation_jobs # pylint: disable=unused-import  # isort: skip
-from core.jobs.batch_jobs import user_stats_computation_jobs       # pylint: disable=unused-import  # isort: skip
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import
+    audit_non_existent_threads_messages_jobs,
+    audit_stories_with_disconnected_node_ids_job,
+    audit_threads_with_missing_suggestions_jobs,
+    blog_author_details_migration_jobs,
+    blog_validation_jobs,
+    classroom_migration_jobs,
+    cleanup_duplicate_translation_suggestions_jobs,
+    cloud_task_run_migration_jobs,
+    collection_info_jobs,
+    contributor_admin_stats_jobs,
+    delete_duplicate_content_ids_jobs,
+    dummy_jobs,
+    email_deletion_jobs,
+    exp_end_state_normalization_jobs,
+    exp_migration_jobs,
+    exploration_voiceover_sync_jobs,
+    firebase_server_sync_jobs,
+    legacy_feedback_migration_jobs,
+    math_interactions_audit_jobs,
+    model_validation_jobs,
+    number_with_units_audit_jobs,
+    opportunity_management_jobs,
+    pinned_opportunity_backfill_jobs,
+    question_migration_jobs,
+    recover_orphaned_translations_jobs,
+    skill_inspection_jobs,
+    skill_migration_jobs,
+    story_migration_jobs,
+    subtopic_migration_jobs,
+    suggestion_migration_jobs,
+    suggestion_stats_computation_jobs,
+    synthesize_voiceover_by_language_accent_jobs,
+    topic_migration_jobs,
+    translation_audit_jobs,
+    translation_migration_jobs,
+    translation_opportunity_backfill_jobs,
+    user_bios_change_jobs,
+    user_stats_computation_jobs,
+    user_validation_jobs,
+    voiceover_synthesis_jobs,
+    web_feedback_cleanup_jobs,
+)
+
+from typing import List, Type
+
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    exp_recommendation_computation_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    suggestion_edit_state_content_deletion_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    exp_version_history_computation_job,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    rejecting_suggestion_for_invalid_content_ids_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    remove_profile_picture_data_url_field_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    story_node_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    audit_topic_related_models_relation_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    reject_invalid_suggestion_and_delete_invalid_translation_jobs,
+)
+from core.jobs.batch_jobs import (  # pylint: disable=unused-import  # isort: skip
+    missing_translation_images_repair_jobs,
+)
 
 
 def get_all_jobs() -> List[Type[base_jobs.JobBase]]:

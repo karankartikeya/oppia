@@ -15,15 +15,15 @@
 /**
  * @fileoverview Unit tests for error page.
  */
-import { EventEmitter, NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, TestBed, ComponentFixture } from '@angular/core/testing';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, TestBed, ComponentFixture} from '@angular/core/testing';
+import {TranslateService} from '@ngx-translate/core';
 
-import { Error404PageComponent } from './error-404-page.component';
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { I18nLanguageCodeService } from 'services/i18n-language-code.service';
-import { PageTitleService } from 'services/page-title.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
+import {Error404PageComponent} from './error-404-page.component';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {PageTitleService} from 'services/page-title.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
 
 class MockI18nLanguageCodeService {
   codeChangeEventEmiiter = new EventEmitter<string>();
@@ -36,38 +36,89 @@ class MockI18nLanguageCodeService {
   }
 }
 
+class MockTranslateService {
+  onLangChange: EventEmitter<string> = new EventEmitter();
+  instant(key: string, interpolateParams?: Object): string {
+    return key;
+  }
+}
+
 let component: Error404PageComponent;
 let fixture: ComponentFixture<Error404PageComponent>;
 
 describe('Error page', () => {
-  let pageTitle = null;
+  let pageTitleService: PageTitleService;
+  let translateService: TranslateService;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [Error404PageComponent, MockTranslatePipe],
       providers: [
         {
           provide: I18nLanguageCodeService,
-          useClass: MockI18nLanguageCodeService
+          useClass: MockI18nLanguageCodeService,
         },
         UrlInterpolationService,
-        PageTitleService
+        PageTitleService,
+        {
+          provide: TranslateService,
+          useClass: MockTranslateService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
-    pageTitle = TestBed.get(PageTitleService);
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(Error404PageComponent);
     component = fixture.componentInstance;
+    translateService = TestBed.inject(TranslateService);
+    pageTitleService = TestBed.inject(PageTitleService);
     fixture.detectChanges();
   });
 
-  it('should set images and page title when $onInit triggers', () => {
+  it('should set images and subscribe to onLangChange upon initialization', () => {
+    spyOn(translateService.onLangChange, 'subscribe');
     component.ngOnInit();
-    expect(component.getStaticImageUrl('/general/oops_mint.webp'))
-      .toBe('/assets/images/general/oops_mint.webp');
-    expect(pageTitle.getDocumentTitle()).toBe('Error 404 - Oppia');
+    expect(component.getStaticImageUrl('/general/oops_mint.webp')).toBe(
+      '/assets/images/general/oops_mint.webp'
+    );
+    expect(translateService.onLangChange.subscribe).toHaveBeenCalled();
+  });
+
+  it(
+    'should obtain translated page title whenever the selected' +
+      'language changes',
+    () => {
+      component.ngOnInit();
+      spyOn(component, 'setPageTitle');
+      translateService.onLangChange.emit();
+
+      expect(component.setPageTitle).toHaveBeenCalled();
+    }
+  );
+
+  it('should set new page title', () => {
+    spyOn(translateService, 'instant').and.callThrough();
+    spyOn(pageTitleService, 'setDocumentTitle');
+    component.setPageTitle();
+
+    expect(translateService.instant).toHaveBeenCalledWith(
+      'I18N_ERROR_PAGE_TITLE_404'
+    );
+    expect(pageTitleService.setDocumentTitle).toHaveBeenCalledWith(
+      'I18N_ERROR_PAGE_TITLE_404'
+    );
+  });
+
+  it('should unsubscribe on component destruction', () => {
+    component.directiveSubscriptions.add(
+      translateService.onLangChange.subscribe(() => {
+        component.setPageTitle();
+      })
+    );
+    component.ngOnDestroy();
+
+    expect(component.directiveSubscriptions.closed).toBe(true);
   });
 });

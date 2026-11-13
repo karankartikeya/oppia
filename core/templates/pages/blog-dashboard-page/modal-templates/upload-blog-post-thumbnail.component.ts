@@ -16,28 +16,46 @@
  * @fileoverview Component for uploading thumbnail image.
  */
 
-import { ChangeDetectorRef, Component, ElementRef, Output, ViewChild, EventEmitter, OnInit } from '@angular/core';
-import { SafeResourceUrl } from '@angular/platform-browser';
-import { AppConstants } from 'app.constants';
-import { WindowDimensionsService } from 'services/contextual/window-dimensions.service';
-import { ImageLocalStorageService } from 'services/image-local-storage.service';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
+import {
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  Output,
+  ViewChild,
+  EventEmitter,
+  OnInit,
+} from '@angular/core';
+import {SafeResourceUrl} from '@angular/platform-browser';
+import {AppConstants} from 'app.constants';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {ImageLocalStorageService} from 'services/image-local-storage.service';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
 import Cropper from 'cropperjs';
-require('cropperjs/dist/cropper.min.css');
+import {
+  LazyCssLoaderService,
+  KNOWN_CSS,
+} from 'services/lazy-css-loader.service';
 
 @Component({
   selector: 'oppia-upload-blog-post-thumbnail',
-  templateUrl: './upload-blog-post-thumbnail.component.html'
+  templateUrl: './upload-blog-post-thumbnail.component.html',
+  styleUrls: ['./upload-blog-post-thumbnail.component.css'],
 })
 export class UploadBlogPostThumbnailComponent implements OnInit {
-  uploadedImage: SafeResourceUrl;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  croppedFilename!: string;
+  cropper!: Cropper;
+  @ViewChild('croppableImage') croppableImageRef!: ElementRef;
+  invalidTagsAndAttributes!: {tags: string[]; attrs: string[]};
+  // This property will be null when the SVG uploaded is not valid or when
+  // the image is not yet uploaded.
+  uploadedImage: SafeResourceUrl | null = null;
+  windowIsNarrow: boolean = false;
   cropppedImageDataUrl: string = '';
   invalidImageWarningIsShown: boolean = false;
-  allowedImageFormats: readonly string[] = AppConstants.ALLOWED_IMAGE_FORMATS;
-  croppedFilename: string;
-  windowIsNarrow: boolean;
-  cropper;
-  @ViewChild('croppableImage') croppableImageRef: ElementRef;
+  allowedImageFormats: string[] = [...AppConstants.ALLOWED_IMAGE_FORMATS];
   @Output() imageLocallySaved: EventEmitter<string> = new EventEmitter();
   @Output() cancelThumbnailUpload: EventEmitter<void> = new EventEmitter();
   constructor(
@@ -45,7 +63,8 @@ export class UploadBlogPostThumbnailComponent implements OnInit {
     private imageLocalStorageService: ImageLocalStorageService,
     private svgSanitizerService: SvgSanitizerService,
     private windowDimensionService: WindowDimensionsService,
-  ) { }
+    private lazyCssLoaderService: LazyCssLoaderService
+  ) {}
 
   initializeCropper(): void {
     let thumbnail = this.croppableImageRef.nativeElement;
@@ -53,34 +72,54 @@ export class UploadBlogPostThumbnailComponent implements OnInit {
       this.cropper = new Cropper(thumbnail, {
         minContainerWidth: 500,
         minContainerHeight: 350,
-        aspectRatio: 4
+        aspectRatio: 4,
       });
     } else {
       this.cropper = new Cropper(thumbnail, {
         minContainerWidth: 200,
         minContainerHeight: 200,
-        aspectRatio: 4
+        aspectRatio: 4,
       });
     }
   }
 
   onFileChanged(file: File): void {
     let originalFilename = file.name;
-    // The cropper always returns a png file, thus the extension should be
-    // changed to png for the final image type to match the extension.
-    this.croppedFilename = (
-      originalFilename.replace(/\.([^.]*?)(?=\?|#|$)/, '.png'));
+    // The cropper always returns a jpeg file, thus the extension should be
+    // changed to jpeg for the final image type to match the extension.
+    this.croppedFilename = originalFilename
+      .replace(/\.([^.]*?)(?=\?|#|$)/, '.jpeg')
+      .replace(/ /g, '_');
     this.invalidImageWarningIsShown = false;
     let reader = new FileReader();
-    reader.onload = (e) => {
-      this.uploadedImage = this.svgSanitizerService.getTrustedSvgResourceUrl(
-        (<FileReader>e.target).result as string);
+    reader.onload = e => {
+      this.invalidTagsAndAttributes = {
+        tags: [],
+        attrs: [],
+      };
+      let imageData = (e.target as FileReader).result as string;
+      if (this.svgSanitizerService.isBase64Svg(imageData)) {
+        this.invalidTagsAndAttributes =
+          this.svgSanitizerService.getInvalidSvgTagsAndAttrsFromDataUri(
+            imageData
+          );
+        this.uploadedImage =
+          this.svgSanitizerService.getTrustedSvgResourceUrl(imageData);
+      }
       if (!this.uploadedImage) {
         this.uploadedImage = decodeURIComponent(
-          (<FileReader>e.target).result as string);
+          (e.target as FileReader).result as string
+        );
       }
-      this.changeDetectorRef.detectChanges();
-      this.initializeCropper();
+      try {
+        this.changeDetectorRef.detectChanges();
+        this.initializeCropper();
+      } catch (viewDestroyedError) {
+        // This try catch block handles the following error in FE tests:
+        // ViewDestroyedError:
+        //   Attempt to use a destroyed view: detectChanges thrown.
+        // No further action is needed.
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -88,6 +127,14 @@ export class UploadBlogPostThumbnailComponent implements OnInit {
   reset(): void {
     this.uploadedImage = null;
     this.cropppedImageDataUrl = '';
+    this.invalidTagsAndAttributes = {
+      tags: [],
+      attrs: [],
+    };
+  }
+
+  getInvalidSvgIssueUrl(): string {
+    return this.svgSanitizerService.getIssueURL(this.invalidTagsAndAttributes);
   }
 
   onInvalidImageLoaded(): void {
@@ -96,24 +143,36 @@ export class UploadBlogPostThumbnailComponent implements OnInit {
   }
 
   save(): void {
-    this.cropppedImageDataUrl = (
-      this.cropper.getCroppedCanvas({
+    this.cropppedImageDataUrl = this.cropper
+      .getCroppedCanvas({
         height: 200,
         width: 800,
         fillColor: '#fff',
-      }).toDataURL());
+      })
+      .toDataURL('image/jpeg');
     this.imageLocalStorageService.saveImage(
-      this.croppedFilename, this.cropppedImageDataUrl);
+      this.croppedFilename,
+      this.cropppedImageDataUrl
+    );
     this.imageLocallySaved.emit(this.cropppedImageDataUrl);
     this.uploadedImage = null;
   }
 
   cancel(): void {
-    this.uploadedImage = false;
+    this.uploadedImage = null;
+    this.invalidTagsAndAttributes = {
+      tags: [],
+      attrs: [],
+    };
     this.cancelThumbnailUpload.emit();
   }
 
   ngOnInit(): void {
+    this.lazyCssLoaderService.loadCss(KNOWN_CSS.CROPPER);
+    this.invalidTagsAndAttributes = {
+      tags: [],
+      attrs: [],
+    };
     this.windowIsNarrow = this.windowDimensionService.isWindowNarrow();
 
     this.windowDimensionService.getResizeEvent().subscribe(() => {

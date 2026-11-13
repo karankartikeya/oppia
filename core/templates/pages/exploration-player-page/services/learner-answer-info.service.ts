@@ -16,33 +16,42 @@
  * @fileoverview Service for learner answer info.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
-import { AppConstants } from 'app.constants';
-import { State } from 'domain/state/StateObjectFactory';
-import { LearnerAnswerDetailsBackendApiService } from
-  'domain/statistics/learner-answer-details-backend-api.service';
-import { AnswerClassificationService, InteractionRulesService } from
-  'pages/exploration-player-page/services/answer-classification.service';
+import {AppConstants} from 'app.constants';
+import {State} from 'domain/state/state.model';
+import {LearnerAnswerDetailsBackendApiService} from 'domain/statistics/learner-answer-details-backend-api.service';
+import {
+  AnswerClassificationService,
+  InteractionRulesService,
+} from 'pages/exploration-player-page/services/answer-classification.service';
+import {ExplorationFeaturesBackendApiService} from 'services/exploration-features-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
-
 export class LearnerAnswerInfoService {
   constructor(
     private answerClassificationService: AnswerClassificationService,
-    private learnerAnswerDetailsBackendApiService:
-      LearnerAnswerDetailsBackendApiService) {}
+    private explorationFeaturesBackendApiService: ExplorationFeaturesBackendApiService,
+    private pageContextService: PageContextService,
+    private learnerAnswerDetailsBackendApiService: LearnerAnswerDetailsBackendApiService
+  ) {}
 
-  private submittedAnswerInfoCount = 0;
-  private currentEntityId: string = null;
-  private stateName: string = null;
-  private interactionId = null;
-  private currentAnswer: string = null;
-  private currentInteractionRulesService: InteractionRulesService = null;
-  private canAskLearnerForAnswerInfo = false;
+  // These properties are initialized using init method and we need to do
+  // non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  private currentEntityId!: string;
+  // Name is null before saving a state.
+  private stateName!: string | null;
+  // Id is null until populated from the backend.
+  private interactionId!: string | null;
+  private currentAnswer!: string;
+  private currentInteractionRulesService!: InteractionRulesService;
+  private submittedAnswerInfoCount: number = 0;
+  private canAskLearnerForAnswerInfo: boolean = false;
+  alwaysAskLearnersForAnswerDetails: boolean = false;
   private visitedStates: string[] = [];
   private probabilityIndexes = {
     // The probability that a request for explanation of the answer that is
@@ -53,11 +62,14 @@ export class LearnerAnswerInfoService {
     typeA: 0.25,
     // The probability index when the outcome is marked as correct i.e
     // labelled_as_correct property is true.
-    typeB: 0.10,
+    typeB: 0.1,
     // The probability index when the outcome is not the default outcome
     // and it is not marked as correct i.e. it is any general outcome.
-    typeC: 0.05
+    typeC: 0.05,
   };
+
+  INTERACTION_IDS_WITHOUT_ANSWER_DETAILS: readonly string[] =
+    AppConstants.INTERACTION_IDS_WITHOUT_ANSWER_DETAILS;
 
   getRandomProbabilityIndex(): number {
     const min = 0;
@@ -65,10 +77,26 @@ export class LearnerAnswerInfoService {
     return (Math.floor(Math.random() * (max - min + 1)) + min) / 100;
   }
 
+  checkAlwaysAskLearnersForAnswerDetails(): void {
+    let explorationId = this.pageContextService.getExplorationId();
+    this.explorationFeaturesBackendApiService
+      .fetchExplorationFeaturesAsync(explorationId)
+      .then(featuresData => {
+        this.alwaysAskLearnersForAnswerDetails =
+          featuresData.alwaysAskLearnersForAnswerDetails;
+      });
+  }
+
+  getAlwaysAskLearnerForAnswerDetails(): boolean {
+    return this.alwaysAskLearnersForAnswerDetails;
+  }
+
   initLearnerAnswerInfoService(
-      entityId: string, state: State, answer: string,
-      interactionRulesService: InteractionRulesService,
-      alwaysAskLearnerForAnswerInfo: boolean): void {
+    entityId: string,
+    state: State,
+    answer: string,
+    interactionRulesService: InteractionRulesService
+  ): void {
     this.currentEntityId = entityId;
     this.currentAnswer = answer;
     this.currentInteractionRulesService = interactionRulesService;
@@ -84,24 +112,38 @@ export class LearnerAnswerInfoService {
       return;
     }
 
-    if (AppConstants.INTERACTION_IDS_WITHOUT_ANSWER_DETAILS.indexOf(
-      this.interactionId) !== -1) {
+    if (this.interactionId === null) {
+      throw new Error('Interaction id cannot be null.');
+    }
+
+    if (
+      this.INTERACTION_IDS_WITHOUT_ANSWER_DETAILS.indexOf(
+        this.interactionId
+      ) !== -1
+    ) {
       return;
+    }
+
+    if (this.stateName === null) {
+      throw new Error('State name cannot be null.');
     }
 
     if (this.visitedStates.indexOf(this.stateName) !== -1) {
       return;
     }
 
-    if (alwaysAskLearnerForAnswerInfo === true) {
+    if (this.getAlwaysAskLearnerForAnswerDetails() === true) {
       this.canAskLearnerForAnswerInfo = true;
       return;
     }
 
-    const classificationResult = (
+    const classificationResult =
       this.answerClassificationService.getMatchingClassificationResult(
-        this.stateName, state.interaction, answer,
-        interactionRulesService));
+        this.stateName,
+        state.interaction,
+        answer,
+        interactionRulesService
+      );
     const outcome = classificationResult.outcome;
     let thresholdProbabilityIndex = null;
     const randomProbabilityIndex = this.getRandomProbabilityIndex();
@@ -114,8 +156,8 @@ export class LearnerAnswerInfoService {
       thresholdProbabilityIndex = this.probabilityIndexes.typeC;
     }
 
-    this.canAskLearnerForAnswerInfo = (
-      randomProbabilityIndex <= thresholdProbabilityIndex);
+    this.canAskLearnerForAnswerInfo =
+      randomProbabilityIndex <= thresholdProbabilityIndex;
   }
 
   resetSubmittedAnswerInfoCount(): void {
@@ -123,9 +165,20 @@ export class LearnerAnswerInfoService {
   }
 
   recordLearnerAnswerInfo(answerDetails: string): void {
+    if (this.interactionId === null) {
+      throw new Error('Interaction id cannot be null.');
+    }
+
+    if (this.stateName === null) {
+      throw new Error('State name cannot be null.');
+    }
     this.learnerAnswerDetailsBackendApiService.recordLearnerAnswerDetailsAsync(
-      this.currentEntityId, this.stateName, this.interactionId,
-      this.currentAnswer, answerDetails);
+      this.currentEntityId,
+      this.stateName,
+      this.interactionId,
+      this.currentAnswer,
+      answerDetails
+    );
     this.submittedAnswerInfoCount++;
     this.visitedStates.push(this.stateName);
     this.canAskLearnerForAnswerInfo = false;
@@ -143,19 +196,16 @@ export class LearnerAnswerInfoService {
     return this.currentInteractionRulesService;
   }
 
-  getSolicitAnswerDetailsQuestion(): string {
-    var el = $('<p>');
-    el.attr('translate', 'I18N_SOLICIT_ANSWER_DETAILS_QUESTION');
-    return ($('<span>').append(el)).html();
+  getSolicitAnswerDetailsFeedback(): string {
+    var el = document.createElement('p');
+    el.setAttribute('translate', 'I18N_SOLICIT_ANSWER_DETAILS_FEEDBACK');
+    return el.outerHTML;
   }
 
-  getSolicitAnswerDetailsFeedback(): string {
-    var el = $('<p>');
-    el.attr('translate', 'I18N_SOLICIT_ANSWER_DETAILS_FEEDBACK');
-    return ($('<span>').append(el)).html();
+  getSolicitAnswerDetailsQuestion(): string {
+    var el = document.createElement('p');
+    el.setAttribute('translate', 'I18N_SOLICIT_ANSWER_DETAILS_QUESTION');
+
+    return el.outerHTML;
   }
 }
-
-angular.module('oppia').factory(
-  'LearnerAnswerInfoService',
-  downgradeInjectable(LearnerAnswerInfoService));

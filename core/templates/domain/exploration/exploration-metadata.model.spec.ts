@@ -1,4 +1,4 @@
-// Copyright 2020 The Oppia Authors. All Rights Reserved.
+// Copyright 2022 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,31 +13,74 @@
 // limitations under the License.
 
 /**
- * @fileoverview Tests for ExplorationMetadata model.
+ * @fileoverview Unit tests for ExplorationMetadata.
  */
-import { ExplorationMetadata } from
-  'domain/exploration/exploration-metadata.model';
 
-describe('Exploration Metadata model', () => {
-  let sampleExplorationMetadata: ExplorationMetadata;
+import {AppConstants} from 'app.constants';
+import {
+  ExplorationMetadata,
+  ExplorationMetadataBackendDict,
+} from './exploration-metadata.model';
+
+describe('Exploration metadata object factory', () => {
+  let explorationMetadata: ExplorationMetadata;
+  let explorationMetadataBackendDict: ExplorationMetadataBackendDict;
+  const cArgs = {
+    parse_with_jinja: true,
+    value: '',
+  };
+  const gId = 'Copier';
 
   beforeEach(() => {
-    let sampleExplorationMetadataBackendDict: ExplorationMetadata = {
-      id: '12',
-      objective:
-        'learn how to count permutations accurately and systematically',
-      title: 'Protractor Test'
+    explorationMetadataBackendDict = {
+      title: 'Exploration',
+      category: 'Algebra',
+      objective: 'To learn',
+      language_code: 'en',
+      tags: [],
+      blurb: '',
+      author_notes: '',
+      states_schema_version: 50,
+      init_state_name: 'Introduction',
+      param_changes: [
+        {
+          customization_args: cArgs,
+          generator_id: gId,
+          name: 'param_1',
+        },
+      ],
+      param_specs: {},
+      auto_tts_enabled: false,
+      edits_allowed: true,
     };
-
-
-    sampleExplorationMetadata = ExplorationMetadata.
-      createFromBackendDict(sampleExplorationMetadataBackendDict);
   });
 
-  it('should be able to get all the values', function() {
-    expect(sampleExplorationMetadata.id).toEqual('12');
-    expect(sampleExplorationMetadata.objective).toEqual(
-      'learn how to count permutations accurately and systematically');
-    expect(sampleExplorationMetadata.title).toEqual('Protractor Test');
+  it('should create exploration metadata object from backend dict', () => {
+    explorationMetadata = ExplorationMetadata.createFromBackendDict(
+      explorationMetadataBackendDict
+    );
+
+    expect(explorationMetadata.toBackendDict()).toEqual(
+      explorationMetadataBackendDict
+    );
+  });
+
+  it('should contain all the latest exploration metadata properties', () => {
+    // This test is meant to fail when the properties mentioned in
+    // constants.METADATA_PROPERTIES are not present in the model class.
+    // If you modify anything in constants.METADATA_PROPERTIES, then make
+    // sure to include the changes in properties in the attributes of the
+    // model class too.
+    explorationMetadata = ExplorationMetadata.createFromBackendDict(
+      explorationMetadataBackendDict
+    );
+    const backendDict = explorationMetadata.toBackendDict();
+
+    for (let property of AppConstants.METADATA_PROPERTIES) {
+      expect(backendDict.hasOwnProperty(property)).toBeTrue();
+    }
+    for (let property of AppConstants.NON_METADATA_PROPERTIES) {
+      expect(backendDict.hasOwnProperty(property)).toBeFalse();
+    }
   });
 });

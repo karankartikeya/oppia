@@ -16,8 +16,7 @@
 
 """Unit tests for jobs.transforms.feedback_validation."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.jobs import job_test_utils
 from core.jobs.decorators import validation_decorators
@@ -28,12 +27,16 @@ from core.tests import test_utils
 
 import apache_beam as beam
 
-(feedback_models,) = models.Registry.import_models([models.NAMES.feedback])
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import feedback_models
+
+(feedback_models,) = models.Registry.import_models([models.Names.FEEDBACK])
 
 
 class ValidateEntityTypeTests(job_test_utils.PipelinedTestBase):
 
-    def test_model_with_invalid_entity_type_raises_error(self):
+    def test_model_with_invalid_entity_type_raises_error(self) -> None:
         model = feedback_models.GeneralFeedbackThreadModel(
             id='123',
             entity_id='123',
@@ -45,14 +48,13 @@ class ValidateEntityTypeTests(job_test_utils.PipelinedTestBase):
         output = (
             self.pipeline
             | beam.Create([model])
-            | beam.ParDo(
-                feedback_validation.ValidateEntityType())
+            | beam.ParDo(feedback_validation.ValidateEntityType())
         )
-        self.assert_pcoll_equal(output, [
-            feedback_validation_errors.InvalidEntityTypeError(model)
-        ])
+        self.assert_pcoll_equal(
+            output, [feedback_validation_errors.InvalidEntityTypeError(model)]
+        )
 
-    def test_model_with_valid_entity_type_raises_no_error(self):
+    def test_model_with_valid_entity_type_raises_no_error(self) -> None:
         model = feedback_models.GeneralFeedbackThreadModel(
             id='123',
             entity_id='123',
@@ -64,15 +66,17 @@ class ValidateEntityTypeTests(job_test_utils.PipelinedTestBase):
         output = (
             self.pipeline
             | beam.Create([model])
-            | beam.ParDo(
-                feedback_validation.ValidateEntityType())
+            | beam.ParDo(feedback_validation.ValidateEntityType())
         )
         self.assert_pcoll_equal(output, [])
 
 
 class RelationshipsOfTests(test_utils.TestBase):
 
-    def test_feedback_analytics_model_relationships(self):
+    def test_feedback_analytics_model_relationships(self) -> None:
         self.assertItemsEqual(
             validation_decorators.RelationshipsOf.get_model_kind_references(
-                'FeedbackAnalyticsModel', 'id'), ['ExplorationModel'])
+                'FeedbackAnalyticsModel', 'id'
+            ),
+            ['ExplorationModel'],
+        )

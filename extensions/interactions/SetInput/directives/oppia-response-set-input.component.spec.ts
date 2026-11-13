@@ -16,10 +16,10 @@
  * @fileoverview Component for the Set Input response.
  */
 
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ResponseSetInputComponent } from './oppia-response-set-input.component';
-import { TranslateModule } from '@ngx-translate/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ResponseSetInputComponent} from './oppia-response-set-input.component';
+import {TranslateModule} from '@ngx-translate/core';
 
 describe('ResponseSetInputComponent', () => {
   let component: ResponseSetInputComponent;
@@ -31,23 +31,23 @@ describe('ResponseSetInputComponent', () => {
     }
   }
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [
         TranslateModule.forRoot({
           useDefaultLang: true,
           isolate: false,
           extend: false,
-          defaultLanguage: 'en'
+          defaultLanguage: 'en',
         }),
       ],
       declarations: [ResponseSetInputComponent],
       providers: [
         {
           provide: HtmlEscaperService,
-          useClass: mockHtmlEscaperService
-        }
-      ]
+          useClass: mockHtmlEscaperService,
+        },
+      ],
     }).compileComponents();
   }));
 
@@ -55,12 +55,12 @@ describe('ResponseSetInputComponent', () => {
     fixture = TestBed.createComponent(ResponseSetInputComponent);
     component = fixture.componentInstance;
 
-    component.answerWithValue = '["answer1"]';
+    component.answer = '["answer1"]';
   });
 
   it('should initialise component when user submits answer', () => {
     component.ngOnInit();
 
-    expect(component.answer).toEqual(['answer1'] as unknown as string);
+    expect(component.escapedAnswer).toEqual(['answer1']);
   });
 });

@@ -1,4 +1,4 @@
-// Copyright 2021 The Oppia Authors. All Rights Reserved.
+// Copyright 2024 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,286 +11,232 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 /**
- * @fileoverview Tests for audio-file-uploader component.
+ * @fileoverview Unit tests for ImageUploaderComponent.
  */
 
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { MatIconModule } from '@angular/material/icon';
-import { MockRouterModule } from 'hybrid-router-module-provider';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { IdGenerationService } from 'services/id-generation.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
-import { ImageUploaderComponent } from './image-uploader.component';
-import { BlogDashboardPageService } from 'pages/blog-dashboard-page/services/blog-dashboard-page.service';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {PageContextService} from 'services/page-context.service';
+import {ImageUploadHelperService} from 'services/image-upload-helper.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {ImageUploaderModalComponent} from './image-uploader-modal.component';
+import {ImageUploaderComponent} from './image-uploader.component';
 
 describe('ImageUploaderComponent', () => {
-  let component: ImageUploaderComponent;
   let fixture: ComponentFixture<ImageUploaderComponent>;
-  let igs: IdGenerationService;
-  let windowRef: WindowRef;
-
-  let dropAreaRefSpy = jasmine.createSpy('dropAreaRefSpy');
-  let windowRefSpy = jasmine.createSpy('windowRefSpy');
-
-  let dragoverEvent = document.createEvent('Event');
-  dragoverEvent.initEvent('mockdragover', true, true);
-  dragoverEvent.returnValue = false;
-  dragoverEvent.preventDefault = () => {};
-
-  let dropEvent = document.createEvent('Event');
-  dropEvent.initEvent('mockdrop', true, true);
-  dropEvent.returnValue = false;
-  dropEvent.preventDefault = () => {};
+  let component: ImageUploaderComponent;
+  let pageContextService: PageContextService;
+  let imageUploadHelperService: ImageUploadHelperService;
+  let ngbModal: NgbModal;
+  let imageUploaderParameters = {
+    disabled: false,
+    allowedBgColors: [],
+    aspectRatio: '4:3',
+    allowedImageFormats: ['png', 'svg', 'jpeg'],
+    bgColor: '',
+    imageName: 'Image',
+    maxImageSizeInKB: 1000,
+    orientation: 'portrait',
+    filename: '',
+    previewDescription: '',
+    previewDescriptionBgColor: '',
+    previewFooter: '',
+    previewImageUrl: '',
+    previewTitle: '',
+  };
 
   beforeEach(waitForAsync(() => {
-    windowRef = new WindowRef();
     TestBed.configureTestingModule({
-      imports: [
-        MatIconModule,
-        MockRouterModule,
-        HttpClientTestingModule
-      ],
+      imports: [HttpClientTestingModule],
       declarations: [
         ImageUploaderComponent,
-        MockTranslatePipe
+        ImageUploaderModalComponent,
+        MockTranslatePipe,
       ],
-      providers: [
-        BlogDashboardPageService,
-        {provide: WindowRef, useValue: windowRef}
-      ]
+      providers: [ImageUploadHelperService],
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(ImageUploaderComponent);
     component = fixture.componentInstance;
-    igs = TestBed.inject(IdGenerationService);
-    fixture.detectChanges();
-
-    dropAreaRefSpy = spyOn(
-      component.dropAreaRef.nativeElement, 'addEventListener');
-    windowRefSpy = spyOn(windowRef.nativeWindow, 'addEventListener');
+    pageContextService = TestBed.inject(PageContextService);
+    imageUploadHelperService = TestBed.inject(ImageUploadHelperService);
+    ngbModal = TestBed.inject(NgbModal);
+    component.imageUploaderParameters = imageUploaderParameters;
   });
 
-  it('should generate a random input class name on initialization', () => {
-    spyOn(igs, 'generateNewId').and.returnValue('-new-id');
-
-    component.fileInputClassName = '';
-
+  it('should set editable image on initialization', () => {
+    spyOn(pageContextService, 'getEntityType').and.returnValue('exploration');
+    spyOn(pageContextService, 'getEntityId').and.returnValue('expId');
+    component.imageUploaderParameters.filename = 'image-filename';
+    component.imageUploaderParameters.imageName = 'Thumbnail';
     component.ngOnInit();
+    expect(component.editableImageDataUrl).toBe(
+      '/assetsdevhandler/exploration/expId/assets/thumbnail/image-filename'
+    );
 
-    expect(component.fileInputClassName).toBe(
-      'image-uploader-file-input-new-id');
+    component.imageUploaderParameters.imageName = 'Banner';
+    component.ngOnInit();
+    expect(component.editableImageDataUrl).toBe(
+      '/assetsdevhandler/exploration/expId/assets/image/image-filename'
+    );
   });
 
-  it('should register drag and drop event listener', () => {
-    component.ngAfterViewInit();
+  it(
+    'should throw error if no image is present for a preview during file' +
+      ' changed',
+    () => {
+      spyOn(pageContextService, 'getEntityType').and.returnValue(undefined);
+      component.imageUploaderParameters.filename = 'thumbnail-1';
 
-    expect(dropAreaRefSpy.calls.allArgs()).toEqual([
-      ['drop', jasmine.any(Function)],
-      ['dragover', jasmine.any(Function)],
-      ['dragleave', jasmine.any(Function)]
-    ]);
+      expect(() => {
+        component.ngOnInit();
+      }).toThrowError('No image present for preview');
+    }
+  );
 
-    expect(windowRefSpy.calls.allArgs()).toEqual([
-      ['dragover', jasmine.any(Function)],
-      ['drop', jasmine.any(Function)]
-    ]);
+  it('should display placeholder image when filename is null', () => {
+    component.imageUploaderParameters.filename = '';
+    component.ngOnInit();
+    expect(component.hidePlaceholder).toBeFalse();
   });
 
-  it('should upload image on drop', () => {
-    component.ngAfterViewInit();
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png', 'svg'];
+  it(
+    'should not show image uploader modal if editing image is' + ' disabled',
+    () => {
+      spyOn(pageContextService, 'getEntityType').and.returnValue('exploration');
+      spyOn(pageContextService, 'getEntityId').and.returnValue('expId');
+      component.imageUploaderParameters.disabled = true;
+      spyOn(ngbModal, 'open');
 
-    let dataTransfer = new DataTransfer();
-    const validFile = new File(['image'], 'image.jpg', {type: 'image/jpg'});
-    dataTransfer.items.add(validFile);
+      component.showImageUploaderModal();
 
-    spyOn(component.fileChanged, 'emit');
+      expect(ngbModal.open).not.toHaveBeenCalled();
+    }
+  );
 
-    component.dropAreaRef.nativeElement.dispatchEvent(new DragEvent('drop', {
-      dataTransfer: dataTransfer
-    }));
+  it(
+    'should show image uploader modal when user clicks on edit button and' +
+      ' save background color if not opened in upload mode',
+    fakeAsync(() => {
+      spyOn(pageContextService, 'getEntityType').and.returnValue('exploration');
+      spyOn(pageContextService, 'getEntityId').and.returnValue('expId');
+      class MockNgbModalRef {
+        result = Promise.resolve({
+          dimensions: {
+            height: 50,
+            width: 50,
+          },
+          newThumbnailDataUrl: 'data:image/png;base64,xyz',
+          newBgColor: '#newcol',
+        });
 
-    expect(component.fileChanged.emit).toHaveBeenCalledWith(validFile);
-  });
-
-  it('should not upload image on drop if the event is empty', () => {
-    spyOn(component.fileChanged, 'emit');
-    component.ngAfterViewInit();
-
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png'];
-    let dataTransfer = null;
-
-    component.dropAreaRef.nativeElement.dispatchEvent(
-      new DragEvent('drop', {dataTransfer: dataTransfer}));
-
-    expect(component.fileChanged.emit).not.toHaveBeenCalled();
-  });
-
-  it('should not upload image on drop if the image' +
-    ' format is not allowed', () => {
-    component.ngAfterViewInit();
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png'];
-
-    let dataTransfer = new DataTransfer();
-    const file = new File(
-      ['image'], 'image.svg', {type: 'image/svg+xml'});
-    dataTransfer.items.add(file);
-
-    spyOn(component.fileChanged, 'emit');
-
-    component.dropAreaRef.nativeElement.dispatchEvent(new DragEvent('drop', {
-      dataTransfer: dataTransfer
-    }));
-
-    expect(component.errorMessage).toBe(
-      'This image format is not supported');
-    expect(component.fileChanged.emit).not.toHaveBeenCalled();
-  });
-
-  it('should not upload image on drop if the image filename extension' +
-    ' does not match the image format', () => {
-    component.ngAfterViewInit();
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png', 'svg'];
-
-    let dataTransfer = new DataTransfer();
-    const fileWithDiffNameAndExtension = new File(
-      ['image'], 'image.png', {type: 'image/svg+xml'});
-    dataTransfer.items.add(fileWithDiffNameAndExtension);
-
-    spyOn(component.fileChanged, 'emit');
-
-    component.dropAreaRef.nativeElement.dispatchEvent(new DragEvent('drop', {
-      dataTransfer: dataTransfer
-    }));
-
-    expect(component.errorMessage).toBe(
-      'This image format does not match the filename extension.');
-    expect(component.fileChanged.emit).not.toHaveBeenCalled();
-  });
-
-  it('should not upload image on drop if the allowed image formats list' +
-    ' contains non allowed file formats', () => {
-    component.ngAfterViewInit();
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png', 'svg', 'mp3'];
-
-    let dataTransfer = new DataTransfer();
-    const file = new File(
-      ['image'], 'image.jpeg', {type: 'image/jpeg'});
-    dataTransfer.items.add(file);
-
-    spyOn(component.fileChanged, 'emit');
-
-    component.dropAreaRef.nativeElement.dispatchEvent(new DragEvent('drop', {
-      dataTransfer: dataTransfer
-    }));
-
-    expect(component.errorMessage).toBe(
-      'mp3 is not in the list of allowed image formats.');
-    expect(component.fileChanged.emit).not.toHaveBeenCalled();
-  });
-
-  it('should not upload file on drop if the file is not an image', () => {
-    component.ngAfterViewInit();
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png', 'svg'];
-
-    let dataTransfer = new DataTransfer();
-    const fileWithInvalidFormat = new File(
-      ['image'], 'image.mp3', {type: 'mp3'});
-    dataTransfer.items.add(fileWithInvalidFormat);
-
-    spyOn(component.fileChanged, 'emit');
-
-    component.dropAreaRef.nativeElement.dispatchEvent(new DragEvent('drop', {
-      dataTransfer: dataTransfer
-    }));
-
-    expect(component.errorMessage).toBe(
-      'This file is not recognized as an image');
-    expect(component.fileChanged.emit).not.toHaveBeenCalled();
-  });
-
-  it('should not upload image if the size is more than 100KB', () => {
-    component.ngAfterViewInit();
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png', 'svg'];
-
-    let dataTransfer = new DataTransfer();
-    let fileWithLargeSize = new File(
-      [''], 'image.jpg', {type: 'image/jpg'});
-    let sizeOfLargeFileInBytes = 100 * 1024 + 100;
-
-    Object.defineProperty(
-      fileWithLargeSize, 'size', {value: sizeOfLargeFileInBytes});
-
-    dataTransfer.items.add(fileWithLargeSize);
-
-    spyOn(component.fileChanged, 'emit');
-
-    component.dropAreaRef.nativeElement.dispatchEvent(new DragEvent('drop', {
-      dataTransfer: dataTransfer
-    }));
-
-    expect(component.errorMessage).toBe(
-      'The maximum allowed file size is 100 KB (100.1 KB given).');
-    expect(component.fileChanged.emit).not.toHaveBeenCalled();
-  });
-
-  it('should change background color when user drags and leaves an' +
-  ' image into the window', () =>{
-    let dragoverEvent = new DragEvent('dragover');
-    let dragLeaveEvent = new DragEvent('dragleave');
-    spyOn(dragLeaveEvent, 'preventDefault');
-    spyOn(dragoverEvent, 'preventDefault');
-
-    expect(component.backgroundWhileUploading).toBe(false);
-
-    component.ngAfterViewInit();
-    component.dropAreaRef.nativeElement.dispatchEvent(dragoverEvent);
-
-    expect(dragoverEvent.preventDefault).toHaveBeenCalled();
-    expect(component.backgroundWhileUploading).toBe(true);
-
-    component.dropAreaRef.nativeElement.dispatchEvent(dragLeaveEvent);
-
-    expect(dragLeaveEvent.preventDefault).toHaveBeenCalled();
-    expect(component.backgroundWhileUploading).toBe(false);
-  });
-
-  it('should prevent default browser behavior if user drops an image outside' +
-    ' of image-uploader', () => {
-    let mockWindow = {
-      addEventListener: function(eventname: string, callback: () => {}) {
-        document.addEventListener('mock' + eventname, callback);
+        componentInstance = imageUploadHelperService;
       }
-    };
-    spyOnProperty(windowRef, 'nativeWindow', 'get').and.returnValue(mockWindow);
+      let ngbModalRef = new MockNgbModalRef();
 
-    spyOn(dropEvent, 'preventDefault');
-    spyOn(dragoverEvent, 'preventDefault');
+      component.imageUploaderParameters.disabled = false;
+      component.imageUploaderParameters.bgColor = '#ff9933';
 
-    component.ngAfterViewInit();
+      spyOn(ngbModal, 'open').and.returnValue(ngbModalRef as NgbModalRef);
+      spyOn(
+        imageUploadHelperService,
+        'convertImageDataToImageFile'
+      ).and.returnValue(new File([''], 'filename', {type: 'image/jpeg'}));
 
-    document.dispatchEvent(dropEvent);
-    expect(dropEvent.preventDefault).toHaveBeenCalled();
+      const imageSaveSpy = spyOn(component.imageSave, 'emit');
 
-    document.dispatchEvent(dragoverEvent);
-    expect(dragoverEvent.preventDefault).toHaveBeenCalled();
-  });
+      component.showImageUploaderModal();
+      tick();
 
-  it('should upload a valid image', () => {
-    component.imageInputRef.nativeElement = {
-      files: [new File(['image'], 'image.jpg', {type: 'image/jpg'})]
-    };
-    component.imageInputRef.nativeElement.value = 'image.jpg';
-    component.allowedImageFormats = ['jpeg', 'jpg', 'gif', 'png', 'svg'];
-    spyOn(component.fileChanged, 'emit');
+      expect(ngbModal.open).toHaveBeenCalledWith(ImageUploaderModalComponent, {
+        backdrop: 'static',
+      });
+      expect(imageSaveSpy).toHaveBeenCalled();
+    })
+  );
 
-    component.handleFile();
+  it('should show correct placeholder image according to orientation', fakeAsync(() => {
+    component.imageUploaderParameters.filename = '';
+    component.imageUploaderParameters.orientation = 'portrait';
+    expect(component.isImageInPortraitMode()).toBeTrue();
+    component.ngOnInit();
+    expect(component.placeholderImageUrl).toContain(
+      '/icons/story-image-icon.png'
+    );
 
-    expect(component.fileChanged.emit).toHaveBeenCalled();
-  });
+    component.imageUploaderParameters.orientation = 'landscape';
+    expect(component.isImageInPortraitMode()).toBeFalse();
+    component.ngOnInit();
+    expect(component.placeholderImageUrl).toContain(
+      '/icons/story-image-icon-landscape.png'
+    );
+  }));
+
+  it(
+    'should close image uploader modal when cancel button' + ' is clicked',
+    fakeAsync(() => {
+      spyOn(pageContextService, 'getEntityType').and.returnValue('exploration');
+      spyOn(pageContextService, 'getEntityId').and.returnValue('expId');
+      class MockNgbModalRef {
+        componentInstance = imageUploadHelperService;
+      }
+      let ngbModalRef = new MockNgbModalRef();
+
+      component.imageUploaderParameters.disabled = false;
+      component.imageUploaderParameters.allowedBgColors = ['#ff9933'];
+
+      spyOn(ngbModal, 'open').and.callFake((dlg, opt) => {
+        return {
+          componentInstance: ngbModalRef,
+          result: Promise.reject('cancel'),
+        } as NgbModalRef;
+      });
+
+      component.showImageUploaderModal();
+
+      expect(ngbModal.open).toHaveBeenCalledWith(ImageUploaderModalComponent, {
+        backdrop: 'static',
+      });
+    })
+  );
+
+  it('should return early if imageBlobData is null', fakeAsync(() => {
+    spyOn(pageContextService, 'getEntityType').and.returnValue('exploration');
+    spyOn(pageContextService, 'getEntityId').and.returnValue('expId');
+    class MockNgbModalRef {
+      result = Promise.resolve({
+        newImageDataUrl: 'data:image/png;base64,xyz',
+        newBgColor: '#newcol',
+      });
+      componentInstance = imageUploadHelperService;
+    }
+    let ngbModalRef = new MockNgbModalRef();
+
+    component.imageUploaderParameters.disabled = false;
+
+    spyOn(ngbModal, 'open').and.returnValue(ngbModalRef as NgbModalRef);
+    spyOn(
+      imageUploadHelperService,
+      'convertImageDataToImageFile'
+    ).and.returnValue(null);
+
+    const imageSaveSpy = spyOn(component.imageSave, 'emit');
+
+    component.showImageUploaderModal();
+    tick();
+
+    expect(imageSaveSpy).not.toHaveBeenCalled();
+  }));
 });

@@ -18,23 +18,22 @@
  */
 
 export interface NonExistentExplorationsBackendDict {
-  'incomplete_explorations': number;
-  'completed_explorations': number;
-  'exploration_playlist': number;
+  incomplete_explorations: number;
+  completed_explorations: number;
 }
 
 export class NonExistentExplorations {
   constructor(
     public incompleteExplorations: number,
-    public completedExplorations: number,
-    public explorationPlaylist: number) { }
+    public completedExplorations: number
+  ) {}
 
   static createFromBackendDict(
-      backendDict: NonExistentExplorationsBackendDict):
-      NonExistentExplorations {
+    backendDict: NonExistentExplorationsBackendDict
+  ): NonExistentExplorations {
     return new NonExistentExplorations(
       backendDict.incomplete_explorations,
-      backendDict.completed_explorations,
-      backendDict.exploration_playlist);
+      backendDict.completed_explorations
+    );
   }
 }

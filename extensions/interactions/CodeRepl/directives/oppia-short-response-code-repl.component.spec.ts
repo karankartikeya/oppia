@@ -16,16 +16,17 @@
  * @fileoverview Unit tests for the CodeRepl short response.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ShortResponseCodeRepl } from './oppia-short-response-code-repl.component';
-import { TruncateAtFirstLinePipe } from 'filters/string-utility-filters/truncate-at-first-line.pipe';
-
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {ShortResponseCodeRepl} from './oppia-short-response-code-repl.component';
+import {TruncateAtFirstLinePipe} from 'filters/string-utility-filters/truncate-at-first-line.pipe';
 
 describe('ShortResponseCodeRepl', () => {
   let component: ShortResponseCodeRepl;
   let fixture: ComponentFixture<ShortResponseCodeRepl>;
+  let focusManagerService: FocusManagerService;
 
   class mockHtmlEscaperService {
     escapedJsonToObj(answer: string): Object {
@@ -33,26 +34,28 @@ describe('ShortResponseCodeRepl', () => {
     }
   }
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [ShortResponseCodeRepl, TruncateAtFirstLinePipe],
       providers: [
         {
           provide: HtmlEscaperService,
-          useClass: mockHtmlEscaperService
-        }
+          useClass: mockHtmlEscaperService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
+    focusManagerService = TestBed.inject(FocusManagerService);
     fixture = TestBed.createComponent(ShortResponseCodeRepl);
     component = fixture.componentInstance;
   });
 
   it('should response when user submits answer', () => {
-    component.answerWithValue = '{' +
+    component.answer =
+      '{' +
       '  "code": "# Type your code here.\\nprint(\'hello\')",' +
       '  "error": "",' +
       '  "evaluation": "",' +
@@ -61,11 +64,36 @@ describe('ShortResponseCodeRepl', () => {
 
     component.ngOnInit();
 
-    expect(component.answer).toEqual({
+    // This throws "Type object is not assignable to type
+    // 'string'." We need to suppress this error
+    // because of the need to test validations. This is because
+    // the backend dict has a lot of optional fields, and we
+    // need to test validations for each of these fields.
+    // @ts-ignore
+    expect(component.escapedAnswer).toEqual({
       code: "# Type your code here.\nprint('hello')",
       error: '',
       evaluation: '',
-      output: 'hello\n'
-    } as unknown as string);
+      output: 'hello\n',
+    } as string);
+  });
+
+  it('should set focus on the error message when compilation fails', () => {
+    component.answer =
+      '{' +
+      '  "code": "# Type your code here.\\nprint(\'hello\')",' +
+      '  "error": "SyntaxError: bad token on line 2",' +
+      '  "evaluation": "",' +
+      '  "output": ""' +
+      '}';
+    spyOn(focusManagerService, 'generateFocusLabel').and.returnValue(
+      'focusLabel'
+    );
+    spyOn(focusManagerService, 'setFocus');
+
+    component.ngOnInit();
+
+    expect(component.errorFocusLabel).toBe('focusLabel');
+    expect(focusManagerService.setFocus).toHaveBeenCalledWith('focusLabel');
   });
 });

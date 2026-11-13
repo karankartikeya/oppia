@@ -21,16 +21,15 @@
 // not maintain the currently-active card -- it's more like a log of what the
 // learner has 'discovered' so far.
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
 import cloneDeep from 'lodash/cloneDeep';
 
-import { LoggerService } from 'services/contextual/logger.service';
-import { StateCard } from 'domain/state_card/state-card.model';
+import {LoggerService} from 'services/contextual/logger.service';
+import {StateCard} from 'domain/state_card/state-card.model';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class PlayerTranscriptService {
   constructor(private log: LoggerService) {}
@@ -42,7 +41,12 @@ export class PlayerTranscriptService {
   // -- this happens if the current card offers feedback to the learner before
   // they carry on.
   transcript: StateCard[] = [];
-  numAnswersSubmitted = 0;
+
+  // Tracks the total number of answers submitted by the learner
+  // on the current card, regardless of correctness.
+  totalNumberOfAnswersSubmitted = 0;
+  numberOfIncorrectSubmissions: number = 0;
+  prevSessionStatesProgress: string[] = [];
 
   restore(oldTranscript: StateCard[]): void {
     this.transcript = cloneDeep(oldTranscript);
@@ -57,7 +61,7 @@ export class PlayerTranscriptService {
 
   init(): void {
     this.transcript = [];
-    this.numAnswersSubmitted = 0;
+    this.totalNumberOfAnswersSubmitted = 0;
   }
 
   hasEncounteredStateBefore(stateName: string): boolean {
@@ -65,21 +69,24 @@ export class PlayerTranscriptService {
       return transcriptItem.getStateName() === stateName;
     });
   }
+
   addNewCard(newCard: StateCard): void {
     this.transcript.push(newCard);
-    this.numAnswersSubmitted = 0;
+    this.totalNumberOfAnswersSubmitted = 0;
   }
 
   addPreviousCard(): void {
     if (this.transcript.length === 1) {
       throw new Error(
         'Exploration player is on the first card and hence no previous ' +
-          'card exists.');
+          'card exists.'
+      );
     }
     // TODO(aks681): Once worked examples are introduced, modify the below
     // line to take into account the number of worked examples displayed.
-    let copyOfPreviousCard =
-        cloneDeep(this.transcript[this.transcript.length - 2]);
+    let copyOfPreviousCard = cloneDeep(
+      this.transcript[this.transcript.length - 2]
+    );
     copyOfPreviousCard.markAsNotCompleted();
     this.transcript.push(copyOfPreviousCard);
   }
@@ -94,18 +101,23 @@ export class PlayerTranscriptService {
       );
     }
     if (!isHint) {
-      this.numAnswersSubmitted += 1;
+      this.totalNumberOfAnswersSubmitted += 1;
     }
     this.transcript[this.transcript.length - 1].addInputResponsePair({
       learnerInput: input,
       oppiaResponse: null,
-      isHint: isHint
+      isHint: isHint,
     });
   }
 
-  addNewResponse(response: string): void {
+  addNewResponse(response: string | null): void {
     let card = this.getLastCard();
     card.setLastOppiaResponse(response);
+  }
+
+  addNewResponseToExistingFeedback(response: string): void {
+    let card = this.getLastCard();
+    card.addToExistingFeedback(response);
   }
 
   getNumCards(): number {
@@ -115,24 +127,14 @@ export class PlayerTranscriptService {
   getCard(index: number): StateCard {
     if (index !== null && (index < 0 || index >= this.transcript.length)) {
       this.log.error(
-        'Requested card with index ' + index +
+        'Requested card with index ' +
+          index +
           ', but transcript only has length ' +
-          this.transcript.length + ' cards.');
+          this.transcript.length +
+          ' cards.'
+      );
     }
     return this.transcript[index];
-  }
-
-  getLastAnswerOnDisplayedCard(displayedCardIndex: number): string | null {
-    if (
-      this.isLastCard(displayedCardIndex) ||
-        this.transcript[displayedCardIndex].getStateName() === null ||
-        this.transcript[displayedCardIndex].getInputResponsePairs().length ===
-        0) {
-      return null;
-    } else {
-      return this.transcript[displayedCardIndex].
-        getInputResponsePairs().slice(-1)[0].learnerInput;
-    }
   }
 
   isLastCard(index: number): boolean {
@@ -144,7 +146,7 @@ export class PlayerTranscriptService {
   }
 
   getNumSubmitsForLastCard(): number {
-    return this.numAnswersSubmitted;
+    return this.totalNumberOfAnswersSubmitted;
   }
 
   updateLatestInteractionHtml(newInteractionHtml: string): void {
@@ -154,8 +156,54 @@ export class PlayerTranscriptService {
   getLastStateName(): string {
     return this.getLastCard().getStateName();
   }
-}
 
-angular.module('oppia').factory(
-  'PlayerTranscriptService',
-  downgradeInjectable(PlayerTranscriptService));
+  findIndexOfLatestStateWithName(name: string): number | null {
+    for (let i = this.transcript.length - 1; i >= 0; i--) {
+      if (this.transcript[i].getStateName() === name) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Returns the total number of incorrect submissions made by the learner.
+   *
+   * @returns {number} The number of incorrect submissions.
+   */
+  getNumberOfIncorrectSubmissions(): number {
+    return this.numberOfIncorrectSubmissions;
+  }
+
+  /**
+   * Increments the count of incorrect submissions by the learner.
+   */
+  incrementNumberOfIncorrectSubmissions(): void {
+    this.numberOfIncorrectSubmissions += 1;
+  }
+
+  /**
+   * Resets the count of incorrect submissions to zero.
+   */
+  resetNumberOfIncorrectSubmissions(): void {
+    this.numberOfIncorrectSubmissions = 0;
+  }
+
+  /**
+   * Returns the list of states that were previously visited in the session.
+   *
+   * @returns {string[]} The list of previously visited states.
+   */
+  getPrevSessionStatesProgress(): string[] {
+    return this.prevSessionStatesProgress;
+  }
+
+  /**
+   * Sets the list of states that were previously visited in the session.
+   *
+   * @param {string[]} states - The list of previously visited states.
+   */
+  setPrevSessionStatesProgress(states: string[]): void {
+    this.prevSessionStatesProgress = [...states];
+  }
+}

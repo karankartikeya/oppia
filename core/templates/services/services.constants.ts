@@ -21,6 +21,7 @@ import RTE_COMPONENT_SPECS from 'assets/rich_text_components_definitions';
 export const ServicesConstants = {
   PAGE_CONTEXT: {
     COLLECTION_EDITOR: 'collection_editor',
+    LEARNER_GROUP_EDITOR: 'learner_group_editor',
     EXPLORATION_EDITOR: 'editor',
     EXPLORATION_PLAYER: 'learner',
     QUESTION_EDITOR: 'question_editor',
@@ -31,16 +32,19 @@ export const ServicesConstants = {
     TOPICS_AND_SKILLS_DASHBOARD: 'topics_and_skills_dashboard',
     CONTRIBUTOR_DASHBOARD: 'contributor_dashboard',
     BLOG_DASHBOARD: 'blog_dashboard',
-    OTHER: 'other'
+    DIAGNOSTIC_TEST_PLAYER: 'diagnostic_test_player',
+    STUDY_GUIDE_VIEWER: 'studyguide',
+    SUBTOPIC_PREVIEW: 'subtopic_preview',
+    SUBTOPIC_EDITOR: 'subtopic_editor',
+    OTHER: 'other',
   },
 
   EXPLORATION_EDITOR_TAB_CONTEXT: {
     EDITOR: 'editor',
-    PREVIEW: 'preview'
+    PREVIEW: 'preview',
   },
 
-  EXPLORATION_FEATURES_URL:
-    '/explorehandler/features/<exploration_id>',
+  EXPLORATION_FEATURES_URL: '/explorehandler/features/<exploration_id>',
 
   FETCH_ISSUES_URL: '/issuesdatahandler/<exploration_id>',
 
@@ -51,8 +55,7 @@ export const ServicesConstants = {
 
   PROMO_BAR_URL: '/promo_bar_handler',
 
-  STORE_PLAYTHROUGH_URL:
-    '/explorehandler/store_playthrough/<exploration_id>',
+  STORE_PLAYTHROUGH_URL: '/explorehandler/store_playthrough/<exploration_id>',
 
   // Enables recording playthroughs from learner sessions.
   MIN_PLAYTHROUGH_DURATION_IN_SECS: 45,
@@ -68,10 +71,7 @@ export const ServicesConstants = {
   // Oppia page visited.
   ENABLE_PROMO_BAR: true,
 
-  SEARCH_DATA_URL: '/searchhandler/data',
-
-  STATE_ANSWER_STATS_URL:
-    '/createhandler/state_answer_stats/<exploration_id>',
+  STATE_ANSWER_STATS_URL: '/createhandler/state_answer_stats/<exploration_id>',
 
   RTE_COMPONENT_SPECS: RTE_COMPONENT_SPECS,
 
@@ -80,7 +80,6 @@ export const ServicesConstants = {
     EXPLORATION_LOADED: 'explorationLoaded',
     STATE_TRANSITION: 'stateTransition',
     EXPLORATION_RESET: 'explorationReset',
-    EXPLORATION_COMPLETED: 'explorationCompleted'
+    EXPLORATION_COMPLETED: 'explorationCompleted',
   },
-
 } as const;

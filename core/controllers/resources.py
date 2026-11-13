@@ -14,58 +14,101 @@
 
 """Controllers for Oppia resources (templates, images)."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import io
 import logging
+import urllib
 
 from core import feconf
-from core import python_utils
 from core.constants import constants
-from core.controllers import acl_decorators
-from core.controllers import base
-from core.domain import config_domain
-from core.domain import config_services
-from core.domain import fs_domain
-from core.domain import value_generators_domain
+from core.controllers import acl_decorators, base
+from core.domain import (
+    fs_services,
+    platform_parameter_domain,
+    platform_parameter_list,
+    platform_parameter_services,
+    value_generators_domain,
+)
+from core.domain import platform_parameter_registry as registry
+
+from typing import Dict, TypedDict
 
 
-class ValueGeneratorHandler(base.BaseHandler):
+class ValueGeneratorHandler(base.BaseHandler[Dict[str, str], Dict[str, str]]):
     """Retrieves the HTML template for a value generator editor."""
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    URL_PATH_ARGS_SCHEMAS = {
+        'generator_id': {
+            'schema': {
+                'type': 'basestring',
+                'choices': ['Copier', 'RandomSelector'],
+            }
+        }
+    }
+    HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'GET': {}}
 
     @acl_decorators.open_access
-    def get(self, generator_id):
+    def get(self, generator_id: str) -> None:
         """Handles GET requests."""
-        try:
-            self.response.write(
-                value_generators_domain.Registry.get_generator_class_by_id(
-                    generator_id).get_html_template())
-        except KeyError as e:
-            logging.exception(
-                'Value generator not found: %s. %s' % (generator_id, e))
-            raise self.PageNotFoundException
+        self.response.write(
+            value_generators_domain.Registry.get_generator_class_by_id(
+                generator_id
+            ).get_html_template()
+        )
 
 
-class AssetDevHandler(base.BaseHandler):
+class AssetDevHandler(base.BaseHandler[Dict[str, str], Dict[str, str]]):
     """Handles image and audio retrievals (only in dev -- in production,
     image and audio files are served from GCS).
     """
 
     _SUPPORTED_TYPES = ['image', 'audio', 'thumbnail']
     _SUPPORTED_PAGE_CONTEXTS = [
-        feconf.ENTITY_TYPE_EXPLORATION, feconf.ENTITY_TYPE_SKILL,
+        feconf.ENTITY_TYPE_EXPLORATION,
+        feconf.ENTITY_TYPE_SKILL,
         feconf.ENTITY_TYPE_BLOG_POST,
-        feconf.ENTITY_TYPE_TOPIC, feconf.ENTITY_TYPE_STORY,
-        feconf.ENTITY_TYPE_QUESTION, feconf.IMAGE_CONTEXT_QUESTION_SUGGESTIONS,
-        feconf.IMAGE_CONTEXT_EXPLORATION_SUGGESTIONS]
+        feconf.ENTITY_TYPE_TOPIC,
+        feconf.ENTITY_TYPE_STORY,
+        feconf.ENTITY_TYPE_QUESTION,
+        feconf.IMAGE_CONTEXT_QUESTION_SUGGESTIONS,
+        feconf.IMAGE_CONTEXT_EXPLORATION_SUGGESTIONS,
+        feconf.ENTITY_TYPE_CLASSROOM,
+        feconf.ENTITY_TYPE_FEEDBACK,
+    ]
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    URL_PATH_ARGS_SCHEMAS = {
+        'page_context': {
+            'schema': {
+                'type': 'basestring',
+                'choices': _SUPPORTED_PAGE_CONTEXTS,
+            }
+        },
+        'page_identifier': {'schema': {'type': 'basestring'}},
+        'asset_type': {
+            'schema': {'type': 'basestring', 'choices': _SUPPORTED_TYPES}
+        },
+        'encoded_filename': {
+            'schema': {
+                'type': 'basestring',
+                'validators': [
+                    {'id': 'is_regex_matched', 'regex_pattern': r'[-\w]+[.]\w+'}
+                ],
+            }
+        },
+    }
+    HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'GET': {}}
 
     @acl_decorators.open_access
-    def get(self, page_context, page_identifier, asset_type, encoded_filename):
+    def get(
+        self,
+        page_context: str,
+        page_identifier: str,
+        asset_type: str,
+        encoded_filename: str,
+    ) -> None:
         """Returns an asset file.
 
         Args:
@@ -81,26 +124,28 @@ class AssetDevHandler(base.BaseHandler):
             asset_type: str. Type of the asset, either image or audio.
             encoded_filename: str. The asset filename. This
                 string is encoded in the frontend using encodeURIComponent().
+
+        Raises:
+            NotFoundException. The page cannot be found.
+            Exception. File not found.
         """
         if not constants.EMULATOR_MODE:
-            raise self.PageNotFoundException
+            raise self.NotFoundException
 
         try:
-            filename = python_utils.urllib_unquote(encoded_filename)
-            file_format = filename[(filename.rfind('.') + 1):]
+            filename = urllib.parse.unquote(encoded_filename)
+            file_format = filename[(filename.rfind('.') + 1) :]
 
             # If the following is not cast to str, an error occurs in the wsgi
             # library because unicode gets used.
             content_type = (
-                'image/svg+xml' if file_format == 'svg' else '%s/%s' % (
-                    asset_type, file_format))
+                'image/svg+xml'
+                if file_format == 'svg'
+                else '%s/%s' % (asset_type, file_format)
+            )
             self.response.headers['Content-Type'] = content_type
 
-            if page_context not in self._SUPPORTED_PAGE_CONTEXTS:
-                raise self.InvalidInputException
-
-            fs = fs_domain.AbstractFileSystem(
-                fs_domain.GcsFileSystem(page_context, page_identifier))
+            fs = fs_services.GcsFileSystem(page_context, page_identifier)
             raw = fs.get('%s/%s' % (asset_type, filename))
 
             self.response.cache_control.no_cache = None
@@ -108,13 +153,34 @@ class AssetDevHandler(base.BaseHandler):
             self.response.cache_control.max_age = 600
             self.response.body_file = io.BytesIO(raw)
         except Exception as e:
-            logging.exception(
-                'File not found: %s. %s' % (encoded_filename, e))
-            raise self.PageNotFoundException
+            logging.exception('File not found: %s. %s' % (encoded_filename, e))
+            raise self.NotFoundException
 
 
-class PromoBarHandler(base.BaseHandler):
+class PromoBarHandlerNormalizedPayloadDict(TypedDict):
+    """Dict representation of PromoBarHandler's
+    normalized_payload dictionary.
+    """
+
+    promo_bar_enabled: bool
+    promo_bar_message: str
+
+
+class PromoBarHandler(
+    base.BaseHandler[PromoBarHandlerNormalizedPayloadDict, Dict[str, str]]
+):
     """Handler for the promo-bar."""
+
+    URL_PATH_ARGS_SCHEMAS: Dict[str, str] = {}
+    HANDLER_ARGS_SCHEMAS = {
+        'GET': {},
+        'PUT': {
+            'promo_bar_enabled': {
+                'schema': {'type': 'bool'},
+            },
+            'promo_bar_message': {'schema': {'type': 'basestring'}},
+        },
+    }
 
     GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
     # This prevents partially logged in user from being logged out
@@ -122,23 +188,122 @@ class PromoBarHandler(base.BaseHandler):
     REDIRECT_UNFINISHED_SIGNUPS = False
 
     @acl_decorators.open_access
-    def get(self):
-        self.render_json({
-            'promo_bar_enabled': config_domain.PROMO_BAR_ENABLED.value,
-            'promo_bar_message': config_domain.PROMO_BAR_MESSAGE.value
-        })
+    def get(self) -> None:
+        """Retrieves the configuration values for a promotional bar."""
+        self.render_json(
+            {
+                'promo_bar_enabled': (
+                    platform_parameter_services.get_platform_parameter_value(
+                        'promo_bar_enabled'
+                    )
+                ),
+                'promo_bar_message': (
+                    platform_parameter_services.get_platform_parameter_value(
+                        'promo_bar_message'
+                    )
+                ),
+            }
+        )
 
     @acl_decorators.can_access_release_coordinator_page
-    def put(self):
-        promo_bar_enabled_value = self.payload.get('promo_bar_enabled')
-        promo_bar_message_value = self.payload.get('promo_bar_message')
+    def put(self) -> None:
+        """Updates the configuration values for a promotional bar."""
+        assert self.user_id is not None
+        assert self.normalized_payload is not None
+        promo_bar_enabled_value = self.normalized_payload['promo_bar_enabled']
+        promo_bar_message_value = self.normalized_payload['promo_bar_message']
 
         logging.info(
             '[RELEASE COORDINATOR] %s saved promo-bar config property values: '
-            '%s' % (self.user_id, promo_bar_message_value))
-        config_services.set_property(
-            self.user_id, 'promo_bar_enabled', promo_bar_enabled_value)
-        config_services.set_property(
-            self.user_id, 'promo_bar_message', promo_bar_message_value)
+            '%s' % (self.user_id, promo_bar_message_value)
+        )
+
+        rules_for_promo_bar_enabled_value = [
+            platform_parameter_domain.PlatformParameterRule.from_dict(
+                {'filters': [], 'value_when_matched': promo_bar_enabled_value}
+            )
+        ]
+        rules_for_promo_bar_message_value = [
+            platform_parameter_domain.PlatformParameterRule.from_dict(
+                {'filters': [], 'value_when_matched': promo_bar_message_value}
+            )
+        ]
+
+        promo_bar_enabled_parameter = registry.Registry.get_platform_parameter(
+            platform_parameter_list.ParamName.PROMO_BAR_ENABLED.value
+        )
+
+        promo_bar_message_parameter = registry.Registry.get_platform_parameter(
+            platform_parameter_list.ParamName.PROMO_BAR_MESSAGE.value
+        )
+
+        registry.Registry.update_platform_parameter(
+            'promo_bar_enabled',
+            self.user_id,
+            'Update promo_bar_enabled property from release '
+            'coordinator page.',
+            rules_for_promo_bar_enabled_value,
+            promo_bar_enabled_parameter.default_value,
+        )
+
+        registry.Registry.update_platform_parameter(
+            'promo_bar_message',
+            self.user_id,
+            'Update promo_bar_message property from release '
+            'coordinator page.',
+            rules_for_promo_bar_message_value,
+            promo_bar_message_parameter.default_value,
+        )
 
         self.render_json({})
+
+
+class FaviconHandler(base.BaseHandler[Dict[str, str], Dict[str, str]]):
+    """Handles favicon image redirection·"""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    URL_PATH_ARGS_SCHEMAS: Dict[str, str] = {}
+    HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'GET': {}}
+
+    @acl_decorators.open_access
+    def get(self) -> None:
+        """Redirects to correct favicon for particular deployment."""
+        self.redirect(fs_services.get_static_asset_url('favicon.ico'))
+
+
+class RobotsTxtHandler(base.BaseHandler[Dict[str, str], Dict[str, str]]):
+    """Handles robots.txt redirection·"""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    URL_PATH_ARGS_SCHEMAS: Dict[str, str] = {}
+    HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'GET': {}}
+
+    @acl_decorators.open_access
+    def get(self) -> None:
+        """Redirects to correct robots.txt for particular deployment."""
+        self.redirect(fs_services.get_static_asset_url('robots.txt'))
+
+
+class CopyrightImagesHandler(base.BaseHandler[Dict[str, str], Dict[str, str]]):
+    """Handles copyrighted images redirection·"""
+
+    GET_HANDLER_ERROR_RETURN_TYPE = feconf.HANDLER_TYPE_JSON
+    URL_PATH_ARGS_SCHEMAS = {
+        'folder': {'schema': {'type': 'basestring'}},
+        'filename': {'schema': {'type': 'basestring'}},
+    }
+    HANDLER_ARGS_SCHEMAS: Dict[str, Dict[str, str]] = {'GET': {}}
+
+    @acl_decorators.open_access
+    def get(self, folder: str, filename: str) -> None:
+        """Redirects to correct copyrighted image for particular deployment.
+
+        Args:
+            folder: str. The folder in which the image is.
+            filename: str. The filename of the image.
+        """
+        self.redirect(
+            fs_services.get_static_asset_url(
+                'copyrighted-images/%s/%s' % (folder, filename)
+            )
+        )

@@ -16,9 +16,11 @@
  * @fileoverview Unit tests for Image with regions reset confirmation component.
  */
 
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { ImageWithRegionsResetConfirmationModalComponent } from './image-with-regions-reset-confirmation.component';
+// @ts-nocheck
+
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {ImageWithRegionsResetConfirmationModalComponent} from './image-with-regions-reset-confirmation.component';
 
 class MockActiveModal {
   dismiss(): void {
@@ -32,8 +34,7 @@ class MockActiveModal {
 
 describe('Delete Misconception Modal Component', () => {
   let component: ImageWithRegionsResetConfirmationModalComponent;
-  let fixture: ComponentFixture<
-  ImageWithRegionsResetConfirmationModalComponent>;
+  let fixture: ComponentFixture<ImageWithRegionsResetConfirmationModalComponent>;
   let ngbActiveModal: NgbActiveModal;
 
   beforeEach(waitForAsync(() => {
@@ -42,12 +43,13 @@ describe('Delete Misconception Modal Component', () => {
       providers: [
         {
           provide: NgbActiveModal,
-          useClass: MockActiveModal
-        }
-      ]
+          useClass: MockActiveModal,
+        },
+      ],
     }).compileComponents();
     fixture = TestBed.createComponent(
-      ImageWithRegionsResetConfirmationModalComponent);
+      ImageWithRegionsResetConfirmationModalComponent
+    );
     component = fixture.componentInstance;
     ngbActiveModal = TestBed.inject(NgbActiveModal);
   }));

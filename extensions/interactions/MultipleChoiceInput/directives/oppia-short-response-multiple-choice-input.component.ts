@@ -20,19 +20,19 @@
  * followed by the name of the arg.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ConvertToPlainTextPipe } from 'filters/string-utility-filters/convert-to-plain-text.pipe';
-import { TruncateAtFirstLinePipe } from 'filters/string-utility-filters/truncate-at-first-line.pipe';
-import { HtmlEscaperService } from 'services/html-escaper.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {ConvertToPlainTextPipe} from 'filters/string-utility-filters/convert-to-plain-text.pipe';
+import {TruncateAtFirstLinePipe} from 'filters/string-utility-filters/truncate-at-first-line.pipe';
+import {HtmlEscaperService} from 'services/html-escaper.service';
 
 @Component({
   selector: 'oppia-short-response-multiple-choice-input',
-  templateUrl: './multiple-choice-input-short-response.component.html'
+  templateUrl: './multiple-choice-input-short-response.component.html',
+  providers: [TruncateAtFirstLinePipe],
 })
 export class ShortResponseMultipleChoiceInputComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() answer!: string;
   @Input() choices!: string;
@@ -42,20 +42,17 @@ export class ShortResponseMultipleChoiceInputComponent implements OnInit {
     private htmlEscaperService: HtmlEscaperService,
     private convertToPlainText: ConvertToPlainTextPipe,
     private truncateAtFirstLine: TruncateAtFirstLinePipe
-  ) { }
+  ) {}
 
   ngOnInit(): void {
     const _answer = this.htmlEscaperService.escapedJsonToObj(
-      this.answer) as string;
-    const _choices = this.htmlEscaperService.escapedJsonToObj(
-      this.choices) as Record<string, string>;
-    const response = this.convertToPlainText.transform(_choices[_answer]);
+      this.answer
+    ) as number;
+    const _choices = this.htmlEscaperService.escapedJsonToObj(this.choices) as {
+      _html: string;
+      _contentId: string;
+    }[];
+    const response = this.convertToPlainText.transform(_choices[_answer]._html);
     this.response = this.truncateAtFirstLine.transform(response);
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaShortResponseMultipleChoiceInput',
-  downgradeComponent({
-    component: ShortResponseMultipleChoiceInputComponent
-  }));

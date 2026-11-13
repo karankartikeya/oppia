@@ -17,9 +17,9 @@
  * Changes may be undone, redone, or replaced.
  */
 
-import { EventEmitter } from '@angular/core';
+import {EventEmitter} from '@angular/core';
 
-import { BackendChangeObject, Change, DomainObject } from './change.model';
+import {BackendChangeObject, Change, DomainObject} from './change.model';
 
 /**
  * Stores a stack of changes to a domain object. Please note that only one
@@ -30,6 +30,7 @@ export class BaseUndoRedo {
   constructor() {
     this.init();
   }
+
   private _appliedChanges: Change[] = [];
   private _undoneChanges: Change[] = [];
   _undoRedoChangeEventEmitter: EventEmitter<void> = new EventEmitter();
@@ -38,14 +39,12 @@ export class BaseUndoRedo {
     this._undoRedoChangeEventEmitter.emit();
   }
 
-  private _applyChange(
-      Change: Change, domainObject: DomainObject): void {
+  private _applyChange(Change: Change, domainObject: DomainObject): void {
     Change.applyChange(domainObject);
     this._dispatchMutation();
   }
 
-  private _reverseChange(
-      Change: Change, domainObject: DomainObject): void {
+  private _reverseChange(Change: Change, domainObject: DomainObject): void {
     Change.reverseChange(domainObject);
     this._dispatchMutation();
   }
@@ -72,8 +71,8 @@ export class BaseUndoRedo {
    * fires mutation event.
    */
   undoChange(domainObject: DomainObject): boolean {
-    if (this._appliedChanges.length !== 0) {
-      var change = this._appliedChanges.pop();
+    var change = this._appliedChanges.pop();
+    if (change !== undefined) {
       this._undoneChanges.push(change);
       this._reverseChange(change, domainObject);
       return true;
@@ -87,8 +86,8 @@ export class BaseUndoRedo {
    * returned list will not be reflected in this class instance.
    */
   redoChange(domainObject: DomainObject): boolean {
-    if (this._undoneChanges.length !== 0) {
-      var change = this._undoneChanges.pop();
+    var change = this._undoneChanges.pop();
+    if (change !== undefined) {
       this._appliedChanges.push(change);
       this._applyChange(change, domainObject);
       return true;
@@ -102,7 +101,7 @@ export class BaseUndoRedo {
    * returned list will not be reflected in this class instance.
    */
   getChangeList(): Change[] {
-    // TODO(bhenning): Consider integrating something like Immutable.js to
+    // TODO(#20337): Consider integrating something like Immutable.js to
     // avoid the slice here and ensure the returned object is truly an
     // immutable copy.
     return this._appliedChanges.slice();
@@ -136,7 +135,7 @@ export class BaseUndoRedo {
   }
 
   /**
-   * Returns whether this objcet has any applied changes.
+   * Returns whether this object has any applied changes.
    */
   hasChanges(): boolean {
     return this._appliedChanges.length !== 0;

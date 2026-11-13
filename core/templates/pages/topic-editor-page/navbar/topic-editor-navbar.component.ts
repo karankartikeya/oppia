@@ -1,4 +1,4 @@
-// Copyright 2018 The Oppia Authors. All Rights Reserved.
+// Copyright 2022 The Oppia Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,283 +13,439 @@
 // limitations under the License.
 
 /**
- * @fileoverview Directive for the navbar of the topic editor.
+ * @fileoverview Component for the navbar of the topic editor.
  */
 
-require(
-  'components/common-layout-directives/common-elements/' +
-  'confirm-or-cancel-modal.controller.ts');
-require(
-  'components/common-layout-directives/common-elements/' +
-  'loading-dots.component.ts');
-require(
-  'pages/topic-editor-page/modal-templates/' +
-  'topic-editor-save-modal.controller.ts');
+import {Subscription} from 'rxjs';
+import {TopicEditorSendMailComponent} from '../modal-templates/topic-editor-send-mail-modal.component';
+import {TopicEditorSaveModalComponent} from '../modal-templates/topic-editor-save-modal.component';
+import {
+  AfterContentChecked,
+  ChangeDetectorRef,
+  Component,
+  OnDestroy,
+  OnInit,
+} from '@angular/core';
+import {TopicEditorStateService} from '../services/topic-editor-state.service';
+import {ConfirmQuestionExitModalComponent} from 'components/question-directives/modal-templates/confirm-question-exit-modal.component';
+import {QuestionUndoRedoService} from 'domain/editor/undo_redo/question-undo-redo.service';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {TopicRightsBackendApiService} from 'domain/topic/topic-rights-backend-api.service';
+import {AlertsService} from 'services/alerts.service';
+import {UndoRedoService} from 'domain/editor/undo_redo/undo-redo.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {UrlService} from 'services/contextual/url.service';
+import {TopicEditorRoutingService} from '../services/topic-editor-routing.service';
+import {ClassroomDomainConstants} from 'domain/classroom/classroom-domain.constants';
+import {Topic} from 'domain/topic/topic-object.model';
+import {TopicRights} from 'domain/topic/topic-rights.model';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {PreventPageUnloadEventService} from 'services/prevent-page-unload-event.service';
 
-require('domain/classroom/classroom-domain.constants.ajs.ts');
-require('domain/editor/undo_redo/undo-redo.service.ts');
-require('domain/topic/topic-rights-backend-api.service.ts');
-require('pages/topic-editor-page/services/topic-editor-routing.service.ts');
-require('pages/topic-editor-page/services/topic-editor-state.service.ts');
-require('services/alerts.service.ts');
-require('services/contextual/url.service.ts');
+@Component({
+  selector: 'oppia-topic-editor-navbar',
+  templateUrl: './topic-editor-navbar.component.html',
+  styleUrls: ['./topic-editor-navbar.component.css'],
+})
+export class TopicEditorNavbarComponent
+  implements OnInit, OnDestroy, AfterContentChecked
+{
+  validationIssues!: string[];
+  topic!: Topic;
+  prepublishValidationIssues!: string[];
+  topicRights!: TopicRights;
+  topicId!: string;
+  topicName!: string;
+  discardChangesButtonIsShown!: boolean;
+  showTopicEditOptions!: boolean;
+  topicSkillIds!: string[];
+  showNavigationOptions!: boolean;
+  warningsAreShown!: boolean;
+  navigationChoices!: string[];
+  activeTab!: string;
+  changeListLength!: number;
+  topicIsSaveable!: boolean;
+  totalWarningsCount!: number;
 
-import { Subscription } from 'rxjs';
+  constructor(
+    private topicEditorStateService: TopicEditorStateService,
+    private ngbModal: NgbModal,
+    private topicRightsBackendApiService: TopicRightsBackendApiService,
+    private alertsService: AlertsService,
+    private preventPageUnloadEventService: PreventPageUnloadEventService,
+    private undoRedoService: UndoRedoService,
+    private questionUndoRedoService: QuestionUndoRedoService,
+    private urlInterpolationService: UrlInterpolationService,
+    private urlService: UrlService,
+    private topicEditorRoutingService: TopicEditorRoutingService,
+    private windowRef: WindowRef,
+    private changeDetectorRef: ChangeDetectorRef
+  ) {}
 
-angular.module('oppia').component('topicEditorNavbar', {
-  template: require('./topic-editor-navbar.component.html'),
-  controller: [
-    '$rootScope', '$scope', '$uibModal', '$window', 'AlertsService',
-    'TopicEditorRoutingService', 'TopicEditorStateService',
-    'TopicRightsBackendApiService', 'UndoRedoService',
-    'UrlInterpolationService', 'UrlService',
-    'TOPIC_VIEWER_URL_TEMPLATE',
-    function(
-        $rootScope, $scope, $uibModal, $window, AlertsService,
-        TopicEditorRoutingService, TopicEditorStateService,
-        TopicRightsBackendApiService, UndoRedoService,
-        UrlInterpolationService, UrlService,
-        TOPIC_VIEWER_URL_TEMPLATE) {
-      var ctrl = this;
-      ctrl.directiveSubscriptions = new Subscription();
-      $scope.isSaveInProgress = function() {
-        return TopicEditorStateService.isSavingTopic();
-      };
+  directiveSubscriptions = new Subscription();
 
-      var _validateTopic = function() {
-        $scope.validationIssues = $scope.topic.validate();
-        if (TopicEditorStateService.getTopicWithNameExists()) {
-          $scope.validationIssues.push(
-            'A topic with this name already exists.');
-        }
-        if (TopicEditorStateService.getTopicWithUrlFragmentExists()) {
-          $scope.validationIssues.push(
-            'Topic URL fragment already exists.');
-        }
-        var prepublishTopicValidationIssues = (
-          $scope.topic.prepublishValidate());
-        var subtopicPrepublishValidationIssues = (
-          [].concat.apply([], $scope.topic.getSubtopics().map(
-            (subtopic) => subtopic.prepublishValidate())));
-        $scope.prepublishValidationIssues = (
-          prepublishTopicValidationIssues.concat(
-            subtopicPrepublishValidationIssues));
-      };
+  isSaveInProgress(): boolean {
+    return this.topicEditorStateService.isSavingTopic();
+  }
 
-      $scope.publishTopic = function() {
-        if (!$scope.topicRights.canPublishTopic()) {
-          $uibModal.open({
-            templateUrl: UrlInterpolationService.getDirectiveTemplateUrl(
-              '/pages/topic-editor-page/modal-templates/' +
-                  'topic-editor-send-mail-modal.template.html'),
-            backdrop: true,
-            controller: 'ConfirmOrCancelModalController'
-          }).result.then(function() {
-            TopicRightsBackendApiService.sendMailAsync(
-              $scope.topicId, $scope.topicName).then(function() {
-              var successToast = 'Mail Sent.';
-              AlertsService.addSuccessMessage(
-                successToast, 1000);
-              $rootScope.$applyAsync();
-            });
-          }, function() {
+  _validateTopic(): void {
+    this.validationIssues = this.topic.validate();
+    if (this.topicEditorStateService.getTopicWithNameExists()) {
+      this.validationIssues.push('A topic with this name already exists.');
+    }
+    if (this.topicEditorStateService.getTopicWithUrlFragmentExists()) {
+      this.validationIssues.push('Topic URL fragment already exists.');
+    }
+    let prepublishTopicValidationIssues = this.topic.prepublishValidate();
+    let subtopicPrepublishValidationIssues: string[] = [];
+    this.topic.getSubtopics().forEach(subtopic => {
+      subtopicPrepublishValidationIssues =
+        subtopicPrepublishValidationIssues.concat(
+          subtopic.prepublishValidate()
+        );
+    });
+    this.prepublishValidationIssues = prepublishTopicValidationIssues.concat(
+      subtopicPrepublishValidationIssues
+    );
+    this.validationIssues = this.validationIssues.concat(
+      this.topicEditorStateService.getSupersedingSkillIssues(
+        this.topic.getSkillIds()
+      )
+    );
+    this.changeDetectorRef.detectChanges();
+  }
+
+  publishTopic(): void {
+    if (!this.topicRights.canPublishTopic()) {
+      this.ngbModal
+        .open(TopicEditorSendMailComponent, {
+          backdrop: true,
+        })
+        .result.then(
+          () => {
+            this.topicRightsBackendApiService
+              .sendMailAsync(this.topicId, this.topicName)
+              .then(() => {
+                let successToast = 'Mail Sent.';
+                this.alertsService.addSuccessMessage(successToast, 1000);
+              });
+          },
+          () => {
             // Note to developers:
             // This callback is triggered when the Cancel button is clicked.
             // No further action is needed.
-          });
+          }
+        );
+      return;
+    }
+    let redirectToDashboard = false;
+    this.topicRightsBackendApiService
+      .publishTopicAsync(this.topicId)
+      .then(() => {
+        if (!this.topicRights.isPublished()) {
+          redirectToDashboard = true;
+        }
+        this.topicRights.markTopicAsPublished();
+        this.topicEditorStateService.setTopicRights(this.topicRights);
+        let successToast = 'Topic published.';
+        this.alertsService.addSuccessMessage(successToast, 1000);
+        if (redirectToDashboard) {
+          this.windowRef.nativeWindow.location.href =
+            '/topics-and-skills-dashboard';
+        }
+      });
+  }
+
+  discardChanges(): void {
+    this.undoRedoService.clearChanges();
+    this.discardChangesButtonIsShown = false;
+    this.topicEditorStateService.loadTopic(this.topicId);
+  }
+
+  getChangeListLength(): number {
+    return this.undoRedoService.getChangeCount();
+  }
+
+  isTopicSaveable(): boolean {
+    return (
+      this.getChangeListLength() > 0 &&
+      this.getWarningsCount() === 0 &&
+      (!this.topicRights.isPublished() ||
+        this.prepublishValidationIssues.length === 0)
+    );
+  }
+
+  isWarningTooltipDisabled(): boolean {
+    const result = this.isTopicSaveable() || this.getTotalWarningsCount() === 0;
+    return result;
+  }
+
+  getAllTopicWarnings(): string {
+    return this.validationIssues
+      .concat()
+      .concat(this.prepublishValidationIssues)
+      .join('\n');
+  }
+
+  toggleDiscardChangeButton(): void {
+    this.showTopicEditOptions = false;
+    this.discardChangesButtonIsShown = !this.discardChangesButtonIsShown;
+  }
+
+  saveChanges(): void {
+    let isTopicPublished = this.topicRights.isPublished();
+    const modelRef = this.ngbModal.open(TopicEditorSaveModalComponent, {
+      backdrop: 'static',
+    });
+    modelRef.componentInstance.topicIsPublished = isTopicPublished;
+    modelRef.result.then(
+      (commitMessage: string) => {
+        this.topicEditorStateService.saveTopic(commitMessage, () => {
+          this.alertsService.addSuccessMessage('Changes Saved.');
+        });
+      },
+      () => {
+        // Note to developers:
+        // This callback is triggered when the Cancel button is clicked.
+        // No further action is needed.
+      }
+    );
+  }
+
+  unpublishTopic(): boolean {
+    const classroomName = this.topicEditorStateService.getClassroomName();
+    if (classroomName) {
+      const errorMessage =
+        `The topic is assigned to the ${classroomName} ` +
+        'classroom. Contact the curriculum admins to remove it from the classroom first.';
+      this.alertsService.addWarning(errorMessage);
+      return false;
+    }
+    this.showTopicEditOptions = false;
+    if (!this.topicRights.canPublishTopic()) {
+      return false;
+    }
+    this.topicRightsBackendApiService
+      .unpublishTopicAsync(this.topicId)
+      .then(() => {
+        this.topicRights.markTopicAsUnpublished();
+        this.topicEditorStateService.setTopicRights(this.topicRights);
+      });
+    return true;
+  }
+
+  toggleNavigationOptions(): void {
+    this.showNavigationOptions = !this.showNavigationOptions;
+  }
+
+  toggleTopicEditOptions(): void {
+    this.showTopicEditOptions = !this.showTopicEditOptions;
+  }
+
+  toggleWarningText(): void {
+    this.warningsAreShown = !this.warningsAreShown;
+  }
+
+  getWarningsCount(): number {
+    return this.validationIssues.length;
+  }
+
+  getTotalWarningsCount(): number {
+    let validationIssuesCount = this.validationIssues.length;
+    let prepublishValidationIssuesCount =
+      this.prepublishValidationIssues.length;
+    return validationIssuesCount + prepublishValidationIssuesCount;
+  }
+
+  getMobileNavigatorText(): string {
+    const activeTab = this.getActiveTabName();
+    if (activeTab === 'main') {
+      return 'Editor';
+    } else if (activeTab === 'subtopic_editor') {
+      return 'Editor';
+    } else if (activeTab === 'subtopic_preview') {
+      return 'Preview';
+    } else if (activeTab === 'questions') {
+      return 'Questions';
+    } else if (activeTab === 'topic_preview') {
+      return 'Preview';
+    }
+    return 'Editor';
+  }
+
+  openTopicViewer(): void {
+    this.showNavigationOptions = false;
+    const activeTab = this.topicEditorRoutingService.getActiveTabName();
+
+    if (
+      activeTab === 'questions' &&
+      this.questionUndoRedoService.hasChanges()
+    ) {
+      const modalRef = this.ngbModal.open(ConfirmQuestionExitModalComponent, {
+        backdrop: true,
+      });
+
+      modalRef.result.then(
+        () => {
+          this.questionUndoRedoService.clearChanges();
+          this._navigateToPreview(activeTab);
+        },
+        () => {}
+      );
+    } else {
+      this._navigateToPreview(activeTab);
+    }
+  }
+
+  private _navigateToPreview(activeTab: string): void {
+    if (activeTab === 'subtopic_editor' || activeTab === 'subtopic_preview') {
+      const subtopicId = this.topicEditorRoutingService.getSubtopicIdFromUrl();
+      this.topicEditorRoutingService.navigateToSubtopicPreviewTab(subtopicId);
+      this.activeTab = 'Preview';
+    } else {
+      if (this.getChangeListLength() > 0) {
+        this.alertsService.addInfoMessage(
+          'Please save all pending changes to preview the topic with the changes',
+          2000
+        );
+        return;
+      }
+      const topicUrlFragment = this.topic.getUrlFragment();
+      const classroomUrlFragment =
+        this.topicEditorStateService.getClassroomUrlFragment();
+      if (!classroomUrlFragment) {
+        return;
+      }
+      this.windowRef.nativeWindow.open(
+        this.urlInterpolationService.interpolateUrl(
+          ClassroomDomainConstants.TOPIC_VIEWER_URL_TEMPLATE,
+          {
+            topic_url_fragment: topicUrlFragment,
+            classroom_url_fragment: classroomUrlFragment,
+          }
+        ),
+        'blank'
+      );
+    }
+  }
+
+  selectMainTab(): void {
+    this.showNavigationOptions = false;
+    const activeTab = this.topicEditorRoutingService.getActiveTabName();
+
+    if (
+      activeTab === 'questions' &&
+      this.questionUndoRedoService.hasChanges()
+    ) {
+      const modalRef = this.ngbModal.open(ConfirmQuestionExitModalComponent, {
+        backdrop: true,
+      });
+
+      modalRef.result.then(
+        () => {
+          this.questionUndoRedoService.clearChanges();
+          this._navigateToMainTab(activeTab);
+        },
+        () => {}
+      );
+    } else {
+      this._navigateToMainTab(activeTab);
+    }
+  }
+
+  private _navigateToMainTab(activeTab: string): void {
+    if (activeTab === 'subtopic_editor' || activeTab === 'subtopic_preview') {
+      const subtopicId = this.topicEditorRoutingService.getSubtopicIdFromUrl();
+      this.topicEditorRoutingService.navigateToSubtopicEditorWithId(subtopicId);
+      this.activeTab = 'Editor';
+    } else {
+      this.topicEditorRoutingService.navigateToMainTab();
+      this.activeTab = 'Editor';
+    }
+  }
+
+  selectQuestionsTab(): void {
+    this.showNavigationOptions = false;
+    this.topicEditorRoutingService.navigateToQuestionsTab();
+    this.activeTab = 'Questions';
+  }
+
+  getActiveTabName(): string {
+    return this.topicEditorRoutingService.getActiveTabName();
+  }
+
+  ngOnInit(): void {
+    this.directiveSubscriptions.add(
+      this.topicEditorStateService.onTopicInitialized.subscribe(() => {
+        this.topic = this.topicEditorStateService.getTopic();
+        this.topicEditorStateService
+          .prefetchSkills(this.topic.getSkillIds())
+          .then(() => this._validateTopic());
+      })
+    );
+    this.directiveSubscriptions.add(
+      this.topicEditorStateService.onTopicReinitialized.subscribe(() => {
+        this.topic = this.topicEditorStateService.getTopic();
+        this.topicEditorStateService
+          .prefetchSkills(this.topic.getSkillIds())
+          .then(() => this._validateTopic());
+      })
+    );
+    this.preventPageUnloadEventService.addListener(() => {
+      return (
+        this.undoRedoService.getChangeCount() > 0 ||
+        this.questionUndoRedoService.hasChanges()
+      );
+    });
+    this.topicId = this.urlService.getTopicIdFromUrl();
+    this.navigationChoices = ['Topic', 'Questions', 'Preview'];
+    this.activeTab = this.getMobileNavigatorText();
+    this.showNavigationOptions = false;
+    this.warningsAreShown = false;
+    this.showTopicEditOptions = false;
+    this.topic = this.topicEditorStateService.getTopic();
+    this.discardChangesButtonIsShown = false;
+    this.validationIssues = [];
+    this.prepublishValidationIssues = [];
+    this.topicRights = this.topicEditorStateService.getTopicRights();
+    if (this.topicEditorStateService.hasLoadedTopic()) {
+      this.topicEditorStateService
+        .prefetchSkills(this.topic.getSkillIds())
+        .then(() => this._validateTopic());
+    }
+    this.directiveSubscriptions.add(
+      this.undoRedoService.getUndoRedoChangeEventEmitter().subscribe(() => {
+        this.topic = this.topicEditorStateService.getTopic();
+        const changeList = this.undoRedoService.getChangeList();
+        if (changeList.length === 0) {
+          this._validateTopic();
           return;
         }
-        var redirectToDashboard = false;
-        TopicRightsBackendApiService.publishTopicAsync($scope.topicId).then(
-          function() {
-            if (!$scope.topicRights.isPublished()) {
-              redirectToDashboard = true;
-            }
-            $scope.topicRights.markTopicAsPublished();
-            TopicEditorStateService.setTopicRights($scope.topicRights);
-            $rootScope.$applyAsync();
-          }
-        ).then(function() {
-          var successToast = 'Topic published.';
-          if (redirectToDashboard) {
-            $window.location = '/topics-and-skills-dashboard';
-          }
-          AlertsService.addSuccessMessage(
-            successToast, 1000);
-        });
-      };
-
-      $scope.discardChanges = function() {
-        UndoRedoService.clearChanges();
-        $scope.discardChangesButtonIsShown = false;
-        TopicEditorStateService.loadTopic($scope.topicId);
-      };
-
-      $scope.getChangeListLength = function() {
-        return UndoRedoService.getChangeCount();
-      };
-
-      $scope.isTopicSaveable = function() {
-        return (
-          $scope.getChangeListLength() > 0 &&
-              $scope.getWarningsCount() === 0 && (
-            !$scope.topicRights.isPublished() ||
-                $scope.prepublishValidationIssues.length === 0
-          )
-        );
-      };
-
-      $scope.toggleDiscardChangeButton = function() {
-        $scope.showTopicEditOptions = false;
-        $scope.discardChangesButtonIsShown = (
-          !$scope.discardChangesButtonIsShown);
-      };
-
-      $scope.saveChanges = function() {
-        var topicIsPublished = $scope.topicRights.isPublished();
-        $uibModal.open({
-          templateUrl: UrlInterpolationService.getDirectiveTemplateUrl(
-            '/pages/topic-editor-page/modal-templates/' +
-                'topic-editor-save-modal.template.html'),
-          backdrop: 'static',
-          resolve: {
-            topicIsPublished: () => topicIsPublished
-          },
-          controller: 'TopicEditorSaveModalController'
-        }).result.then(function(commitMessage) {
-          TopicEditorStateService.saveTopic(commitMessage, () => {
-            AlertsService.addSuccessMessage('Changes Saved.');
-            $rootScope.$applyAsync();
-          });
-        }, function() {
-          // Note to developers:
-          // This callback is triggered when the Cancel button is clicked.
-          // No further action is needed.
-        });
-      };
-
-      $scope.unpublishTopic = function() {
-        $scope.showTopicEditOptions = false;
-        if (!$scope.topicRights.canPublishTopic()) {
-          return false;
-        }
-        TopicRightsBackendApiService.unpublishTopicAsync(
-          $scope.topicId).then(function() {
-          $scope.topicRights.markTopicAsUnpublished();
-          TopicEditorStateService.setTopicRights($scope.topicRights);
-          $rootScope.$applyAsync();
-        });
-      };
-
-      $scope.toggleNavigationOptions = function() {
-        $scope.showNavigationOptions = !$scope.showNavigationOptions;
-      };
-
-      $scope.toggleTopicEditOptions = function() {
-        $scope.showTopicEditOptions = !$scope.showTopicEditOptions;
-      };
-
-      $scope.toggleWarningText = function() {
-        $scope.warningsAreShown = !$scope.warningsAreShown;
-      };
-
-      $scope._validateTopic = function() {
-        $scope.validationIssues = $scope.topic.validate();
-        var prepublishTopicValidationIssues = (
-          $scope.topic.prepublishValidate());
-        var subtopicPrepublishValidationIssues = (
-          [].concat.apply([], $scope.topic.getSubtopics().map(
-            (subtopic) => subtopic.prepublishValidate())));
-        $scope.prepublishValidationIssues = (
-          prepublishTopicValidationIssues.concat(
-            subtopicPrepublishValidationIssues));
-      };
-
-      $scope.getWarningsCount = function() {
-        return $scope.validationIssues.length;
-      };
-
-      $scope.getTotalWarningsCount = function() {
-        var validationIssuesCount = $scope.validationIssues.length;
-        var prepublishValidationIssuesCount = (
-          $scope.prepublishValidationIssues.length);
-        return validationIssuesCount + prepublishValidationIssuesCount;
-      };
-
-      $scope.openTopicViewer = function() {
-        $scope.showNavigationOptions = false;
-        var activeTab = TopicEditorRoutingService.getActiveTabName();
-        if (activeTab !== 'subtopic_editor') {
-          if ($scope.getChangeListLength() > 0) {
-            AlertsService.addInfoMessage(
-              'Please save all pending changes to preview the topic ' +
-                    'with the changes', 2000);
-            return;
-          }
-          var topicUrlFragment = $scope.topic.getUrlFragment();
-          var classroomUrlFragment = (
-            TopicEditorStateService.getClassroomUrlFragment());
-          $window.open(
-            UrlInterpolationService.interpolateUrl(
-              TOPIC_VIEWER_URL_TEMPLATE, {
-                topic_url_fragment: topicUrlFragment,
-                classroom_url_fragment: classroomUrlFragment
-              }
-            ), 'blank');
+        const lastChange =
+          changeList[changeList.length - 1].getBackendChangeObject();
+        const isSkillChange =
+          lastChange.cmd === 'add_uncategorized_skill_id' ||
+          lastChange.cmd === 'remove_uncategorized_skill_id' ||
+          lastChange.cmd === 'move_skill_id_to_subtopic' ||
+          lastChange.cmd === 'remove_skill_id_from_subtopic';
+        if (isSkillChange) {
+          this.topicEditorStateService
+            .updateSkillCache(this.topic.getSkillIds())
+            .then(() => this._validateTopic());
         } else {
-          $scope.activeTab = 'Preview';
-          var subtopicId = TopicEditorRoutingService.getSubtopicIdFromUrl();
-          TopicEditorRoutingService.navigateToSubtopicPreviewTab(
-            subtopicId);
+          this._validateTopic();
         }
-      };
+      })
+    );
+  }
 
-      $scope.selectMainTab = function() {
-        $scope.activeTab = 'Editor';
-        $scope.showNavigationOptions = false;
-        TopicEditorRoutingService.navigateToMainTab();
-      };
+  ngAfterContentChecked(): void {
+    this.changeListLength = this.getChangeListLength();
+    this.topicIsSaveable = this.isTopicSaveable();
+    this.totalWarningsCount = this.getTotalWarningsCount();
+  }
 
-      $scope.selectQuestionsTab = function() {
-        $scope.activeTab = 'Question';
-        $scope.showNavigationOptions = false;
-        TopicEditorRoutingService.navigateToQuestionsTab();
-      };
-
-      $scope.getActiveTabName = function() {
-        return TopicEditorRoutingService.getActiveTabName();
-      };
-
-      ctrl.$onInit = function() {
-        ctrl.directiveSubscriptions.add(
-          TopicEditorStateService.onTopicInitialized.subscribe(
-            () => _validateTopic()
-          ));
-        ctrl.directiveSubscriptions.add(
-          TopicEditorStateService.onTopicReinitialized.subscribe(
-            () => _validateTopic()
-          ));
-        $scope.topicId = UrlService.getTopicIdFromUrl();
-        $scope.navigationChoices = ['Topic', 'Questions', 'Preview'];
-        $scope.activeTab = 'Editor';
-        $scope.showNavigationOptions = false;
-        $scope.warningsAreShown = false;
-        $scope.showTopicEditOptions = false;
-        $scope.topic = TopicEditorStateService.getTopic();
-        $scope.topicSkillIds = $scope.topic.getSkillIds();
-        $scope.discardChangesButtonIsShown = false;
-        $scope.validationIssues = [];
-        $scope.prepublishValidationIssues = [];
-        $scope.topicRights = TopicEditorStateService.getTopicRights();
-        ctrl.directiveSubscriptions.add(
-          UndoRedoService.getUndoRedoChangeEventEmitter().subscribe(
-            () => _validateTopic()
-          )
-        );
-      };
-
-      ctrl.$onDestroy = function() {
-        ctrl.directiveSubscriptions.unsubscribe();
-      };
-    }]
-});
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+}

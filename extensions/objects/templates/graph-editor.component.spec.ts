@@ -16,18 +16,24 @@
  * @fileoverview Unit test for graph editor.
  */
 
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { GraphEditorComponent } from './graph-editor.component';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {GraphEditorComponent} from './graph-editor.component';
 
 describe('GraphEditorComponent', () => {
   let component: GraphEditorComponent;
   let fixture: ComponentFixture<GraphEditorComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [GraphEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -36,46 +42,50 @@ describe('GraphEditorComponent', () => {
     component = fixture.componentInstance;
   });
 
-  it('should update value component when user edits a graph', () => {
+  it('should update value component when user edits a graph', fakeAsync(() => {
     spyOn(component.valueChanged, 'emit');
+    expect(component.graphIsShown).toBeFalse();
+    component.ngAfterViewInit();
+    tick();
+    expect(component.graphIsShown).toBeTrue();
     let graph = {
       isWeighted: false,
       edges: [
         {
           src: 0,
           dst: 1,
-          weight: 1
+          weight: 1,
         },
         {
           src: 1,
           dst: 2,
-          weight: 1
-        }
+          weight: 1,
+        },
       ],
       isDirected: false,
       vertices: [
         {
           x: 150,
           y: 50,
-          label: ''
+          label: '',
         },
         {
           x: 200,
           y: 50,
-          label: ''
+          label: '',
         },
         {
           x: 150,
           y: 100,
-          label: ''
+          label: '',
         },
         {
           x: 199.5625,
           y: 121.625,
-          label: ''
-        }
+          label: '',
+        },
       ],
-      isLabeled: false
+      isLabeled: false,
     };
 
     expect(component.value).toBeUndefined();
@@ -84,5 +94,5 @@ describe('GraphEditorComponent', () => {
 
     expect(component.value).toEqual(graph);
     expect(component.valueChanged.emit).toHaveBeenCalledWith(graph);
-  });
+  }));
 });

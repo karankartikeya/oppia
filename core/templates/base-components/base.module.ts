@@ -17,35 +17,48 @@
  */
 
 // Modules.
-import { CommonModule } from '@angular/common';
-import { NgModule } from '@angular/core';
-import { CookieModule } from 'ngx-cookie';
+import {CommonModule} from '@angular/common';
+import {NgModule} from '@angular/core';
+import {FormsModule, ReactiveFormsModule} from '@angular/forms';
+import {CookieModule} from 'ngx-cookie';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
 
-import { DirectivesModule } from 'directives/directives.module';
-import { SharedPipesModule } from 'filters/shared-pipes.module';
-import { I18nModule } from 'i18n/i18n.module';
+import {DirectivesModule} from 'directives/directives.module';
+import {SharedPipesModule} from 'filters/shared-pipes.module';
+import {I18nModule} from 'i18n/i18n.module';
 
 // Components.
-import { CreateActivityButtonComponent } from 'components/button-directives/create-activity-button.component';
-import { SocialButtonsComponent } from 'components/button-directives/social-buttons.component';
-import { AlertMessageComponent } from 'components/common-layout-directives/common-elements/alert-message.component';
-import { PromoBarComponent } from 'components/common-layout-directives/common-elements/promo-bar.component';
-import { SideNavigationBarComponent } from 'components/common-layout-directives/navigation-bars/side-navigation-bar.component';
-import { TopNavigationBarComponent } from 'components/common-layout-directives/navigation-bars/top-navigation-bar.component';
-import { LoadingMessageComponent } from './loading-message.component';
-import { OppiaFooterComponent } from './oppia-footer.component';
-import { WarningsAndAlertsComponent } from './warnings-and-alerts.component';
+import {CreateActivityButtonComponent} from 'components/button-directives/create-activity-button.component';
+import {SocialButtonsComponent} from 'components/button-directives/social-buttons.component';
+import {AlertMessageComponent} from 'components/common-layout-directives/common-elements/alert-message.component';
+import {PromoBarComponent} from 'components/common-layout-directives/common-elements/promo-bar.component';
+import {SideNavigationBarComponent} from 'components/common-layout-directives/navigation-bars/side-navigation-bar.component';
+import {TopNavigationBarComponent} from 'components/common-layout-directives/navigation-bars/top-navigation-bar.component';
+import {LoadingMessageComponent} from './loading-message.component';
+import {OppiaFooterComponent} from './oppia-footer.component';
+import {ThanksForSubscribingModalComponent} from './thanks-for-subscribing-modal.component';
+import {WarningsAndAlertsComponent} from './warnings-and-alerts.component';
+import {ClassroomNavigationLinksComponent} from 'components/common-layout-directives/common-elements/classroom-navigation-links.component';
+import {LanguageBannerComponent} from 'components/language-banner/language-banner.component';
 
 // Directives.
 import {
   BaseContentComponent,
   BaseContentNavBarBreadCrumbDirective,
   BaseContentNavBarPreLogoActionDirective,
-  BaseContentPageFooterDirective
+  BaseContentNavOptionsDirective,
+  BaseContentPageFooterDirective,
 } from './base-content.component';
 
 // Miscellaneous.
-import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
+import {OppiaAngularRootComponent} from 'components/oppia-angular-root.component';
+import {NgBootstrapModule} from 'modules/ng-boostrap.module';
+import {FooterDonateVolunteerComponent} from './footer-donate-volunteer.component';
+import {FeedbackModalComponent} from './feedback-modal.component';
+import {ImageReceiverModule} from 'components/forms/custom-forms-directives/image-receiver.module';
+import {MatIconModule} from '@angular/material/icon';
+import {PrimaryButtonComponent} from 'components/button-directives/primary-button.component';
+import {RouterModule} from '@angular/router';
 
 @NgModule({
   imports: [
@@ -53,10 +66,14 @@ import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
     CookieModule.forChild(),
     DirectivesModule,
     I18nModule,
-    // TODO(#13443): Remove hybrid router module provider once all pages are
-    // migrated to angular router.
-    HybridRouterModuleProvider.provide(),
+    FormsModule,
+    ReactiveFormsModule,
+    NgbModule,
+    NgBootstrapModule,
+    RouterModule,
     SharedPipesModule,
+    MatIconModule,
+    ImageReceiverModule,
   ],
 
   declarations: [
@@ -64,28 +81,41 @@ import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
     BaseContentComponent,
     BaseContentNavBarBreadCrumbDirective,
     BaseContentNavBarPreLogoActionDirective,
+    BaseContentNavOptionsDirective,
     BaseContentPageFooterDirective,
+    PrimaryButtonComponent,
     CreateActivityButtonComponent,
     LoadingMessageComponent,
+    OppiaAngularRootComponent,
     OppiaFooterComponent,
     PromoBarComponent,
     SideNavigationBarComponent,
     SocialButtonsComponent,
+    FooterDonateVolunteerComponent,
+    ThanksForSubscribingModalComponent,
     TopNavigationBarComponent,
     WarningsAndAlertsComponent,
+    ClassroomNavigationLinksComponent,
+    LanguageBannerComponent,
+    FeedbackModalComponent,
   ],
 
   entryComponents: [
     AlertMessageComponent,
     BaseContentComponent,
+    PrimaryButtonComponent,
     CreateActivityButtonComponent,
     LoadingMessageComponent,
+    OppiaAngularRootComponent,
     OppiaFooterComponent,
     PromoBarComponent,
     SideNavigationBarComponent,
     SocialButtonsComponent,
     TopNavigationBarComponent,
+    ThanksForSubscribingModalComponent,
     WarningsAndAlertsComponent,
+    ClassroomNavigationLinksComponent,
+    FeedbackModalComponent,
   ],
 
   exports: [
@@ -94,20 +124,27 @@ import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
     DirectivesModule,
     I18nModule,
     SharedPipesModule,
+    MatIconModule,
 
     // Components and Directives.
     AlertMessageComponent,
     BaseContentComponent,
     BaseContentNavBarBreadCrumbDirective,
     BaseContentNavBarPreLogoActionDirective,
+    BaseContentNavOptionsDirective,
     BaseContentPageFooterDirective,
+    PrimaryButtonComponent,
     CreateActivityButtonComponent,
     LoadingMessageComponent,
+    OppiaAngularRootComponent,
     OppiaFooterComponent,
     SideNavigationBarComponent,
     SocialButtonsComponent,
+    ThanksForSubscribingModalComponent,
     TopNavigationBarComponent,
     WarningsAndAlertsComponent,
+    ClassroomNavigationLinksComponent,
+    FeedbackModalComponent,
   ],
 })
 export class BaseModule {}

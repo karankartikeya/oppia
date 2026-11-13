@@ -17,11 +17,10 @@
  * used at multiple places in the codebase.
  */
 
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class UtilsService {
   /**
@@ -30,7 +29,7 @@ export class UtilsService {
    * @return {boolean} - true if object is defined, false otherwise.
    */
   isDefined(
-      value: Object | Object[] | string | string[] | undefined | null
+    value: Object | Object[] | string | string[] | undefined | null
   ): boolean {
     return typeof value !== 'undefined' && value !== null;
   }
@@ -59,7 +58,7 @@ export class UtilsService {
    * @return {boolean} - true if input is string, false otherwise.
    */
   isString(input: Object | undefined | null): boolean {
-    return (typeof input === 'string' || input instanceof String);
+    return typeof input === 'string' || input instanceof String;
   }
 
   // The function here is to check whether the two arguments are equivalent or
@@ -93,11 +92,13 @@ export class UtilsService {
     // to modify the structure of the Object interface.
     for (var i = 0; i < aProps.length; i++) {
       var propName = aProps[i];
-      const getKeyValue = (key: string) =>
-        (obj: Record<string, Object>) => obj[key];
-      if (!this.isEquivalent(
-        getKeyValue(propName)(<Record<string, object>>a),
-        getKeyValue(propName)(<Record<string, object>>b))
+      const getKeyValue = (key: string) => (obj: Record<string, Object>) =>
+        obj[key];
+      if (
+        !this.isEquivalent(
+          getKeyValue(propName)(a as Record<string, object>),
+          getKeyValue(propName)(b as Record<string, object>)
+        )
       ) {
         return false;
       }
@@ -113,9 +114,12 @@ export class UtilsService {
    */
   isError(value: Object | undefined | null): boolean {
     switch (Object.prototype.toString.call(value)) {
-      case '[object Error]': return true;
-      case '[object DOMException]': return true;
-      default: return value instanceof Error;
+      case '[object Error]':
+        return true;
+      case '[object DOMException]':
+        return true;
+      default:
+        return value instanceof Error;
     }
   }
 
@@ -125,7 +129,8 @@ export class UtilsService {
     } else {
       return (
         element.offsetWidth < element.scrollWidth ||
-        element.offsetHeight < element.scrollHeight);
+        element.offsetHeight < element.scrollHeight
+      );
     }
   }
 
@@ -139,37 +144,40 @@ export class UtilsService {
       return '/';
     }
 
-    try {
-      // Throws an exception when the URL does not have a scheme.
-      const url = new URL(urlString);
-
-      // Does this URL originate from this website?
-      if (url.origin !== new URL(document.URL, document.baseURI).origin) {
-        // This is an external URL, so reject it and return '/' instead.
-        return '/';
-      }
-    } catch (_) {
-      // Continue to the next validation strategy.
-    }
-
-    try {
-      // Throws an exception if the URL is truly malformed in some way.
-      new URL(urlString, document.baseURI);
-    } catch (_) {
-      // This is a truly malformed URL, so reject it and return '/' instead.
+    // Starting with a slash, and not allowing a double slash, forces staying
+    // on the same origin. Disallowing '..' prevents directory traversal.
+    if (
+      !urlString.startsWith('/') ||
+      urlString.startsWith('//') ||
+      urlString.includes('..')
+    ) {
       return '/';
     }
 
-    if (urlString.charAt(0) !== '/' || urlString.charAt(1) === '/') {
-      // The URL is not a relative path, so reject it and return '/' instead.
+    let url: URL = new URL(urlString, document.baseURI);
+
+    // Only allow redirects that stay on the same origin.
+    const expectedOrigin = new URL(document.URL, document.baseURI).origin;
+    if (url.origin !== expectedOrigin) {
       return '/';
-    } else {
-      // The URL is a safe, relative path.
-      return urlString;
     }
+
+    // Disallow suspicious characters in fragment or query (for defense-in-
+    // depth).
+    if (
+      url.search.includes('javascript:') ||
+      url.hash.includes('javascript:')
+    ) {
+      return '/';
+    }
+
+    // Allow only safe characters in the path/query/fragment.
+    const SAFE_PATH_REGEX = /^\/[a-zA-Z0-9/_\-\.]*([?][^#]*)?(#[^]*)?$/;
+    const fullPath = url.pathname + url.search + url.hash;
+    if (!SAFE_PATH_REGEX.test(fullPath)) {
+      return '/';
+    }
+
+    return fullPath;
   }
 }
-
-angular.module('oppia').factory(
-  'UtilsService',
-  downgradeInjectable(UtilsService));

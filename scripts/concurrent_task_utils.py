@@ -16,38 +16,47 @@
 
 """Utility methods for managing concurrent tasks."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-import datetime
 import threading
 import time
 import traceback
-from core import python_utils
 
-LOG_LOCK = threading.Lock()
-ALL_ERRORS = []
-SUCCESS_MESSAGE_PREFIX = 'SUCCESS '
-FAILED_MESSAGE_PREFIX = 'FAILED '
+from core import utils
+
+from typing import Any, Callable, Final, List, Optional
+
+LOG_LOCK: Final = threading.Lock()
+ALL_ERRORS: Final = []
+SUCCESS_MESSAGE_PREFIX: Final = 'SUCCESS '
+FAILED_MESSAGE_PREFIX: Final = 'FAILED '
+MAX_ATTEMPTS: Final = 3
 
 
-def log(message, show_time=False):
+def log(message: str, show_time: bool = False) -> None:
     """Logs a message to the terminal.
 
     If show_time is True, prefixes the message with the current time.
     """
     with LOG_LOCK:
         if show_time:
-            python_utils.PRINT(
-                datetime.datetime.utcnow().strftime('%H:%M:%S'), message)
+            print(
+                utils.get_current_utc_datetime().strftime('%H:%M:%S'), message
+            )
         else:
-            python_utils.PRINT(message)
+            print(message)
 
 
 class TaskResult:
     """Task result for concurrent_task_utils."""
 
-    def __init__(self, name, failed, trimmed_messages, messages):
+    def __init__(
+        self,
+        name: str,
+        failed: bool,
+        trimmed_messages: List[str],
+        messages: List[str],
+    ) -> None:
         """Constructs a TaskResult object.
 
         Args:
@@ -63,7 +72,7 @@ class TaskResult:
         self.trimmed_messages = trimmed_messages
         self.messages = messages
 
-    def get_report(self):
+    def get_report(self) -> List[str]:
         """Returns a list of message with pass or fail status for the current
         check.
 
@@ -72,11 +81,11 @@ class TaskResult:
             task.
         """
         all_messages = self.messages[:]
-        status_message = (
-            '%s %s check %s' % (
-                (FAILED_MESSAGE_PREFIX, self.name, 'failed')
-                if self.failed else (
-                    SUCCESS_MESSAGE_PREFIX, self.name, 'passed')))
+        status_message = '%s %s check %s' % (
+            (FAILED_MESSAGE_PREFIX, self.name, 'failed')
+            if self.failed
+            else (SUCCESS_MESSAGE_PREFIX, self.name, 'passed')
+        )
         all_messages.append(status_message)
         return all_messages
 
@@ -84,68 +93,119 @@ class TaskResult:
 class TaskThread(threading.Thread):
     """Runs a task in its own thread."""
 
-    def __init__(self, func, verbose, semaphore, name, report_enabled):
-        super(TaskThread, self).__init__()
+    # Here we use type Any because the argument 'func' can accept any
+    # kind of function to create a task thread for it.
+    def __init__(
+        self,
+        func: Callable[..., Any],
+        verbose: bool,
+        semaphore: threading.Semaphore,
+        errors_to_retry_on: List[str],
+        name: Optional[str],
+        report_enabled: bool,
+    ) -> None:
+        super().__init__()
         self.func = func
-        self.task_results = []
-        self.exception = None
-        self.stacktrace = None
+        self.task_results: List[TaskResult] = []
+        self.exception: Optional[Exception] = None
+        self.stacktrace: Optional[str] = None
         self.verbose = verbose
         self.name = name
         self.semaphore = semaphore
         self.finished = False
         self.report_enabled = report_enabled
+        self.errors_to_retry_on = errors_to_retry_on or []
+        self.num_attempts = 0
 
-    def run(self):
+    def run(self) -> None:
         try:
-            self.task_results = self.func()
-            if self.verbose:
-                for task_result in self.task_results:
-                    # The following section will print the output of the lint
-                    # checks.
-                    if self.report_enabled:
-                        log(
-                            'Report from %s check\n'
-                            '----------------------------------------\n'
-                            '%s' % (task_result.name, '\n'.join(
-                                task_result.get_report())), show_time=True)
-                    # The following section will print the output of backend
-                    # tests.
-                    else:
-                        log(
-                            'LOG %s:\n%s'
-                            '----------------------------------------' %
-                            (self.name, task_result.messages[0]),
-                            show_time=True)
-            log(
-                'FINISHED %s: %.1f secs' % (
-                    self.name, time.time() - self.start_time), show_time=True)
-        except Exception as e:
-            self.exception = e
-            self.stacktrace = traceback.format_exc()
-            if 'KeyboardInterrupt' not in self.exception.args[0]:
-                log(e)
-                log(
-                    'ERROR %s: %.1f secs' %
-                    (self.name, time.time() - self.start_time), show_time=True)
+            while self.num_attempts < MAX_ATTEMPTS:
+                self.num_attempts += 1
+                try:
+                    self.task_results = self.func()
+
+                    if self.verbose:
+                        for task_result in self.task_results:
+                            # The following section will print the output of the
+                            # lint checks.
+                            if self.report_enabled:
+                                log(
+                                    'Report from %s check\n'
+                                    '----------------------------------------\n'
+                                    '%s'
+                                    % (
+                                        task_result.name,
+                                        '\n'.join(task_result.get_report()),
+                                    ),
+                                    show_time=True,
+                                )
+                            # The following section will print the output of
+                            # backend tests.
+                            else:
+                                log(
+                                    'LOG %s:\n%s'
+                                    '----------------------------------------'
+                                    % (self.name, task_result.messages[0]),
+                                    show_time=True,
+                                )
+
+                    log(
+                        'FINISHED %s: %.1f secs'
+                        % (self.name, time.time() - self.start_time),
+                        show_time=True,
+                    )
+                    return
+                except Exception as e:
+                    log(
+                        'Attempt {} of {} failed for {}'.format(
+                            self.num_attempts, MAX_ATTEMPTS, self.name
+                        )
+                    )
+
+                    is_last_attempt = self.num_attempts >= MAX_ATTEMPTS
+                    should_retry = any(
+                        err in str(e) for err in self.errors_to_retry_on
+                    )
+
+                    if is_last_attempt or not should_retry:
+                        # This is either the last attempt
+                        # or not a retryable error.
+                        self.exception = e
+                        self.stacktrace = traceback.format_exc()
+                        if 'KeyboardInterrupt' not in str(e):
+                            log(str(e))
+                            log(
+                                'ERROR {} - {:.1f} secs'.format(
+                                    self.name, time.time() - self.start_time
+                                ),
+                                show_time=True,
+                            )
+                        break
+                    log('Retrying {} - error: {}'.format(self.name, e))
         finally:
             self.semaphore.release()
             self.finished = True
 
 
-def _check_all_tasks(tasks):
+def _check_all_tasks(tasks: List[TaskThread]) -> None:
     """Checks the results of all tasks."""
     running_tasks_data = []
 
     for task in tasks:
-        if task.isAlive():
-            running_tasks_data.append('  %s (started %s)' % (
-                task.name,
-                time.strftime('%H:%M:%S', time.localtime(task.start_time))
-            ))
+        if task.is_alive():
+            running_tasks_data.append(
+                '  %s (started %s)'
+                % (
+                    task.name,
+                    time.strftime('%H:%M:%S', time.localtime(task.start_time)),
+                )
+            )
 
         if task.exception:
-            ALL_ERRORS.append(task.stacktrace)
+            stacktrace = (
+                task.stacktrace if task.stacktrace else 'No stacktrace present.'
+            )
+            ALL_ERRORS.append(stacktrace)
 
     if running_tasks_data:
         log('----------------------------------------')
@@ -154,16 +214,19 @@ def _check_all_tasks(tasks):
             log(task_details)
 
 
-def execute_tasks(tasks, semaphore):
+def execute_tasks(
+    tasks: List[TaskThread], semaphore: threading.Semaphore
+) -> None:
     """Starts all tasks and checks the results.
     Runs no more than the allowable limit defined in the semaphore.
 
     Args:
-        tasks: list(TestingTaskSpec). The tasks to run.
+        tasks: list(TaskThread). The tasks to run.
         semaphore: threading.Semaphore. The object that controls how many tasks
             can run at any time.
     """
-    remaining_tasks = [] + tasks
+    empty_tasks_list: List[TaskThread] = []
+    remaining_tasks: List[TaskThread] = empty_tasks_list + tasks
     currently_running_tasks = []
 
     while remaining_tasks:
@@ -186,7 +249,16 @@ def execute_tasks(tasks, semaphore):
     _check_all_tasks(currently_running_tasks)
 
 
-def create_task(func, verbose, semaphore, name=None, report_enabled=True):
+# Here we use type Any because the argument 'func' can accept any kind of
+# function to create a task thread for it.
+def create_task(
+    func: Callable[..., Any],
+    verbose: bool,
+    semaphore: threading.Semaphore,
+    errors_to_retry_on: List[str],
+    name: Optional[str] = None,
+    report_enabled: bool = True,
+) -> TaskThread:
     """Create a Task in its Thread.
 
     Args:
@@ -194,11 +266,17 @@ def create_task(func, verbose, semaphore, name=None, report_enabled=True):
         verbose: bool. True if verbose mode is enabled.
         semaphore: threading.Semaphore. The object that controls how many tasks
             can run at any time.
-        name: str. Name of the task that is going to be created.
+        name: str|None. Name of the task that is going to be created.
         report_enabled: bool. Decide whether task result will print or not.
+        errors_to_retry_on: List[str]. List of error message substrings that
+            will trigger retry attempts when they appear in exceptions. If an
+            error contains any of these substrings, the task will be retried
+            up to MAX_ATTEMPTS times.
 
     Returns:
         task: TaskThread object. Created task.
     """
-    task = TaskThread(func, verbose, semaphore, name, report_enabled)
+    task = TaskThread(
+        func, verbose, semaphore, errors_to_retry_on, name, report_enabled
+    )
     return task

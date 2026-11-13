@@ -16,14 +16,25 @@
  * @fileoverview Unit tests for the InteractiveCodeRepl response component.
  */
 
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { async, ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { InteractiveCodeReplComponent } from './oppia-interactive-code-repl.component';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { ChangeDetectorRef, EventEmitter, NO_ERRORS_SCHEMA } from '@angular/core';
+// @ts-nocheck
+
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {InteractiveCodeReplComponent} from './oppia-interactive-code-repl.component';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {ChangeDetectorRef, EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
 import 'third-party-imports/skulpt.import';
-import { CodemirrorComponent } from '@ctrl/ngx-codemirror';
-import { PlayerPositionService } from 'pages/exploration-player-page/services/player-position.service';
+import {CodemirrorComponent} from '@ctrl/ngx-codemirror';
+import {PlayerPositionService} from 'pages/exploration-player-page/services/player-position.service';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
+import {CodeReplCustomizationArgs} from 'interactions/customization-args-defs';
+import {InteractionAnswer} from 'interactions/answer-defs';
 
 describe('InteractiveCodeReplComponent', () => {
   let component: InteractiveCodeReplComponent;
@@ -33,62 +44,79 @@ describe('InteractiveCodeReplComponent', () => {
   let currentInteractionService: CurrentInteractionService;
 
   class mockInteractionAttributesExtractorService {
-    getValuesFromAttributes(interactionId, attributes) {
+    getValuesFromAttributes(
+      interactionId: InteractionSpecsKey,
+      attributes: Record<string, string>
+    ) {
       return {
-        language: attributes.languageWithValue,
-        placeholder: attributes.placeholderWithValue,
-        preCode: attributes.preCodeWithValue,
-        postCode: attributes.postCodeWithValue
-      };
+        language: {value: attributes.languageWithValue},
+        placeholder: {value: attributes.placeholderWithValue},
+        preCode: {value: attributes.preCodeWithValue},
+        postCode: {value: attributes.postCodeWithValue},
+      } as CodeReplCustomizationArgs;
     }
   }
 
+  interface SkulptConfigurationArgs {
+    output: Function;
+    read: Function;
+    timeoutMsg: Function;
+    execLimit: number;
+  }
+
   let mockCurrentInteractionService = {
-    onSubmit: (answer, rulesService) => {},
-    registerCurrentInteraction: (submitAnswerFn, validateExpressionFn) => {
+    onSubmit: (
+      answer: InteractionAnswer,
+      rulesService: CurrentInteractionService
+    ) => {},
+    registerCurrentInteraction: (
+      submitAnswerFn: Function,
+      validateExpressionFn: Function
+    ) => {
       submitAnswerFn();
-    }
+    },
   };
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [InteractiveCodeReplComponent],
       providers: [
         {
           provide: InteractionAttributesExtractorService,
-          useClass: mockInteractionAttributesExtractorService
+          useClass: mockInteractionAttributesExtractorService,
         },
         {
           provide: CurrentInteractionService,
-          useValue: mockCurrentInteractionService
-        }
+          useValue: mockCurrentInteractionService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
-    playerPositionService = TestBed.get(PlayerPositionService);
-    currentInteractionService = TestBed.get(CurrentInteractionService);
+    playerPositionService = TestBed.inject(PlayerPositionService);
+    currentInteractionService = TestBed.inject(CurrentInteractionService);
     fixture = TestBed.createComponent(InteractiveCodeReplComponent);
     component = fixture.componentInstance;
     component.lastAnswer = null;
-    component.languageWithValue = {value: 'python'};
-    component.placeholderWithValue = {value: '# Type your code here.'};
-    component.preCodeWithValue = {value: '# precode'};
-    component.postCodeWithValue = {value: '# postcode'};
+    component.languageWithValue = 'python';
+    component.placeholderWithValue = '# Type your code here.';
+    component.preCodeWithValue = '# precode';
+    component.postCodeWithValue = '# postcode';
   });
 
   it('should set interaction as inactive when a new card is displayed', () => {
     spyOnProperty(playerPositionService, 'onNewCardAvailable').and.returnValue(
-      mockNewCardAvailableEmitter);
+      mockNewCardAvailableEmitter
+    );
     component.ngOnInit();
 
     component.interactionIsActive = true;
 
     mockNewCardAvailableEmitter.emit();
 
-    expect(component.interactionIsActive).toBeFalse();
+    expect(component.interactionIsActive).toBe(false);
   });
 
   it('should initialize when code editor interaction is added', () => {
@@ -104,55 +132,59 @@ describe('InteractiveCodeReplComponent', () => {
     expect(component.preCode).toBe('# precode\n');
     expect(component.postCode).toBe('# postcode');
     expect(component.interactionIsActive).toBe(true);
-    expect(component.hasLoaded).toBeFalse();
+    expect(component.hasLoaded).toBe(false);
     expect(component.output).toBe('');
-    expect(component.code)
-      .toBe('# precode\n# Type your code here.\n# postcode');
+    expect(component.code).toBe(
+      '# precode\n# Type your code here.\n# postcode'
+    );
     expect(Sk.configure).toHaveBeenCalled();
-    expect(currentInteractionService.registerCurrentInteraction)
-      .toHaveBeenCalled();
+    expect(
+      currentInteractionService.registerCurrentInteraction
+    ).toHaveBeenCalled();
   });
 
-  it('should display last answer when a new card is displayed in the' +
-  ' exploration player', () => {
-    spyOn(currentInteractionService, 'registerCurrentInteraction').and.stub();
-    spyOn(Sk, 'configure').and.stub();
-    component.lastAnswer = {
-      code: '# Type your code here.\nprint(\'hello\');\n# postcode',
-      output: 'hello'
-    };
-
-    expect(component.code).toBeUndefined();
-    expect(component.output).toBeUndefined();
-
-    component.ngOnInit();
-
-    // This displays the last answer only when the interaction is not active
-    // anymore. Therefore, we test to see if the pre-condition is false.
-    expect(component.interactionIsActive).toBeFalse();
-    expect(component.code)
-      .toBe('# Type your code here.\nprint(\'hello\');\n# postcode');
-    expect(component.output).toBe('hello');
-    expect(currentInteractionService.registerCurrentInteraction)
-      .toHaveBeenCalled();
-  });
-
-  it('should not display precode when user does not enter any characters',
+  it(
+    'should display last answer when a new card is displayed in the' +
+      ' exploration player',
     () => {
-      component.preCodeWithValue = {value: ' '};
+      spyOn(currentInteractionService, 'registerCurrentInteraction').and.stub();
+      spyOn(Sk, 'configure').and.stub();
+      component.lastAnswer = {
+        code: "# Type your code here.\nprint('hello');\n# postcode",
+        output: 'hello',
+      };
 
-      expect(component.preCode).toBeUndefined();
+      expect(component.code).toBeUndefined();
+      expect(component.output).toBeUndefined();
 
       component.ngOnInit();
 
-      expect(component.preCode).toBe('');
-    });
+      // This displays the last answer only when the interaction is not active
+      // anymore. Therefore, we test to see if the pre-condition is false.
+      expect(component.interactionIsActive).toBe(false);
+      expect(component.code).toBe(
+        "# Type your code here.\nprint('hello');\n# postcode"
+      );
+      expect(component.output).toBe('hello');
+      expect(
+        currentInteractionService.registerCurrentInteraction
+      ).toHaveBeenCalled();
+    }
+  );
+
+  it('should not display precode when user does not enter any characters', () => {
+    component.preCodeWithValue = ' ';
+
+    expect(component.preCode).toBeUndefined();
+
+    component.ngOnInit();
+
+    expect(component.preCode).toBe('');
+  });
 
   it('should update output when the code completes execution', () => {
     spyOn(currentInteractionService, 'registerCurrentInteraction').and.stub();
-    spyOn(Sk, 'configure').and.callFake((
-        obj: {output: Function, read: Function, timeoutMsg: Function,
-          execLimit: number}) => {
+    spyOn(Sk, 'configure').and.callFake((obj: SkulptConfigurationArgs) => {
       obj.output('hello');
     });
 
@@ -164,25 +196,20 @@ describe('InteractiveCodeReplComponent', () => {
     expect(component.output).toBe('hello');
   });
 
-  it('should dispay a timeout message when the code takes too long to run',
-    () => {
-      spyOn(Sk, 'configure').and.callFake((
-          obj: {output: Function, read: Function, timeoutMsg: Function,
-          execLimit: number}) => {
-        obj.read('src/builtin/sys.js');
-        obj.timeoutMsg();
-      });
-      spyOn(component, 'sendResponse').and.stub();
-
-      component.ngOnInit();
-
-      expect(component.sendResponse).toHaveBeenCalledWith('', 'timeout');
+  it('should dispay a timeout message when the code takes too long to run', () => {
+    spyOn(Sk, 'configure').and.callFake((obj: SkulptConfigurationArgs) => {
+      obj.read('src/builtin/sys.js');
+      obj.timeoutMsg();
     });
+    spyOn(component, 'sendResponse').and.stub();
+
+    component.ngOnInit();
+
+    expect(component.sendResponse).toHaveBeenCalledWith('', 'timeout');
+  });
 
   it('should throw error when builtin module is not found', () => {
-    spyOn(Sk, 'configure').and.callFake((
-        obj: {output: Function, read: Function, timeoutMsg: Function,
-      execLimit: number}) => {
+    spyOn(Sk, 'configure').and.callFake((obj: SkulptConfigurationArgs) => {
       obj.read('test');
       obj.timeoutMsg();
     });
@@ -192,37 +219,37 @@ describe('InteractiveCodeReplComponent', () => {
     }).toThrowError('module test not found');
   });
 
-  it('should customize editor with editor options when the exploration player' +
-  ' loads', () => {
-    // The values cannot be tested since all the variables are private in the
-    // editorOptions Object. Therefore, the arguments passed to various
-    // functions tested instead.
-    let cm = {
-      replaceSelection: (spaces) => {
-        expect(spaces).toBe('  ');
-        expect(spaces.length).toBe(2);
-      },
-      getDoc: () => {
-        return {
-          setCursor: (pos) => {
-            expect(pos).toBe(2);
-          },
-          getCursor: (loc) => {
-            if (loc === 'head') {
-              return 2;
-            }
+  it(
+    'should customize editor with editor options when the exploration player' +
+      ' loads',
+    () => {
+      let cm = {
+        replaceSelection: (spaces: string) => {
+          expect(spaces).toBe('  ');
+          expect(spaces.length).toBe(2);
+        },
+        getDoc: () => {
+          return {
+            setCursor: (pos: number) => {
+              expect(pos).toBe(2);
+            },
+            getCursor: (loc: string) => {
+              if (loc === 'head') {
+                return 2;
+              }
+            },
+          };
+        },
+        getOption: (opt: string) => {
+          if (opt === 'indentUnit') {
+            return 2;
           }
-        };
-      },
-      getOption: (opt) => {
-        if (opt === 'indentUnit') {
-          return 2;
-        }
-      }
-    } as unknown as CodeMirror.Editor;
+        },
+      } as unknown as CodeMirror.Editor;
 
-    component.editorOptions.extraKeys.Tab(cm);
-  });
+      component.editorOptions.extraKeys.Tab(cm);
+    }
+  );
 
   it('should run code and submit code when user submits code', fakeAsync(() => {
     spyOn(Sk, 'importMainWithBody').and.returnValue({});
@@ -230,7 +257,7 @@ describe('InteractiveCodeReplComponent', () => {
     expect(component.evaluation).toBeUndefined();
     expect(component.fullError).toBeUndefined();
 
-    component.runAndSubmitCode('print(\'hello\');');
+    component.runAndSubmitCode("print('hello');");
     tick();
 
     expect(component.evaluation).toBe('');
@@ -250,14 +277,13 @@ describe('InteractiveCodeReplComponent', () => {
     // This throws "Argument of type '() => Promise<never>' is not assignable
     // to parameter of type 'never'" We need to suppress this error because the
     // the error case needs to be tested.
-    // @ts-expect-error
     spyOn(Sk.misceval, 'asyncToPromise').and.callFake(() => {
       return Promise.reject('Error');
     });
     spyOn(component, 'sendResponse').and.callThrough();
     spyOn(currentInteractionService, 'onSubmit');
 
-    component.runAndSubmitCode('print(\'hello\');');
+    component.runAndSubmitCode("print('hello');");
     tick();
 
     expect(component.evaluation).toBe('');
@@ -269,26 +295,28 @@ describe('InteractiveCodeReplComponent', () => {
   it('should execute after the component view has loaded', fakeAsync(() => {
     const changeDetectorRef =
       fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     component.preCode = '#precode\n#Code';
     component.postCode = '#postcode';
-    component.code = 'print(\'hello\');';
+    component.code = "print('hello');";
     component.codeMirrorComponent = {
       codeMirror: {
         getDoc: () => {
           return {
-            markText: (obj1, obj2, obj3) => {}
+            markText: (obj1, obj2, obj3) => {},
           };
         },
-        addLineClass: (num, txt1, txt2) => {}
-      }
-    } as unknown as CodemirrorComponent;
+        addLineClass: (num, txt1, txt2) => {},
+      },
+    } as CodemirrorComponent;
 
     component.ngAfterViewInit();
     tick();
 
-    expect(component.hasLoaded).toBeTrue();
+    expect(component.hasLoaded).toBe(true);
     expect(detectChangesSpy).toHaveBeenCalled();
   }));
 });

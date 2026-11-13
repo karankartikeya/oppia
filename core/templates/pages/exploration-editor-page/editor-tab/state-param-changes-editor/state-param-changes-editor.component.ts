@@ -17,25 +17,25 @@
  * state editor.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { StateParamChangesService } from
+import {Component, OnInit} from '@angular/core';
+import {
+  StateParamChangesService,
   // eslint-disable-next-line max-len
-  'components/state-editor/state-editor-properties-services/state-param-changes.service';
+} from 'components/state-editor/state-editor-properties-services/state-param-changes.service';
 
 @Component({
   selector: 'state-param-changes-editor',
   templateUrl: './state-param-changes-editor.component.html',
-  styleUrls: []
+  styleUrls: ['./state-param-changes-editor.component.css'],
 })
 export class StateParamChangesEditorComponent implements OnInit {
-  spcs: StateParamChangesService;
+  // This property below is initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  spcs!: StateParamChangesService;
   constructor(public stateParamChangesService: StateParamChangesService) {}
 
   ngOnInit(): void {
     this.spcs = this.stateParamChangesService;
   }
 }
-angular.module('oppia').directive(
-  'stateParamChangesEditor', downgradeComponent(
-    {component: StateParamChangesEditorComponent}));

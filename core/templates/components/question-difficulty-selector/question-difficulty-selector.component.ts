@@ -16,45 +16,51 @@
  * @fileoverview Component for the question difficulty selector.
  */
 
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { MatRadioChange } from '@angular/material/radio';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-import { Rubric } from 'domain/skill/rubric.model';
-import { SkillDifficulty } from 'domain/skill/skill-difficulty.model';
+import {Component, Input, Output, EventEmitter} from '@angular/core';
+import {MatRadioChange} from '@angular/material/radio';
+import {AppConstants} from 'app.constants';
+import {Rubric} from 'domain/skill/rubric.model';
+import {SkillDifficulty} from 'domain/skill/skill-difficulty.model';
 
-type SkillLabelToFloatKey = (
-  keyof typeof AppConstants.SKILL_DIFFICULTY_LABEL_TO_FLOAT);
+type SkillLabelToFloatKey =
+  keyof typeof AppConstants.SKILL_DIFFICULTY_LABEL_TO_FLOAT;
 
 @Component({
   selector: 'oppia-question-difficulty-selector',
-  templateUrl: './question-difficulty-selector.component.html'
+  templateUrl: './question-difficulty-selector.component.html',
+  styleUrls: ['./question-difficulty-selector.component.css'],
 })
 export class QuestionDifficultySelectorComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() skillIdToRubricsObject!: Record<string, Rubric>;
+  @Input() skillIdToRubricsObject!: Record<string, Rubric[]> | object;
   @Input() skillWithDifficulty!: SkillDifficulty;
-  @Output() skillWithDifficultyChange: EventEmitter<SkillDifficulty> = (
-    new EventEmitter());
+  @Input() difficultyCount: number = 0;
+  @Output() skillWithDifficultyChange: EventEmitter<SkillDifficulty> =
+    new EventEmitter();
+
   availableDifficultyValues: number[] = [];
 
   ngOnInit(): void {
     for (let difficulty in AppConstants.SKILL_DIFFICULTY_LABEL_TO_FLOAT) {
       this.availableDifficultyValues.push(
         AppConstants.SKILL_DIFFICULTY_LABEL_TO_FLOAT[
-          <SkillLabelToFloatKey> difficulty]);
+          difficulty as SkillLabelToFloatKey
+        ]
+      );
     }
   }
 
-  updateSkillWithDifficulty(event: MatRadioChange): void {
-    this.skillWithDifficulty.setDifficulty(event.value);
+  getRubricsForSkill(): Rubric[] {
+    return (this.skillIdToRubricsObject as Record<string, Rubric[]>)[
+      this.skillWithDifficulty.getId()
+    ];
+  }
+
+  updateSkillWithDifficulty(event: MatRadioChange | Event): void {
+    const radioChange = event as MatRadioChange;
+    this.skillWithDifficulty.setDifficulty(radioChange.value);
     this.skillWithDifficultyChange.emit(this.skillWithDifficulty);
   }
 }
-
-angular.module('oppia').directive('oppiaQuestionDifficultySelector',
-  downgradeComponent({
-    component: QuestionDifficultySelectorComponent
-  }) as angular.IDirectiveFactory);

@@ -16,18 +16,23 @@
  * @fileoverview Unit tests for SaveValidationFailModalComponent.
  */
 
-import { Component, NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { SaveValidationFailModalComponent } from './save-validation-fail-modal.component';
+import {Component, NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {SaveValidationFailModalComponent} from './save-validation-fail-modal.component';
 
 @Component({
   selector: 'oppia-changes-in-human-readable-form',
-  template: ''
+  template: '',
 })
-class ChangesInHumanReadableFormComponentStub {
-}
+class ChangesInHumanReadableFormComponentStub {}
 
 class MockActiveModal {
   close(): void {
@@ -54,9 +59,8 @@ class MockWindowRef {
         if (this._hashChange === null) {
           return;
         }
-        this._hashChange();
       },
-      reload: (val) => val
+      reload: (val: number) => val,
     },
     get onhashchange() {
       return this.location._hashChange;
@@ -64,8 +68,9 @@ class MockWindowRef {
 
     set onhashchange(val) {
       this.location._hashChange = val;
-    }
+    },
   };
+
   get nativeWindow() {
     return this._window;
   }
@@ -83,18 +88,16 @@ describe('Save Validation Fail Modal Component', () => {
     TestBed.configureTestingModule({
       declarations: [
         SaveValidationFailModalComponent,
-        ChangesInHumanReadableFormComponentStub
+        ChangesInHumanReadableFormComponentStub,
       ],
       providers: [
         {
           provide: NgbActiveModal,
-          useClass: MockActiveModal
+          useClass: MockActiveModal,
         },
-        { provide: WindowRef,
-          useValue: windowRef
-        }
+        {provide: WindowRef, useValue: windowRef},
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -106,39 +109,41 @@ describe('Save Validation Fail Modal Component', () => {
     fixture.detectChanges();
   });
 
-  it('should refresh page when modal is closed', () => {
+  it('should refresh page when modal is closed', fakeAsync(() => {
     const reloadSpy = jasmine.createSpy('reload');
     const dismissSpy = spyOn(ngbActiveModal, 'dismiss').and.callThrough();
 
     spyOnProperty(windowRef, 'nativeWindow').and.returnValue({
       location: {
-        reload: reloadSpy
-      }
+        _hash: '',
+        _hashChange: null,
+        hash: '',
+        reload: reloadSpy,
+      },
+      onhashchange: null,
     });
 
     component.closeAndRefresh();
 
-    waitForAsync(() => {
-      expect(dismissSpy).toHaveBeenCalledWith('cancel');
-      expect(reloadSpy).toHaveBeenCalled();
-    });
-  });
+    tick(20);
 
+    expect(dismissSpy).toHaveBeenCalledWith('cancel');
+    expect(reloadSpy).toHaveBeenCalled();
+  }));
 
   it('should contain correct modal header', () => {
     const modalHeader =
-    fixture.debugElement.nativeElement
-      .querySelector('.modal-header').innerText;
+      fixture.debugElement.nativeElement.querySelector(
+        '.modal-header'
+      ).innerText;
 
     expect(modalHeader).toBe('Error Saving Exploration');
   });
 
   it('should contain correct modal body', () => {
     const modalBody =
-    fixture.debugElement.nativeElement
-      .querySelector('.modal-body').innerText;
+      fixture.debugElement.nativeElement.querySelector('.modal-body').innerText;
 
-    expect(modalBody).toContain(
-      'Sorry, an unexpected error occurred.');
+    expect(modalBody).toContain('Sorry, an unexpected error occurred.');
   });
 });

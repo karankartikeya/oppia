@@ -16,59 +16,54 @@
  * @fileoverview Unit tests for the preview thumbnail component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { ThumbnailDisplayComponent } from 'components/forms/custom-forms-directives/thumbnail-display.component';
-import { ImageUploadHelperService } from 'services/image-upload-helper.service';
-import { PreviewThumbnailComponent } from './preview-thumbnail.component';
-import { ContextService } from 'services/context.service';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {ThumbnailDisplayComponent} from 'components/forms/custom-forms-directives/thumbnail-display.component';
+import {ImageUploadHelperService} from 'services/image-upload-helper.service';
+import {PreviewThumbnailComponent} from './preview-thumbnail.component';
+import {PageContextService} from 'services/page-context.service';
 
-describe('Preview Thumbnail Component', function() {
+describe('Preview Thumbnail Component', function () {
   let componentInstance: PreviewThumbnailComponent;
   let fixture: ComponentFixture<PreviewThumbnailComponent>;
   let imageUploadHelperService: ImageUploadHelperService;
   let testUrl = 'test_url';
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
-      declarations: [
-        PreviewThumbnailComponent,
-        ThumbnailDisplayComponent
-      ],
-      providers: [
-        ImageUploadHelperService,
-        ContextService
-      ]
+      declarations: [PreviewThumbnailComponent, ThumbnailDisplayComponent],
+      providers: [ImageUploadHelperService, PageContextService],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(PreviewThumbnailComponent);
     componentInstance = fixture.componentInstance;
-    imageUploadHelperService = (
-       TestBed.inject(ImageUploadHelperService) as unknown) as
-         jasmine.SpyObj<ImageUploadHelperService>;
-    contextService = TestBed.inject(ContextService);
+    imageUploadHelperService = TestBed.inject(
+      ImageUploadHelperService
+    ) as jasmine.SpyObj<ImageUploadHelperService>;
+    pageContextService = TestBed.inject(PageContextService);
     spyOn(
-      imageUploadHelperService, 'getTrustedResourceUrlForThumbnailFilename')
-      .and.returnValue(testUrl);
+      imageUploadHelperService,
+      'getTrustedResourceUrlForThumbnailFilename'
+    ).and.returnValue(testUrl);
   });
 
   it('should create', () => {
-    spyOn(contextService, 'getEntityType').and.returnValue('topic');
+    spyOn(pageContextService, 'getEntityType').and.returnValue('topic');
     expect(componentInstance).toBeDefined();
   });
 
   it('should initialize', () => {
-    spyOn(contextService, 'getEntityType').and.returnValue('topic');
+    spyOn(pageContextService, 'getEntityType').and.returnValue('topic');
     componentInstance.ngOnInit();
     expect(componentInstance.editableThumbnailDataUrl).toEqual(testUrl);
   });
 
   it('should throw error if no image is present for a preview', () => {
-    spyOn(contextService, 'getEntityType').and.returnValue(undefined);
+    spyOn(pageContextService, 'getEntityType').and.returnValue(undefined);
     expect(() => {
       componentInstance.ngOnInit();
     }).toThrowError('No image present for preview');

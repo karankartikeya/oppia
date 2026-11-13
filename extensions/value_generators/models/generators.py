@@ -16,22 +16,27 @@
 
 """Custom value generator classes."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import copy
 
 from core import utils
 from core.domain import value_generators_domain
 
+from typing import Dict, List, Optional
+
 
 class Copier(value_generators_domain.BaseValueGenerator):
     """Returns a copy of the input value."""
 
-    default_value = ''
+    default_value: str = ''
 
     def generate_value(
-            self, unused_context_params, value, parse_with_jinja=False):  # pylint: disable=unused-argument
+        self,
+        unused_context_params: Optional[Dict[str, str]],
+        value: str,
+        parse_with_jinja: bool = False,  # pylint: disable=unused-argument
+    ) -> str:
         """Returns a copy of the input value.
 
         Args:
@@ -51,7 +56,9 @@ class Copier(value_generators_domain.BaseValueGenerator):
 class RandomSelector(value_generators_domain.BaseValueGenerator):
     """Returns a random value from the input list."""
 
-    default_value = ''
+    default_value: str = ''
 
-    def generate_value(self, unused_context_params, list_of_values):
+    def generate_value(
+        self, unused_context_params: Dict[str, str], list_of_values: List[str]
+    ) -> str:
         return copy.deepcopy(utils.get_random_choice(list_of_values))

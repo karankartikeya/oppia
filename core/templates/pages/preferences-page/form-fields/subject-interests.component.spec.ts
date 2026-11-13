@@ -16,12 +16,20 @@
  * @fileoverview Unit tests for the subject interests component.
  */
 
-import { ElementRef } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { MaterialModule } from 'modules/material.module';
-import { SubjectInterestsComponent } from './subject-interests.component';
+// @ts-nocheck
+
+import {ElementRef} from '@angular/core';
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {
+  FormControl,
+  FormsModule,
+  NG_VALUE_ACCESSOR,
+  ReactiveFormsModule,
+} from '@angular/forms';
+import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
+import {MaterialModule} from 'modules/material.module';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {SubjectInterestsComponent} from './subject-interests.component';
 
 describe('Subject interests form field Component', () => {
   let componentInstance: SubjectInterestsComponent;
@@ -33,11 +41,9 @@ describe('Subject interests form field Component', () => {
         BrowserAnimationsModule,
         MaterialModule,
         FormsModule,
-        ReactiveFormsModule
+        ReactiveFormsModule,
       ],
-      declarations: [
-        SubjectInterestsComponent
-      ]
+      declarations: [MockTranslatePipe, SubjectInterestsComponent],
     }).compileComponents();
   }));
 
@@ -58,8 +64,8 @@ describe('Subject interests form field Component', () => {
       valueChanges: {
         subscribe: (callb: (value: string) => void) => {
           callb(input);
-        }
-      }
+        },
+      },
     } as FormControl;
     componentInstance.ngOnInit();
     input = 'math';
@@ -67,32 +73,35 @@ describe('Subject interests form field Component', () => {
       valueChanges: {
         subscribe(callb: (val: string) => void) {
           callb(input);
-        }
-      }
+        },
+      },
     } as FormControl;
     componentInstance.ngOnInit();
     expect(componentInstance.allSubjectInterests).toEqual(
-      componentInstance.subjectInterests);
+      componentInstance.subjectInterests
+    );
   });
 
   it('should validate input', () => {
     componentInstance.subjectInterests = [];
-    expect(componentInstance.validInput('math')).toBeTrue();
+    expect(componentInstance.isValidInput('math')).toBeTrue();
   });
 
   it('should add subject interest', () => {
-    spyOn(componentInstance.subjectInterestsChange, 'emit');
-    spyOn(componentInstance, 'validInput').and.returnValue(true);
+    spyOn(componentInstance, 'onChange');
+    spyOn(componentInstance, 'isValidInput').and.returnValue(true);
     componentInstance.subjectInterests = [];
     componentInstance.allSubjectInterests = [];
     componentInstance.subjectInterestInput = {
       nativeElement: {
-        value: ''
-      }
+        value: '',
+      },
     } as ElementRef;
     componentInstance.add({value: 'math'});
     componentInstance.add({value: ''});
-    expect(componentInstance.subjectInterestsChange.emit).toHaveBeenCalled();
+    expect(componentInstance.onChange).toHaveBeenCalled();
+    expect(componentInstance.subjectInterests).toEqual(['math']);
+    expect(componentInstance.allSubjectInterests).toEqual(['math']);
   });
 
   it('should remove subject interest', () => {
@@ -106,13 +115,11 @@ describe('Subject interests form field Component', () => {
     spyOn(componentInstance, 'add');
     spyOn(componentInstance, 'remove');
     componentInstance.subjectInterests = ['math'];
-    componentInstance.selected(
-      { option: { value: 'math' }});
+    componentInstance.selected({option: {value: 'math'}});
     expect(componentInstance.remove).toHaveBeenCalled();
     expect(componentInstance.add).not.toHaveBeenCalled();
     componentInstance.subjectInterests = [];
-    componentInstance.selected(
-      { option: { value: 'math' }});
+    componentInstance.selected({option: {value: 'math'}});
     expect(componentInstance.add).toHaveBeenCalled();
   });
 
@@ -120,5 +127,73 @@ describe('Subject interests form field Component', () => {
     componentInstance.allSubjectInterests = ['math'];
     expect(componentInstance.filter('math')).toEqual(['math']);
     expect(componentInstance.filter('art')).toEqual([]);
+  });
+
+  it('should write value', () => {
+    const interests = ['math', 'art'];
+    componentInstance.writeValue(interests);
+    expect(componentInstance.subjectInterests).toEqual(interests);
+  });
+
+  it('should register onChange function', () => {
+    const fn = (value: string[]) => {};
+    componentInstance.registerOnChange(fn);
+    expect(componentInstance.onChange).toBe(fn);
+  });
+
+  it('should register onTouched function', () => {
+    const fn = () => {};
+    componentInstance.registerOnTouched(fn);
+    expect(componentInstance.onTouched).toBe(fn);
+  });
+
+  it('should handle blur event correctly', () => {
+    spyOn(componentInstance, 'onChange');
+    spyOn(componentInstance, 'isValidInput').and.returnValue(true);
+    componentInstance.subjectInterests = [];
+    componentInstance.subjectInterestInput = {
+      nativeElement: {
+        value: 'math',
+      },
+    } as ElementRef;
+    componentInstance.onBlur();
+    expect(componentInstance.isValidInput).toHaveBeenCalledWith('math');
+    expect(componentInstance.subjectInterests).toEqual(['math']);
+    expect(componentInstance.subjectInterestInput.nativeElement.value).toBe('');
+    expect(componentInstance.onChange).toHaveBeenCalledWith(['math']);
+  });
+
+  it('should handle input event correctly', () => {
+    spyOn(componentInstance, 'onChange');
+    spyOn(componentInstance, 'isValidInput').and.returnValue(true);
+    componentInstance.formCtrl = new FormControl();
+    const inputEvent = {
+      target: {
+        value: 'math',
+      },
+    } as unknown as Event;
+    componentInstance.onInput(inputEvent);
+    expect(componentInstance.isValidInput).toHaveBeenCalledWith('math');
+    expect(componentInstance.formCtrl.dirty).toBeTrue();
+    expect(componentInstance.onChange).toHaveBeenCalledWith([]);
+  });
+
+  it('should mark input as pristine when input is empty', () => {
+    spyOn(componentInstance, 'onChange');
+    componentInstance.formCtrl = new FormControl();
+    const inputEvent = {
+      target: {
+        value: '',
+      },
+    } as unknown as Event;
+    componentInstance.onInput(inputEvent);
+    expect(componentInstance.formCtrl.pristine).toBeTrue();
+    expect(componentInstance.onChange).not.toHaveBeenCalled();
+  });
+
+  it('should expose itself as a control value accessor', () => {
+    expect(fixture.debugElement.injector.get(NG_VALUE_ACCESSOR)).toEqual([
+      componentInstance,
+    ]);
   });
 });

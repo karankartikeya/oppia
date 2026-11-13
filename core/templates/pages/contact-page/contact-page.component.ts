@@ -16,14 +16,11 @@
  * @fileoverview Component for the contact page.
  */
 
-import { Component } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component} from '@angular/core';
 
 @Component({
   selector: 'oppia-contact-page',
-  templateUrl: './contact-page.component.html'
+  templateUrl: './contact-page.component.html',
+  styleUrls: ['./contact-page.component.css'],
 })
 export class ContactPageComponent {}
-
-angular.module('oppia').directive(
-  'oppiaContactPage', downgradeComponent({component: ContactPageComponent}));

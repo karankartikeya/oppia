@@ -1,8 +1,16 @@
 from . import Cursor, Key, TYPE_MODEL, Property
 from typing import (
-    Any, Iterator, List, Optional, Sequence, TypeVar, Tuple, Union,
-    overload)
-from typing_extensions import Literal
+    Any,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    TypeVar,
+    Tuple,
+    Union,
+    overload,
+)
 
 _T = TypeVar('_T', covariant=True)
 
@@ -14,15 +22,10 @@ class PropertyOrder:
     def __neg__(self) -> PropertyOrder: ...
 
 class RepeatedStructuredPropertyPredicate: ...
-
 class ParameterizedThing: ...
-
 class Parameter(ParameterizedThing): ...
-
 class ParameterizedFunction(ParameterizedThing): ...
-
 class Node: ...
-
 class FalseNode(Node): ...
 
 class ParameterNode(Node):
@@ -61,6 +64,7 @@ class Query:
     default_options: QueryOptions
     def __init__(self, **kwds: Any) -> None: ...
     def filter(self, *args: Any) -> Query: ...
+    def iter(self, **kwargs: Any) -> Iterator[Any]: ...
     def order(self, *args: Any) -> Query: ...
     def __iter__(self) -> Iterator[Any]: ...
     @overload
@@ -69,13 +73,11 @@ class Query:
         limit: Optional[int] = ...,
         offset: Optional[int] = ...,
         projection: Optional[List[Property]] = ...,
-        keys_only: Literal[False] = ...
+        keys_only: Literal[False] = ...,
     ) -> Sequence[TYPE_MODEL]: ...
     @overload
     def fetch(
-        self,
-        keys_only: Literal[True],
-        limit: Optional[int] = ...
+        self, keys_only: Literal[True], limit: Optional[int] = ...
     ) -> Sequence[Key]: ...
     @overload
     def get(
@@ -86,6 +88,12 @@ class Query:
         self, keys_only: Literal[True], **q_options: Any
     ) -> Optional[Key]: ...
     def count(self, limit: Optional[int] = ..., **q_options: Any) -> int: ...
+    @overload
+    def fetch_page(
+        self,
+        page_size: int,
+        start_cursor: Optional[Cursor],
+    ) -> Tuple[Sequence[TYPE_MODEL], Cursor, bool]: ...
     @overload
     def fetch_page(
         self,

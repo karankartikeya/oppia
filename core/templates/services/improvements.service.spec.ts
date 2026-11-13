@@ -16,212 +16,192 @@
  * @fileoverview Unit tests for improvements service.
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { CamelCaseToHyphensPipe } from
-  'filters/string-utility-filters/camel-case-to-hyphens.pipe';
-import { ImprovementsService } from 'services/improvements.service';
-import { StateObjectFactory } from 'domain/state/StateObjectFactory';
-
+import {CamelCaseToHyphensPipe} from 'filters/string-utility-filters/camel-case-to-hyphens.pipe';
+import {ImprovementsService} from 'services/improvements.service';
+import {State} from 'domain/state/state.model';
+import {StateBackendDict} from 'domain/state/state.model';
 
 describe('ImprovementsService', () => {
   let improvementsService: ImprovementsService;
-  let stateObjectFactory: StateObjectFactory;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [CamelCaseToHyphensPipe]
+      providers: [CamelCaseToHyphensPipe],
     });
 
     improvementsService = new ImprovementsService();
-    stateObjectFactory = TestBed.get(StateObjectFactory);
   });
 
   describe('.isStateForcedToResolveOutstandingUnaddressedAnswers', () => {
     it('should return true for states with TextInput interactions', () => {
-      let mockStateBackendDict = {
+      let mockStateBackendDict: StateBackendDict = {
         classifier_model_id: null,
         content: {
           html: '',
-          content_id: 'content'
+          content_id: 'content',
         },
         interaction: {
           id: 'TextInput',
           customization_args: {
             rows: {
-              value: 1
+              value: 1,
             },
             placeholder: {
               value: {
                 unicode_str: 'Type your answer here.',
-                content_id: ''
-              }
-            }
+                content_id: '',
+              },
+            },
+            catchMisspellings: {
+              value: false,
+            },
           },
           answer_groups: [],
           default_outcome: {
             dest: 'Introduction',
+            dest_if_really_stuck: null,
             feedback: {
               content_id: 'default_outcome',
-              html: ''
+              html: '',
             },
             labelled_as_correct: false,
             param_changes: [],
             refresher_exploration_id: null,
-            missing_prerequisite_skill_id: null
+            missing_prerequisite_skill_id: null,
           },
           confirmed_unclassified_answers: [],
           hints: [],
-          solution: null
+          solution: null,
         },
         linked_skill_id: null,
-        next_content_id_index: 0,
         param_changes: [],
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        },
         solicit_answer_details: false,
         card_is_checkpoint: false,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        }
+        inapplicable_skill_misconception_ids: [],
       };
 
-      let mockState = stateObjectFactory.createFromBackendDict(
-        'stateName', mockStateBackendDict);
+      let mockState = State.createFromBackendDict(
+        'stateName',
+        mockStateBackendDict
+      );
 
       expect(
-        improvementsService
-          .isStateForcedToResolveOutstandingUnaddressedAnswers(mockState)
+        improvementsService.isStateForcedToResolveOutstandingUnaddressedAnswers(
+          mockState
+        )
       ).toBe(true);
     });
 
     it('should return false for states with FractionInput interactions', () => {
-      let mockStateBackendDict = {
+      let mockStateBackendDict: StateBackendDict = {
         classifier_model_id: null,
         content: {
           html: '',
-          content_id: 'content'
+          content_id: 'content',
         },
         interaction: {
           id: 'FractionInput',
           customization_args: {
-            requireSimplestForm: { value: false },
-            allowImproperFraction: { value: true },
-            allowNonzeroIntegerPart: { value: true },
-            customPlaceholder: { value: {
-              content_id: '',
-              unicode_str: ''
-            } },
+            requireSimplestForm: {value: false},
+            allowImproperFraction: {value: true},
+            allowNonzeroIntegerPart: {value: true},
+            customPlaceholder: {
+              value: {
+                content_id: '',
+                unicode_str: '',
+              },
+            },
           },
           answer_groups: [],
           default_outcome: {
             dest: 'Introduction',
+            dest_if_really_stuck: null,
             feedback: {
               content_id: 'default_outcome',
-              html: ''
+              html: '',
             },
             labelled_as_correct: false,
             param_changes: [],
             refresher_exploration_id: null,
-            missing_prerequisite_skill_id: null
+            missing_prerequisite_skill_id: null,
           },
           confirmed_unclassified_answers: [],
           hints: [],
-          solution: null
+          solution: null,
         },
         linked_skill_id: null,
-        next_content_id_index: 0,
         param_changes: [],
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        },
         solicit_answer_details: false,
         card_is_checkpoint: false,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        }
+        inapplicable_skill_misconception_ids: [],
       };
 
-      let mockState = stateObjectFactory.createFromBackendDict(
-        'stateName', mockStateBackendDict);
+      let mockState = State.createFromBackendDict(
+        'stateName',
+        mockStateBackendDict
+      );
 
       expect(
-        improvementsService
-          .isStateForcedToResolveOutstandingUnaddressedAnswers(mockState)
+        improvementsService.isStateForcedToResolveOutstandingUnaddressedAnswers(
+          mockState
+        )
       ).toBe(false);
     });
 
     it('should return false if Interaction Id or State is null', () => {
-      let mockStateBackendDict = {
+      let mockStateBackendDict: StateBackendDict = {
         classifier_model_id: null,
         content: {
           html: '',
-          content_id: 'content'
+          content_id: 'content',
         },
         interaction: {
           id: null,
           customization_args: {
-            requireSimplestForm: { value: false },
-            allowImproperFraction: { value: true },
-            allowNonzeroIntegerPart: { value: true },
-            customPlaceholder: { value: {
-              content_id: '',
-              unicode_str: ''
-            } },
+            requireSimplestForm: {value: false},
+            allowImproperFraction: {value: true},
+            allowNonzeroIntegerPart: {value: true},
+            customPlaceholder: {
+              value: {
+                content_id: '',
+                unicode_str: '',
+              },
+            },
           },
           answer_groups: [],
           default_outcome: {
             dest: 'Introduction',
+            dest_if_really_stuck: null,
             feedback: {
               content_id: 'default_outcome',
-              html: ''
+              html: '',
             },
             labelled_as_correct: false,
             param_changes: [],
             refresher_exploration_id: null,
-            missing_prerequisite_skill_id: null
+            missing_prerequisite_skill_id: null,
           },
           confirmed_unclassified_answers: [],
           hints: [],
-          solution: null
+          solution: null,
         },
         linked_skill_id: null,
-        next_content_id_index: 0,
         param_changes: [],
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        },
         solicit_answer_details: false,
         card_is_checkpoint: false,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        }
+        inapplicable_skill_misconception_ids: [],
       };
 
-      let mockState = stateObjectFactory.createFromBackendDict(
-        'stateName', mockStateBackendDict);
+      let mockState = State.createFromBackendDict(
+        'stateName',
+        mockStateBackendDict
+      );
       expect(
-        improvementsService
-          .isStateForcedToResolveOutstandingUnaddressedAnswers(mockState)
+        improvementsService.isStateForcedToResolveOutstandingUnaddressedAnswers(
+          mockState
+        )
       ).toBeFalse();
     });
   });

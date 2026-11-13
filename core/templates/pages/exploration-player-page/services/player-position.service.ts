@@ -16,12 +16,11 @@
  * @fileoverview Service for keeping track of the learner's position.
  */
 
-import { EventEmitter, Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {EventEmitter, Injectable} from '@angular/core';
 
-import { PlayerTranscriptService } from
-  'pages/exploration-player-page/services/player-transcript.service';
-import { StateCard } from 'domain/state_card/state-card.model';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {ReplaySubject} from 'rxjs';
 
 export interface HelpCardEventResponse {
   helpCardHtml: string;
@@ -29,7 +28,7 @@ export interface HelpCardEventResponse {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class PlayerPositionService {
   constructor(private playerTranscriptService: PlayerTranscriptService) {}
@@ -39,24 +38,20 @@ export class PlayerPositionService {
   private _newCardAvailableEventEmitter = new EventEmitter<void>();
   private _helpCardAvailableEventEmitter =
     new EventEmitter<HelpCardEventResponse>();
+
   private _newCardOpenedEventEmitter = new EventEmitter<StateCard>();
-  private _displayedCardIndexChangedEventEmitter = new EventEmitter<number>();
+  private _loadedMostRecentCheckpointEmitter = new ReplaySubject<void>(1);
 
   // The following property is initialized using the class methods.
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   displayedCardIndex!: number;
   onChangeCallback!: Function;
   learnerJustSubmittedAnAnswer = false;
 
   init(callback: Function): void {
-    this.updateDisplayedCardIndexAndEmitEvent(-1);
+    this.displayedCardIndex = -1;
     this.onChangeCallback = callback;
-  }
-
-  updateDisplayedCardIndexAndEmitEvent(index: number): void {
-    this.displayedCardIndex = index;
-    this._displayedCardIndexChangedEventEmitter.emit(index);
   }
 
   /**
@@ -64,9 +59,9 @@ export class PlayerPositionService {
    * @return {string} a string that shows the name of current state.
    */
   getCurrentStateName(): string {
-    return (
-      this.playerTranscriptService.getCard(
-        this.displayedCardIndex).getStateName());
+    return this.playerTranscriptService
+      .getCard(this.displayedCardIndex)
+      .getStateName();
   }
 
   /**
@@ -75,7 +70,7 @@ export class PlayerPositionService {
    */
   setDisplayedCardIndex(index: number): void {
     let oldIndex = this.displayedCardIndex;
-    this.updateDisplayedCardIndexAndEmitEvent(index);
+    this.displayedCardIndex = index;
 
     if (oldIndex !== this.displayedCardIndex) {
       if (!this.onChangeCallback) {
@@ -109,6 +104,17 @@ export class PlayerPositionService {
   }
 
   /**
+   * Checks whether the currently displayed card is the last card in the transcript.
+   *
+   * @returns {boolean} `true` if the current card is the last card; otherwise, `false`.
+   */
+  isCurrentCardAtEndOfTranscript(): boolean {
+    return this.playerTranscriptService.isLastCard(
+      this.getDisplayedCardIndex()
+    );
+  }
+
+  /**
    * This function is used to get whether the learner has just
    * submitted an answer.
    * @return {boolean} Whether the learner has just submitted an answer.
@@ -129,6 +135,10 @@ export class PlayerPositionService {
     return this._newCardOpenedEventEmitter;
   }
 
+  get onLoadedMostRecentCheckpoint(): ReplaySubject<void> {
+    return this._loadedMostRecentCheckpointEmitter;
+  }
+
   changeCurrentQuestion(index: number): void {
     this._currentQuestionChangedEventEmitter.emit(index);
   }
@@ -140,12 +150,4 @@ export class PlayerPositionService {
   get onCurrentQuestionChange(): EventEmitter<number> {
     return this._currentQuestionChangedEventEmitter;
   }
-
-  get displayedCardIndexChangedEventEmitter(): EventEmitter<number> {
-    return this._displayedCardIndexChangedEventEmitter;
-  }
 }
-
-angular.module('oppia').factory(
-  'PlayerPositionService',
-  downgradeInjectable(PlayerPositionService));

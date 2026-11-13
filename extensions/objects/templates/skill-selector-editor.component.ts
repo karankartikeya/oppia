@@ -16,36 +16,49 @@
  * @fileoverview Directive for the skill selector editor.
  */
 
-import { Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { ObjectFormValidityChangeEvent } from 'app-events/app-events';
-import { EventBusGroup, EventBusService } from 'app-events/event-bus.service';
-import { AppConstants } from 'app.constants';
-import { SkillBackendApiService } from 'domain/skill/skill-backend-api.service';
-import { SkillBackendDict } from 'domain/skill/SkillObjectFactory';
-import { ContextService } from 'services/context.service';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+} from '@angular/core';
+import {ObjectFormValidityChangeEvent} from 'app-events/app-events';
+import {EventBusGroup, EventBusService} from 'app-events/event-bus.service';
+import {AppConstants} from 'app.constants';
+import {SkillBackendApiService} from 'domain/skill/skill-backend-api.service';
+import {SkillBackendDict} from 'domain/skill/skill.model.ts';
+import {PageContextService} from 'services/page-context.service';
 
 @Component({
   selector: 'skill-selector-editor',
-  templateUrl: './skill-selector-editor.component.html'
+  templateUrl: './skill-selector-editor.component.html',
+  styleUrls: ['./skill-selector-editor.component.css'],
 })
 export class SkillSelectorEditorComponent implements OnInit, OnDestroy {
-  @Input() modalId;
-  @Input() value;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() modalId!: symbol;
+  @Input() value!: string;
   @Output() valueChanged = new EventEmitter();
+  initialEntityId!: string;
+  initialEntityType?: string;
   skills: SkillBackendDict[] = [];
   showLoading = false;
   skillsToShow: SkillBackendDict[] = [];
   eventBusGroup: EventBusGroup;
+  skillFilterText: string = '';
   constructor(
-    private contextService: ContextService,
+    private pageContextService: PageContextService,
     private eventBusService: EventBusService,
     private skillBackendApiService: SkillBackendApiService
   ) {
     this.eventBusGroup = new EventBusGroup(this.eventBusService);
   }
 
-  private filterSkills(skillSelector: string): void {
+  filterSkills(skillSelector: string): void {
     if (skillSelector === '') {
       this.skillsToShow = this.skills;
     }
@@ -53,50 +66,68 @@ export class SkillSelectorEditorComponent implements OnInit, OnDestroy {
     skillSelector = skillSelector.toLowerCase();
 
     this.skillsToShow = this.skills.filter(
-      option => (option.description.toLowerCase().indexOf(skillSelector) >= 0)
+      option => option.description.toLowerCase().indexOf(skillSelector) >= 0
     );
   }
 
   selectSkill(skillId: string, skillDescription: string): void {
-    this.contextService.setCustomEntityContext(
-      AppConstants.ENTITY_TYPE.SKILL, skillId);
+    this.pageContextService.setCustomEntityContext(
+      AppConstants.ENTITY_TYPE.SKILL,
+      skillId
+    );
     this.value = skillId;
     this.valueChanged.emit(this.value);
-    this.eventBusGroup.emit(new ObjectFormValidityChangeEvent({
-      modalId: this.modalId,
-      value: false
-    }));
+    this.eventBusGroup.emit(
+      new ObjectFormValidityChangeEvent({
+        modalId: this.modalId,
+        value: false,
+      })
+    );
   }
 
   ngOnInit(): void {
     this.showLoading = true;
     this.skills = [];
+    this.initialEntityId = this.pageContextService.getEntityId();
+    this.initialEntityType = this.pageContextService.getEntityType();
     if (this.value) {
-      this.contextService.setCustomEntityContext(
-        AppConstants.ENTITY_TYPE.SKILL, this.value);
-      this.eventBusGroup.emit(new ObjectFormValidityChangeEvent({
-        modalId: this.modalId,
-        value: false
-      }));
+      this.pageContextService.setCustomEntityContext(
+        AppConstants.ENTITY_TYPE.SKILL,
+        this.value
+      );
+      this.eventBusGroup.emit(
+        new ObjectFormValidityChangeEvent({
+          modalId: this.modalId,
+          value: false,
+        })
+      );
     }
-    this.skillBackendApiService.fetchAllSkills().subscribe(
-      (response) => {
-        this.skills = response.skills;
-        this.filterSkills('');
-        // If a skill was previously selected, show that as the first entry in
-        // the list.
-        this.skillsToShow.sort(
-          (x, y) => x.id === this.value ? -1 : y.id === this.value ? 1 : 0);
-        this.showLoading = false;
-      }
-    );
+    this.skillBackendApiService.fetchAllSkills().subscribe(response => {
+      this.skills = response.skills;
+      this.filterSkills('');
+      // If a skill was previously selected, show that as the first entry in
+      // the list.
+      this.skillsToShow.sort((x, y) =>
+        x.id === this.value ? -1 : y.id === this.value ? 1 : 0
+      );
+      this.showLoading = false;
+    });
   }
 
   ngOnDestroy(): void {
-    this.contextService.removeCustomEntityContext();
+    this.pageContextService.removeCustomEntityContext();
+    /**
+     * Restore the entity context to that of the state before the skill selector
+     * editor was initialized. This prevents change of context issues in calling
+     * components once the editor is closed, e.g. uploading images in the
+     * question editor.
+     * See issue #16985 for detailed discussion.
+     */
+    if (this.initialEntityId && this.initialEntityType) {
+      this.pageContextService.setCustomEntityContext(
+        this.initialEntityType,
+        this.initialEntityId
+      );
+    }
   }
 }
-
-angular.module('oppia').directive('skillSelectorEditor', downgradeComponent({
-  component: SkillSelectorEditorComponent
-}));

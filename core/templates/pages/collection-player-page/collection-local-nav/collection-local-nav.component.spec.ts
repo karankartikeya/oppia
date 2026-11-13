@@ -16,13 +16,13 @@
  * @fileoverview Unit tests for CollectionLocalNavComponent.
  */
 
-import { EventEmitter } from '@angular/core';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
+import {EventEmitter} from '@angular/core';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
 
-import { CollectionLocalNavComponent } from './collection-local-nav.component';
-import { ReadOnlyCollectionBackendApiService } from 'domain/collection/read-only-collection-backend-api.service';
-import { UrlService } from 'services/contextual/url.service';
+import {CollectionLocalNavComponent} from './collection-local-nav.component';
+import {ReadOnlyCollectionBackendApiService} from 'domain/collection/read-only-collection-backend-api.service';
+import {UrlService} from 'services/contextual/url.service';
 
 describe('CollectionLocalNavComponent', () => {
   let component: CollectionLocalNavComponent;
@@ -32,22 +32,23 @@ describe('CollectionLocalNavComponent', () => {
 
   let mockCollectionDetails = {
     canEdit: false,
-    title: 'Title of Collection'
+    title: 'Title of Collection',
   };
 
   var mockCollectionLoadEventEmitter = new EventEmitter();
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [CollectionLocalNavComponent],
-      imports: [HttpClientTestingModule]
+      imports: [HttpClientTestingModule],
     }).compileComponents();
 
-    rocbs = TestBed.get(ReadOnlyCollectionBackendApiService);
-    urlService = TestBed.get(UrlService);
+    rocbs = TestBed.inject(ReadOnlyCollectionBackendApiService);
+    urlService = TestBed.inject(UrlService);
 
     spyOnProperty(rocbs, 'onCollectionLoad').and.returnValue(
-      mockCollectionLoadEventEmitter);
+      mockCollectionLoadEventEmitter
+    );
     spyOn(rocbs, 'getCollectionDetails').and.returnValue(mockCollectionDetails);
     spyOn(urlService, 'getCollectionIdFromUrl').and.returnValue('1');
   }));

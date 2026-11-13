@@ -16,45 +16,182 @@
  * @fileoverview Component for home tab in the Learner Dashboard page.
  */
 
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { LearnerTopicSummary } from 'domain/topic/learner-topic-summary.model';
-import { LearnerDashboardPageConstants } from 'pages/learner-dashboard-page/learner-dashboard-page.constants';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { DeviceInfoService } from 'services/contextual/device-info.service';
+import {AppConstants} from 'app.constants';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+  ViewEncapsulation,
+} from '@angular/core';
+import {CollectionSummary} from 'domain/collection/collection-summary.model';
+import {LearnerTopicSummary} from 'domain/topic/learner-topic-summary.model';
+import {LearnerExplorationSummary} from 'domain/summary/learner-exploration-summary.model';
+import {LearnerDashboardPageConstants} from 'pages/learner-dashboard-page/learner-dashboard-page.constants';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {Subscription} from 'rxjs';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {LoaderService} from 'services/loader.service';
 
- @Component({
-   selector: 'oppia-home-tab',
-   templateUrl: './home-tab.component.html'
- })
+@Component({
+  selector: 'oppia-home-tab',
+  templateUrl: './home-tab.component.html',
+  styleUrls: ['./home-tab.component.css'],
+  encapsulation: ViewEncapsulation.None,
+})
 export class HomeTabComponent {
   @Output() setActiveSection: EventEmitter<string> = new EventEmitter();
-  @Input() currentGoals: LearnerTopicSummary[];
-  @Input() untrackedTopics: Record<string, LearnerTopicSummary[]>;
-  @Input() username: string;
-  CLASSROOM_LINK_URL_TEMPLATE = '/learn/<classroom_url_fragment>';
-  classroomUrlFragment: string;
-  nextIncompleteNodeTitles: string[] = [];
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() incompleteExplorationsList!: LearnerExplorationSummary[];
+  @Input() incompleteCollectionsList!: CollectionSummary[];
+  @Input() currentGoals!: LearnerTopicSummary[];
+  @Input() goalTopics!: LearnerTopicSummary[];
+  @Input() partiallyLearntTopicsList!: LearnerTopicSummary[];
+  @Input() untrackedTopics!: Record<string, LearnerTopicSummary[]>;
+  @Input() username!: string;
+  @Input() redesignFeatureFlag!: boolean;
+  currentGoalsLength!: number;
+  classroomUrlFragment!: string;
+  goalTopicsLength!: number;
+  width!: number;
+  CLASSROOM_LINK_URL_TEMPLATE: string = '/learn/<classroom_url_fragment>';
   widthConst: number = 233;
-  width: number;
+  continueWhereYouLeftOffList: LearnerTopicSummary[] = [];
+  windowIsNarrow: boolean = false;
+  directiveSubscriptions = new Subscription();
+  currentGoalIds: Set<string> = new Set();
+  storySummariesWithAvailableNodes: Set<string> = new Set();
+  communityLibraryUrl =
+    '/' + AppConstants.PAGES_REGISTERED_WITH_FRONTEND.LIBRARY_INDEX.ROUTE;
+  hasMultipleUnfinishedPublished: boolean = false;
+  totalLessonCards: number = 0;
+  loadedLessonCards: number = 0;
+  allCardsLoaded: boolean = false;
+  loadingMessage: string = 'Loading';
 
   constructor(
-    private deviceInfoService: DeviceInfoService,
+    private loaderService: LoaderService,
+    private windowDimensionService: WindowDimensionsService,
     private urlInterpolationService: UrlInterpolationService,
+    private siteAnalyticsService: SiteAnalyticsService,
+    private platformFeatureService: PlatformFeatureService
   ) {}
 
+  isSerialChapterFeatureLearnerFlagEnabled(): boolean {
+    return this.platformFeatureService.status.SerialChapterLaunchLearnerView
+      .isEnabled;
+  }
+
   ngOnInit(): void {
-    this.width = this.widthConst * (this.currentGoals.length);
+    this.loaderService.showLoadingScreen('Loading');
+    this.width = this.widthConst * this.currentGoals.length;
+    var allGoals = [...this.currentGoals, ...this.partiallyLearntTopicsList];
+    this.currentGoalsLength = this.currentGoals.length;
+    this.goalTopicsLength = this.goalTopics.length;
+    this.currentGoalIds = new Set(this.currentGoals.map(g => g.id));
+
+    if (allGoals.length !== 0) {
+      var allGoalIds = [];
+      for (var goal of allGoals) {
+        allGoalIds.push(goal.id);
+      }
+      var uniqueGoalIds = Array.from(new Set(allGoalIds));
+      for (var uniqueGoalId of uniqueGoalIds) {
+        var index = allGoalIds.indexOf(uniqueGoalId);
+        this.continueWhereYouLeftOffList.push(allGoals[index]);
+      }
+    }
+
+    // TODO(#18384): Test cases - current lesson is last lesson.
+    for (const topic of this.partiallyLearntTopicsList) {
+      const storySummaries = topic.getCanonicalStorySummaryDicts();
+
+      for (const story of storySummaries) {
+        let publishedNodesCount: number;
+        if (this.isSerialChapterFeatureLearnerFlagEnabled()) {
+          const publishedNodes = story
+            .getAllNodes()
+            .filter(node => node.getPublishedStatus());
+          publishedNodesCount = publishedNodes.length;
+        } else {
+          publishedNodesCount = story.getAllNodes().length;
+        }
+
+        const completedNodes = story.getCompletedNodeTitles();
+        const remainingPublished =
+          publishedNodesCount - completedNodes.length - 1;
+
+        if (
+          remainingPublished > 0 &&
+          remainingPublished < publishedNodesCount
+        ) {
+          this.storySummariesWithAvailableNodes.add(story.getId());
+        }
+        if (!this.hasMultipleUnfinishedPublished) {
+          this.hasMultipleUnfinishedPublished =
+            publishedNodesCount > 1 && remainingPublished > 0;
+        }
+      }
+    }
+
+    this.totalLessonCards =
+      (this.incompleteExplorationsList?.length || 0) +
+      (this.incompleteCollectionsList?.length || 0) +
+      this.partiallyLearntTopicsList.reduce(
+        (acc, topic) => acc + topic.getCanonicalStorySummaryDicts().length,
+        0
+      );
+    if (
+      this.hasMultipleUnfinishedPublished &&
+      this.storySummariesWithAvailableNodes.size > 0
+    ) {
+      this.totalLessonCards += this.storySummariesWithAvailableNodes.size;
+    }
+
+    this.windowIsNarrow = this.windowDimensionService.isWindowNarrow();
+    this.directiveSubscriptions.add(
+      this.windowDimensionService.getResizeEvent().subscribe(() => {
+        this.windowIsNarrow = this.windowDimensionService.isWindowNarrow();
+      })
+    );
+
+    if (this.totalLessonCards === 0) {
+      this.allCardsLoaded = true;
+      this.loadingMessage = '';
+      this.loaderService.hideLoadingScreen();
+    } else {
+      setTimeout(() => {
+        if (!this.allCardsLoaded) {
+          this.allCardsLoaded = true;
+          this.loadingMessage = '';
+          this.loaderService.hideLoadingScreen();
+        }
+      }, 10000);
+    }
+  }
+
+  onLessonLoaded(): void {
+    this.loadedLessonCards++;
+    if (this.loadedLessonCards >= this.totalLessonCards) {
+      this.allCardsLoaded = true;
+      this.loadingMessage = '';
+      this.loaderService.hideLoadingScreen();
+    }
   }
 
   getTimeOfDay(): string {
     let time = new Date().getHours();
 
     if (time <= 12) {
-      return 'morning';
+      return 'I18N_LEARNER_DASHBOARD_MORNING_GREETING';
     } else if (time <= 18) {
-      return 'afternoon';
+      return 'I18N_LEARNER_DASHBOARD_AFTERNOON_GREETING';
     }
-    return 'evening';
+    return 'I18N_LEARNER_DASHBOARD_EVENING_GREETING';
   }
 
   isNonemptyObject(object: Object): boolean {
@@ -64,21 +201,27 @@ export class HomeTabComponent {
   getClassroomLink(classroomUrlFragment: string): string {
     this.classroomUrlFragment = classroomUrlFragment;
     return this.urlInterpolationService.interpolateUrl(
-      this.CLASSROOM_LINK_URL_TEMPLATE, {
-        classroom_url_fragment: this.classroomUrlFragment
+      this.CLASSROOM_LINK_URL_TEMPLATE,
+      {
+        classroom_url_fragment: this.classroomUrlFragment,
       }
     );
   }
 
-  checkMobileView(): boolean {
-    return this.deviceInfoService.isMobileDevice();
+  isGoalLimitReached(): boolean {
+    if (this.goalTopicsLength === 0) {
+      return false;
+    } else if (this.currentGoalsLength === this.goalTopicsLength) {
+      return true;
+    }
+    return this.currentGoalsLength === AppConstants.MAX_CURRENT_GOALS_COUNT;
   }
 
   getWidth(length: number): number {
     /**
      * If there are 3 or more topics for each untrackedTopic, the total
      * width of the section will be 662px in mobile view to enable scrolling.
-    */
+     */
     if (length >= 3) {
       return 662;
     }
@@ -87,12 +230,55 @@ export class HomeTabComponent {
      * width of the section will be calculated by multiplying the addition of
      * number of topics and one classroom card with 164px in mobile view to
      * enable scrolling.
-    */
+     */
     return (length + 1) * 164;
   }
 
   changeActiveSection(): void {
     this.setActiveSection.emit(
-      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS.GOALS);
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS.GOALS
+    );
+  }
+
+  registerClassroomInProgressLessonEvent(
+    classroomName: string,
+    topicName: string
+  ): void {
+    this.siteAnalyticsService.registerInProgressClassroomLessonEngagedWithEvent(
+      classroomName,
+      topicName
+    );
+  }
+
+  registerNewClassroomLessonEvent(
+    classroomName: string,
+    topicName: string
+  ): void {
+    this.siteAnalyticsService.registerNewClassroomLessonEngagedWithEvent(
+      classroomName,
+      topicName
+    );
+  }
+
+  getTotalInProgressLessons(): number {
+    const totalStories = this.partiallyLearntTopicsList.reduce((acc, curr) => {
+      let availableStories = 0;
+      for (let i = 0; i < curr.getCanonicalStorySummaryDicts().length; i++) {
+        let currentStory = curr.getCanonicalStorySummaryDicts()[i];
+        if (
+          currentStory.getAllNodes().length >
+          currentStory.getCompletedNodeTitles().length
+        ) {
+          availableStories++;
+        }
+      }
+      return acc + availableStories;
+    }, 0);
+
+    return (
+      totalStories +
+      (this.incompleteExplorationsList?.length || 0) +
+      (this.incompleteCollectionsList?.length || 0)
+    );
   }
 }

@@ -16,23 +16,26 @@
  * @fileoverview Component for the Base Transclusion Component.
  */
 
-import { ChangeDetectorRef, Component, Directive } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AppConstants } from 'app.constants';
-import { CookieService } from 'ngx-cookie';
-import { Subscription } from 'rxjs';
-import { BottomNavbarStatusService } from 'services/bottom-navbar-status.service';
-import { UrlService } from 'services/contextual/url.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { KeyboardShortcutService } from 'services/keyboard-shortcut.service';
-import { LoaderService } from 'services/loader.service';
-import { PageTitleService } from 'services/page-title.service';
-import { SidebarStatusService } from 'services/sidebar-status.service';
-import { BackgroundMaskService } from 'services/stateful/background-mask.service';
+import {ChangeDetectorRef, Component, Directive} from '@angular/core';
+import {AppConstants} from 'app.constants';
+import {CookieService} from 'ngx-cookie';
+import {Subscription} from 'rxjs';
+import {BottomNavbarStatusService} from 'services/bottom-navbar-status.service';
+import {UrlService} from 'services/contextual/url.service';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {KeyboardShortcutService} from 'services/keyboard-shortcut.service';
+import {LoaderService} from 'services/loader.service';
+import {PageTitleService} from 'services/page-title.service';
+import {SidebarStatusService} from 'services/sidebar-status.service';
+import {BackgroundMaskService} from 'services/stateful/background-mask.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {NavigationEnd, Router} from '@angular/router';
+import {PlatformFeatureService} from 'services/platform-feature.service';
 
 @Component({
   selector: 'oppia-base-content',
-  templateUrl: './base-content.component.html'
+  templateUrl: './base-content.component.html',
+  styleUrls: ['./base-content.component.css'],
 })
 export class BaseContentComponent {
   loadingMessage: string = '';
@@ -42,6 +45,7 @@ export class BaseContentComponent {
   COOKIE_NAME_COOKIES_ACKNOWLEDGED = 'OPPIA_COOKIES_ACKNOWLEDGED';
   ONE_YEAR_IN_MSECS = 31536000000;
   directiveSubscriptions = new Subscription();
+  isRtl: boolean = false;
 
   constructor(
     private windowRef: WindowRef,
@@ -50,38 +54,56 @@ export class BaseContentComponent {
     private changeDetectorRef: ChangeDetectorRef,
     private keyboardShortcutService: KeyboardShortcutService,
     private loaderService: LoaderService,
+    private platformFeatureService: PlatformFeatureService,
     private pageTitleService: PageTitleService,
     private sidebarStatusService: SidebarStatusService,
     private urlService: UrlService,
-    private cookieService: CookieService
+    private cookieService: CookieService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
+    /**
+     * Scroll to the top of the page while navigating
+     * through the static pages.
+     */
+    this.router.events.subscribe(evt => {
+      if (evt instanceof NavigationEnd) {
+        window.scrollTo(0, 0);
+      }
+    });
     /**
      * Redirect any developers using the old appspot URL to the
      * test server (see issue #7867 for details).
      */
     if (this.isMainProdServer()) {
-      this.windowRef.nativeWindow.location.href = (
+      this.windowRef.nativeWindow.location.href =
         'https://oppiatestserver.appspot.com' +
         this.windowRef.nativeWindow.location.pathname +
         this.windowRef.nativeWindow.location.search +
-        this.windowRef.nativeWindow.location.hash);
+        this.windowRef.nativeWindow.location.hash;
     }
     this.iframed = this.urlService.isIframed();
     this.directiveSubscriptions.add(
-      this.loaderService.onLoadingMessageChange.subscribe(
-        (message: string) => {
-          this.loadingMessage = message;
-          this.changeDetectorRef.detectChanges();
-        }
-      ));
+      this.loaderService.onLoadingMessageChange.subscribe((message: string) => {
+        this.loadingMessage = message;
+        this.changeDetectorRef.detectChanges();
+      })
+    );
     this.keyboardShortcutService.bindNavigationShortcuts();
+    this.keyboardShortcutService.bindLibraryPageShortcuts();
 
     // TODO(sll): Use 'touchstart' for mobile.
     this.windowRef.nativeWindow.document.addEventListener('click', () => {
       this.sidebarStatusService.onDocumentClick();
     });
+    this.isRtl = this.i18nLanguageCodeService.isCurrentLanguageRTL();
+    this.directiveSubscriptions.add(
+      this.i18nLanguageCodeService.onI18nLanguageCodeChange.subscribe(() => {
+        this.isRtl = this.i18nLanguageCodeService.isCurrentLanguageRTL();
+      })
+    );
   }
 
   ngOnDestroy(): void {
@@ -97,8 +119,18 @@ export class BaseContentComponent {
   }
 
   isMainProdServer(): boolean {
-    return this.windowRef.nativeWindow.location.hostname ===
-      'oppiaserver.appspot.com';
+    return (
+      this.windowRef.nativeWindow.location.hostname ===
+      'oppiaserver.appspot.com'
+    );
+  }
+
+  isNewLessonPlayerEnabled(): boolean {
+    const pathnameArray = this.urlService.getPathname().split('/');
+    return (
+      this.platformFeatureService.status.NewLessonPlayer.isEnabled &&
+      pathnameArray.includes('lesson')
+    );
   }
 
   isSidebarShown(): boolean {
@@ -124,8 +156,8 @@ export class BaseContentComponent {
   skipToMainContent(): void {
     // 'getElementById' can return null if the element provided as
     // an argument is invalid.
-    let mainContentElement: HTMLElement | null = document.getElementById(
-      'oppia-main-content');
+    let mainContentElement: HTMLElement | null =
+      document.getElementById('oppia-main-content');
 
     if (!mainContentElement) {
       throw new Error('Variable mainContentElement is null.');
@@ -137,7 +169,8 @@ export class BaseContentComponent {
 
   hasAcknowledgedCookies(): boolean {
     let cookieSetDateMsecs = this.cookieService.get(
-      this.COOKIE_NAME_COOKIES_ACKNOWLEDGED);
+      this.COOKIE_NAME_COOKIES_ACKNOWLEDGED
+    );
     return (
       !!cookieSetDateMsecs &&
       Number(cookieSetDateMsecs) > AppConstants.COOKIE_POLICY_LAST_UPDATED_MSECS
@@ -157,11 +190,13 @@ export class BaseContentComponent {
     let cookieOptions = {
       expires: new Date(currentDateInUnixTimeMsecs + this.ONE_YEAR_IN_MSECS),
       secure: true,
-      sameSite: 'none' as const
+      sameSite: 'none' as const,
     };
     this.cookieService.put(
-      this.COOKIE_NAME_COOKIES_ACKNOWLEDGED, String(currentDateInUnixTimeMsecs),
-      cookieOptions);
+      this.COOKIE_NAME_COOKIES_ACKNOWLEDGED,
+      String(currentDateInUnixTimeMsecs),
+      cookieOptions
+    );
   }
 }
 
@@ -169,28 +204,30 @@ export class BaseContentComponent {
  * This directive is used as selector for navbar breadcrumb transclusion.
  */
 @Directive({
-  selector: 'navbar-breadcrumb'
+  selector: 'navbar-breadcrumb',
 })
 export class BaseContentNavBarBreadCrumbDirective {}
+
+/**
+ * This directive is used as selector for nav options transclusion.
+ */
+@Directive({
+  selector: 'nav-options',
+})
+export class BaseContentNavOptionsDirective {}
 
 /**
  * This directive is used as selector for navbar pre logo action transclusion.
  */
 @Directive({
-  selector: 'navbar-pre-logo-action'
+  selector: 'navbar-pre-logo-action',
 })
 export class BaseContentNavBarPreLogoActionDirective {}
-
 
 /**
  * This directive is used as selector for page footer transclusion.
  */
 @Directive({
-  selector: 'page-footer'
+  selector: 'page-footer',
 })
 export class BaseContentPageFooterDirective {}
-
-angular.module('oppia').directive('oppiaBaseContent',
-  downgradeComponent({
-    component: BaseContentComponent
-  }) as angular.IDirectiveFactory);

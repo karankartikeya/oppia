@@ -17,26 +17,39 @@
  * story summary domain objects.
  */
 
-import {
-  StoryNode, StoryNodeBackendDict
-} from './story-node.model';
+import {StoryNode, StoryNodeBackendDict} from './story-node.model';
+
+export interface ArcBackendDict {
+  id: string;
+  title: string;
+  description: string;
+  node_ids: string[];
+}
 
 export interface StorySummaryBackendDict {
-  'id': string;
-  'title': string;
-  'node_titles': string[];
-  'thumbnail_filename': string;
-  'thumbnail_bg_color': string;
-  'description': string;
-  'story_is_published': boolean;
-  'completed_node_titles': string[],
-  'url_fragment': string,
-  'all_node_dicts': StoryNodeBackendDict[],
+  id: string;
+  title: string;
+  node_titles: string[];
+  thumbnail_filename: string;
+  thumbnail_bg_color: string;
+  description: string;
+  story_is_published: boolean;
+  completed_node_titles: string[];
+  url_fragment: string;
+  all_node_dicts: StoryNodeBackendDict[];
+  arcs?: ArcBackendDict[];
+  published_chapters_count?: number;
+  total_chapters_count?: number;
+  upcoming_chapters_count?: number;
+  overdue_chapters_count?: number;
+  upcoming_chapters_expected_days?: number[];
+  visited_chapter_titles?: string[];
   // This property is optional because it is only present in the
   // story summary dict of learner dashboard page.
-  'topic_name'?: string;
-  'topic_url_fragment'?: string,
-  'classroom_url_fragment'?: string
+  topic_name?: string;
+  topic_url_fragment?: string;
+  classroom_url_fragment?: string;
+  classroom_name?: string;
 }
 
 export class StorySummary {
@@ -53,8 +66,29 @@ export class StorySummary {
     private _allNodes: StoryNode[],
     private _topicName: string | undefined,
     private _topicUrlFragment: string | undefined,
-    private _classroomUrlFragment: string | undefined
+    private _classroomUrlFragment: string | undefined,
+    private _classroomName: string | undefined,
+    private _publishedChaptersCount: number | undefined,
+    private _totalChaptersCount: number | undefined,
+    private _upcomingChaptersCount: number | undefined,
+    private _upcomingChaptersExpectedDays: number[] | undefined,
+    private _overdueChaptersCount: number | undefined,
+    private _visitedChapterTitles: string[] | undefined,
+    private _arcs: ArcBackendDict[] | undefined
   ) {}
+
+  getArcs(): ArcBackendDict[] {
+    if (!this._arcs) {
+      return [];
+    }
+    // Return deep copies of arc objects so callers cannot mutate internal state.
+    return this._arcs.map(a => ({
+      id: a.id,
+      title: a.title,
+      description: a.description,
+      node_ids: a.node_ids ? a.node_ids.slice() : [],
+    }));
+  }
 
   getId(): string {
     return this._id;
@@ -73,7 +107,7 @@ export class StorySummary {
   }
 
   isNodeCompleted(nodeTitle: string): boolean {
-    return (this._completedNodeTitles.indexOf(nodeTitle) !== -1);
+    return this._completedNodeTitles.indexOf(nodeTitle) !== -1;
   }
 
   getThumbnailBgColor(): string {
@@ -85,7 +119,7 @@ export class StorySummary {
   }
 
   getCompletedNodeTitles(): string[] {
-    return this._completedNodeTitles;
+    return this._completedNodeTitles.slice();
   }
 
   getTopicName(): string | undefined {
@@ -112,13 +146,40 @@ export class StorySummary {
     return this._classroomUrlFragment;
   }
 
+  getClassroomName(): string | undefined {
+    return this._classroomName;
+  }
+
+  getPublishedChaptersCount(): number | undefined {
+    return this._publishedChaptersCount;
+  }
+
+  getTotalChaptersCount(): number | undefined {
+    return this._totalChaptersCount;
+  }
+
+  getUpcomingChaptersCount(): number | undefined {
+    return this._upcomingChaptersCount;
+  }
+
+  getOverdueChaptersCount(): number | undefined {
+    return this._overdueChaptersCount;
+  }
+
+  getVisitedChapterTitles(): string[] | undefined {
+    return this._visitedChapterTitles;
+  }
+
+  getUpcomingChaptersExpectedDays(): number[] | undefined {
+    return this._upcomingChaptersExpectedDays;
+  }
+
   static createFromBackendDict(
-      storySummaryBackendDict: StorySummaryBackendDict): StorySummary {
-    let allNodes = (
-      storySummaryBackendDict.all_node_dicts.map(storyNodeDict => {
-        return StoryNode.createFromBackendDict(
-          storyNodeDict);
-      }));
+    storySummaryBackendDict: StorySummaryBackendDict
+  ): StorySummary {
+    let allNodes = storySummaryBackendDict.all_node_dicts.map(storyNodeDict => {
+      return StoryNode.createFromBackendDict(storyNodeDict);
+    });
     return new StorySummary(
       storySummaryBackendDict.id,
       storySummaryBackendDict.title,
@@ -132,7 +193,15 @@ export class StorySummary {
       allNodes,
       storySummaryBackendDict.topic_name,
       storySummaryBackendDict.topic_url_fragment,
-      storySummaryBackendDict.classroom_url_fragment
+      storySummaryBackendDict.classroom_url_fragment,
+      storySummaryBackendDict.classroom_name,
+      storySummaryBackendDict.published_chapters_count,
+      storySummaryBackendDict.total_chapters_count,
+      storySummaryBackendDict.upcoming_chapters_count,
+      storySummaryBackendDict.upcoming_chapters_expected_days,
+      storySummaryBackendDict.overdue_chapters_count,
+      storySummaryBackendDict.visited_chapter_titles,
+      storySummaryBackendDict.arcs
     );
   }
 }

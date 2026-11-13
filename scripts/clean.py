@@ -14,25 +14,34 @@
 
 """Deletes temporary and installed files."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import argparse
 import os
 import shutil
 
-from core import python_utils
+from typing import Optional, Sequence
 
 CURR_DIR = os.path.abspath(os.getcwd())
 OPPIA_TOOLS_DIR = os.path.join(CURR_DIR, '..', 'oppia_tools')
+FULL_STACK_TEST_VIDEO_RECORDING_DIR = os.path.join(
+    CURR_DIR, '..', 'oppia_full_stack_test_video_recordings'
+)
+FULL_STACK_TEST_SCREENSHOT_DIR = os.path.join(
+    CURR_DIR, '..', 'oppia_full_stack_test_screenshots'
+)
+FULL_STACK_TEST_DOWNLOAD_DIR = os.path.join(
+    CURR_DIR, '..', 'oppia_acceptance_test_downloads'
+)
 
 _PARSER = argparse.ArgumentParser(
     description="""
 Deletes temporary and installed files.
-""")
+"""
+)
 
 
-def delete_directory_tree(directory_path):
+def delete_directory_tree(directory_path: str) -> None:
     """Recursively delete an existing directory tree. Does not do anything if
     directory does not exists.
 
@@ -44,7 +53,7 @@ def delete_directory_tree(directory_path):
     shutil.rmtree(directory_path)
 
 
-def delete_file(filepath):
+def delete_file(filepath: str) -> None:
     """Delete an existing file. Does not do anything if file does not exists.
 
     Args:
@@ -55,15 +64,17 @@ def delete_file(filepath):
     os.remove(filepath)
 
 
-def main(args=None):
+def main(args: Optional[Sequence[str]] = None) -> None:
     """Runs the script to clean temporary and installed files."""
     unused_parsed_args = _PARSER.parse_args(args=args)
 
     delete_directory_tree(OPPIA_TOOLS_DIR)
+    delete_directory_tree(FULL_STACK_TEST_VIDEO_RECORDING_DIR)
+    delete_directory_tree(FULL_STACK_TEST_SCREENSHOT_DIR)
+    delete_directory_tree(FULL_STACK_TEST_DOWNLOAD_DIR)
     delete_directory_tree('node_modules/')
     delete_directory_tree('third_party/')
     delete_directory_tree('build/')
-    delete_directory_tree('backend_prod_files/')
     delete_file('.coverage')
     delete_directory_tree('local_compiled_js/')
     delete_directory_tree('local_compiled_js_for_test/')
@@ -76,10 +87,10 @@ def main(args=None):
         if filename.startswith('tmpcompiledjs'):
             delete_directory_tree(filename)
 
-    python_utils.PRINT('Temporary and installed files deleted')
+    print('Temporary and installed files deleted')
 
 
 # The 'no coverage' pragma is used as this line is un-testable. This is because
 # it will only be called when clean.py is used as a script.
-if __name__ == '__main__': # pragma: no cover
+if __name__ == '__main__':  # pragma: no cover
     main()

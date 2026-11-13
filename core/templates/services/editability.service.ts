@@ -16,27 +16,26 @@
  * @fileoverview Service for checking the ability to edit an exploration.
  */
 
-// TODO(sll): Should this depend on a versioning service that keeps track of
-// the current active version? Previous versions should not be editable.
-// TODO(SD): Remove translatable part from this service after translation tab
-// will get implemented.
-
-import { Injectable } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class EditabilityService {
   static isEditable: boolean = false;
   static isTranslatable: boolean = false;
   static inTutorialMode: boolean = false;
+  static isLockedByAdmin: boolean = false;
 
   /**
    * @return {boolean} Whether the service is editable.
    */
   isEditable(): boolean {
-    return EditabilityService.isEditable && !EditabilityService.inTutorialMode;
+    return (
+      EditabilityService.isEditable &&
+      !EditabilityService.inTutorialMode &&
+      !EditabilityService.isLockedByAdmin
+    );
   }
 
   /**
@@ -44,7 +43,8 @@ export class EditabilityService {
    */
   isTranslatable(): boolean {
     return (
-      EditabilityService.isTranslatable && !EditabilityService.inTutorialMode);
+      EditabilityService.isTranslatable && !EditabilityService.inTutorialMode
+    );
   }
 
   /**
@@ -95,7 +95,12 @@ export class EditabilityService {
   onStartTutorial(): void {
     EditabilityService.inTutorialMode = true;
   }
-}
 
-angular.module('oppia').factory(
-  'EditabilityService', downgradeInjectable(EditabilityService));
+  lockExploration(explorationIsLocked: boolean): void {
+    EditabilityService.isLockedByAdmin = explorationIsLocked;
+  }
+
+  isLockedByAdmin(): boolean {
+    return EditabilityService.isLockedByAdmin;
+  }
+}

@@ -16,27 +16,27 @@
  * @fileoverview Tests for SubtopicData Model.
  */
 
+import {SubtopicPageContents} from 'domain/topic/subtopic-page-contents.model';
 
-import { SubtopicPageContents } from
-  'domain/topic/subtopic-page-contents.model';
-
-import { ReadOnlySubtopicPageData } from
-  'domain/subtopic_viewer/read-only-subtopic-page-data.model';
+import {ReadOnlySubtopicPageData} from 'domain/subtopic_viewer/read-only-subtopic-page-data.model';
 
 describe('Subtopic data object factory', () => {
   describe('subtopic data object factory', () => {
-    var _sampleSubtopicData = null;
+    var _sampleSubtopicDataWithPageContents: ReadOnlySubtopicPageData;
 
     beforeEach(() => {
-      var sampleSubtopicDataBackendDict = {
+      var sampleSubtopicDataBackendDictWithPageContents = {
         topic_id: 'topic_id',
         topic_name: 'topic',
         next_subtopic_dict: null,
+        prev_subtopic_dict: null,
         subtopic_title: 'sample_title',
+        current_subtopic_id: 1,
+        sections: null,
         page_contents: {
           subtitled_html: {
             html: 'test content',
-            content_id: 'content'
+            content_id: 'content',
           },
           recorded_voiceovers: {
             voiceovers_mapping: {
@@ -45,28 +45,42 @@ describe('Subtopic data object factory', () => {
                   filename: 'test.mp3',
                   file_size_bytes: 100,
                   needs_update: false,
-                  duration_secs: 10
-                }
-              }
-            }
-          }
-        }
+                  duration_secs: 10,
+                },
+              },
+            },
+          },
+        },
       };
 
-      _sampleSubtopicData = ReadOnlySubtopicPageData.
-        createFromBackendDict(sampleSubtopicDataBackendDict);
+      _sampleSubtopicDataWithPageContents =
+        ReadOnlySubtopicPageData.createFromBackendDict(
+          sampleSubtopicDataBackendDictWithPageContents
+        );
     });
 
-    it('should be able to get all the values', function() {
-      expect(_sampleSubtopicData.getParentTopicId()).toEqual('topic_id');
-      expect(_sampleSubtopicData.getParentTopicName()).toEqual('topic');
-      expect(_sampleSubtopicData.getNextSubtopic()).toEqual(null);
-      expect(_sampleSubtopicData.getSubtopicTitle()).toEqual('sample_title');
-      expect(_sampleSubtopicData.getPageContents()).toEqual(
+    it('should be able to get all the values', function () {
+      expect(_sampleSubtopicDataWithPageContents.getParentTopicId()).toEqual(
+        'topic_id'
+      );
+      expect(_sampleSubtopicDataWithPageContents.getParentTopicName()).toEqual(
+        'topic'
+      );
+      expect(_sampleSubtopicDataWithPageContents.getNextSubtopic()).toEqual(
+        null
+      );
+      expect(_sampleSubtopicDataWithPageContents.getPrevSubtopic()).toEqual(
+        null
+      );
+      expect(_sampleSubtopicDataWithPageContents.getSubtopicTitle()).toEqual(
+        'sample_title'
+      );
+      expect(_sampleSubtopicDataWithPageContents.getSections()).toEqual([]);
+      expect(_sampleSubtopicDataWithPageContents.getPageContents()).toEqual(
         SubtopicPageContents.createFromBackendDict({
           subtitled_html: {
             html: 'test content',
-            content_id: 'content'
+            content_id: 'content',
           },
           recorded_voiceovers: {
             voiceovers_mapping: {
@@ -75,13 +89,32 @@ describe('Subtopic data object factory', () => {
                   filename: 'test.mp3',
                   file_size_bytes: 100,
                   needs_update: false,
-                  duration_secs: 10
-                }
-              }
-            }
-          }
+                  duration_secs: 10,
+                },
+              },
+            },
+          },
         })
       );
+    });
+
+    it('should throw error if both sections and pageContents are null', function () {
+      var sampleSubtopicDataBackendDictWithPageContents = {
+        topic_id: 'topic_id',
+        topic_name: 'topic',
+        next_subtopic_dict: null,
+        prev_subtopic_dict: null,
+        subtopic_title: 'sample_title',
+        current_subtopic_id: 1,
+        sections: null,
+        page_contents: null,
+      };
+
+      expect(function () {
+        ReadOnlySubtopicPageData.createFromBackendDict(
+          sampleSubtopicDataBackendDictWithPageContents
+        );
+      }).toThrowError('Neither sections nor page_contents provided.');
     });
   });
 });

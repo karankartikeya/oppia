@@ -16,8 +16,7 @@
 
 """Tests for cloud_translate_emulator."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.platform.translate import cloud_translate_emulator
 from core.tests import test_utils
@@ -27,22 +26,25 @@ class CloudTranslateEmulatorUnitTests(test_utils.TestBase):
     """Tests for cloud_translate_emulator."""
 
     def setUp(self) -> None:
-        super(CloudTranslateEmulatorUnitTests, self).setUp()
+        super().setUp()
         self.emulator = cloud_translate_emulator.CloudTranslateEmulator()
 
     def test_init_prepopulates_responses(self) -> None:
         self.assertEqual(
             self.emulator.expected_responses,
-            self.emulator.PREGENERATED_TRANSLATIONS)
+            self.emulator.PREGENERATED_TRANSLATIONS,
+        )
 
     def test_translate_with_invalid_source_language_raises_error(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            ValueError, 'Invalid source language code: invalid'):
+        with self.assertRaisesRegex(
+            ValueError, 'Invalid source language code: invalid'
+        ):
             self.emulator.translate('hello world', 'invalid', 'es')
 
     def test_translate_with_invalid_target_language_raises_error(self) -> None:
-        with self.assertRaisesRegexp( # type: ignore[no-untyped-call]
-            ValueError, 'Invalid target language code: invalid'):
+        with self.assertRaisesRegex(
+            ValueError, 'Invalid target language code: invalid'
+        ):
             self.emulator.translate('hello world', 'en', 'invalid')
 
     def test_translate_with_valid_input_returns_expected_output(self) -> None:
@@ -55,16 +57,19 @@ class CloudTranslateEmulatorUnitTests(test_utils.TestBase):
         self.assertEqual(self.emulator.DEFAULT_RESPONSE, translated)
 
     def test_add_expected_response_adds_retrievable_response(self) -> None:
-        self.emulator.add_expected_response(
-            'en', 'es', 'text', 'translation')
+        self.emulator.add_expected_response('en', 'es', 'text', 'translation')
         self.assertEqual(
-            'translation', self.emulator.translate('text', 'en', 'es'))
+            'translation', self.emulator.translate('text', 'en', 'es')
+        )
 
     def test_add_expected_response_updates_existing_response(self) -> None:
         self.emulator.add_expected_response(
-            'en', 'es', 'text to translate', 'fake translation unchanged')
+            'en', 'es', 'text to translate', 'fake translation unchanged'
+        )
         self.emulator.add_expected_response(
-            'en', 'es', 'text to translate', 'new fake translation')
+            'en', 'es', 'text to translate', 'new fake translation'
+        )
         self.assertEqual(
             'new fake translation',
-            self.emulator.translate('text to translate', 'en', 'es'))
+            self.emulator.translate('text to translate', 'en', 'es'),
+        )

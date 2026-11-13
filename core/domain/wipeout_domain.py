@@ -14,11 +14,11 @@
 
 """Domain objects for Wipeout."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core import utils
-from core.platform import models
+from core import feconf, utils
+
+from typing import Dict, Optional
 
 USER_DELETION_SUCCESS = 'SUCCESS'
 USER_DELETION_ALREADY_DONE = 'ALREADY DONE'
@@ -32,26 +32,30 @@ class PendingDeletionRequest:
     """Domain object for a PendingDeletionRequest."""
 
     def __init__(
-            self,
-            user_id,
-            email,
-            normalized_long_term_username,
-            deletion_complete,
-            pseudonymizable_entity_mappings):
+        self,
+        user_id: str,
+        username: Optional[str],
+        email: str,
+        normalized_long_term_username: Optional[str],
+        deletion_complete: bool,
+        pseudonymizable_entity_mappings: Dict[str, Dict[str, str]],
+    ) -> None:
         """Constructs a PendingDeletionRequest domain object.
 
         Args:
             user_id: str. The ID of the user who is being deleted.
+            username: str. The username of the  user who is being deleted.
             email: str. The email of the user who is being deleted.
             normalized_long_term_username: str|None. The normalized username of
                 the user who is being deleted. Can be None when the user was on
                 the Oppia site only for a short time and thus the username
                 hasn't been well-established yet.
             deletion_complete: bool. Whether the deletion is completed.
-            pseudonymizable_entity_mappings: dict(str, str). Mapping between
-                the entity IDs and pseudonymized user IDs.
+            pseudonymizable_entity_mappings: dict(str, dict(str, str)).
+                Mapping between the entity IDs and pseudonymized user IDs.
         """
         self.user_id = user_id
+        self.username = username
         self.email = email
         self.normalized_long_term_username = normalized_long_term_username
         self.deletion_complete = deletion_complete
@@ -59,11 +63,17 @@ class PendingDeletionRequest:
 
     @classmethod
     def create_default(
-            cls, user_id, email, normalized_long_term_username=None):
+        cls,
+        user_id: str,
+        username: Optional[str],
+        email: str,
+        normalized_long_term_username: Optional[str] = None,
+    ) -> PendingDeletionRequest:
         """Creates a PendingDeletionRequest object with default values.
 
         Args:
             user_id: str. The ID of the user who is being deleted.
+            username: str. The username of the  user who is being deleted.
             email: str. The email of the user who is being deleted.
             normalized_long_term_username: str|None. The normalized username of
                 the user who is being deleted. Can be None when the user was on
@@ -75,9 +85,10 @@ class PendingDeletionRequest:
             domain object.
         """
         return cls(
-            user_id, email, normalized_long_term_username, False, {})
+            user_id, username, email, normalized_long_term_username, False, {}
+        )
 
-    def validate(self):
+    def validate(self) -> None:
         """Checks that the domain object is valid.
 
         Raises:
@@ -85,6 +96,7 @@ class PendingDeletionRequest:
                 contains wrong key.
         """
         for key in self.pseudonymizable_entity_mappings.keys():
-            if key not in [name.value for name in models.NAMES]:
+            if key not in [name.value for name in feconf.ValidModelNames]:
                 raise utils.ValidationError(
-                    'pseudonymizable_entity_mappings contain wrong key')
+                    'pseudonymizable_entity_mappings contain wrong key'
+                )

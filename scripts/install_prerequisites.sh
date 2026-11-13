@@ -28,20 +28,14 @@
 sudo apt-get update
 sudo apt-get install curl
 sudo apt-get install git
-sudo apt-get install openjdk-8-jre
-sudo apt-get install python3-setuptools
-sudo apt-get install python3-dev
-sudo apt-get install python3-pip
 sudo apt-get install unzip
-sudo apt-get install python3-yaml
-sudo apt-get install python-matplotlib
-sudo apt-get install python3-matplotlib
-pip install --upgrade pip==21.2.3
+sudo apt-get install openjdk-11-jre
+
 # Prerequirements for pyenv.
 sudo apt-get install make
 sudo apt-get install build-essential
 sudo apt-get install libssl-dev
-sudo apt-get install lib1g-dev
+sudo apt-get install zlib1g-dev
 sudo apt-get install libbz2-dev
 sudo apt-get install libreadline-dev
 sudo apt-get install libsqlite3-dev

@@ -16,16 +16,11 @@
 
 """Tests for the beam jobs controllers."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-import datetime
-
-from core import feconf
-from core.domain import beam_job_domain
-from core.domain import beam_job_services
-from core.jobs import base_jobs
-from core.jobs import jobs_manager
+from core import feconf, utils
+from core.domain import beam_job_domain, beam_job_services
+from core.jobs import base_jobs, jobs_manager
 from core.tests import test_utils
 
 import apache_beam as beam
@@ -43,17 +38,19 @@ class BeamHandlerTestBase(test_utils.GenericTestBase):
     """Common setUp() and tearDown() for Apache Beam job handler tests."""
 
     def setUp(self) -> None:
-        super(BeamHandlerTestBase, self).setUp()
+        super().setUp()
         self.signup(
-            self.RELEASE_COORDINATOR_EMAIL, self.RELEASE_COORDINATOR_USERNAME)
+            self.RELEASE_COORDINATOR_EMAIL, self.RELEASE_COORDINATOR_USERNAME
+        )
         self.add_user_role(
             self.RELEASE_COORDINATOR_USERNAME,
-            feconf.ROLE_ID_RELEASE_COORDINATOR)
+            feconf.ROLE_ID_RELEASE_COORDINATOR,
+        )
         self.login(self.RELEASE_COORDINATOR_EMAIL, is_super_admin=True)
 
     def tearDown(self) -> None:
         self.logout()
-        super(BeamHandlerTestBase, self).tearDown()
+        super().tearDown()
 
 
 class BeamJobHandlerTests(BeamHandlerTestBase):
@@ -61,14 +58,18 @@ class BeamJobHandlerTests(BeamHandlerTestBase):
     def test_get_returns_registered_jobs(self) -> None:
         job = beam_job_domain.BeamJob(FooJob)
         get_beam_jobs_swap = self.swap_to_always_return(
-            beam_job_services, 'get_beam_jobs', value=[job])
+            beam_job_services, 'get_beam_jobs', value=[job]
+        )
 
         with get_beam_jobs_swap:
             response = self.get_json('/beam_job')
 
-        self.assertEqual(response, {
-            'jobs': [{'name': 'FooJob'}],
-        })
+        self.assertEqual(
+            response,
+            {
+                'jobs': [{'name': 'FooJob'}],
+            },
+        )
 
 
 class BeamJobRunHandlerTests(BeamHandlerTestBase):
@@ -89,25 +90,35 @@ class BeamJobRunHandlerTests(BeamHandlerTestBase):
         model = beam_job_services.create_beam_job_run_model('FooJob')
 
         with self.swap_to_always_return(jobs_manager, 'run_job', value=model):
-            response = self.put_json( # type: ignore[no-untyped-call]
-                '/beam_job_run', {'job_name': 'FooJob'},
-                csrf_token=self.get_new_csrf_token()) # type: ignore[no-untyped-call]
+            response = self.put_json(
+                '/beam_job_run',
+                {'job_name': 'FooJob'},
+                csrf_token=self.get_new_csrf_token(),
+            )
 
         self.assertEqual(
             response,
-            beam_job_services.get_beam_job_run_from_model(model).to_dict())
+            beam_job_services.get_beam_job_run_from_model(model).to_dict(),
+        )
 
     def test_delete_cancels_job(self) -> None:
         model = beam_job_services.create_beam_job_run_model('FooJob')
         model.put()
         run = beam_job_domain.BeamJobRun(
-            model.id, 'FooJob', 'CANCELLING',
-            datetime.datetime.utcnow(), datetime.datetime.utcnow(), False)
+            model.id,
+            'FooJob',
+            'CANCELLING',
+            utils.get_current_utc_datetime(),
+            utils.get_current_utc_datetime(),
+            False,
+            'abc-123',
+        )
 
         swap_cancel_beam_job = self.swap_to_always_return(
-            beam_job_services, 'cancel_beam_job', value=run)
+            beam_job_services, 'cancel_beam_job', value=run
+        )
         with swap_cancel_beam_job:
-            response = self.delete_json('/beam_job_run', {'job_id': model.id}) # type: ignore[no-untyped-call]
+            response = self.delete_json('/beam_job_run', {'job_id': model.id})
 
         self.assertEqual(response, run.to_dict())
 
@@ -118,17 +129,24 @@ class BeamJobRunResultHandlerTests(BeamHandlerTestBase):
         run_model = beam_job_services.create_beam_job_run_model('WorkingJob')
         run_model.put()
         result_model = beam_job_services.create_beam_job_run_result_model(
-            run_model.id, 'o', '')
+            run_model.id, 'o', ''
+        )
         result_model.put()
 
-        response = (
-            self.get_json('/beam_job_run_result?job_id=%s' % run_model.id))
+        response = self.get_json(
+            '/beam_job_run_result?job_id=%s' % run_model.id
+        )
 
         self.assertEqual(response, {'stdout': 'o', 'stderr': ''})
 
     def test_get_raises_when_job_id_missing(self) -> None:
-        response = (
-            self.get_json('/beam_job_run_result', expected_status_int=400))
+        response = self.get_json(
+            '/beam_job_run_result', expected_status_int=400
+        )
 
         self.assertEqual(
-            response['error'], 'Missing key in handler args: job_id.')
+            response['error'],
+            'At \'http://localhost/beam_job_run_result\' these errors are '
+            'happening:\n'
+            'Missing key in handler args: job_id.',
+        )

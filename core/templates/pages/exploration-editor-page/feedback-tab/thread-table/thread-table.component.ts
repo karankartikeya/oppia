@@ -17,24 +17,25 @@
  * tab of the exploration editor.
  */
 
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { SuggestionThread } from 'domain/suggestion/SuggestionThreadObjectFactory';
-import { DateTimeFormatService } from 'services/date-time-format.service';
-import { ThreadStatusDisplayService } from '../services/thread-status-display.service';
+import {Component, EventEmitter, Input, Output} from '@angular/core';
+import {FeedbackThread} from 'domain/feedback_thread/feedback-thread.model';
+import {SuggestionThread} from 'domain/suggestion/suggestion-thread-object.model';
+import {DateTimeFormatService} from 'services/date-time-format.service';
+import {ThreadStatusDisplayService} from '../services/thread-status-display.service';
 
 @Component({
   selector: 'oppia-thread-table',
-  templateUrl: './thread-table.component.html'
+  templateUrl: './thread-table.component.html',
+  styleUrls: ['./thread-table.component.css'],
 })
 export class ThreadTableComponent {
-  @Output() rowClick: EventEmitter<string> = (
-    new EventEmitter());
-  @Input() threads: SuggestionThread[] = [];
+  @Output() rowClick: EventEmitter<string> = new EventEmitter();
+
+  @Input() threads: (FeedbackThread | SuggestionThread)[] = [];
   constructor(
     private dateTimeFormatService: DateTimeFormatService,
     private threadStatusDisplayService: ThreadStatusDisplayService
-  ) { }
+  ) {}
 
   onRowClick(threadId: string): void {
     this.rowClick.emit(threadId);
@@ -49,11 +50,8 @@ export class ThreadTableComponent {
   }
 
   getLocaleAbbreviatedDateTimeString(millisSinceEpoch: number): string {
-    return this.dateTimeFormatService
-      .getLocaleAbbreviatedDatetimeString(millisSinceEpoch);
+    return this.dateTimeFormatService.getLocaleAbbreviatedDatetimeString(
+      millisSinceEpoch
+    );
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaThreadTable', downgradeComponent(
-    {component: ThreadTableComponent}));

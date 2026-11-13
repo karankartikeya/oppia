@@ -16,103 +16,118 @@
  * @fileoverview Module for the learner dashboard page.
  */
 
-import { APP_INITIALIZER, NgModule, StaticProvider } from '@angular/core';
-import { BrowserModule, HAMMER_GESTURE_CONFIG } from '@angular/platform-browser';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { HttpClientModule } from '@angular/common/http';
-import { HTTP_INTERCEPTORS } from '@angular/common/http';
-import { RequestInterceptor } from 'services/request-interceptor.service';
-import { SharedComponentsModule } from 'components/shared-component.module';
-
-import { LearnerStorySummaryTileComponent } from 'components/summary-tile/learner-story-summary-tile.component';
-import { ProgressTabComponent } from './progress-tab.component';
-import { GoalsTabComponent } from './goals-tab.component';
-import { CommunityLessonsTabComponent } from './community-lessons-tab.component';
-import { LearnerTopicSummaryTileComponent } from 'components/summary-tile/learner-topic-summary-tile.component';
-import { HomeTabComponent } from './home-tab.component';
-import { LearnerDashboardPageComponent } from './learner-dashboard-page.component';
-import { OppiaAngularRootComponent } from 'components/oppia-angular-root.component';
-import { platformFeatureInitFactory, PlatformFeatureService } from 'services/platform-feature.service';
-import { RemoveActivityModalComponent } from 'pages/learner-dashboard-page/modal-templates/remove-activity-modal.component';
-import { LearnerDashboardSuggestionModalComponent } from './suggestion-modal/learner-dashboard-suggestion-modal.component';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { HybridRouterModuleProvider } from 'hybrid-router-module-provider';
-import { MyHammerConfig, toastrConfig } from 'pages/oppia-root/app.module';
+import {NgModule} from '@angular/core';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {RouterModule} from '@angular/router';
+import {CommonModule} from '@angular/common';
+import {FeedbackSharedModule} from 'components/feedback-shared/feedback-shared.module';
+import {LessonCardModule} from 'components/summary-tile/lesson-card.module';
+import {CardDisplayComponent} from './card-display/card-display.component';
+import {ClassroomButtonComponent} from './classroom-button/classroom-button.component';
+import {ContentToggleButtonComponent} from './content-toggle-button/content-toggle-button.component';
+import {GoalListComponent} from './goal-list/goal-list.component';
+import {SkillCardModule} from './skill-card/skill-card.module';
+import {LearnerStorySummaryTileComponent} from 'components/summary-tile/learner-story-summary-tile.component';
+import {LearnerTopicGoalsSummaryTileComponent} from 'components/summary-tile/learner-topic-goals-summary-tile.component';
+import {OldProgressTabComponent} from './old-progress-tab.component';
+import {GoalsTabComponent} from './goals-tab.component';
+import {ProgressTabComponent} from './progress-tab.component';
+import {LearnerTopicSummaryTileComponent} from 'components/summary-tile/learner-topic-summary-tile.component';
+import {HomeTabComponent} from './home-tab.component';
+import {LearnerGroupsTabComponent} from './learner-groups-tab.component';
+import {LearnerDashboardPageComponent} from './learner-dashboard-page.component';
+import {LearnerDashboardPageRootComponent} from './learner-dashboard-page-root.component';
+import {RemoveActivityModalComponent} from 'pages/learner-dashboard-page/modal-templates/remove-activity-modal.component';
+import {DeclineInvitationModalComponent} from './modal-templates/decline-invitaiton-modal.component';
+import {ViewLearnerGroupInvitationModalComponent} from './modal-templates/view-learner-group-invitation-modal.component';
+import {ViewLearnerGroupDetailsModalComponent} from './modal-templates/view-learner-group-details-modal.component';
+import {toastrConfig} from 'pages/oppia-root/app.module';
+import {ToastrModule} from 'ngx-toastr';
+import {LearnerDashboardActivityBackendApiService} from 'domain/learner_dashboard/learner-dashboard-activity-backend-api.service';
+import {AddGoalsModalComponent} from './add-goals-modal/add-goals-modal.component';
+import {MatDialogModule} from '@angular/material/dialog';
+import {MatBottomSheetModule} from '@angular/material/bottom-sheet';
+import {NgCircleProgressModule} from 'ng-circle-progress';
+import {MyCertificatesTabComponent} from './my-certificates-tab.component';
+import {MySuggestionsTabComponent} from './my-suggestions-tab.component';
+import {AddAFollowUpNoteModalComponent} from './add-a-follow-up-note-modal/add-a-follow-up-note-modal.component';
 
 @NgModule({
   imports: [
-    BrowserModule,
-    BrowserAnimationsModule,
-    HttpClientModule,
-    // TODO(#13443): Remove hybrid router module provider once all pages are
-    // migrated to angular router.
-    HybridRouterModuleProvider.provide(),
+    CommonModule,
     SharedComponentsModule,
-    ToastrModule.forRoot(toastrConfig)
+    FeedbackSharedModule,
+    LessonCardModule,
+    MatDialogModule,
+    MatBottomSheetModule,
+    SkillCardModule,
+    ToastrModule.forRoot(toastrConfig),
+    RouterModule.forChild([
+      {
+        path: '',
+        component: LearnerDashboardPageRootComponent,
+      },
+    ]),
+    NgCircleProgressModule.forRoot({
+      radius: 16,
+      outerStrokeWidth: 2,
+      innerStrokeWidth: 2,
+      space: -2,
+      innerStrokeColor: '#e7e8ea',
+      outerStrokeColor: '#00645c',
+      showBackground: false,
+      showSubtitle: false,
+      titleFontSize: '11',
+      titleColor: '#00645c',
+    }),
   ],
   declarations: [
+    AddGoalsModalComponent,
+    CardDisplayComponent,
+    ClassroomButtonComponent,
+    ContentToggleButtonComponent,
+    GoalListComponent,
     LearnerDashboardPageComponent,
+    LearnerDashboardPageRootComponent,
     LearnerStorySummaryTileComponent,
-    ProgressTabComponent,
+    LearnerTopicGoalsSummaryTileComponent,
+    OldProgressTabComponent,
     GoalsTabComponent,
     HomeTabComponent,
+    LearnerGroupsTabComponent,
     LearnerTopicSummaryTileComponent,
-    CommunityLessonsTabComponent,
+    ProgressTabComponent,
     RemoveActivityModalComponent,
-    LearnerDashboardSuggestionModalComponent
+    DeclineInvitationModalComponent,
+    ViewLearnerGroupInvitationModalComponent,
+    ViewLearnerGroupDetailsModalComponent,
+    MyCertificatesTabComponent,
+    MySuggestionsTabComponent,
+    AddAFollowUpNoteModalComponent,
   ],
   entryComponents: [
+    AddGoalsModalComponent,
+    CardDisplayComponent,
+    ClassroomButtonComponent,
+    ContentToggleButtonComponent,
+    GoalListComponent,
     LearnerDashboardPageComponent,
     LearnerStorySummaryTileComponent,
-    ProgressTabComponent,
+    LearnerTopicGoalsSummaryTileComponent,
+    OldProgressTabComponent,
     GoalsTabComponent,
     HomeTabComponent,
+    LearnerGroupsTabComponent,
     LearnerTopicSummaryTileComponent,
-    CommunityLessonsTabComponent,
+    ProgressTabComponent,
     RemoveActivityModalComponent,
-    LearnerDashboardSuggestionModalComponent
+    DeclineInvitationModalComponent,
+    ViewLearnerGroupInvitationModalComponent,
+    ViewLearnerGroupDetailsModalComponent,
+    MyCertificatesTabComponent,
+    MySuggestionsTabComponent,
+    AddAFollowUpNoteModalComponent,
   ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: RequestInterceptor,
-      multi: true
-    },
-    {
-      provide: APP_INITIALIZER,
-      useFactory: platformFeatureInitFactory,
-      deps: [PlatformFeatureService],
-      multi: true
-    },
-    {
-      provide: HAMMER_GESTURE_CONFIG,
-      useClass: MyHammerConfig
-    }
-  ]
+  providers: [LearnerDashboardActivityBackendApiService],
 })
-class LearnerDashboardPageModule {
-  // Empty placeholder method to satisfy the `Compiler`.
-  ngDoBootstrap() {}
-}
-
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { downgradeModule } from '@angular/upgrade/static';
-import { ToastrModule } from 'ngx-toastr';
-
-const bootstrapFnAsync = async(extraProviders: StaticProvider[]) => {
-  const platformRef = platformBrowserDynamic(extraProviders);
-  return platformRef.bootstrapModule(LearnerDashboardPageModule);
-};
-const downgradedModule = downgradeModule(bootstrapFnAsync);
-
-declare var angular: ng.IAngularStatic;
-
-angular.module('oppia').requires.push(downgradedModule);
-
-angular.module('oppia').directive(
-  // This directive is the downgraded version of the Angular component to
-  // bootstrap the Angular 8.
-  'oppiaAngularRoot',
-  downgradeComponent({
-    component: OppiaAngularRootComponent
-  }) as angular.IDirectiveFactory);
+export class LearnerDashboardPageModule {}

@@ -16,6 +16,8 @@
  * @fileoverview The root component for angular application.
  */
 
+// @ts-nocheck
+
 /**
  * This file contains a component that "informs" the oppia-root directive that
  * angular has finished loading. This also contains services that are written
@@ -60,48 +62,48 @@
  *       variables and emitting an event to inform that angular has finished
  *       loading
  */
-interface LanguageInfo {
-  id: string;
-  text: string;
-  direction: string;
-}
 
-import { Component, Output, AfterViewInit, EventEmitter, Injector, NgZone } from '@angular/core';
-import { createCustomElement } from '@angular/elements';
-import { TranslateService } from '@ngx-translate/core';
-import { TranslateCacheService, TranslateCacheSettings } from 'ngx-translate-cache';
-import { ClassroomBackendApiService } from
-  'domain/classroom/classroom-backend-api.service';
-import { ContextService } from 'services/context.service';
-import { I18nLanguageCodeService } from 'services/i18n-language-code.service';
-import { PageTitleService } from 'services/page-title.service';
-import { ProfilePageBackendApiService } from
-  'pages/profile-page/profile-page-backend-api.service';
-import { RatingComputationService } from
-  'components/ratings/rating-computation/rating-computation.service';
-import { ReviewTestBackendApiService } from
-  'domain/review_test/review-test-backend-api.service';
-import { StoryViewerBackendApiService } from
-  'domain/story_viewer/story-viewer-backend-api.service';
-import { ServicesConstants } from 'services/services.constants';
-import 'third-party-imports/ckeditor.import.ts';
+import {
+  Component,
+  Output,
+  OnInit,
+  AfterViewInit,
+  EventEmitter,
+  Injector,
+  NgZone,
+  Type,
+} from '@angular/core';
+import {Direction} from '@angular/cdk/bidi';
+import {createCustomElement} from '@angular/elements';
+import {ClassroomBackendApiService} from 'domain/classroom/classroom-backend-api.service';
+import {PageContextService} from 'services/page-context.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {PageTitleService} from 'services/page-title.service';
+import {ProfilePageBackendApiService} from 'pages/profile-page/profile-page-backend-api.service';
+import {RatingComputationService} from 'components/ratings/rating-computation/rating-computation.service';
+import {StoryViewerBackendApiService} from 'domain/story_viewer/story-viewer-backend-api.service';
+import {ServicesConstants} from 'services/services.constants';
+import 'third-party-imports/ckeditor.import';
 
-import { NoninteractiveCollapsible } from 'rich_text_components/Collapsible/directives/oppia-noninteractive-collapsible.component';
-import { NoninteractiveImage } from 'rich_text_components/Image/directives/oppia-noninteractive-image.component';
-import { NoninteractiveLink } from 'rich_text_components/Link/directives/oppia-noninteractive-link.component';
-import { NoninteractiveMath } from 'rich_text_components/Math/directives/oppia-noninteractive-math.component';
-import { NoninteractiveSkillreview } from 'rich_text_components/Skillreview/directives/oppia-noninteractive-skillreview.component';
-import { NoninteractiveTabs } from 'rich_text_components/Tabs/directives/oppia-noninteractive-tabs.component';
-import { NoninteractiveVideo } from 'rich_text_components/Video/directives/oppia-noninteractive-video.component';
-import { CkEditorInitializerService } from './ck-editor-helpers/ck-editor-4-widgets.initializer';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { MetaTagCustomizationService } from 'services/contextual/meta-tag-customization.service';
-import { AppConstants } from 'app.constants';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { UrlService } from 'services/contextual/url.service';
-import { DocumentAttributeCustomizationService } from 'services/contextual/document-attribute-customization.service';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { CookieService } from 'ngx-cookie';
+import {NoninteractiveCollapsible} from 'rich_text_components/Collapsible/directives/oppia-noninteractive-collapsible.component';
+import {NoninteractiveImage} from 'rich_text_components/Image/directives/oppia-noninteractive-image.component';
+import {NoninteractiveLink} from 'rich_text_components/Link/directives/oppia-noninteractive-link.component';
+import {NoninteractiveMath} from 'rich_text_components/Math/directives/oppia-noninteractive-math.component';
+import {NoninteractiveSkillreview} from 'rich_text_components/Skillreview/directives/oppia-noninteractive-skillreview.component';
+import {NoninteractiveTabs} from 'rich_text_components/Tabs/directives/oppia-noninteractive-tabs.component';
+import {NoninteractiveVideo} from 'rich_text_components/Video/directives/oppia-noninteractive-video.component';
+import {
+  CkEditorInitializerService,
+  RteHelperService as RteHelperServiceLocal,
+} from './ck-editor-helpers/ck-editor-4-widgets.initializer';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {MetaTagCustomizationService} from 'services/contextual/meta-tag-customization.service';
+import {AppConstants} from 'app.constants';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {UrlService} from 'services/contextual/url.service';
+import {I18nService} from 'i18n/i18n.service';
+import {RteHelperService} from 'services/rte-helper.service';
+import {NoninteractiveWorkedexample} from 'rich_text_components/Workedexample/directives/oppia-noninteractive-workedexample.component';
 
 const componentMap = {
   Collapsible: {
@@ -124,100 +126,136 @@ const componentMap = {
   },
   Video: {
     component_class: NoninteractiveVideo,
+  },
+  Workedexample: {
+    component_class: NoninteractiveWorkedexample,
+  },
+};
+
+export const registerCustomElements = (injector: Injector): void => {
+  for (const rteKey of Object.keys(ServicesConstants.RTE_COMPONENT_SPECS)) {
+    const rteElement = createCustomElement(
+      (
+        componentMap as unknown as Record<
+          string,
+          // The 'unknown' type is used here because the component class can be any type.
+          {component_class: Type<unknown>}
+        >
+      )[rteKey].component_class,
+      {injector}
+    );
+    // Check if the custom elements have been previously defined. We can't
+    // redefine custom elements with the same id. Root cause for the element
+    // being already defined is not yet known. Can possibly be a side effect of
+    // webpack and AoT bundles co-existing.
+    // TODO(#16718): Investigate custom element already defined error.
+    if (
+      customElements.get(
+        'oppia-noninteractive-ckeditor-' +
+          (
+            ServicesConstants.RTE_COMPONENT_SPECS as unknown as Record<
+              string,
+              // The 'unknown' type is used here because the value can contain any type.
+              {frontend_id: string}
+            >
+          )[rteKey].frontend_id
+      ) !== undefined
+    ) {
+      continue;
+    }
+    customElements.define(
+      'oppia-noninteractive-ckeditor-' +
+        (
+          ServicesConstants.RTE_COMPONENT_SPECS as unknown as Record<
+            string,
+            // The 'unknown' type is used here because the value can contain any type.
+            {frontend_id: string}
+          >
+        )[rteKey].frontend_id,
+      rteElement
+    );
   }
 };
 
 @Component({
   selector: 'oppia-angular-root',
-  templateUrl: './oppia-angular-root.component.html'
+  templateUrl: './oppia-angular-root.component.html',
 })
-export class OppiaAngularRootComponent implements AfterViewInit {
-  @Output()
-    public initialized: EventEmitter<void> = new EventEmitter();
-  direction: string = 'ltr';
-  url: URL;
+export class OppiaAngularRootComponent implements OnInit, AfterViewInit {
+  @Output() public initialized: EventEmitter<void> = new EventEmitter();
+  direction: Direction = 'ltr';
 
   static classroomBackendApiService: ClassroomBackendApiService;
-  static contextService: ContextService;
+  static pageContextService: PageContextService;
   static i18nLanguageCodeService: I18nLanguageCodeService;
   static ngZone: NgZone;
   static pageTitleService: PageTitleService;
   static profilePageBackendApiService: ProfilePageBackendApiService;
   static rteElementsAreInitialized: boolean = false;
-  static rteHelperService;
+  // The 'unknown' type is used here because the rteHelperService can be of any type.
+  static rteHelperService: RteHelperService | unknown;
   static ratingComputationService: RatingComputationService;
-  static reviewTestBackendApiService: ReviewTestBackendApiService;
   static storyViewerBackendApiService: StoryViewerBackendApiService;
-  static translateService: TranslateService;
-  static translateCacheService: TranslateCacheService;
-  static ajsValueProvider: (string, unknown) => void;
+  // The 'unknown' type is used here because the value can be of any type.
+  static ajsValueProvider: (key: string, value: unknown) => void;
   static injector: Injector;
 
   constructor(
     private classroomBackendApiService: ClassroomBackendApiService,
-    private cookieService: CookieService,
-    private documentAttributeCustomizationService:
-      DocumentAttributeCustomizationService,
     private i18nLanguageCodeService: I18nLanguageCodeService,
     private htmlEscaperService: HtmlEscaperService,
+    private i18nService: I18nService,
     private metaTagCustomizationService: MetaTagCustomizationService,
     private ngZone: NgZone,
     private pageTitleService: PageTitleService,
     private profilePageBackendApiService: ProfilePageBackendApiService,
     private ratingComputationService: RatingComputationService,
-    private reviewTestBackendApiService: ReviewTestBackendApiService,
+    private rteHelperService: RteHelperService,
     private storyViewerBackendApiService: StoryViewerBackendApiService,
-    private translateService: TranslateService,
-    private translateCacheSettings: TranslateCacheSettings,
-    private translateCacheService: TranslateCacheService,
     private urlInterpolationService: UrlInterpolationService,
     private urlService: UrlService,
-    private windowRef: WindowRef,
-    private injector: Injector
+    private injector: Injector,
+    private pageContextService: PageContextService
   ) {
     if (OppiaAngularRootComponent.rteElementsAreInitialized) {
       return;
     }
-
-    for (const rteKey of Object.keys(ServicesConstants.RTE_COMPONENT_SPECS)) {
-      const rteElement = createCustomElement(
-        componentMap[rteKey].component_class,
-        {injector: this.injector});
-      customElements.define(
-        'oppia-noninteractive-' +
-        ServicesConstants.RTE_COMPONENT_SPECS[rteKey].frontend_id,
-        rteElement
-      );
-    }
+    OppiaAngularRootComponent.rteHelperService = this.rteHelperService;
+    registerCustomElements(this.injector);
     OppiaAngularRootComponent.rteElementsAreInitialized = true;
   }
 
+  public ngOnInit(): void {
+    this.i18nService.directionChangeEventEmitter.subscribe(direction => {
+      this.direction = direction;
+    });
+    this.i18nService.initialize();
+  }
   public ngAfterViewInit(): void {
+    if (!OppiaAngularRootComponent.pageContextService) {
+      OppiaAngularRootComponent.pageContextService = this.pageContextService;
+    }
     this.ngZone.runOutsideAngular(() => {
       CkEditorInitializerService.ckEditorInitializer(
-        OppiaAngularRootComponent.rteHelperService,
+        // The 'unknown' type is used here because the rteHelperService can be of any type.
+        OppiaAngularRootComponent.rteHelperService as unknown as RteHelperServiceLocal,
         this.htmlEscaperService,
-        OppiaAngularRootComponent.contextService,
+        this.pageContextService,
         this.ngZone
       );
     });
-    OppiaAngularRootComponent.classroomBackendApiService = (
-      this.classroomBackendApiService);
-    OppiaAngularRootComponent.i18nLanguageCodeService = (
-      this.i18nLanguageCodeService);
+    OppiaAngularRootComponent.classroomBackendApiService =
+      this.classroomBackendApiService;
+    OppiaAngularRootComponent.i18nLanguageCodeService =
+      this.i18nLanguageCodeService;
     OppiaAngularRootComponent.ngZone = this.ngZone;
     OppiaAngularRootComponent.pageTitleService = this.pageTitleService;
-    OppiaAngularRootComponent.profilePageBackendApiService = (
-      this.profilePageBackendApiService);
-    OppiaAngularRootComponent.ratingComputationService = (
-      this.ratingComputationService);
-    OppiaAngularRootComponent.reviewTestBackendApiService = (
-      this.reviewTestBackendApiService);
-    OppiaAngularRootComponent.storyViewerBackendApiService = (
-      this.storyViewerBackendApiService);
-    OppiaAngularRootComponent.translateService = this.translateService;
-    OppiaAngularRootComponent.translateCacheService = (
-      this.translateCacheService);
+    OppiaAngularRootComponent.profilePageBackendApiService =
+      this.profilePageBackendApiService;
+    OppiaAngularRootComponent.ratingComputationService =
+      this.ratingComputationService;
+    OppiaAngularRootComponent.storyViewerBackendApiService =
+      this.storyViewerBackendApiService;
     OppiaAngularRootComponent.injector = this.injector;
 
     // Initialize dynamic meta tags.
@@ -225,111 +263,51 @@ export class OppiaAngularRootComponent implements AfterViewInit {
       {
         propertyType: 'name',
         propertyValue: 'application-name',
-        content: AppConstants.SITE_NAME
+        content: AppConstants.SITE_NAME,
       },
       {
         propertyType: 'name',
         propertyValue: 'msapplication-square310x310logo',
-        content: this.getAssetUrl(
-          '/assets/images/logo/msapplication-large.png')
+        content: this.urlInterpolationService.getStaticCopyrightedImageUrl(
+          '/assets/images/logo/msapplication-large.png'
+        ),
       },
       {
         propertyType: 'name',
         propertyValue: 'msapplication-wide310x150logo',
-        content: this.getAssetUrl(
-          '/assets/images/logo/msapplication-wide.png')
+        content: this.urlInterpolationService.getStaticCopyrightedImageUrl(
+          '/assets/images/logo/msapplication-wide.png'
+        ),
       },
       {
         propertyType: 'name',
         propertyValue: 'msapplication-square150x150logo',
-        content: this.getAssetUrl(
-          '/assets/images/logo/msapplication-square.png')
+        content: this.urlInterpolationService.getStaticCopyrightedImageUrl(
+          '/assets/images/logo/msapplication-square.png'
+        ),
       },
       {
         propertyType: 'name',
         propertyValue: 'msapplication-square70x70logo',
-        content: this.getAssetUrl(
-          '/assets/images/logo/msapplication-tiny.png')
+        content: this.urlInterpolationService.getStaticCopyrightedImageUrl(
+          '/assets/images/logo/msapplication-tiny.png'
+        ),
       },
       {
         propertyType: 'property',
         propertyValue: 'og:url',
-        content: this.urlService.getCurrentLocation().href
+        content: this.urlService.getCurrentLocation().href,
       },
       {
         propertyType: 'property',
         propertyValue: 'og:image',
         content: this.urlInterpolationService.getStaticImageUrl(
-          '/logo/288x288_logo_mint.webp')
-      }
+          '/logo/288x288_logo_mint.webp'
+        ),
+      },
     ]);
-
-    // Initialize translations.
-    this.i18nLanguageCodeService.onI18nLanguageCodeChange.subscribe(
-      (code) => {
-        this.translateService.use(code);
-        for (let i = 0; i < AppConstants.SUPPORTED_SITE_LANGUAGES.length; i++) {
-          if (AppConstants.SUPPORTED_SITE_LANGUAGES[i].id === code) {
-            this.direction = AppConstants.SUPPORTED_SITE_LANGUAGES[i].direction;
-            break;
-          }
-        }
-        this.documentAttributeCustomizationService.addAttribute('lang', code);
-      }
-    );
-
-    // TODO(#14052): Find a better way to structure and encapsulate language
-    // translations related code.
-    // Code to load site according to the language parameter in URL if present.
-    this.url = new URL(this.windowRef.nativeWindow.location.toString());
-    const searchParams = this.url.searchParams;
-
-    if (searchParams.has('lang')) {
-      let supportedSiteLanguageCodes: string[] = (
-        AppConstants.SUPPORTED_SITE_LANGUAGES.map(
-          (languageInfo: LanguageInfo) => {
-            return languageInfo.id;
-          }
-        )
-      );
-      let siteLanguageCode = searchParams.get('lang');
-      if (supportedSiteLanguageCodes.includes(siteLanguageCode)) {
-        // When translation cache is initialized, language code stored in cookie
-        // is used to set the site language. To have a single source of truth,
-        // we first directly update the language code in cookie using URL before
-        // intializing the translation cache, so that we always read the
-        // language code from the cookie to set site language. This removes
-        // the need of continously syncing URL lang param and cache, and
-        // avoids race conditions.
-        this.cookieService.put(
-          this.translateCacheSettings.cacheName, siteLanguageCode);
-      } else {
-        // In the case where the URL contains an invalid language code, we
-        // load the site using last cached language code and remove the language
-        // param from the URL.
-        this.url.searchParams.delete('lang');
-        this.windowRef.nativeWindow.history.pushState(
-          {}, '', this.url.toString());
-      }
-    }
-
-    // The translateCacheService should only be initialized after the
-    // translation cache is set according to the URL language parameter (if
-    // present).This avoids race conditions between the URL language parameter
-    // and the language code stored in the local cookie.
-    this.translateCacheService.init();
-
-    const cachedLanguageCode = (
-      this.translateCacheService.getCachedLanguage());
-    if (cachedLanguageCode) {
-      this.i18nLanguageCodeService.setI18nLanguageCode(cachedLanguageCode);
-    }
 
     // This emit triggers ajs to start its app.
     this.initialized.emit();
-  }
-
-  getAssetUrl(path: string): string {
-    return this.urlInterpolationService.getFullStaticAssetUrl(path);
   }
 }

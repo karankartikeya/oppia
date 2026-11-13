@@ -16,16 +16,23 @@
  * @fileoverview Unit tests for attribution guide component.
  */
 
-import { TestBed, async, ComponentFixture } from
-  '@angular/core/testing';
+import {
+  TestBed,
+  waitForAsync,
+  ComponentFixture,
+  tick,
+  fakeAsync,
+} from '@angular/core/testing';
 
-import { AttributionGuideComponent } from './attribution-guide.component';
-import { ContextService } from 'services/context.service';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { UrlService } from 'services/contextual/url.service';
-import { AttributionService } from 'services/attribution.service';
-import { BrowserCheckerService } from 'domain/utilities/browser-checker.service';
-import { MockTranslatePipe } from 'tests/unit-test-utils';
+import {AttributionGuideComponent} from './attribution-guide.component';
+import {PageContextService} from 'services/page-context.service';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {UrlService} from 'services/contextual/url.service';
+import {AttributionService} from 'services/attribution.service';
+import {BrowserCheckerService} from 'domain/utilities/browser-checker.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
 
 class MockAttributionService {
   init() {
@@ -69,40 +76,70 @@ class MockUrlService {
   }
 
   getCurrentLocation() {
-    return { href: 'localhost:8181/explore/0' };
+    return {href: 'localhost:8181/explore/0'};
   }
 }
 
-class MockContextService {
+class MockPageContextService {
   getExplorationId() {
     return 'expId';
   }
 }
 
-describe('Attribution Guide Component', function() {
+describe('Attribution Guide Component', function () {
   let component: AttributionGuideComponent;
   let fixture: ComponentFixture<AttributionGuideComponent>;
+  let i18nLanguageCodeService: I18nLanguageCodeService;
+  let windowDimensionsService: WindowDimensionsService;
 
-  beforeEach(async(() => {
+  const MockNgbTooltip = jasmine.createSpyObj('NgbTooltip', ['open', 'close']);
+
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      declarations: [
-        AttributionGuideComponent,
-        MockTranslatePipe
-      ],
+      declarations: [AttributionGuideComponent, MockTranslatePipe],
       providers: [
-        { provide: AttributionService, useClass: MockAttributionService },
-        { provide: BrowserCheckerService, useClass: MockBrowserCheckerService },
-        { provide: UrlService, useClass: MockUrlService },
-        { provide: ContextService, useClass: MockContextService }
+        {provide: AttributionService, useClass: MockAttributionService},
+        {provide: BrowserCheckerService, useClass: MockBrowserCheckerService},
+        {provide: UrlService, useClass: MockUrlService},
+        {provide: PageContextService, useClass: MockPageContextService},
+        WindowDimensionsService,
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(AttributionGuideComponent);
+    i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
+    windowDimensionsService = TestBed.inject(WindowDimensionsService);
+
     component = fixture.componentInstance;
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageRTL').and.returnValue(
+      true
+    );
   });
+
+  it(
+    'should switch to mobile view if the window size is less than or equal' +
+      'to 1024px',
+    function () {
+      let widthSpy = spyOn(windowDimensionsService, 'getWidth');
+      widthSpy.and.returnValue(400);
+
+      expect(component.checkMobileView()).toBe(true);
+    }
+  );
+
+  it(
+    'should not switch to mobile view if the window size is less than or' +
+      ' equal to 1024px',
+    function () {
+      let widthSpy = spyOn(windowDimensionsService, 'getWidth');
+      widthSpy.and.returnValue(1025);
+
+      expect(component.checkMobileView()).toBe(false);
+    }
+  );
 
   it('should initialize component properties correctly', () => {
     expect(component.deviceUsedIsMobile).toBeFalse();
@@ -147,20 +184,81 @@ describe('Attribution Guide Component', function() {
     expect(component.getExplorationTitle()).toEqual('Place Values');
   });
 
-  it('should run the copy command and show a tooltip', () => {
+  it('should run the copy command and open and close the tooltip', fakeAsync(() => {
     let dummyDivElement = document.createElement('div');
     let dummyTextNode = document.createTextNode('Text to be copied');
-    dummyDivElement.className = 'class-name';
+    dummyDivElement.className = 'attribution-html-code';
     dummyDivElement.appendChild(dummyTextNode);
-    let dummyDocumentFragment = document.createDocumentFragment();
+    const dummyDocumentFragment = document.createDocumentFragment();
     dummyDocumentFragment.appendChild(dummyDivElement);
-    spyOn(
-      document, 'getElementsByClassName'
-    ).withArgs('class-name').and.returnValue(dummyDocumentFragment.children);
+
+    spyOn(document, 'getElementsByClassName')
+      .withArgs('attribution-html-code')
+      .and.returnValue(dummyDocumentFragment.children);
     spyOn(document, 'execCommand').withArgs('copy');
-    spyOn($.fn, 'tooltip');
-    component.copyAttribution('class-name');
+
+    component.copyAttribution('attribution-html-code', MockNgbTooltip);
+
     expect(document.execCommand).toHaveBeenCalled();
-    expect($.fn.tooltip).toHaveBeenCalledWith('show');
+    expect(MockNgbTooltip.open).toHaveBeenCalled();
+
+    tick(1001);
+
+    expect(MockNgbTooltip.close).toHaveBeenCalled();
+  }));
+
+  it('should run the print attribution copy command and open and close the tooltip', fakeAsync(() => {
+    let dummyDivElement = document.createElement('div');
+    let dummyTextNode = document.createTextNode('Text to be copied');
+    dummyDivElement.className = 'attribution-print-text';
+    dummyDivElement.appendChild(dummyTextNode);
+    const dummyDocumentFragment = document.createDocumentFragment();
+    dummyDocumentFragment.appendChild(dummyDivElement);
+
+    spyOn(document, 'getElementsByClassName')
+      .withArgs('attribution-print-text')
+      .and.returnValue(dummyDocumentFragment.children);
+    spyOn(document, 'execCommand').withArgs('copy');
+
+    component.copyAttribution('attribution-print-text', MockNgbTooltip);
+
+    expect(document.execCommand).toHaveBeenCalled();
+    expect(MockNgbTooltip.open).toHaveBeenCalled();
+
+    tick(1001);
+
+    expect(MockNgbTooltip.close).toHaveBeenCalled();
+  }));
+
+  it('should run the copy command without showing a tooltip if the tooltip reference is not found', () => {
+    MockNgbTooltip.open.calls.reset();
+    const dummyDivElement = document.createElement('div');
+    const dummyTextNode = document.createTextNode('Text to be copied');
+    dummyDivElement.className = 'attribution-html-code';
+    dummyDivElement.appendChild(dummyTextNode);
+    const dummyDocumentFragment = document.createDocumentFragment();
+    dummyDocumentFragment.appendChild(dummyDivElement);
+
+    spyOn(document, 'getElementsByClassName')
+      .withArgs('attribution-html-code')
+      .and.returnValue(dummyDocumentFragment.children);
+    spyOn(document, 'execCommand').withArgs('copy');
+
+    component.copyAttribution('attribution-html-code', undefined);
+
+    expect(document.execCommand).toHaveBeenCalled();
+    expect(MockNgbTooltip.open).not.toHaveBeenCalled();
+  });
+
+  it('should return early if element is not found', () => {
+    spyOn(document, 'getElementsByClassName')
+      .withArgs('missing-class')
+      .and.returnValue([] as unknown as HTMLCollectionOf<HTMLElement>);
+
+    const execSpy = spyOn(document, 'execCommand');
+
+    component.copyAttribution('missing-class', undefined);
+
+    expect(execSpy).not.toHaveBeenCalled();
   });
 });

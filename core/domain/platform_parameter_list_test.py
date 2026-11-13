@@ -16,10 +16,9 @@
 
 """Tests for registered platform parameters."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core.domain import platform_parameter_list as params
+from core.domain import platform_parameter_registry
 from core.tests import test_utils
 
 
@@ -28,15 +27,46 @@ class ExistingPlatformParameterValidityTests(test_utils.GenericTestBase):
     core/domain/platform_parameter_list.py.
     """
 
-    EXPECTED_PARAM_NAMES = ['dummy_feature', 'dummy_parameter']
+    EXPECTED_PARAM_NAMES = [
+        'admin_email_address',
+        'always_ask_learners_for_answer_details',
+        'contributor_dashboard_reviewer_emails_is_enabled',
+        'dummy_parameter',
+        'email_footer',
+        'email_sender_name',
+        'enable_admin_notifications_for_reviewer_shortage',
+        'high_bounce_rate_task_minimum_exploration_starts',
+        'high_bounce_rate_task_state_bounce_rate_creation_threshold',  # pylint: disable=line-too-long
+        'high_bounce_rate_task_state_bounce_rate_obsoletion_threshold',  # pylint: disable=line-too-long
+        'mailchimp_audience_id',
+        'mailchimp_username',
+        'mailgun_domain_name',
+        'max_number_of_suggestions_per_reviewer',
+        'max_number_of_tags_assigned_to_blog_post',
+        'notify_admins_suggestions_waiting_too_long_is_enabled',  # pylint: disable=line-too-long
+        'noreply_email_address',
+        'oppia_site_url_for_emails',
+        'promo_bar_enabled',
+        'promo_bar_message',
+        'record_playthrough_probability',
+        'signup_email_body_content',
+        'signup_email_subject_content',
+        'system_email_address',
+        'system_email_name',
+        'unpublish_exploration_email_html_body',
+    ]
 
-    def test_all_defined_parameters_are_valid(self):
-        all_names = params.Registry.get_all_platform_parameter_names()
+    def test_all_defined_parameters_are_valid(self) -> None:
+        all_names = (
+            platform_parameter_registry.Registry.get_all_platform_parameter_names()
+        )
         for name in all_names:
-            param = params.Registry.get_platform_parameter(name)
+            param = platform_parameter_registry.Registry.get_platform_parameter(
+                name
+            )
             param.validate()
 
-    def test_number_of_parameters_meets_expectation(self):
+    def test_number_of_parameters_meets_expectation(self) -> None:
         """Test that the Registry and EXPECTED_PARAM_NAMES have the same number
         of platform parameters.
 
@@ -50,10 +80,13 @@ class ExistingPlatformParameterValidityTests(test_utils.GenericTestBase):
         EXPECTED_PARAM_NAMES list as well.
         """
         self.assertEqual(
-            len(params.Registry.get_all_platform_parameter_names()),
-            len(self.EXPECTED_PARAM_NAMES))
+            len(
+                platform_parameter_registry.Registry.get_all_platform_parameter_names()
+            ),
+            len(self.EXPECTED_PARAM_NAMES),
+        )
 
-    def test_all_expected_parameters_are_present_in_registry(self):
+    def test_all_expected_parameters_are_present_in_registry(self) -> None:
         """Test that all parameters in EXPECTED_PARAM_NAMES are present in
         Registry.
 
@@ -65,16 +98,18 @@ class ExistingPlatformParameterValidityTests(test_utils.GenericTestBase):
         need to delete a parameter (this should not happen in most cases),
         make sure it's also deleted from EXPECTED_PARAM_NAMES.
         """
-        existing_names = params.Registry.get_all_platform_parameter_names()
+        existing_names = (
+            platform_parameter_registry.Registry.get_all_platform_parameter_names()
+        )
         missing_names = set(self.EXPECTED_PARAM_NAMES) - set(existing_names)
 
         self.assertFalse(
             missing_names,
-            msg='Platform parameters missing in registry: %s.' % (
-                list(missing_names))
+            msg='Platform parameters missing in registry: %s.'
+            % (list(missing_names)),
         )
 
-    def test_no_unexpected_parameter_in_registry(self):
+    def test_no_unexpected_parameter_in_registry(self) -> None:
         """Test that all parameters registered in Registry are expected.
 
         If this test fails, it means some parameters in
@@ -84,10 +119,12 @@ class ExistingPlatformParameterValidityTests(test_utils.GenericTestBase):
         If you are creating new platform parameters, make sure to add it to
         the EXPECTED_PARAM_NAMES list as well.
         """
-        existing_names = params.Registry.get_all_platform_parameter_names()
+        existing_names = (
+            platform_parameter_registry.Registry.get_all_platform_parameter_names()
+        )
         unexpected_names = set(existing_names) - set(self.EXPECTED_PARAM_NAMES)
 
         self.assertFalse(
             unexpected_names,
-            msg='Unexpected platform parameters: %s.' % list(unexpected_names)
+            msg='Unexpected platform parameters: %s.' % list(unexpected_names),
         )

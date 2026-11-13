@@ -19,11 +19,10 @@
 export const TopicDomainConstants = {
   TOPIC_EDITOR_STORY_URL_TEMPLATE: '/topic_editor_story_handler/<topic_id>',
 
-  TOPIC_NAME_HANDLER_URL_TEMPLATE: (
-    '/topic_name_handler/<topic_name>'),
+  TOPIC_NAME_HANDLER_URL_TEMPLATE: '/topic_name_handler/<topic_name>',
 
-  TOPIC_URL_FRAGMENT_HANDLER_URL_TEMPLATE: (
-    '/topic_url_fragment_handler/<topic_url_fragment>'),
+  TOPIC_URL_FRAGMENT_HANDLER_URL_TEMPLATE:
+    '/topic_url_fragment_handler/<topic_url_fragment>',
 
   TOPIC_EDITOR_QUESTION_URL_TEMPLATE:
     '/topic_editor_question_handler/<topic_id>?cursor=<cursor>',
@@ -47,6 +46,9 @@ export const TopicDomainConstants = {
   CMD_UPDATE_TOPIC_PROPERTY: 'update_topic_property',
   CMD_UPDATE_SUBTOPIC_PROPERTY: 'update_subtopic_property',
   CMD_UPDATE_SUBTOPIC_PAGE_PROPERTY: 'update_subtopic_page_property',
+  CMD_UPDATE_STUDY_GUIDE_PROPERTY: 'update_study_guide_property',
+  CMD_ADD_NEW_SECTION: 'add_new_section',
+  CMD_DELETE_SECTION: 'delete_section',
 
   TOPIC_PROPERTY_NAME: 'name',
   TOPIC_PROPERTY_ABBREVIATED_NAME: 'abbreviated_name',
@@ -55,10 +57,10 @@ export const TopicDomainConstants = {
   TOPIC_PROPERTY_DESCRIPTION: 'description',
   TOPIC_PROPERTY_LANGUAGE_CODE: 'language_code',
   TOPIC_PROPERTY_URL_FRAGMENT: 'url_fragment',
-  TOPIC_PROPERTY_PRACTICE_TAB_IS_DISPLAYED: (
-    'practice_tab_is_displayed'),
+  TOPIC_PROPERTY_PRACTICE_TAB_IS_DISPLAYED: 'practice_tab_is_displayed',
   TOPIC_PROPERTY_META_TAG_CONTENT: 'meta_tag_content',
   TOPIC_PROPERTY_PAGE_TITLE_FRAGMENT_FOR_WEB: 'page_title_fragment_for_web',
+  TOPIC_PROPERTY_SKILL_IDS_FOR_DIAGNOSTIC_TEST: 'skill_ids_for_diagnostic_test',
 
   SUBTOPIC_PROPERTY_THUMBNAIL_FILENAME: 'thumbnail_filename',
   SUBTOPIC_PROPERTY_THUMBNAIL_BG_COLOR: 'thumbnail_bg_color',
@@ -66,5 +68,7 @@ export const TopicDomainConstants = {
   SUBTOPIC_PROPERTY_URL_FRAGMENT: 'url_fragment',
 
   SUBTOPIC_PAGE_PROPERTY_PAGE_CONTENTS_HTML: 'page_contents_html',
-  SUBTOPIC_PAGE_PROPERTY_PAGE_CONTENTS_AUDIO: 'page_contents_audio'
+  SUBTOPIC_PAGE_PROPERTY_PAGE_CONTENTS_AUDIO: 'page_contents_audio',
+
+  STUDY_GUIDE_PROPERTY_SECTIONS: 'sections',
 } as const;

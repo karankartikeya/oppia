@@ -16,26 +16,16 @@
  * @fileoverview Unit test for the Translation tab active content id service.
  */
 
-import { EventEmitter } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
-import { TranslationTabActiveContentIdService } from 'pages/exploration-editor-page/translation-tab/services/translation-tab-active-content-id.service';
-import { StateRecordedVoiceoversService } from 'components/state-editor/state-editor-properties-services/state-recorded-voiceovers.service';
+import {EventEmitter} from '@angular/core';
+import {TestBed} from '@angular/core/testing';
+import {TranslationTabActiveContentIdService} from 'pages/exploration-editor-page/translation-tab/services/translation-tab-active-content-id.service';
 
 describe('Translation tab active content id service', () => {
   let ttacis: TranslationTabActiveContentIdService;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [{
-      provide: StateRecordedVoiceoversService,
-      useValue: {
-        displayed: {
-          getAllContentIds: () => {
-            return ['content', 'feedback_1'];
-          }
-        }
-      }
-    }
-    ]
+    TestBed.configureTestingModule({
+      providers: [],
     });
 
     ttacis = TestBed.inject(TranslationTabActiveContentIdService);
@@ -47,13 +37,6 @@ describe('Translation tab active content id service', () => {
     expect(ttacis.getActiveContentId()).toBe('content');
   });
 
-  it('should throw error on setting invalid content id', () => {
-    expect(() => {
-      ttacis.setActiveContent('feedback_2', 'html');
-    }).toThrowError(
-      'Invalid active content id: feedback_2');
-  });
-
   it('should return data format correctly', () => {
     expect(ttacis.getActiveDataFormat()).toBeNull();
     ttacis.setActiveContent('content', 'html');
@@ -63,6 +46,7 @@ describe('Translation tab active content id service', () => {
   it('should emit data format', () => {
     let mockquestionSessionEventEmitter = new EventEmitter();
     expect(ttacis.onActiveContentIdChanged).toEqual(
-      mockquestionSessionEventEmitter);
+      mockquestionSessionEventEmitter
+    );
   });
 });

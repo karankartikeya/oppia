@@ -16,29 +16,41 @@
  * @fileoverview Component for the select topics viewer.
  */
 
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {Component, Input, Output, EventEmitter} from '@angular/core';
+
+// Topics passed to this component are CreatorTopicSummary objects from the
+// topics-and-skills dashboard, augmented with the isSelected flag that tracks
+// the user's selection. Exporting the interface lets the assign-skill-to-topic
+// modal type its input and the skills-list parent construct the augmented
+// summaries before opening the modal.
+export interface SelectableTopicSummary {
+  id: string;
+  name: string;
+  isSelected: boolean;
+  isPublished: boolean;
+  uncategorizedSkillCount: number;
+}
 
 @Component({
   selector: 'oppia-select-topics',
-  templateUrl: './select-topics.component.html'
+  templateUrl: './select-topics.component.html',
+  styleUrls: ['./select-topics.component.css'],
 })
 export class SelectTopicsComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() topicSummaries!:
-    { id: string, name: string, isSelected: boolean }[];
+  @Input() topicSummaries!: SelectableTopicSummary[];
+
   @Input() selectedTopicIds!: string[];
-  @Output() selectedTopicIdsChange: EventEmitter<string[]> = (
-    new EventEmitter());
+  @Output() selectedTopicIdsChange: EventEmitter<string[]> = new EventEmitter();
+
   topicsSelected: string[] = [];
   topicFilterText: string = '';
-  filteredTopics: { id: string, name: string, isSelected: boolean }[] = [];
+  filteredTopics: SelectableTopicSummary[] = [];
 
   selectOrDeselectTopic(topicId: string): void {
-    let topic = this.topicSummaries.find(
-      topic => topic.id === topicId);
+    let topic = this.topicSummaries.find(topic => topic.id === topicId);
     if (topic === undefined) {
       throw new Error('No Topic with given topicId exists!');
     }
@@ -50,7 +62,8 @@ export class SelectTopicsComponent {
     } else {
       let idIndex: number = this.selectedTopicIds.indexOf(topicId);
       let nameIndex = this.topicsSelected.indexOf(
-        this.topicSummaries[index].name);
+        this.topicSummaries[index].name
+      );
       this.selectedTopicIds.splice(idIndex, 1);
       this.topicSummaries[index].isSelected = false;
       this.topicsSelected.splice(nameIndex, 1);
@@ -58,14 +71,10 @@ export class SelectTopicsComponent {
     this.selectedTopicIdsChange.emit(this.selectedTopicIds);
   }
 
-  searchInTopics(searchText: string):
-  { id: string, name: string, isSelected: boolean }[] {
+  searchInTopics(searchText: string): SelectableTopicSummary[] {
     this.filteredTopics = this.topicSummaries.filter(
-      topic => topic.name.toLowerCase().indexOf(
-        searchText.toLowerCase()) !== -1);
+      topic => topic.name.toLowerCase().indexOf(searchText.toLowerCase()) !== -1
+    );
     return this.filteredTopics;
   }
 }
-
-angular.module('oppia').directive('oppiaSelectTopics',
-  downgradeComponent({ component: SelectTopicsComponent }));

@@ -16,68 +16,108 @@
  * @fileoverview Unit tests for contributor dashboard admin navbar component.
  */
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { MockRouterModule } from 'hybrid-router-module-provider';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {
+  waitForAsync,
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+} from '@angular/core/testing';
+import {APP_BASE_HREF} from '@angular/common';
+import {UserInfo} from 'domain/user/user-info.model';
+import {RouterModule} from '@angular/router';
 
-import { UserService } from 'services/user.service';
+import {UserService} from 'services/user.service';
 
-import { ContributorDashboardAdminNavbarComponent } from './contributor-dashboard-admin-navbar.component';
+import {ContributorDashboardAdminNavbarComponent} from './contributor-dashboard-admin-navbar.component';
 
 describe('Contributor dashboard admin navbar component', () => {
   let component: ContributorDashboardAdminNavbarComponent;
-  let userService = null;
-  let userProfileImage = 'profile-data-url';
+  let userService: UserService;
   let userInfo = {
     isModerator: () => true,
     getUsername: () => 'username1',
-    isSuperAdmin: () => true
-  };
+    isSuperAdmin: () => true,
+  } as UserInfo;
   const profileUrl = '/profile/username1';
   let fixture: ComponentFixture<ContributorDashboardAdminNavbarComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-        MockRouterModule
+      imports: [HttpClientTestingModule, RouterModule.forRoot([])],
+      declarations: [ContributorDashboardAdminNavbarComponent],
+      providers: [
+        {
+          provide: APP_BASE_HREF,
+          useValue: '/',
+        },
       ],
-      declarations: [ContributorDashboardAdminNavbarComponent]
     }).compileComponents();
 
     fixture = TestBed.createComponent(ContributorDashboardAdminNavbarComponent);
     component = fixture.componentInstance;
-    userService = TestBed.get(UserService);
+    userService = TestBed.inject(UserService);
     fixture.detectChanges();
-
-    spyOn(userService, 'getProfileImageDataUrlAsync')
-      .and.resolveTo(userProfileImage);
-    spyOn(userService, 'getUserInfoAsync')
-      .and.resolveTo(userInfo);
-    component.ngOnInit();
+    spyOn(userService, 'getProfileImageDataUrl').and.returnValue([
+      'default-image-url-png',
+      'default-image-url-webp',
+    ]);
   }));
 
-  it('should initialize component properties correctly', () => {
-    expect(component.profilePictureDataUrl).toBe(userProfileImage);
+  it('should initialize component properties correctly', fakeAsync(() => {
+    spyOn(userService, 'getUserInfoAsync').and.resolveTo(userInfo);
+
+    component.ngOnInit();
+    tick();
+
+    expect(component.profilePicturePngDataUrl).toEqual('default-image-url-png');
+    expect(component.profilePictureWebpDataUrl).toEqual(
+      'default-image-url-webp'
+    );
     expect(component.username).toBe('username1');
     expect(component.profileUrl).toEqual(profileUrl);
     expect(component.logoutUrl).toEqual('/logout');
     expect(component.profileDropdownIsActive).toBe(false);
-  });
+  }));
 
-  it('should set profileDropdownIsActive to true', () => {
+  it('should set profileDropdownIsActive to true', fakeAsync(() => {
+    spyOn(userService, 'getUserInfoAsync').and.resolveTo(userInfo);
+
+    component.ngOnInit();
+    tick();
+
     expect(component.profileDropdownIsActive).toBe(false);
 
     component.activateProfileDropdown();
 
     expect(component.profileDropdownIsActive).toBe(true);
-  });
+  }));
 
-  it('should set profileDropdownIsActive to false', () => {
+  it('should set profileDropdownIsActive to false', fakeAsync(() => {
+    spyOn(userService, 'getUserInfoAsync').and.resolveTo(userInfo);
+
+    component.ngOnInit();
+    tick();
+
     component.profileDropdownIsActive = true;
 
     component.deactivateProfileDropdown();
 
     expect(component.profileDropdownIsActive).toBe(false);
-  });
+  }));
+
+  it('should throw error if user name not exist', fakeAsync(() => {
+    let userInfo = {
+      isModerator: () => true,
+      getUsername: () => null,
+      isSuperAdmin: () => true,
+    } as UserInfo;
+    spyOn(userService, 'getUserInfoAsync').and.resolveTo(userInfo);
+
+    expect(() => {
+      component.getUserInfoAsync();
+      tick();
+    }).toThrowError();
+  }));
 });

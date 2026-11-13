@@ -15,86 +15,90 @@
 /**
  * @fileoverview Unit tests for parameter name editor.
  */
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { ParamSpecsObjectFactory } from 'domain/exploration/ParamSpecsObjectFactory';
-import { TestBed } from '@angular/core/testing';
 
-describe('parameterNameEditor', () => {
-  let ctrl = null;
-  var $rootScope = null;
-  var $scope = null;
-  let explorationParamSpecsService = null;
-  var paramSpecsObjectFactory = null;
+import {ComponentFixture, TestBed, waitForAsync} from '@angular/core/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {ParameterNameEditorComponent} from './parameter-name-editor.component';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ExplorationParamSpecsService} from 'pages/exploration-editor-page/services/exploration-param-specs.service';
+import {ParamSpecs} from '../../../core/templates/domain/exploration/param-specs.model';
 
-  importAllAngularServices();
-  beforeEach(angular.mock.module('oppia'));
-  beforeEach(function() {
-    paramSpecsObjectFactory = TestBed.get(ParamSpecsObjectFactory);
-  });
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    explorationParamSpecsService =
-      $injector.get('ExplorationParamSpecsService');
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
+describe('StateHintsEditorComponent', () => {
+  let component: ParameterNameEditorComponent;
+  let fixture: ComponentFixture<ParameterNameEditorComponent>;
+  let explorationParamSpecsService: ExplorationParamSpecsService;
 
-    ctrl = $componentController('parameterNameEditor');
-
-    explorationParamSpecsService.init(
-      paramSpecsObjectFactory.createFromBackendDict({
-        y: {
-          obj_type: 'UnicodeString'
-        },
-        a: {
-          obj_type: 'UnicodeString'
-        }
-      }));
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [ParameterNameEditorComponent],
+      providers: [ExplorationParamSpecsService],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
-  it('should initialise component when user open editor', () => {
-    ctrl.$onInit();
+  beforeEach(() => {
+    fixture = TestBed.createComponent(ParameterNameEditorComponent);
+    component = fixture.componentInstance;
 
-    expect(ctrl.availableParamNames).toEqual(['y', 'a']);
-    expect(ctrl.localValue).toBe('y');
-    expect(ctrl.SCHEMA).toEqual({
+    explorationParamSpecsService = TestBed.inject(ExplorationParamSpecsService);
+
+    explorationParamSpecsService.init(
+      // This throws "Type object is not assignable to type
+      // 'string'." We need to suppress this error
+      // because of the need to test validations.
+      // @ts-ignore
+      ParamSpecs.createFromBackendDict({
+        y: {
+          obj_type: 'UnicodeString',
+        },
+        a: {
+          obj_type: 'UnicodeString',
+        },
+      }) as string
+    );
+    fixture.detectChanges();
+  });
+
+  it('should initialise component when user open editor', () => {
+    component.ngOnInit();
+
+    expect(component.availableParamNames).toEqual(['y', 'a']);
+    expect(component.value).toBe('y');
+    expect(component.SCHEMA).toEqual({
       type: 'unicode',
-      choices: ['y', 'a']
+      choices: ['y', 'a'],
     });
   });
 
-  it('should return true if the available param names are not empty', () => {
-    ctrl.$onInit();
+  it('should set value null if the available param names is empty', () => {
+    spyOn(
+      explorationParamSpecsService.savedMemento,
+      'getParamNames'
+    ).and.returnValue([]);
 
-    expect(ctrl.validate()).toBeTrue();
+    component.ngOnInit();
+
+    expect(component.value).toBeNull();
   });
 
-  it('should return false if the available param names is empty', () => {
-    spyOn(explorationParamSpecsService.savedMemento, 'getParamNames').
-      and.returnValue([]);
-    ctrl.$onInit();
-
-    expect(ctrl.validate()).toBeFalse();
+  it('should get schema', () => {
+    expect(component.getSchema()).toEqual(component.SCHEMA);
   });
 
   it('should update value when user enter new local value', () => {
-    ctrl.$onInit();
+    component.value = 'y';
 
-    expect(ctrl.localValue).toBe('y');
-    expect(ctrl.value).toBeUndefined();
+    component.updateValue('a');
 
-    ctrl.localValue = 'test';
-    $scope.$apply();
-
-    expect(ctrl.value).toBe('test');
+    expect(component.value).toBe('a');
   });
 
-  it('should update localvalue when value gets updated', () => {
-    ctrl.$onInit();
+  it('should not update value when the input is not a string', () => {
+    component.value = 'y';
 
-    expect(ctrl.localValue).toBe('y');
+    component.updateValue(5);
 
-    ctrl.value = 'test';
-    $scope.$apply();
-
-    expect(ctrl.localValue).toBe('test');
+    expect(component.value).toBe('y');
   });
 });

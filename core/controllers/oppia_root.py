@@ -14,24 +14,51 @@
 
 """Controllers for the oppia root page."""
 
-from __future__ import absolute_import  # pylint: disable=import-only-modules
-from __future__ import unicode_literals  # pylint: disable=import-only-modules
+from __future__ import annotations
 
-from core.controllers import acl_decorators
-from core.controllers import base
+from core.controllers import acl_decorators, base
+from core.domain import feature_flag_services
 
 from typing import Dict
 
 
-class OppiaRootPage(base.BaseHandler):
+class OppiaRootPage(base.BaseHandler[Dict[str, str], Dict[str, str]]):
     """Renders oppia root page (unified entry point) for all routes registered
-       with angular router.
+    with angular router.
     """
 
     # Using type ignore[misc] here because untyped decorator makes function
     # "get" also untyped.
-    @acl_decorators.open_access # type: ignore[misc]
-    def get(self, **kwargs: Dict[str, str]) -> None: # pylint: disable=unused-argument
+    # The '**kwargs' argument is needed because some routes pass keyword
+    # arguments and even when we don't use them we need to allow them so that
+    # there is no error in the callsite.
+    @acl_decorators.open_access
+    def get(self, **kwargs: Dict[str, str]) -> None:
         """Handles GET requests."""
-        self.render_template( # type: ignore[no-untyped-call]
-            'oppia-root.mainpage.html')
+        url = self.request.uri
+
+        # Feature flags are evaluated here so that they arrive with the initial
+        # page load, instead of requiring a separate blocking request to the
+        # feature flags evaluation handler during frontend bootstrap. This
+        # removes an extra network round-trip and a redundant auth/user lookup.
+        feature_flag_dict = (
+            feature_flag_services.evaluate_all_feature_flag_configs(
+                self.user_id
+            )
+        )
+        render_values: Dict[str, Dict[str, bool]] = {
+            'OPPIA_FEATURE_FLAGS': feature_flag_dict
+        }
+
+        if 'explore' in url or 'embed' in url:
+            self.render_template(
+                'oppia-root.mainpage.html',
+                iframe_restriction=None,
+                values=render_values,
+            )
+            return
+
+        self.render_template(
+            'oppia-root.mainpage.html',
+            values=render_values,
+        )

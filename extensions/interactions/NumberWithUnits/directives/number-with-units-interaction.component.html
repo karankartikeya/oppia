@@ -1,22 +1,18 @@
-<form autocomplete="off" ng-disabled="$ctrl.NumberWithUnitsForm.$invalid" ng-submit="$ctrl.submitAnswer($ctrl.answer)" role="form" class="form-horizontal">
-  <!-- This ng-form is needed for submitting answer on hitting enter. -->
-  <ng-form name="$ctrl.NumberWithUnitsForm" class="input">
-    <input type="text" name="answer" ng-model="$ctrl.answer" class="form-control">
-  </ng-form>
+<form autocomplete="off" [attr.disabled]="!isValid" role="form" class="row .e2e-test-float-form-input" (submit)="submitAnswer()">
+  <!-- This form is needed for submitting the answer on hitting enter. -->
+  <input type="text"
+         name="answer"
+         aria-label="Your answer"
+         [(ngModel)]="answer"
+         (ngModelChange)="answerValueChanged()"
+         class="form-control"
+         [oppiaFocusOn]="labelForFocusTarget">
 
-  <div class="oppia-form-error oppia-units-input-error">
-    <[$ctrl.getWarningText()]>
+  <div class="oppia-form-error oppia-units-input-error e2e-test-form-error-container">
+    {{ errorMessageI18nKey | translate }}
   </div>
 </form>
-<button class="btn btn-secondary" ng-click="$ctrl.showHelp()" translate="I18N_INTERACTIONS_NUMBER_WITH_UNITS_POSSIBLE_UNIT_FORMATS"></button>
-
-<style>
-  .oppia-units-input-error {
-    margin-top: 10px;
-  }
-
-  .ng-invalid {
-    border-color: red;
-    outline-color: red;
-  }
-</style>
+<button class="btn btn-secondary e2e-test-show-unit-formats"
+        (click)="showHelp()"
+        [innerHTML]="'I18N_INTERACTIONS_NUMBER_WITH_UNITS_POSSIBLE_UNIT_FORMATS' | translate">
+</button>

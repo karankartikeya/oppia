@@ -14,51 +14,98 @@
 
 """Common utility functions."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import base64
+import binascii
 import collections
 import datetime
 import hashlib
-import imghdr
+import io
 import itertools
 import json
 import os
 import random
 import re
 import string
-import sys
 import time
 import unicodedata
-import urllib
-import zlib
+import urllib.parse
 
-from core import feconf
-from core import python_utils
+from core import feconf, utils
 from core.constants import constants
 
+import filetype
+import yaml
+from PIL import Image
 from typing import (
-    Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, TypeVar,
-    Union)
-
-_YAML_PATH = os.path.join(os.getcwd(), '..', 'oppia_tools', 'pyyaml-5.1.2')
-sys.path.insert(0, _YAML_PATH)
-
-import yaml  # isort:skip  # pylint: disable=wrong-import-position
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    overload,
+)
 
 DATETIME_FORMAT = '%m/%d/%Y, %H:%M:%S:%f'
 ISO_8601_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fz'
 PNG_DATA_URL_PREFIX = 'data:image/png;base64,'
+DATA_URL_FORMAT_PREFIX = 'data:image/%s;base64,'
 SECONDS_IN_HOUR = 60 * 60
 SECONDS_IN_MINUTE = 60
 
 T = TypeVar('T')
 
-# TODO(#13059): We will be ignoring no-untyped-call and no-any-return here
-# because python_utils is untyped and will be removed in python3.
-# These will be removed after python3 migration and adding stubs for new python3
-# libraries.
+
+class SingletonMeta(type):
+    """Metaclass for creating singleton classes.
+
+    This metaclass ensures that only one instance of a class is created. It is
+    thread-safe and uses a dictionary to store instances per class type. This
+    is useful for managing shared resources like database connections, cache
+    clients, or configuration objects.
+    """
+
+    # Here we use object because the metaclass needs to store instances of any
+    # class type that uses it, and we cannot know the specific types at the
+    # metaclass definition level.
+    _instances: Dict[type, object] = {}
+
+    # Here we use object because the metaclass needs to work with any class
+    # type that uses it as a metaclass, and we cannot know the specific return
+    # type at the metaclass level.
+    def __call__(cls, *args: object, **kwargs: Dict[str, object]) -> object:
+        """Create or return the singleton instance of the class.
+
+        Args:
+            *args: list(*). Positional arguments for class initialization.
+            **kwargs: dict. Keyword arguments for class initialization.
+
+        Returns:
+            object. The singleton instance of the class.
+
+        Raises:
+            ValueError. If the singleton instance already exists and new
+                initialization arguments are provided.
+        """
+        if cls not in cls._instances:
+            cls._instances[cls] = super(SingletonMeta, cls).__call__(
+                *args, **kwargs
+            )
+        elif args or kwargs:
+            raise ValueError(
+                f'Singleton instance of {cls.__name__} already exists. '
+                f'Cannot reinitialize with new arguments: args={args}, '
+                f'kwargs={kwargs}'
+            )
+        return cls._instances[cls]
 
 
 class InvalidInputException(Exception):
@@ -89,9 +136,25 @@ class ExplorationConversionError(Exception):
     pass
 
 
+@overload
+def get_file_contents(filepath: str, *, mode: str = 'r') -> str: ...
+
+
+@overload
 def get_file_contents(
-        filepath: str, raw_bytes: bool = False, mode: str = 'r'
-) -> str:
+    filepath: str, *, raw_bytes: Literal[False], mode: str = 'r'
+) -> str: ...
+
+
+@overload
+def get_file_contents(
+    filepath: str, *, raw_bytes: Literal[True], mode: str = 'r'
+) -> bytes: ...
+
+
+def get_file_contents(
+    filepath: str, raw_bytes: bool = False, mode: str = 'r'
+) -> Union[str, bytes]:
     """Gets the contents of a file, given a relative filepath
     from oppia.
 
@@ -101,8 +164,9 @@ def get_file_contents(
         mode: str. File opening mode, default is in read mode.
 
     Returns:
-        *. Either the raw_bytes stream if the flag is set or the
-        decoded stream in utf-8 format.
+        Union[str, bytes]. Either the raw_bytes stream ( bytes type ) if
+        the raw_bytes is True or the decoded stream ( string type ) in
+        utf-8 format if raw_bytes is False.
     """
     if raw_bytes:
         mode = 'rb'
@@ -110,14 +174,16 @@ def get_file_contents(
     else:
         encoding = 'utf-8'
 
-    with python_utils.open_file( # type: ignore[no-untyped-call]
-        filepath, mode, encoding=encoding) as f:
-        return f.read() # type: ignore[no-any-return]
+    with open(filepath, mode, encoding=encoding) as f:
+        file_contents = f.read()
+        # Ruling out the possibility of Any other type for mypy type checking.
+        assert isinstance(file_contents, (str, bytes))
+        return file_contents
 
 
 def get_exploration_components_from_dir(
-        dir_path: str
-) -> Tuple[str, List[Tuple[str, str]]]:
+    dir_path: str,
+) -> Tuple[str, List[Tuple[str, bytes]]]:
     """Gets the (yaml, assets) from the contents of an exploration data dir.
 
     Args:
@@ -145,7 +211,8 @@ def get_exploration_components_from_dir(
         for directory in directories:
             if root == dir_path and directory not in ('assets', '__pycache__'):
                 raise Exception(
-                    'The only directory in %s should be assets/' % dir_path)
+                    'The only directory in %s should be assets/' % dir_path
+                )
 
         for filename in files:
             filepath = os.path.join(root, filename)
@@ -156,20 +223,23 @@ def get_exploration_components_from_dir(
                     if yaml_content is not None:
                         raise Exception(
                             'More than one non-asset file specified '
-                            'for %s' % dir_path)
-                    elif not filepath.endswith('.yaml'):
+                            'for %s' % dir_path
+                        )
+                    if not filepath.endswith('.yaml'):
                         raise Exception(
                             'Found invalid non-asset file %s. There '
                             'should only be a single non-asset file, '
-                            'and it should have a .yaml suffix.' % filepath)
-                    else:
-                        yaml_content = get_file_contents(filepath)
+                            'and it should have a .yaml suffix.' % filepath
+                        )
+
+                    yaml_content = get_file_contents(filepath)
             else:
                 filepath_array = filepath.split('/')
                 # The additional offset is to remove the 'assets/' prefix.
-                filename = '/'.join(filepath_array[dir_path_length + 1:])
-                assets_list.append((filename, get_file_contents(
-                    filepath, raw_bytes=True)))
+                filename = '/'.join(filepath_array[dir_path_length + 1 :])
+                assets_list.append(
+                    (filename, get_file_contents(filepath, raw_bytes=True))
+                )
 
     if yaml_content is None:
         raise Exception('No yaml file specifed for %s' % dir_path)
@@ -205,13 +275,13 @@ def to_ascii(input_string: str) -> str:
     Returns:
         str. String containing the ascii representation of the input string.
     """
-    normalized_string = unicodedata.normalize(
-        'NFKD', python_utils.UNICODE(input_string))
+    normalized_string = unicodedata.normalize('NFKD', str(input_string))
     return normalized_string.encode('ascii', 'ignore').decode('ascii')
 
 
-# This function accepts general structured yaml string, hence Any type has to be
-# used here for the type of returned dictionary.
+# Here we use type Any because this function accepts general structured
+# yaml string, hence Any type has to be used here for the type of returned
+# dictionary.
 def dict_from_yaml(yaml_str: str) -> Dict[str, Any]:
     """Gets the dict representation of a YAML string.
 
@@ -222,7 +292,7 @@ def dict_from_yaml(yaml_str: str) -> Dict[str, Any]:
         dict. Parsed dict representation of the yaml string.
 
     Raises:
-        InavlidInputException. If the yaml string sent as the
+        InvalidInputException. If the yaml string sent as the
             parameter is unable to get parsed, them this error gets
             raised.
     """
@@ -231,32 +301,24 @@ def dict_from_yaml(yaml_str: str) -> Dict[str, Any]:
         assert isinstance(retrieved_dict, dict)
         return retrieved_dict
     except (AssertionError, yaml.YAMLError) as e:
-        raise InvalidInputException(e)
+        raise InvalidInputException(e) from e
 
 
-# Here obj has a recursive structure. The list element or dictionary value
-# could recursively be the same structure, hence we use Any as their types.
-def recursively_remove_key(
-        obj: Union[Dict[str, Any], List[Any]], key_to_remove: str
-) -> None:
-    """Recursively removes keys from a list or dict.
+# Here we use type Any because we want to accept both Dict and TypedDict
+# types of values here.
+def yaml_from_dict(dictionary: Mapping[str, Any], width: int = 80) -> str:
+    """Gets the YAML representation of a dict.
 
     Args:
-        obj: *. List or dict passed for which the keys has to
-            be removed.
-        key_to_remove: str. Key value that has to be removed.
+        dictionary: dict. Dictionary for conversion into yaml.
+        width: int. Width for the yaml representation, default value
+            is set to be of 80.
 
     Returns:
-        *. Dict or list with a particular key value removed.
+        str. Converted yaml of the passed dictionary.
     """
-    if isinstance(obj, list):
-        for item in obj:
-            recursively_remove_key(item, key_to_remove)
-    elif isinstance(obj, dict):
-        if key_to_remove in obj:
-            del obj[key_to_remove]
-        for key, unused_value in obj.items():
-            recursively_remove_key(obj[key], key_to_remove)
+    yaml_str: str = yaml.dump(dictionary, allow_unicode=True, width=width)
+    return yaml_str
 
 
 def get_random_int(upper_bound: int) -> int:
@@ -269,8 +331,9 @@ def get_random_int(upper_bound: int) -> int:
     Returns:
         int. Randomly generated integer less than the upper_bound.
     """
-    assert upper_bound >= 0 and isinstance(upper_bound, int)
-
+    assert upper_bound >= 0 and isinstance(
+        upper_bound, int
+    ), 'Only positive integers allowed'
     generator = random.SystemRandom()
     return generator.randrange(0, stop=upper_bound)
 
@@ -284,55 +347,107 @@ def get_random_choice(alist: List[T]) -> T:
     Returns:
         *. Random element choosen from the passed input list.
     """
-    assert isinstance(alist, list) and len(alist) > 0
-
+    assert (
+        isinstance(alist, list) and len(alist) > 0
+    ), 'Only non-empty lists allowed'
     index = get_random_int(len(alist))
     return alist[index]
 
 
-def convert_png_data_url_to_binary(image_data_url: str) -> bytes:
-    """Converts a PNG base64 data URL to a PNG binary data.
+def get_url_scheme(url: str) -> str:
+    """Gets the url scheme used by a link.
+
+    Args:
+        url: str. The URL.
+
+    Returns:
+        str. Returns the URL scheme.
+    """
+    return urllib.parse.urlparse(url).scheme
+
+
+def convert_png_binary_to_webp_binary(png_binary: bytes) -> bytes:
+    """Convert png binary to webp binary.
+
+    Args:
+        png_binary: bytes. The binary content of png.
+
+    Returns:
+        bytes. The binary content of webp.
+    """
+    with io.BytesIO() as output:
+        image = Image.open(io.BytesIO(png_binary)).convert('RGB')
+        image.save(output, 'webp')
+        return output.getvalue()
+
+
+def convert_data_url_to_binary(image_data_url: str, file_type: str) -> bytes:
+    """Converts a PNG or WEBP base64 data URL to a PNG binary data.
 
     Args:
         image_data_url: str. A string that is to be interpreted as a PNG
-            data URL.
+            or WEBP data URL.
+        file_type: str. Type of the data url, webp or png.
 
     Returns:
-        bytes. Binary content of the PNG created from the data URL.
+        bytes. Binary content of the PNG or WEBP created from the data URL.
 
     Raises:
         Exception. The given string does not represent a PNG data URL.
     """
-    if image_data_url.startswith(PNG_DATA_URL_PREFIX):
+    if image_data_url.startswith(DATA_URL_FORMAT_PREFIX % file_type):
         return base64.b64decode(
-            python_utils.urllib_unquote(
-                image_data_url[len(PNG_DATA_URL_PREFIX):]))
+            urllib.parse.unquote(
+                image_data_url[len(DATA_URL_FORMAT_PREFIX % file_type) :]
+            )
+        )
     else:
-        raise Exception('The given string does not represent a PNG data URL.')
+        raise Exception(
+            'The given string does not represent a %s data URL.' % file_type
+        )
 
 
-def convert_png_binary_to_data_url(content: Union[str, bytes]) -> str:
-    """Converts a PNG image string (represented by 'content') to a data URL.
+def convert_image_binary_to_data_url(content: bytes, file_type: str) -> str:
+    """Converts a PNG or WEBP image string (represented by 'content')
+    to a data URL.
 
     Args:
-        content: str. PNG binary file content.
+        content: str. PNG or WEBP binary file content.
+        file_type: str. Type of the binary data, webp or png.
 
     Returns:
-        str. Data URL created from the binary content of the PNG.
+        str. Data URL created from the binary content of the PNG or WEBP.
 
     Raises:
         Exception. The given binary string does not represent a PNG image.
+        Exception. The given binary string does not represent a WEBP image.
     """
-    # We accept unicode but imghdr.what(file, h) accepts 'h' of type bytes.
-    # So we have casted content to be bytes.
-    content = python_utils.convert_to_bytes(content)
-    if imghdr.what(None, h=content) == 'png':
-        return '%s%s' % (
-            PNG_DATA_URL_PREFIX,
-            python_utils.url_quote(base64.b64encode(content))  # type: ignore[no-untyped-call]
+    file_details = filetype.guess(content)
+    if file_details is None or file_details.extension != file_type:
+        raise Exception(
+            'The given binary string does not represent a %s image.' % file_type
         )
-    else:
-        raise Exception('The given string does not represent a PNG image.')
+
+    return '%s%s' % (
+        DATA_URL_FORMAT_PREFIX % file_type,
+        urllib.parse.quote(base64.b64encode(content)),
+    )
+
+
+def is_base64_encoded(content: str) -> bool:
+    """Checks if a string is base64 encoded.
+
+    Args:
+        content: str. String to check.
+
+    Returns:
+        bool. True if a string is base64 encoded, False otherwise.
+    """
+    try:
+        base64.b64decode(content, validate=True)
+        return True
+    except binascii.Error:
+        return False
 
 
 def convert_png_to_data_url(filepath: str) -> str:
@@ -345,7 +460,7 @@ def convert_png_to_data_url(filepath: str) -> str:
         str. Data url created from the filepath of the PNG.
     """
     file_contents = get_file_contents(filepath, raw_bytes=True, mode='rb')
-    return convert_png_binary_to_data_url(file_contents)
+    return convert_image_binary_to_data_url(file_contents, 'png')
 
 
 def camelcase_to_hyphenated(camelcase_str: str) -> str:
@@ -374,9 +489,7 @@ def camelcase_to_snakecase(camelcase_str: str) -> str:
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', intermediate_str).lower()
 
 
-def set_url_query_parameter(
-        url: str, param_name: str, param_value: str
-) -> str:
+def set_url_query_parameter(url: str, param_name: str, param_value: str) -> str:
     """Set or replace a query parameter, and return the modified URL.
 
     Args:
@@ -391,19 +504,21 @@ def set_url_query_parameter(
         Exception. If the query parameter sent is not of string type,
             them this exception is raised.
     """
-    if not isinstance(param_name, python_utils.BASESTRING):
+    if not isinstance(param_name, str):
         raise Exception(
             'URL query parameter name must be a string, received %s'
-            % param_name)
+            % param_name
+        )
 
     scheme, netloc, path, query_string, fragment = urllib.parse.urlsplit(url)
-    query_params = python_utils.parse_query_string(query_string) # type: ignore[no-untyped-call]
+    query_params = urllib.parse.parse_qs(query_string)
 
     query_params[param_name] = [param_value]
-    new_query_string = python_utils.url_encode(query_params, doseq=True) # type: ignore[no-untyped-call]
+    new_query_string = urllib.parse.urlencode(query_params, doseq=True)
 
-    return python_utils.url_unsplit( # type: ignore[no-any-return, no-untyped-call]
-        (scheme, netloc, path, new_query_string, fragment))
+    return urllib.parse.urlunsplit(
+        (scheme, netloc, path, new_query_string, fragment)
+    )
 
 
 class JSONEncoderForHTML(json.JSONEncoder):
@@ -413,14 +528,14 @@ class JSONEncoderForHTML(json.JSONEncoder):
     # but we are returning Union[str, unicode].
     def encode(self, o: str) -> str:
         chunks = self.iterencode(o, True)
-        return ''.join(chunks) if self.ensure_ascii else u''.join(chunks)
+        return ''.join(chunks)
 
     def iterencode(self, o: str, _one_shot: bool = False) -> Iterator[str]:
-        chunks = super(
-            JSONEncoderForHTML, self).iterencode(o, _one_shot=_one_shot)
+        chunks = super().iterencode(o, _one_shot=_one_shot)
         for chunk in chunks:
-            yield chunk.replace('&', '\\u0026').replace(
-                '<', '\\u003c').replace('>', '\\u003e')
+            yield chunk.replace('&', '\\u0026').replace('<', '\\u003c').replace(
+                '>', '\\u003e'
+            )
 
 
 def convert_to_hash(input_string: str, max_length: int) -> str:
@@ -438,18 +553,17 @@ def convert_to_hash(input_string: str, max_length: int) -> str:
         Exception. If the input string is not the instance of the str,
             them this exception is raised.
     """
-    if not isinstance(input_string, python_utils.BASESTRING):
+    if not isinstance(input_string, str):
         raise Exception(
-            'Expected string, received %s of type %s' %
-            (input_string, type(input_string)))
+            'Expected string, received %s of type %s'
+            % (input_string, type(input_string))
+        )
 
     # Encodes strings using the character set [A-Za-z0-9].
     # Prefixing altchars with b' to ensure that all characters in encoded_string
     # remain encoded (otherwise encoded_string would be of type unicode).
     encoded_string = base64.b64encode(
-        hashlib.sha1(
-            python_utils.convert_to_bytes(input_string)).digest(),
-        altchars=b'ab'
+        hashlib.sha1(input_string.encode('utf-8')).digest(), altchars=b'ab'
     ).replace(b'=', b'c')
 
     return encoded_string[:max_length].decode('utf-8')
@@ -464,8 +578,7 @@ def base64_from_int(value: int) -> str:
     Returns:
         str. Returns the base64 representation of the number passed.
     """
-    byte_value = (
-        b'[' + python_utils.UNICODE(value).encode('utf-8') + b']')
+    byte_value = b'[' + str(value).encode('utf-8') + b']'
     return base64.b64encode(byte_value).decode('utf-8')
 
 
@@ -478,8 +591,32 @@ def get_time_in_millisecs(datetime_obj: datetime.datetime) -> float:
     Returns:
         float. The time in milliseconds since the Epoch.
     """
-    msecs = time.mktime(datetime_obj.timetuple()) * 1000.0
-    return msecs + python_utils.divide(datetime_obj.microsecond, 1000.0) # type: ignore[no-any-return, no-untyped-call]
+    if datetime_obj.tzinfo is None:
+        # Naive datetime (no tzinfo). Treated as UTC. This can come from
+        # NDB model fields (e.g. created_on, last_updated) which store
+        # naive UTC in the datastore.
+        datetime_obj = datetime_obj.replace(tzinfo=datetime.timezone.utc)
+    else:
+        # Aware datetime. Normalize to UTC before converting.
+        datetime_obj = datetime_obj.astimezone(datetime.timezone.utc)
+    return datetime_obj.timestamp() * 1000.0
+
+
+def convert_millisecs_time_to_datetime_object(
+    date_time_msecs: float,
+) -> datetime.datetime:
+    """Returns the datetime object from the given date time in milliseconds.
+
+    Args:
+        date_time_msecs: float. Date time represented in milliseconds.
+
+    Returns:
+        datetime. An object of type datetime.datetime corresponding to
+        the given milliseconds.
+    """
+    return datetime.datetime.fromtimestamp(
+        date_time_msecs / 1000.0, tz=datetime.timezone.utc
+    )
 
 
 def convert_naive_datetime_to_string(datetime_obj: datetime.datetime) -> str:
@@ -496,7 +633,7 @@ def convert_naive_datetime_to_string(datetime_obj: datetime.datetime) -> str:
 
 
 def convert_string_to_naive_datetime_object(
-        date_time_string: str
+    date_time_string: str,
 ) -> datetime.datetime:
     """Returns the naive datetime object equivalent of the date string.
 
@@ -512,13 +649,42 @@ def convert_string_to_naive_datetime_object(
     return datetime.datetime.strptime(date_time_string, DATETIME_FORMAT)
 
 
+def get_current_utc_datetime() -> datetime.datetime:
+    """Returns the current UTC datetime."""
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def get_current_utc_date() -> datetime.date:
+    """Returns the current UTC date."""
+    return get_current_utc_datetime().date()
+
+
+def get_current_local_datetime() -> datetime.datetime:
+    """Returns the current local datetime.
+
+    This preserves the existing semantics of datetime.datetime.today().
+    """
+    return datetime.datetime.now()
+
+
+def normalize_datetime_to_utc(dt: datetime.datetime) -> datetime.datetime:
+    """Normalizes a datetime to timezone-aware UTC.
+
+    Naive datetimes are treated as UTC for backwards compatibility.
+    """
+    if dt.tzinfo is None or dt.utcoffset() is None:
+        return dt.replace(tzinfo=datetime.timezone.utc)
+
+    return dt.astimezone(datetime.timezone.utc)
+
+
 def get_current_time_in_millisecs() -> float:
     """Returns time in milliseconds since the Epoch.
 
     Returns:
         float. The time in milliseconds since the Epoch.
     """
-    return get_time_in_millisecs(datetime.datetime.utcnow())
+    return get_time_in_millisecs(datetime.datetime.now(datetime.timezone.utc))
 
 
 def get_human_readable_time_string(time_msec: float) -> str:
@@ -533,12 +699,26 @@ def get_human_readable_time_string(time_msec: float) -> str:
     """
     # Ignoring arg-type because we are preventing direct usage of 'str' for
     # Python3 compatibilty.
-    return time.strftime(
-        '%B %d %H:%M:%S', time.gmtime(python_utils.divide(time_msec, 1000.0))) # type: ignore[arg-type, no-untyped-call]
+
+    assert time_msec >= 0, 'Time cannot be negative'
+    return time.strftime('%B %d %H:%M:%S', time.gmtime(time_msec / 1000.0))
+
+
+def get_number_of_days_since_date(date: datetime.date) -> int:
+    """Returns the number of days past since a given date.
+
+    Args:
+        date: datetime.date. Date since when the number of days is to
+            calculated.
+
+    Returns:
+        int. The number of days past since a given date.
+    """
+    return int((utils.get_current_utc_date() - date).days)
 
 
 def create_string_from_largest_unit_in_timedelta(
-        timedelta_obj: datetime.timedelta
+    timedelta_obj: datetime.timedelta,
 ) -> str:
     """Given the timedelta object, find the largest nonzero time unit and
     return that value, along with the time unit, as a human readable string.
@@ -561,16 +741,21 @@ def create_string_from_largest_unit_in_timedelta(
     total_seconds = timedelta_obj.total_seconds()
     if total_seconds <= 0:
         raise Exception(
-            'Expected a positive timedelta, received: %s.' % total_seconds)
-    elif timedelta_obj.days != 0:
+            'Expected a positive timedelta, received: %s.' % total_seconds
+        )
+    if timedelta_obj.days != 0:
         return '%s day%s' % (
-            int(timedelta_obj.days), 's' if timedelta_obj.days > 1 else '')
+            int(timedelta_obj.days),
+            's' if timedelta_obj.days > 1 else '',
+        )
     else:
         number_of_hours, remainder = divmod(total_seconds, SECONDS_IN_HOUR)
         number_of_minutes, _ = divmod(remainder, SECONDS_IN_MINUTE)
         if number_of_hours != 0:
             return '%s hour%s' % (
-                int(number_of_hours), 's' if number_of_hours > 1 else '')
+                int(number_of_hours),
+                's' if number_of_hours > 1 else '',
+            )
         elif number_of_minutes > 1:
             return '%s minutes' % int(number_of_minutes)
         # Round any seconds up to one minute.
@@ -579,8 +764,7 @@ def create_string_from_largest_unit_in_timedelta(
 
 
 def are_datetimes_close(
-        later_datetime: datetime.datetime,
-        earlier_datetime: datetime.datetime
+    later_datetime: datetime.datetime, earlier_datetime: datetime.datetime
 ) -> bool:
     """Given two datetimes, determines whether they are separated by less than
     feconf.PROXIMAL_TIMEDELTA_SECS seconds.
@@ -593,6 +777,8 @@ def are_datetimes_close(
         bool. True if difference between two datetimes is less than
         feconf.PROXIMAL_TIMEDELTA_SECS seconds otherwise false.
     """
+    later_datetime = normalize_datetime_to_utc(later_datetime)
+    earlier_datetime = normalize_datetime_to_utc(earlier_datetime)
     difference_in_secs = (later_datetime - earlier_datetime).total_seconds()
     return difference_in_secs < feconf.PROXIMAL_TIMEDELTA_SECS
 
@@ -644,7 +830,7 @@ def vfs_normpath(path: str) -> str:
 
 
 def require_valid_name(
-        name: str, name_type: str, allow_empty: bool = False
+    name: str, name_type: str, allow_empty: bool = False
 ) -> None:
     """Generic name validation.
 
@@ -662,7 +848,7 @@ def require_valid_name(
         ValidationError. Adjacent whitespace in name_type isn't collapsed.
         ValidationError. Invalid character is present in name.
     """
-    if not isinstance(name, python_utils.BASESTRING):
+    if not isinstance(name, str):
         raise ValidationError('%s must be a string.' % name)
 
     if allow_empty and name == '':
@@ -673,25 +859,71 @@ def require_valid_name(
     if len(name) > 50 or len(name) < 1:
         raise ValidationError(
             'The length of %s should be between 1 and 50 '
-            'characters; received %s' % (name_type, name))
+            'characters; received %s' % (name_type, name)
+        )
 
     if name[0] in string.whitespace or name[-1] in string.whitespace:
-        raise ValidationError(
-            'Names should not start or end with whitespace.')
+        raise ValidationError('Names should not start or end with whitespace.')
 
     if re.search(r'\s\s+', name):
         raise ValidationError(
-            'Adjacent whitespace in %s should be collapsed.' % name_type)
+            'Adjacent whitespace in %s should be collapsed.' % name_type
+        )
 
     for character in constants.INVALID_NAME_CHARS:
         if character in name:
             raise ValidationError(
-                'Invalid character %s in %s: %s' %
-                (character, name_type, name))
+                r'Invalid character %s in %s: %s' % (character, name_type, name)
+            )
+
+
+def require_valid_title(
+    title: str, title_type: str, max_length: int = 50, allow_empty: bool = False
+) -> None:
+    """Generic title validation for display titles.
+
+    Args:
+        title: str. The title to validate.
+        title_type: str. A human-readable string, like 'the collection title'.
+            This will be shown in error messages.
+        max_length: int. The maximum allowed length for the title.
+        allow_empty: bool. If True, empty strings are allowed.
+
+    Raises:
+        ValidationError. Title isn't a string.
+        ValidationError. The length of the title_type isn't between
+            1 and max_length.
+        ValidationError. Title starts or ends with whitespace.
+        ValidationError. Adjacent whitespace in title_type isn't collapsed.
+    """
+    if not isinstance(title, str):
+        raise ValidationError(
+            'Expected %s to be a string, received %s' % (title_type, title)
+        )
+
+    if allow_empty and title == '':
+        return
+
+    if len(title) > max_length or len(title) < 1:
+        raise ValidationError(
+            'The length of %s should be between 1 and %d '
+            'characters; received %s' % (title_type, max_length, title)
+        )
+
+    if title[0] in string.whitespace or title[-1] in string.whitespace:
+        raise ValidationError(
+            '%s should not start or end with whitespace.'
+            % (title_type.capitalize())
+        )
+
+    if re.search(r'\s\s+', title):
+        raise ValidationError(
+            'Adjacent whitespace in %s should be collapsed.' % title_type
+        )
 
 
 def require_valid_url_fragment(
-        name: str, name_type: str, allowed_length: int
+    name: str, name_type: str, allowed_length: int
 ) -> None:
     """Generic URL fragment validation.
 
@@ -707,116 +939,125 @@ def require_valid_url_fragment(
         ValidationError. The length of the name_type is not correct.
         ValidationError. Invalid character is present in the name.
     """
-    if not isinstance(name, python_utils.BASESTRING):
+    if not isinstance(name, str):
         raise ValidationError(
-            '%s field must be a string. Received %s.' % (name_type, name))
+            '%s field must be a string. Received %s.' % (name_type, name)
+        )
 
     if name == '':
-        raise ValidationError(
-            '%s field should not be empty.' % name_type)
+        raise ValidationError('%s field should not be empty.' % name_type)
 
     if len(name) > allowed_length:
         raise ValidationError(
             '%s field should not exceed %d characters, '
-            'received %s.' % (name_type, allowed_length, name))
+            'received %s.' % (name_type, allowed_length, name)
+        )
 
     if not re.match(constants.VALID_URL_FRAGMENT_REGEX, name):
         raise ValidationError(
             '%s field contains invalid characters. Only lowercase words'
-            ' separated by hyphens are allowed. Received %s.' % (
-                name_type, name))
+            ' separated by hyphens are allowed. Received %s.'
+            % (name_type, name)
+        )
 
 
 def require_valid_thumbnail_filename(thumbnail_filename: str) -> None:
     """Generic thumbnail filename validation.
 
-        Args:
-            thumbnail_filename: str. The thumbnail filename to validate.
+    Args:
+        thumbnail_filename: str. The thumbnail filename to validate.
 
-        Raises:
-            ValidationError. Thumbnail filename is not a string.
-            ValidationError. Thumbnail filename does start with a dot.
-            ValidationError. Thumbnail filename includes slashes
-                or consecutive dots.
-            ValidationError. Thumbnail filename does not include an extension.
-            ValidationError. Thumbnail filename extension is not svg.
-        """
+    Raises:
+        ValidationError. Thumbnail filename is not a string.
+        ValidationError. Thumbnail filename does start with a dot.
+        ValidationError. Thumbnail filename includes slashes
+            or consecutive dots.
+        ValidationError. Thumbnail filename does not include an extension.
+        ValidationError. Thumbnail filename extension is not svg.
+    """
     if thumbnail_filename is not None:
-        if not isinstance(thumbnail_filename, python_utils.BASESTRING):
+        if not isinstance(thumbnail_filename, str):
             raise ValidationError(
                 'Expected thumbnail filename to be a string, received %s'
-                % thumbnail_filename)
+                % thumbnail_filename
+            )
         if thumbnail_filename.rfind('.') == 0:
             raise ValidationError(
-                'Thumbnail filename should not start with a dot.')
+                'Thumbnail filename should not start with a dot.'
+            )
         if '/' in thumbnail_filename or '..' in thumbnail_filename:
             raise ValidationError(
                 'Thumbnail filename should not include slashes or '
-                'consecutive dot characters.')
+                'consecutive dot characters.'
+            )
         if '.' not in thumbnail_filename:
             raise ValidationError(
-                'Thumbnail filename should include an extension.')
+                'Thumbnail filename should include an extension.'
+            )
 
         dot_index = thumbnail_filename.rfind('.')
-        extension = thumbnail_filename[dot_index + 1:].lower()
+        extension = thumbnail_filename[dot_index + 1 :].lower()
         if extension != 'svg':
             raise ValidationError(
-                'Expected a filename ending in svg, received %s' %
-                thumbnail_filename)
+                'Expected a filename ending in svg, received %s'
+                % thumbnail_filename
+            )
 
 
 def require_valid_image_filename(image_filename: str) -> None:
     """Generic image filename validation.
 
-        Args:
-            image_filename: str. The image filename to validate.
+    Args:
+        image_filename: str. The image filename to validate.
 
-        Raises:
-            ValidationError. Image filename is not a string.
-            ValidationError. Image filename does start with a dot.
-            ValidationError. Image filename includes slashes
-                or consecutive dots.
-            ValidationError. Image filename does not include an extension.
-        """
+    Raises:
+        ValidationError. Image filename is not a string.
+        ValidationError. Image filename does start with a dot.
+        ValidationError. Image filename includes slashes
+            or consecutive dots.
+        ValidationError. Image filename does not include an extension.
+    """
     if image_filename is not None:
-        if not isinstance(image_filename, python_utils.BASESTRING):
+        if not isinstance(image_filename, str):
             raise ValidationError(
                 'Expected image filename to be a string, received %s'
-                % image_filename)
+                % image_filename
+            )
         if image_filename.rfind('.') == 0:
-            raise ValidationError(
-                'Image filename should not start with a dot.')
+            raise ValidationError('Image filename should not start with a dot.')
         if '/' in image_filename or '..' in image_filename:
             raise ValidationError(
                 'Image filename should not include slashes or '
-                'consecutive dot characters.')
+                'consecutive dot characters.'
+            )
         if '.' not in image_filename:
-            raise ValidationError(
-                'Image filename should include an extension.')
+            raise ValidationError('Image filename should include an extension.')
 
 
 def require_valid_meta_tag_content(meta_tag_content: str) -> None:
     """Generic meta tag content validation.
 
-        Args:
-            meta_tag_content: str. The meta tag content to validate.
+    Args:
+        meta_tag_content: str. The meta tag content to validate.
 
-        Raises:
-            ValidationError. Meta tag content is not a string.
-            ValidationError. Meta tag content is longer than expected.
-        """
-    if not isinstance(meta_tag_content, python_utils.BASESTRING):
+    Raises:
+        ValidationError. Meta tag content is not a string.
+        ValidationError. Meta tag content is longer than expected.
+    """
+    if not isinstance(meta_tag_content, str):
         raise ValidationError(
             'Expected meta tag content to be a string, received %s'
-            % meta_tag_content)
+            % meta_tag_content
+        )
     if len(meta_tag_content) > constants.MAX_CHARS_IN_META_TAG_CONTENT:
         raise ValidationError(
             'Meta tag content should not be longer than %s characters.'
-            % constants.MAX_CHARS_IN_META_TAG_CONTENT)
+            % constants.MAX_CHARS_IN_META_TAG_CONTENT
+        )
 
 
 def require_valid_page_title_fragment_for_web(
-        page_title_fragment_for_web: str
+    page_title_fragment_for_web: str,
 ) -> None:
     """Generic page title fragment validation.
 
@@ -826,17 +1067,30 @@ def require_valid_page_title_fragment_for_web(
     Raises:
         ValidationError. Page title fragment is not a string.
         ValidationError. Page title fragment is too lengthy.
+        ValidationError. Page title fragment is too small.
     """
     max_chars_in_page_title_frag_for_web = (
-        constants.MAX_CHARS_IN_PAGE_TITLE_FRAGMENT_FOR_WEB)
-    if not isinstance(page_title_fragment_for_web, python_utils.BASESTRING):
+        constants.MAX_CHARS_IN_PAGE_TITLE_FRAGMENT_FOR_WEB
+    )
+    min_chars_in_page_title_frag_for_web = (
+        constants.MIN_CHARS_IN_PAGE_TITLE_FRAGMENT_FOR_WEB
+    )
+
+    if not isinstance(page_title_fragment_for_web, str):
         raise ValidationError(
             'Expected page title fragment to be a string, received %s'
-            % page_title_fragment_for_web)
+            % page_title_fragment_for_web
+        )
     if len(page_title_fragment_for_web) > max_chars_in_page_title_frag_for_web:
         raise ValidationError(
             'Page title fragment should not be longer than %s characters.'
-            % constants.MAX_CHARS_IN_PAGE_TITLE_FRAGMENT_FOR_WEB)
+            % constants.MAX_CHARS_IN_PAGE_TITLE_FRAGMENT_FOR_WEB
+        )
+    if len(page_title_fragment_for_web) < min_chars_in_page_title_frag_for_web:
+        raise ValidationError(
+            'Page title fragment should not be shorter than %s characters.'
+            % constants.MIN_CHARS_IN_PAGE_TITLE_FRAGMENT_FOR_WEB
+        )
 
 
 def capitalize_string(input_string: str) -> str:
@@ -866,10 +1120,12 @@ def get_hex_color_for_category(category: str) -> str:
     Returns:
         str. Color assigned to that category.
     """
-    return ( # type: ignore[no-any-return]
+    color: str = (
         constants.CATEGORIES_TO_COLORS[category]
         if category in constants.CATEGORIES_TO_COLORS
-        else constants.DEFAULT_COLOR)
+        else constants.DEFAULT_COLOR
+    )
+    return color
 
 
 def get_thumbnail_icon_url_for_category(category: str) -> str:
@@ -883,8 +1139,10 @@ def get_thumbnail_icon_url_for_category(category: str) -> str:
         str. Path to the Thumbnail Icon assigned to that category.
     """
     icon_name = (
-        category if category in constants.CATEGORIES_TO_COLORS
-        else constants.DEFAULT_THUMBNAIL_ICON)
+        category
+        if category in constants.CATEGORIES_TO_COLORS
+        else constants.DEFAULT_THUMBNAIL_ICON
+    )
     # Remove all spaces from the string.
     return '/subjects/%s.svg' % (icon_name.replace(' ', ''))
 
@@ -912,7 +1170,8 @@ def is_valid_language_code(language_code: str) -> bool:
         bool. Whether the language code is valid or not.
     """
     language_codes = [
-        lc['code'] for lc in constants.SUPPORTED_CONTENT_LANGUAGES]
+        lc['code'] for lc in constants.SUPPORTED_CONTENT_LANGUAGES
+    ]
     return language_code in language_codes
 
 
@@ -931,14 +1190,15 @@ def get_supported_audio_language_description(language_code: str) -> str:
     """
     for language in constants.SUPPORTED_AUDIO_LANGUAGES:
         if language['id'] == language_code:
-            return language['description'] # type: ignore[no-any-return]
+            description: str = language['description']
+            return description
     raise Exception('Unsupported audio language code: %s' % language_code)
 
 
 def is_user_id_valid(
-        user_id: str,
-        allow_system_user_id: bool = False,
-        allow_pseudonymous_id: bool = False
+    user_id: str,
+    allow_system_user_id: bool = False,
+    allow_pseudonymous_id: bool = False,
 ) -> bool:
     """Verify that the user ID is in a correct format or that it belongs to
     a system user.
@@ -982,7 +1242,45 @@ def unescape_encoded_uri_component(escaped_string: str) -> str:
     Returns:
         str. Decoded string that was initially encoded with encodeURIComponent.
     """
-    return python_utils.urllib_unquote(escaped_string)
+    return urllib.parse.unquote(escaped_string)
+
+
+def get_formatted_query_string(escaped_string: str) -> str:
+    """Returns a formatted query string that can be used to perform search
+    operations from escaped query string in url.
+
+    Args:
+        escaped_string: str. Query string that is encoded with
+            encodeURIComponent.
+
+    Returns:
+        str. Formatted query string which can be directly used to perform
+        search.
+    """
+    query_string = unescape_encoded_uri_component(escaped_string)
+    # Remove all punctuation from the query string, and replace it with
+    # spaces. See http://stackoverflow.com/a/266162 and
+    # http://stackoverflow.com/a/11693937
+    remove_punctuation_map = dict(
+        (ord(char), None) for char in string.punctuation
+    )
+    return query_string.translate(remove_punctuation_map)
+
+
+def convert_filter_parameter_string_into_list(filter_string: str) -> List[str]:
+    """Converts the filter parameter string into a list of applied filter
+    values. Filter string should be in the following form:
+    ("Algebra" OR "Math" OR "Geometry"), ("hi" OR "en"), ("Fractions")
+
+    Args:
+        filter_string: str. The filter parameter string.
+
+    Returns:
+        list(str). The list of strings.
+    """
+    # The 2 and -2 account for the '("" and '")' characters at the beginning and
+    # end.
+    return filter_string[2:-2].split('" OR "') if filter_string else []
 
 
 def snake_case_to_camel_case(snake_str: str) -> str:
@@ -1015,10 +1313,10 @@ def get_asset_dir_prefix() -> str:
     return asset_dir_prefix
 
 
-# As mentioned in the documentation, `value` can have any general type which
-# a JSON object can represent, hence its type is chosen as Any. Since we
-# recursively convert this general json object into tuple or sorted tuple,
-# the return type will also be of type Any.
+# Here we use type Any because as mentioned in the documentation, `value` can
+# have any general type which a JSON object can represent, hence its type is
+# chosen as Any. Since we recursively convert this general json object into
+# tuple or sorted tuple, the return type will also be of type Any.
 def get_hashable_value(value: Any) -> Any:
     """This function returns a hashable version of the input JSON-like value.
 
@@ -1039,35 +1337,15 @@ def get_hashable_value(value: Any) -> Any:
     if isinstance(value, list):
         return tuple(get_hashable_value(e) for e in value)
     elif isinstance(value, dict):
-        return tuple(sorted(
-            # Dict keys are already hashable, only values need converting.
-            (k, get_hashable_value(v)) for k, v in value.items()))
+        return tuple(
+            sorted(
+                # Dict keys are already hashable, only values need converting.
+                (k, get_hashable_value(v))
+                for k, v in value.items()
+            )
+        )
     else:
         return value
-
-
-def compress_to_zlib(data: bytes) -> bytes:
-    """Compress the data to zlib format for efficient storage and communication.
-
-    Args:
-        data: str. Data to be compressed.
-
-    Returns:
-        str. Compressed data string.
-    """
-    return zlib.compress(data)
-
-
-def decompress_from_zlib(data: bytes) -> bytes:
-    """Decompress the zlib compressed data.
-
-    Args:
-        data: str. Data to be decompressed.
-
-    Returns:
-        str. Decompressed data string.
-    """
-    return zlib.decompress(data)
 
 
 # The mentioned types can be changed in future if they are inadequate to
@@ -1085,18 +1363,21 @@ def compute_list_difference(list_a: List[str], list_b: List[str]) -> List[str]:
     return list(sorted(set(list_a) - set(list_b)))
 
 
-# Ignoring type-arg because error thrown is 'Missing type parameters for generic
-# type "OrderedDict"' but here we don't need to specify this.
-class OrderedCounter(collections.Counter, collections.OrderedDict): # type: ignore[type-arg]
+# Here we use MyPy ignore because of the errors from this multiple inheritance
+# [type-arg]: Both `Counter` and `OrderedDict` are generic types that expect
+# type parameters (e.g., Counter[str]). Since we are not providing them here,
+# Mypy raises a `type-arg` error.
+# [misc]: `Counter` and `OrderedDict` both define a `fromkeys` class method,
+# but their type signatures are incompatible. Mypy flags this conflict
+# between parent classes with the general `misc` error code.
+class OrderedCounter(collections.Counter, collections.OrderedDict):  # type: ignore[misc, type-arg]
     """Counter that remembers the order elements are first encountered."""
 
     pass
 
 
 def grouper(
-        iterable: Iterable[T],
-        chunk_len: int,
-        fillvalue: Optional[T] = None
+    iterable: Iterable[T], chunk_len: int, fillvalue: Optional[T] = None
 ) -> Iterable[Iterable[T]]:
     """Collect data into fixed-length chunks.
 
@@ -1117,16 +1398,39 @@ def grouper(
     # To understand how/why this works, please refer to the following
     # Stack Overflow answer: https://stackoverflow.com/a/49181132/4859885.
     args = [iter(iterable)] * chunk_len
-    return python_utils.zip_longest(*args, fillvalue=fillvalue) # type: ignore[no-any-return, no-untyped-call]
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
+
+
+@overload
+def partition(
+    iterable: Iterable[T],
+    predicate: Callable[..., bool],
+    enumerated: Literal[False],
+) -> Tuple[Iterable[T], Iterable[T]]: ...
+
+
+@overload
+def partition(
+    iterable: Iterable[T],
+    predicate: Callable[..., bool],
+    enumerated: Literal[True],
+) -> Tuple[Iterable[Tuple[int, T]], Iterable[Tuple[int, T]]]: ...
+
+
+@overload
+def partition(
+    iterable: Iterable[T],
+    predicate: Callable[..., bool] = bool,
+) -> Tuple[Iterable[T], Iterable[T]]: ...
 
 
 def partition(
-        iterable: Iterable[T],
-        predicate: Callable[..., bool] = bool,
-        enumerated: bool = False
+    iterable: Iterable[T],
+    predicate: Callable[..., bool] = bool,
+    enumerated: bool = False,
 ) -> Tuple[
-        Iterable[Union[T, Tuple[int, T]]],
-        Iterable[Union[T, Tuple[int, T]]]]:
+    Iterable[Union[T, Tuple[int, T]]], Iterable[Union[T, Tuple[int, T]]]
+]:
     """Returns two generators which split the iterable based on the predicate.
 
     NOTE: The predicate is called AT MOST ONCE per item.
@@ -1162,8 +1466,7 @@ def partition(
         themselves.
     """
     if enumerated:
-        new_iterable: Iterable[Union[T, Tuple[int, T]]] = enumerate(
-            iterable)
+        new_iterable: Iterable[Union[T, Tuple[int, T]]] = enumerate(iterable)
         old_predicate = predicate
         predicate = lambda pair: old_predicate(pair[1])
     else:
@@ -1171,10 +1474,12 @@ def partition(
 
     # Creates two distinct generators over the same iterable. Memory-efficient.
     true_part, false_part = itertools.tee(
-        (i, predicate(i)) for i in new_iterable)
+        (i, predicate(i)) for i in new_iterable
+    )
     return (
         (i for i, predicate_is_true in true_part if predicate_is_true),
-        (i for i, predicate_is_true in false_part if not predicate_is_true))
+        (i for i, predicate_is_true in false_part if not predicate_is_true),
+    )
 
 
 def quoted(s: str) -> str:
@@ -1187,3 +1492,66 @@ def quoted(s: str) -> str:
         str. The quoted string.
     """
     return json.dumps(s)
+
+
+def escape_html(unescaped_html_data: str) -> str:
+    """This functions escapes an unescaped HTML string.
+
+    Args:
+        unescaped_html_data: str. Unescaped HTML string to be escaped.
+
+    Returns:
+        str. Escaped HTML string.
+    """
+    # Replace list to escape html strings.
+    replace_list_for_escaping = [
+        ('&', '&amp;'),
+        ('"', '&quot;'),
+        ('\'', '&#39;'),
+        ('<', '&lt;'),
+        ('>', '&gt;'),
+    ]
+    escaped_html_data = unescaped_html_data
+    for replace_tuple in replace_list_for_escaping:
+        escaped_html_data = escaped_html_data.replace(
+            replace_tuple[0], replace_tuple[1]
+        )
+
+    return escaped_html_data
+
+
+def unescape_html(escaped_html_data: str) -> str:
+    """This function unescapes an escaped HTML string.
+
+    Args:
+        escaped_html_data: str. Escaped HTML string to be unescaped.
+
+    Returns:
+        str. Unescaped HTML string.
+    """
+    # Replace list to unescape html strings.
+    replace_list_for_unescaping = [
+        ('&quot;', '"'),
+        ('&#39;', '\''),
+        ('&lt;', '<'),
+        ('&gt;', '>'),
+        ('&amp;', '&'),
+    ]
+    unescaped_html_data = escaped_html_data
+    for replace_tuple in replace_list_for_unescaping:
+        unescaped_html_data = unescaped_html_data.replace(
+            replace_tuple[0], replace_tuple[1]
+        )
+
+    return unescaped_html_data
+
+
+def get_image_filename_regex_pattern() -> str:
+    """Returns regex pattern for valid image filenames based on
+    accepted extensions.
+    """
+    extensions = []
+    for _, exts in feconf.ACCEPTED_IMAGE_FORMATS_AND_EXTENSIONS.items():
+        extensions.extend(exts)
+    extension_pattern = '|'.join(extensions)
+    return r'^[a-zA-Z0-9\-_]+\.(%s)$' % extension_pattern

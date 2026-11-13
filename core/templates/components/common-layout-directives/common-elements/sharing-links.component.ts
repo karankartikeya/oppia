@@ -15,28 +15,26 @@
 /**
  * @fileoverview Component for the Social Sharing Links.
  */
-import constants from 'assets/constants';
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
+import {AppConstants} from 'app.constants';
 
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
-import { SiteAnalyticsService } from 'services/site-analytics.service';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { ExplorationEmbedButtonModalComponent } from
-  'components/button-directives/exploration-embed-button-modal.component';
-import { WindowRef } from 'services/contextual/window-ref.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {SiteAnalyticsService} from 'services/site-analytics.service';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {ExplorationEmbedButtonModalComponent} from 'components/button-directives/exploration-embed-button-modal.component';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 @Component({
   selector: 'sharing-links',
   templateUrl: './sharing-links.component.html',
-  styleUrls: []
+  styleUrls: ['./sharing-links.component.css'],
 })
 export class SharingLinksComponent implements OnInit {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() layoutType!: string;
   @Input() layoutAlignType!: string;
@@ -44,9 +42,10 @@ export class SharingLinksComponent implements OnInit {
   @Input() explorationId!: string;
   @Input() collectionId!: string;
   @Input() smallFont!: boolean;
+  @Input() blogPostUrl!: string;
   classroomUrl!: string;
-  activityId!: string;
-  activityUrlFragment!: string;
+  activityId: string | undefined = undefined;
+  activityUrlFragment: string | undefined = undefined;
   serverName!: string;
   escapedTwitterText!: string;
 
@@ -55,7 +54,8 @@ export class SharingLinksComponent implements OnInit {
     private urlInterpolationService: UrlInterpolationService,
     private siteAnalyticsService: SiteAnalyticsService,
     private htmlEscaperService: HtmlEscaperService,
-    private windowRef: WindowRef) {}
+    private windowRef: WindowRef
+  ) {}
 
   ngOnInit(): void {
     if (this.shareType === 'exploration') {
@@ -64,25 +64,36 @@ export class SharingLinksComponent implements OnInit {
     } else if (this.shareType === 'collection') {
       this.activityId = this.collectionId;
       this.activityUrlFragment = 'collection';
-    } else {
+    } else if (this.shareType !== 'blog') {
       // TODO(#13122): Remove this code to throw error. Remove @Input to
-      // this component and use ContextService directly to determine if the
+      // this component and use PageContextService directly to determine if the
       // collection or exploration page is active and render accordingly.
       throw new Error(
-        'SharingLinks component can only be used either in the' +
-        'collection player or the exploration player');
+        'SharingLinks component can only be used in the ' +
+          'collection player, exploration player or the blog post page.'
+      );
     }
 
-    this.serverName = (
-      this.windowRef.nativeWindow.location.protocol + '//' +
-        this.windowRef.nativeWindow.location.host);
+    this.serverName =
+      this.windowRef.nativeWindow.location.protocol +
+      '//' +
+      this.windowRef.nativeWindow.location.host;
 
-    this.escapedTwitterText = (
-      this.htmlEscaperService.unescapedStrToEscapedStr(
-        constants.DEFAULT_TWITTER_SHARE_MESSAGE_EDITOR));
+    if (this.shareType === 'blog') {
+      this.escapedTwitterText =
+        this.htmlEscaperService.unescapedStrToEscapedStr(
+          AppConstants.DEFUALT_BLOG_POST_SHARE_TWITTER_TEXT
+        );
+    } else {
+      this.escapedTwitterText =
+        this.htmlEscaperService.unescapedStrToEscapedStr(
+          AppConstants.DEFAULT_TWITTER_SHARE_MESSAGE_EDITOR
+        );
+    }
 
     this.classroomUrl = this.urlInterpolationService.getStaticImageUrl(
-      '/general/classroom.png');
+      '/general/classroom.png'
+    );
   }
 
   getFontAndFlexClass(): string {
@@ -100,37 +111,40 @@ export class SharingLinksComponent implements OnInit {
 
   getUrl(network: SharingPlatform): string {
     let queryString: string;
-    const url = (
-      `${this.serverName}/${this.activityUrlFragment}/${this.activityId}`);
+    let url: string;
+    if (this.shareType === 'blog') {
+      url = `${this.serverName}/blog/${this.blogPostUrl}`;
+    } else {
+      url = `${this.serverName}/${this.activityUrlFragment}/${this.activityId}`;
+    }
     switch (network) {
       case 'facebook':
-        queryString = (
+        queryString =
           'sdk=joey&' +
           `u=${url}&` +
           'display=popup&' +
           'ref=plugin&' +
-          'src=share_button'
-        );
+          'src=share_button';
         return `https://www.facebook.com/sharer/sharer.php?${queryString}`;
 
       case 'twitter':
-        queryString = (
-          `text=${this.escapedTwitterText}&` +
-          `url=${url}`
-        );
+        queryString = `text=${this.escapedTwitterText}&` + `url=${url}`;
         return `https://twitter.com/share?${queryString}`;
 
       case 'classroom':
-        queryString = (
-          `url=${url}`
-        );
+        queryString = `url=${url}`;
         return `https://classroom.google.com/share?${queryString}`;
+
+      case 'linkedin':
+        queryString = `url=${url}`;
+        return `https://www.linkedin.com/sharing/share-offsite/?${queryString.replace('http:', 'https:')}`;
     }
   }
 
   showEmbedExplorationModal(): void {
-    const modelRef = this.nbgModal.open(
-      ExplorationEmbedButtonModalComponent, {backdrop: true});
+    const modelRef = this.nbgModal.open(ExplorationEmbedButtonModalComponent, {
+      backdrop: true,
+    });
     modelRef.componentInstance.serverName = this.serverName;
     modelRef.componentInstance.explorationId = this.explorationId;
   }
@@ -140,14 +154,16 @@ export class SharingLinksComponent implements OnInit {
       this.siteAnalyticsService.registerShareExplorationEvent(network);
     } else if (this.shareType === 'collection') {
       this.siteAnalyticsService.registerShareCollectionEvent(network);
+    } else if (this.shareType === 'blog') {
+      this.siteAnalyticsService.registerShareBlogPostEvent(network);
     }
-    this.windowRef.nativeWindow
-      .open(this.getUrl(network), '', 'height=460, width=640');
+    this.windowRef.nativeWindow.open(
+      this.getUrl(network),
+      '',
+      'height=460, width=640'
+    );
   }
 }
 
-type ShareType = 'exploration' | 'collection';
-type SharingPlatform = 'facebook' | 'twitter' | 'classroom';
-
-angular.module('oppia').directive('sharingLinks', downgradeComponent(
-  {component: SharingLinksComponent}));
+type ShareType = 'exploration' | 'collection' | 'blog';
+type SharingPlatform = 'facebook' | 'twitter' | 'classroom' | 'linkedin';

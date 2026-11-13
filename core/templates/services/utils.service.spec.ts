@@ -16,15 +16,17 @@
  * @fileoverview Tests that the utility functions are working as expected.
  */
 
-import { UtilsService } from 'services/utils.service';
+import {UtilsService} from 'services/utils.service';
 
 describe('Utils Service', () => {
   let uts: UtilsService = new UtilsService();
 
   it('should check if an object is empty', () => {
-    expect(uts.isEmpty({
-      a: 'b'
-    })).toEqual(false);
+    expect(
+      uts.isEmpty({
+        a: 'b',
+      })
+    ).toEqual(false);
 
     expect(uts.isEmpty({})).toEqual(true);
 
@@ -57,9 +59,11 @@ describe('Utils Service', () => {
     expect(uts.isError('abc')).toBeFalse();
     expect(uts.isError(NaN)).toBeFalse();
     expect(uts.isError({})).toBeFalse();
-    expect(uts.isError({
-      a: 'b'
-    })).toBeFalse();
+    expect(
+      uts.isError({
+        a: 'b',
+      })
+    ).toBeFalse();
     expect(uts.isError(null)).toBeFalse();
   });
 
@@ -70,8 +74,8 @@ describe('Utils Service', () => {
       k3: [1, 2, 3, 4, {a: 'b'}],
       k4: {
         x: [1, 2, 3, {a: [1, 2, 3]}],
-        y: 'abc'
-      }
+        y: 'abc',
+      },
     };
     const objB = {
       k1: 'Value1',
@@ -79,11 +83,11 @@ describe('Utils Service', () => {
       k3: [1, 2, 3, 4, {a: 'b'}],
       k4: {
         x: [1, 2, 3, {a: [1, 2, 3]}],
-        y: 'abc'
-      }
+        y: 'abc',
+      },
     };
     const objC = {
-      name: 'test'
+      name: 'test',
     };
     expect(uts.isEquivalent(objA, objB)).toBe(true);
     expect(uts.isEquivalent(objA, objC)).toBe(false);
@@ -96,8 +100,8 @@ describe('Utils Service', () => {
       k3: [1, 2, 3, 4, {a: 'b'}],
       k4: {
         x: [1, 2, 3, {a: [1, 2, 3]}],
-        y: 'abc'
-      }
+        y: 'abc',
+      },
     };
     const objB = 2;
     expect(uts.isEquivalent(objA, objB)).toBe(false);
@@ -110,8 +114,8 @@ describe('Utils Service', () => {
       k3: [1, 2, 3, 4, {a: 'b'}],
       k4: {
         x: [1, 2, 3, {a: [1, 2, 3]}],
-        y: 'abc'
-      }
+        y: 'abc',
+      },
     };
     const objB = null;
     expect(uts.isEquivalent(objA, objB)).toBe(false);
@@ -130,8 +134,8 @@ describe('Utils Service', () => {
       k3: [1, 2, 3, 4, {a: 'b'}],
       k4: {
         x: [1, 2, 3, {a: [1, 2, 3]}],
-        y: 'abc'
-      }
+        y: 'abc',
+      },
     };
     const objB = {
       k1: 'Value1',
@@ -139,8 +143,8 @@ describe('Utils Service', () => {
       k3: [1, 2, 3, 4, {a: 'c'}],
       k4: {
         x: [1, 2, 3, {a: [1, 2, 3]}],
-        y: 'abc'
-      }
+        y: 'abc',
+      },
     };
     expect(uts.isEquivalent(objA, objB)).toBe(false);
   });
@@ -148,7 +152,7 @@ describe('Utils Service', () => {
   it('should check if an obj is defined or not', () => {
     const objA = {};
     const objB = {
-      key: 'value'
+      key: 'value',
     };
     let objC;
     const objD = null;
@@ -160,20 +164,26 @@ describe('Utils Service', () => {
 
   it('should determine when an element is overflowing', () => {
     let elWithHorizontalOverflow = jasmine.createSpyObj('HTMLElement', [], {
-      offsetWidth: 200, offsetHeight: 300,
-      scrollWidth: 500, scrollHeight: 300,
+      offsetWidth: 200,
+      offsetHeight: 300,
+      scrollWidth: 500,
+      scrollHeight: 300,
     });
     expect(uts.isOverflowing(elWithHorizontalOverflow)).toBeTrue();
 
     let elWithVerticalOverflow = jasmine.createSpyObj('HTMLElement', [], {
-      offsetWidth: 200, offsetHeight: 300,
-      scrollWidth: 200, scrollHeight: 600,
+      offsetWidth: 200,
+      offsetHeight: 300,
+      scrollWidth: 200,
+      scrollHeight: 600,
     });
     expect(uts.isOverflowing(elWithVerticalOverflow)).toBeTrue();
 
     let elWithoutOverflow = jasmine.createSpyObj('HTMLElement', [], {
-      offsetWidth: 200, offsetHeight: 300,
-      scrollWidth: 200, scrollHeight: 300,
+      offsetWidth: 200,
+      offsetHeight: 300,
+      scrollWidth: 200,
+      scrollHeight: 300,
     });
     expect(uts.isOverflowing(elWithoutOverflow)).toBeFalse();
 
@@ -192,7 +202,12 @@ describe('Utils Service', () => {
       ['///', '/'],
       ['%', '/'],
       ['a', '/'],
+      ['/this is not a url', '/'],
+      ['/directory-traversal/../abc', '/'],
+      ['/dashboard?query=javascript:', '/'],
+      ['/dashboard#javascript:', '/'],
       ['/', '/'],
+      ['/صباح الخير', '/'],
       ['/learner-dashboard', '/learner-dashboard'],
     ];
 
@@ -206,5 +221,44 @@ describe('Utils Service', () => {
         expect(uts.getSafeReturnUrl(encodedInputUrl)).toEqual(expectedUrl);
       });
     }
+  });
+
+  describe('verifying origin of URL when returning a safe URL', () => {
+    let originalUrl: string;
+    let originalBaseUri: string;
+
+    beforeEach(function () {
+      originalUrl = document.URL;
+      originalBaseUri = document.baseURI;
+      // Mock the document.URL property.
+      Object.defineProperty(document, 'URL', {
+        writable: true,
+        value: 'https://cdn.example.com/images/pic.png',
+      });
+      // Mock the document.baseURI property.
+      Object.defineProperty(document, 'baseURI', {
+        writable: true,
+        value: 'https://example.com',
+      });
+    });
+
+    afterEach(function () {
+      // Restore the original URL.
+      Object.defineProperty(document, 'URL', {
+        writable: true,
+        value: originalUrl,
+      });
+      // Restore the original baseURI.
+      Object.defineProperty(document, 'baseURI', {
+        writable: true,
+        value: originalBaseUri,
+      });
+    });
+
+    it('should return the root URL because the origins do not match', () => {
+      // The origin of the following (example.com) doesn't match the origin of
+      // document.URL (cdn.example.com).
+      expect(uts.getSafeReturnUrl('/api/v1')).toEqual('/');
+    });
   });
 });

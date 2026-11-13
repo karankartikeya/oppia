@@ -22,57 +22,103 @@ it from the command line by running
 from the oppia/ root folder.
 """
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import argparse
 import os
 import sys
 import unittest
+import warnings
+
+from typing import Final, List, Optional
 
 sys.path.insert(1, os.getcwd())
 
-from scripts import common # isort:skip  pylint: disable=wrong-import-position, wrong-import-order
+# These imports must come after sys.path modification,
+# so the pylint import-position rules are disabled.
+from scripts import (  # pylint: disable=wrong-import-position, wrong-import-order
+    common,
+)
 
-CURR_DIR = os.path.abspath(os.getcwd())
-OPPIA_TOOLS_DIR = os.path.join(CURR_DIR, '..', 'oppia_tools')
-THIRD_PARTY_DIR = os.path.join(CURR_DIR, 'third_party')
-THIRD_PARTY_PYTHON_LIBS_DIR = os.path.join(THIRD_PARTY_DIR, 'python_libs')
+CURR_DIR: Final = os.path.abspath(os.getcwd())
+OPPIA_TOOLS_DIR: Final = os.path.join(CURR_DIR, '..', 'oppia_tools')
+THIRD_PARTY_DIR: Final = os.path.join(CURR_DIR, 'third_party')
+THIRD_PARTY_PYTHON_LIBS_DIR: Final = os.path.join(
+    THIRD_PARTY_DIR, 'python_libs'
+)
 
-GOOGLE_APP_ENGINE_SDK_HOME = os.path.join(
-    OPPIA_TOOLS_DIR, 'google-cloud-sdk-335.0.0', 'google-cloud-sdk', 'platform',
-    'google_appengine')
+GOOGLE_APP_ENGINE_SDK_HOME: Final = os.path.join(
+    OPPIA_TOOLS_DIR,
+    'google-cloud-sdk-335.0.0',
+    'google-cloud-sdk',
+    'platform',
+    'google_appengine',
+)
 
-_PARSER = argparse.ArgumentParser()
+_PARSER: Final = argparse.ArgumentParser()
 _PARSER.add_argument(
     '--test_target',
     help='optional dotted module name of the test(s) to run',
-    type=str)
+    type=str,
+)
 
 
-def create_test_suites(test_target=None):
-    """Creates test suites. If test_dir is None, runs all tests."""
+def create_test_suites(
+    test_target: Optional[str] = None,
+) -> List[unittest.TestSuite]:
+    """Creates test suites. If test_target is None, runs all tests.
+
+    Args:
+        test_target: str. The name of the test script.
+            Default to None if not specified.
+
+    Returns:
+        list. A list of tests within the test script.
+
+    Raises:
+        Exception. The delimeter in the test_target should be a dot (.)
+    """
+
     if test_target and '/' in test_target:
         raise Exception('The delimiter in test_target should be a dot (.)')
 
     loader = unittest.TestLoader()
     master_test_suite = (
         loader.loadTestsFromName(test_target)
-        if test_target else
-        loader.discover(
+        if test_target
+        else loader.discover(
             CURR_DIR,
             pattern='[^core/tests/data]*_test.py',
-            top_level_dir=CURR_DIR
+            top_level_dir=CURR_DIR,
         )
     )
-
     return [master_test_suite]
 
 
-def main(args=None):
-    """Runs the tests."""
-    parsed_args = _PARSER.parse_args(args=args)
+def main(args: Optional[List[str]] = None) -> None:
+    """Runs the tests.
 
+    Args:
+        args: list. A list of arguments to parse.
+
+    Raises:
+        Exception. Directory invalid_path does not exist.
+    """
+
+    # Treat deprecation warnings from our own code as errors, per
+    # https://docs.python.org/3/whatsnew/3.9.html#you-should-check-for-deprecationwarning-in-your-code
+    # Scoped to our own module namespaces (via a real regex, not the
+    # -W/PYTHONWARNINGS command-line syntax, which silently treats the
+    # module field as a literal string and can't express "any submodule
+    # of X") so warnings raised by third-party/vendored code (e.g.
+    # third_party/python_libs) don't fail the build.
+    warnings.filterwarnings(
+        'error',
+        category=DeprecationWarning,
+        module=r'^(core|scripts|extensions)\.',
+    )
+
+    parsed_args = _PARSER.parse_args(args=args)
     for directory in common.DIRS_TO_ADD_TO_SYS_PATH:
         if not os.path.exists(os.path.dirname(directory)):
             raise Exception('Directory %s does not exist.' % directory)
@@ -86,40 +132,20 @@ def main(args=None):
     # the html.py file in coverage instead of the native html library.
     sys.path = [path for path in sys.path if 'coverage' not in path]
 
-    # The devappserver function fixes the system path by adding certain google
-    # appengine libraries that we need in oppia to the system path. The Google
-    # Cloud SDK comes with certain packages preinstalled including webapp2,
-    # jinja2, and pyyaml so this function makes sure that those libraries are
-    # installed.
-    import dev_appserver
-    dev_appserver.fix_sys_path()
-
-    # In the process of migrating Oppia from Python 2 to Python 3, we are using
-    # both google app engine apis that are contained in the Google Cloud SDK
-    # folder, and also google cloud apis that are installed in our
-    # 'third_party/python_libs' directory. Therefore, there is a confusion of
-    # where the google module is located and which google module to import from.
-    # The following code ensures that the google module that python looks at
-    # imports from the 'third_party/python_libs' folder so that the imports are
-    # correct.
-    if 'google' in sys.modules:
-        google_path = os.path.join(THIRD_PARTY_PYTHON_LIBS_DIR, 'google')
-        google_module = sys.modules['google']
-        google_module.__path__ = [google_path, THIRD_PARTY_PYTHON_LIBS_DIR]
-        google_module.__file__ = os.path.join(google_path, '__init__.py')
-
     suites = create_test_suites(
         test_target=parsed_args.test_target,
     )
 
-    results = [unittest.TextTestRunner(verbosity=2).run(suite)
-               for suite in suites]
+    results = [
+        unittest.TextTestRunner(verbosity=2).run(suite) for suite in suites
+    ]
 
     for result in results:
         if result.errors or result.failures:
             raise Exception(
-                'Test suite failed: %s tests run, %s errors, %s failures.' % (
-                    result.testsRun, len(result.errors), len(result.failures)))
+                'Test suite failed: %s tests run, %s errors, %s failures.'
+                % (result.testsRun, len(result.errors), len(result.failures))
+            )
 
 
 if __name__ == '__main__':

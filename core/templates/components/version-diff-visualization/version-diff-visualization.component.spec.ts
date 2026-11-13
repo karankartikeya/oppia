@@ -16,248 +16,298 @@
  * @fileoverview Unit tests for Version diff visualization component.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
+import {NgbModal, NgbModalRef} from '@ng-bootstrap/ng-bootstrap';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, waitForAsync, TestBed} from '@angular/core/testing';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {VersionDiffVisualizationComponent} from './version-diff-visualization.component';
+import {State} from 'domain/state/state.model';
 
-describe('VersionDiffVisualizationComponent', () => {
-  let ctrl = null;
-  let $scope = null;
-  let $rootScope = null;
-  let ngbModal: NgbModal = null;
+class MockNgbModal {
+  open() {
+    return {
+      result: Promise.resolve(),
+    };
+  }
+}
 
-  beforeEach(angular.mock.module('oppia'));
+describe('Version Diff Visualization Component', () => {
+  let component: VersionDiffVisualizationComponent;
+  let fixture: ComponentFixture<VersionDiffVisualizationComponent>;
+  let ngbModal: NgbModal;
 
-  beforeEach(angular.mock.inject(($injector, $componentController) => {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [VersionDiffVisualizationComponent],
+      providers: [
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  }));
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(VersionDiffVisualizationComponent);
+    component = fixture.componentInstance;
 
     ngbModal = TestBed.inject(NgbModal);
 
-    ctrl = $componentController('versionDiffVisualization', {
-      $scope: $scope,
-      NgbModal: ngbModal
-    }, {
-      getDiffData: () => {
-        return {
-          v1InitStateId: 'A',
-          v2InitStateId: 'B',
-          links: [],
-          finalStateIds: ['C', 'D'],
-          nodes: {
-            1: {
-              newestStateName: 'A',
-              stateProperty: 'changed',
-              originalStateName: 'A'
-            },
-            2: {
-              newestStateName: 'B',
-              stateProperty: 'added',
-              originalStateName: 'A'
-            },
-            3: {
-              newestStateName: 'C',
-              stateProperty: 'deleted',
-              originalStateName: 'B'
-            },
-            4: {
-              newestStateName: 'D',
-              stateProperty: 'unchanged',
-              originalStateName: 'B'
-            },
-            5: {
-              newestStateName: 'E',
-              stateProperty: 'changed',
-              originalStateName: 'B'
-            },
-            6: {
-              newestStateName: 'F',
-              stateProperty: 'unchanged',
-              originalStateName: 'F'
-            },
-          },
-          v2States: {
-            C: {},
-            D: {}
-          },
-          v1States: {
-            A: {},
-            B: {}
-          }
-        };
+    component.diffData = {
+      v1InitStateId: 0,
+      v2InitStateId: 1,
+      links: [
+        {source: 1, target: 2, linkProperty: 'changed'},
+        {source: 2, target: 3, linkProperty: 'added'},
+      ],
+      finalStateIds: ['C', 'D'],
+      nodes: {
+        1: {
+          newestStateName: 'A',
+          stateProperty: 'changed',
+          originalStateName: 'A',
+        },
+        2: {
+          newestStateName: 'B',
+          stateProperty: 'added',
+          originalStateName: 'A',
+        },
+        3: {
+          newestStateName: 'C',
+          stateProperty: 'deleted',
+          originalStateName: 'B',
+        },
+        4: {
+          newestStateName: 'D',
+          stateProperty: 'unchanged',
+          originalStateName: 'B',
+        },
+        5: {
+          newestStateName: 'E',
+          stateProperty: 'changed',
+          originalStateName: 'B',
+        },
+        6: {
+          newestStateName: 'F',
+          stateProperty: 'unchanged',
+          originalStateName: 'F',
+        },
       },
-      getEarlierVersionHeader: () => {},
-      getLaterVersionHeader: () => {}
-    });
-  }));
+      v2States: {
+        C: {} as State,
+        D: {} as State,
+      },
+      v1States: {
+        A: {} as State,
+        B: {} as State,
+      },
+    };
+  });
 
   it('should set component properties on initialization', () => {
-    expect(ctrl.diffGraphSecondaryLabels).toEqual(undefined);
-    expect(ctrl.diffGraphNodeColors).toEqual(undefined);
-    expect(ctrl.v1InitStateId).toEqual(undefined);
-    expect(ctrl.diffGraphData).toEqual(undefined);
-    expect(ctrl.legendGraph).toEqual(undefined);
+    expect(component.diffGraphSecondaryLabels).toEqual(undefined);
+    expect(component.diffGraphNodeColors).toEqual(undefined);
+    expect(component.v1InitStateId).toBeUndefined();
+    expect(component.diffGraphData).toEqual(undefined);
+    expect(component.legendGraph).toEqual(undefined);
 
-    ctrl.$onInit();
+    component.ngOnInit();
 
-    expect(ctrl.diffGraphSecondaryLabels).toEqual({
+    expect(component.diffGraphSecondaryLabels).toEqual({
       4: '(was: B)',
-      5: '(was: B)'
+      5: '(was: B)',
     });
-    expect(ctrl.diffGraphNodeColors).toEqual({
+    expect(component.diffGraphNodeColors).toEqual({
       1: '#1E90FF',
       2: '#4EA24E',
       3: '#DC143C',
       4: '#FFD700',
       5: '#1E90FF',
-      6: 'beige'
+      6: 'beige',
     });
-    expect(ctrl.v1InitStateId).toEqual('A');
-    expect(ctrl.diffGraphData).toEqual(
-      {
-        nodes: { 1: 'A', 2: 'B', 3: 'B', 4: 'D', 5: 'E', 6: 'F' },
-        links: [], initStateId: 'B', finalStateIds: ['C', 'D']
-      }
-    );
-    expect(ctrl.legendGraph).toEqual({
+    expect(component.v1InitStateId).toEqual('0');
+    expect(component.diffGraphData).toEqual({
+      nodes: {1: 'A', 2: 'B', 3: 'B', 4: 'D', 5: 'E', 6: 'F'},
+      links: [
+        {
+          source: '1',
+          target: '2',
+          linkProperty: 'changed',
+          connectsDestIfStuck: false,
+        },
+        {
+          source: '2',
+          target: '3',
+          linkProperty: 'added',
+          connectsDestIfStuck: false,
+        },
+      ],
+      initStateId: '1',
+      finalStateIds: ['C', 'D'],
+    });
+    expect(component.legendGraph).toEqual({
       nodes: {
         Added: 'Added',
         Deleted: 'Deleted',
         Changed: 'Changed',
         Unchanged: 'Unchanged',
         Renamed: 'Renamed',
-        'Changed/renamed': 'Changed/renamed'
+        'Changed/renamed': 'Changed/renamed',
       },
-      links: [{
-        source: 'Added',
-        target: 'Deleted',
-        linkProperty: 'hidden'
-      }, {
-        source: 'Deleted',
-        target: 'Changed',
-        linkProperty: 'hidden'
-      }, {
-        source: 'Changed',
-        target: 'Unchanged',
-        linkProperty: 'hidden'
-      }, {
-        source: 'Unchanged',
-        target: 'Renamed',
-        linkProperty: 'hidden'
-      }, {
-        source: 'Renamed',
-        target: 'Changed/renamed',
-        linkProperty: 'hidden'
-      }],
-      initStateId: 'Added',
-      finalStateIds: ['Changed/renamed']
+      links: [
+        {
+          source: 'Added',
+          target: 'Deleted',
+          linkProperty: 'hidden',
+          connectsDestIfStuck: false,
+        },
+        {
+          source: 'Deleted',
+          target: 'Changed',
+          linkProperty: 'hidden',
+          connectsDestIfStuck: false,
+        },
+        {
+          source: 'Changed',
+          target: 'Unchanged',
+          linkProperty: 'hidden',
+          connectsDestIfStuck: false,
+        },
+        {
+          source: 'Unchanged',
+          target: 'Renamed',
+          linkProperty: 'hidden',
+          connectsDestIfStuck: false,
+        },
+        {
+          source: 'Renamed',
+          target: 'Changed/renamed',
+          linkProperty: 'hidden',
+          connectsDestIfStuck: false,
+        },
+      ],
+      initStateId: 'Changed/renamed',
+      finalStateIds: ['Changed/renamed'],
     });
   });
 
   it('should throw error if state property is invalid', () => {
-    spyOn(ctrl, 'getDiffData').and.returnValue(
-      {
-        nodes: {
-          1: {
-            newestStateName: 'A',
-            stateProperty: 'invalid',
-            originalStateName: 'A'
-          }
-        }
+    component.diffData = {
+      nodes: {
+        1: {
+          newestStateName: 'A',
+          stateProperty: 'invalid',
+          originalStateName: 'A',
+        },
+      },
+      v2States: {},
+      v1States: {},
+      finalStateIds: [],
+      v2InitStateId: 0,
+      links: [],
+      v1InitStateId: 0,
+    };
+
+    expect(() => component.ngOnInit()).toThrowError('Invalid state property.');
+  });
+
+  it(
+    'should open state diff modal when user clicks on a state in' +
+      ' difference graph',
+    () => {
+      class MockComponentInstance {
+        compoenentInstance!: {
+          newState: null;
+          newStateName: 'A';
+          oldState: null;
+          oldStateName: 'B';
+          headers: {
+            leftPane: undefined;
+            rightPane: undefined;
+          };
+        };
       }
-    );
 
-    expect(() => ctrl.$onInit()).toThrowError('Invalid state property.');
-  });
-
-  it('should open state diff modal when user clicks on a state in' +
-    ' difference graph', () => {
-    class MockComponentInstance {
-      compoenentInstance: {
-        newState: null,
-        newStateName: 'A',
-        oldState: null,
-        oldStateName: 'B',
-        headers: {
-          leftPane: undefined,
-          rightPane: undefined,
-        }
-      };
-    }
-
-    let spyObj = spyOn(ngbModal, 'open').and.callFake(() => {
-      return <NgbModalRef>({
-        componentInstance: MockComponentInstance,
-        result: Promise.resolve()
+      let spyObj = spyOn(ngbModal, 'open').and.callFake(() => {
+        return {
+          componentInstance: MockComponentInstance,
+          result: Promise.resolve(),
+        } as NgbModalRef;
       });
-    });
 
-    ctrl.$onInit();
-    ctrl.onClickStateInDiffGraph(2);
-    $scope.$apply();
+      component.ngOnInit();
+      component.onClickStateInDiffGraph('2');
 
-    expect(spyObj).toHaveBeenCalled();
-  });
+      expect(spyObj).toHaveBeenCalled();
+    }
+  );
 
-  it('should open state diff modal and return old and new states when' +
-    ' when user clicks on a state in difference graph', () => {
-    spyOn(ctrl, 'getDiffData').and.returnValue(
-      {
+  it(
+    'should open state diff modal and return old and new states when' +
+      ' when user clicks on a state in difference graph',
+    () => {
+      component.diffData = {
         nodes: {
           1: {
             newestStateName: 'A',
             stateProperty: 'changed',
-            originalStateName: 'B'
-          }
+            originalStateName: 'B',
+          },
         },
         v2States: {
-          A: {},
-          B: {}
+          A: {} as State,
+          B: {} as State,
         },
         v1States: {
-          A: {},
-          B: {}
-        }
-      }
-    );
-
-    class MockComponentInstance {
-      compoenentInstance: {
-        newState: {},
-        newStateName: 'A',
-        oldState: {},
-        oldStateName: 'B',
-        headers: {
-          leftPane: undefined,
-          rightPane: undefined,
-        }
+          A: {} as State,
+          B: {} as State,
+        },
+        finalStateIds: [],
+        v2InitStateId: 0,
+        links: [],
+        v1InitStateId: 0,
       };
-    }
 
-    let spyObj = spyOn(ngbModal, 'open').and.callFake(() => {
-      return <NgbModalRef>({
-        componentInstance: MockComponentInstance,
-        result: Promise.resolve()
+      class MockComponentInstance {
+        compoenentInstance!: {
+          newState: {};
+          newStateName: 'A';
+          oldState: {};
+          oldStateName: 'B';
+          headers: {
+            leftPane: undefined;
+            rightPane: undefined;
+          };
+        };
+      }
+
+      let spyObj = spyOn(ngbModal, 'open').and.callFake(() => {
+        return {
+          componentInstance: MockComponentInstance,
+          result: Promise.resolve(),
+        } as NgbModalRef;
       });
-    });
 
-    ctrl.$onInit();
-    ctrl.onClickStateInDiffGraph(1);
-    $scope.$apply();
+      component.ngOnInit();
+      component.onClickStateInDiffGraph('1');
 
-    expect(spyObj).toHaveBeenCalled();
-  });
+      expect(spyObj).toHaveBeenCalled();
+    }
+  );
 
   it('should close state diff modal when user clicks cancel', () => {
     let spyObj = spyOn(ngbModal, 'open').and.callFake(() => {
-      return <NgbModalRef>({
+      return {
         componentInstance: {},
-        result: Promise.reject()
-      });
+        result: Promise.reject(),
+      } as NgbModalRef;
     });
 
-    ctrl.$onInit();
-    ctrl.onClickStateInDiffGraph(2);
-    $scope.$apply();
+    component.ngOnInit();
+    component.onClickStateInDiffGraph('2');
 
     expect(spyObj).toHaveBeenCalled();
   });

@@ -16,20 +16,23 @@
  * @fileoverview Requires for MultipleChoiceInput interaction.
  */
 
-require('interactions/MultipleChoiceInput/static/multiple_choice_input.css');
-
 require(
   'interactions/MultipleChoiceInput/directives/' +
-  'multiple-choice-input-rules.service.ts');
+    'multiple-choice-input-rules.service.ts'
+);
 require(
   'interactions/MultipleChoiceInput/directives/' +
-  'multiple-choice-input-validation.service.ts');
+    'multiple-choice-input-validation.service.ts'
+);
 require(
   'interactions/MultipleChoiceInput/directives/' +
-  'oppia-interactive-multiple-choice-input.component.ts');
+    'oppia-interactive-multiple-choice-input.component.ts'
+);
 require(
   'interactions/MultipleChoiceInput/directives/' +
-  'oppia-response-multiple-choice-input.component.ts');
+    'oppia-response-multiple-choice-input.component.ts'
+);
 require(
   'interactions/MultipleChoiceInput/directives/' +
-  'oppia-short-response-multiple-choice-input.component.ts');
+    'oppia-short-response-multiple-choice-input.component.ts'
+);

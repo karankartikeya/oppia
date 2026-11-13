@@ -16,8 +16,8 @@
  * @fileoverview Tests for StorySummary model.
  */
 
-import { StoryNode } from './story-node.model';
-import { StorySummary } from 'domain/story/story-summary.model';
+import {StoryNode} from './story-node.model';
+import {StorySummary} from 'domain/story/story-summary.model';
 
 describe('Story summary model', () => {
   let _sampleStorySummary: StorySummary;
@@ -34,7 +34,12 @@ describe('Story summary model', () => {
       outline: 'Outline',
       exploration_id: null,
       outline_is_finalized: false,
-      thumbnail_bg_color: '#a33f40'
+      thumbnail_bg_color: '#a33f40',
+      status: 'Published',
+      planned_publication_date_msecs: 100,
+      last_modified_msecs: 100,
+      first_publication_date_msecs: 200,
+      unpublishing_reason: null,
     };
 
     const sampleStorySummaryBackendDict = {
@@ -50,7 +55,14 @@ describe('Story summary model', () => {
       all_node_dicts: [nodeDict],
       topic_name: 'Topic one',
       topic_url_fragment: 'topic-one',
-      classroom_url_fragment: 'math'
+      classroom_url_fragment: 'math',
+      classroom_name: 'Math',
+      published_chapters_count: 2,
+      total_chapters_count: 5,
+      upcoming_chapters_count: 1,
+      upcoming_chapters_expected_days: [3],
+      overdue_chapters_count: 1,
+      visited_chapter_titles: ['Chapter 2'],
     };
     _sampleStorySummary = StorySummary.createFromBackendDict(
       sampleStorySummaryBackendDict
@@ -62,7 +74,9 @@ describe('Story summary model', () => {
     expect(_sampleStorySummary.getTitle()).toEqual('Story title');
     expect(_sampleStorySummary.getUrlFragment()).toEqual('story-url-fragment');
     expect(_sampleStorySummary.getNodeTitles()).toEqual([
-      'Chapter 1', 'Chapter 2']);
+      'Chapter 1',
+      'Chapter 2',
+    ]);
     expect(_sampleStorySummary.getThumbnailFilename()).toEqual('image.svg');
     expect(_sampleStorySummary.getThumbnailBgColor()).toEqual('#F8BF74');
     expect(_sampleStorySummary.getDescription()).toEqual('Description');
@@ -81,12 +95,98 @@ describe('Story summary model', () => {
         outline: 'Outline',
         exploration_id: null,
         outline_is_finalized: false,
-        thumbnail_bg_color: '#a33f40'
-      })
+        thumbnail_bg_color: '#a33f40',
+        status: 'Published',
+        planned_publication_date_msecs: 100,
+        last_modified_msecs: 100,
+        first_publication_date_msecs: 200,
+        unpublishing_reason: null,
+      }),
     ]);
     expect(_sampleStorySummary.getCompletedNodeTitles()).toEqual(['Chapter 1']);
     expect(_sampleStorySummary.getTopicName()).toEqual('Topic one');
     expect(_sampleStorySummary.getTopicUrlFragment()).toEqual('topic-one');
     expect(_sampleStorySummary.getClassroomUrlFragment()).toEqual('math');
+    expect(_sampleStorySummary.getClassroomName()).toEqual('Math');
+    expect(_sampleStorySummary.getPublishedChaptersCount()).toEqual(2);
+    expect(_sampleStorySummary.getTotalChaptersCount()).toEqual(5);
+    expect(_sampleStorySummary.getUpcomingChaptersCount()).toEqual(1);
+    expect(_sampleStorySummary.getUpcomingChaptersExpectedDays()).toEqual([3]);
+    expect(_sampleStorySummary.getOverdueChaptersCount()).toEqual(1);
+    expect(_sampleStorySummary.getVisitedChapterTitles()).toEqual([
+      'Chapter 2',
+    ]);
+  });
+
+  it('should return arcs when they are provided', () => {
+    const sampleStorySummaryBackendDict = {
+      id: 'sample_story_id',
+      title: 'Story title',
+      node_titles: ['Chapter 1', 'Chapter 2'],
+      thumbnail_filename: 'image.svg',
+      thumbnail_bg_color: '#F8BF74',
+      description: 'Description',
+      story_is_published: true,
+      completed_node_titles: ['Chapter 1'],
+      url_fragment: 'story-url-fragment',
+      all_node_dicts: [],
+      arcs: [
+        {
+          id: 'arc_1',
+          title: 'Adventure Title',
+          description: 'Adventure Description',
+          node_ids: ['node_1', 'node_2'],
+        },
+      ],
+    };
+
+    const storySummary = StorySummary.createFromBackendDict(
+      sampleStorySummaryBackendDict
+    );
+    const arcs = storySummary.getArcs();
+    expect(arcs.length).toEqual(1);
+    expect(arcs[0].id).toEqual('arc_1');
+    expect(arcs[0].title).toEqual('Adventure Title');
+    expect(arcs[0].description).toEqual('Adventure Description');
+    expect(arcs[0].node_ids).toEqual(['node_1', 'node_2']);
+  });
+
+  it('should return empty array for arcs when they are not provided', () => {
+    expect(_sampleStorySummary.getArcs()).toEqual([]);
+  });
+
+  it('should return copies for arcs and node titles', () => {
+    const sampleStorySummaryBackendDict = {
+      id: 'sample_story_id',
+      title: 'Story title',
+      node_titles: ['Chapter 1', 'Chapter 2'],
+      thumbnail_filename: 'image.svg',
+      thumbnail_bg_color: '#F8BF74',
+      description: 'Description',
+      story_is_published: true,
+      completed_node_titles: ['Chapter 1'],
+      url_fragment: 'story-url-fragment',
+      all_node_dicts: [],
+      arcs: [
+        {
+          id: 'arc_1',
+          title: 'Adventure Title',
+          description: 'Adventure Description',
+          node_ids: ['node_1', 'node_2'],
+        },
+      ],
+    };
+
+    const storySummary = StorySummary.createFromBackendDict(
+      sampleStorySummaryBackendDict
+    );
+    const arcs = storySummary.getArcs();
+    const nodeTitles = storySummary.getNodeTitles();
+
+    arcs[0].title = 'Mutated title';
+    nodeTitles.push('Chapter 3');
+
+    expect(storySummary.getArcs()[0].title).toEqual('Adventure Title');
+    expect(storySummary.getNodeTitles()).toEqual(['Chapter 1', 'Chapter 2']);
   });
 });

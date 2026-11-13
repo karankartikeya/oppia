@@ -16,31 +16,29 @@
 
 """Services for managing Apache Beam jobs."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.constants import constants
 from core.domain import beam_job_domain
-from core.jobs import base_jobs
-from core.jobs import jobs_manager
+from core.jobs import base_jobs, jobs_manager
 from core.jobs import registry as jobs_registry
 from core.platform import models
 
-from typing import List, Optional, Type
+from typing import Dict, List, Optional, Type
 
 MYPY = False
 if MYPY:  # pragma: no cover
-    from mypy_imports import beam_job_models
-    from mypy_imports import datastore_services
+    from mypy_imports import beam_job_models, datastore_services
 
-(beam_job_models,) = models.Registry.import_models([models.NAMES.beam_job])
+(beam_job_models,) = models.Registry.import_models([models.Names.BEAM_JOB])
 
 datastore_services = models.Registry.import_datastore_services()
 
 
 def run_beam_job(
     job_name: Optional[str] = None,
-    job_class: Optional[Type[base_jobs.JobBase]] = None
+    job_class: Optional[Type[base_jobs.JobBase]] = None,
+    parameterized_args: Optional[Dict[str, str]] = None,
 ) -> beam_job_domain.BeamJobRun:
     """Starts a new Apache Beam job and returns metadata about its execution.
 
@@ -49,19 +47,28 @@ def run_beam_job(
             job_class must not be None.
         job_class: type(JobBase). A subclass of JobBase to begin running. This
             value takes precedence over job_name.
+        parameterized_args: dict(str, str). The arguments to pass to the
+            job when it is run. The keys of the dict should be the names of the
+            arguments as defined in the job's class definition, and the values
+            should be the corresponding values to use for those arguments.
 
     Returns:
         BeamJobRun. Metadata about the run's execution.
+
+    Raises:
+        ValueError. Both name and class of the job are not specified.
     """
-    if job_class is None and job_name is None:
-        raise ValueError('Must specify the job class or name to run')
     if job_class is None:
-        # MyPy is wrong. We know job_name is not None in this branch because if
-        # it were, the ValueError above would have been raised.
-        job_class = jobs_registry.get_job_class_by_name(job_name) # type: ignore[arg-type]
+        if job_name:
+            job_class = jobs_registry.get_job_class_by_name(job_name)
+        else:
+            raise ValueError('Must specify the job class or name to run')
 
     run_synchronously = constants.EMULATOR_MODE
-    run_model = jobs_manager.run_job(job_class, run_synchronously)
+
+    run_model = jobs_manager.run_job(
+        job_class, run_synchronously, parameterized_args=parameterized_args
+    )
 
     return get_beam_job_run_from_model(run_model)
 
@@ -74,19 +81,22 @@ def cancel_beam_job(job_id: str) -> beam_job_domain.BeamJobRun:
 
     Returns:
         BeamJobRun. Metadata about the updated run's execution.
+
+    Raises:
+        ValueError. Job does not exist.
     """
-    beam_job_run_model = (
-        beam_job_models.BeamJobRunModel.get(job_id, strict=False))
+    beam_job_run_model = beam_job_models.BeamJobRunModel.get(
+        job_id, strict=False
+    )
 
     if beam_job_run_model is None:
         raise ValueError('No such job with id="%s"' % job_id)
 
-    elif beam_job_run_model.dataflow_job_id is None:
+    if beam_job_run_model.dataflow_job_id is None:
         raise ValueError('Job with id="%s" cannot be cancelled' % job_id)
 
-    else:
-        jobs_manager.cancel_job(beam_job_run_model)
-        return get_beam_job_run_from_model(beam_job_run_model)
+    jobs_manager.cancel_job(beam_job_run_model)
+    return get_beam_job_run_from_model(beam_job_run_model)
 
 
 def get_beam_jobs() -> List[beam_job_domain.BeamJob]:
@@ -98,9 +108,23 @@ def get_beam_jobs() -> List[beam_job_domain.BeamJob]:
     return [beam_job_domain.BeamJob(j) for j in jobs_registry.get_all_jobs()]
 
 
-def get_beam_job_runs(
-    refresh: bool = True
-) -> List[beam_job_domain.BeamJobRun]:
+def is_state_terminal(job_state: str) -> bool:
+    """Returns whether the job state is a terminal state, meaning
+    that the job is longer executing.
+
+    Returns:
+        bool. Whether the state is a terminal state.
+    """
+    return job_state in (
+        beam_job_models.BeamJobState.CANCELLED.value,
+        beam_job_models.BeamJobState.DRAINED.value,
+        beam_job_models.BeamJobState.UPDATED.value,
+        beam_job_models.BeamJobState.DONE.value,
+        beam_job_models.BeamJobState.FAILED.value,
+    )
+
+
+def get_beam_job_runs(refresh: bool = True) -> List[beam_job_domain.BeamJobRun]:
     """Returns all of the Apache Beam job runs recorded in the datastore.
 
     Args:
@@ -118,7 +142,7 @@ def get_beam_job_runs(
         updated_beam_job_run_models = []
 
         for i, beam_job_run_model in enumerate(beam_job_run_models):
-            if beam_job_runs[i].in_terminal_state:
+            if is_state_terminal(beam_job_runs[i].job_state):
                 continue
             jobs_manager.refresh_state_of_beam_job_run_model(beam_job_run_model)
             beam_job_run_model.update_timestamps(update_last_updated_time=False)
@@ -132,7 +156,7 @@ def get_beam_job_runs(
 
 
 def get_beam_job_run_result(
-    job_id: str
+    job_id: str,
 ) -> beam_job_domain.AggregateBeamJobRunResult:
     """Returns the result of the given Apache Beam job run.
 
@@ -143,7 +167,8 @@ def get_beam_job_run_result(
         AggregateBeamJobRunResult. The result of the given Apache Beam job run.
     """
     beam_job_run_result_models = beam_job_models.BeamJobRunResultModel.query(
-        beam_job_models.BeamJobRunResultModel.job_id == job_id).iter()
+        beam_job_models.BeamJobRunResultModel.job_id == job_id
+    ).iter()
 
     # Job results are inherently unordered; there's no need to sort them.
     stdouts, stderrs = [], []
@@ -154,12 +179,12 @@ def get_beam_job_run_result(
             stderrs.append(beam_job_run_result_model.stderr)
 
     return beam_job_domain.AggregateBeamJobRunResult(
-        stdout='\n'.join(stdouts), stderr='\n'.join(stderrs))
+        stdout='\n'.join(stdouts), stderr='\n'.join(stderrs)
+    )
 
 
 def create_beam_job_run_model(
-    job_name: str,
-    dataflow_job_id: Optional[str] = None
+    job_name: str, dataflow_job_id: Optional[str] = None
 ) -> beam_job_models.BeamJobRunModel:
     """Creates a new BeamJobRunModel without putting it into storage.
 
@@ -175,8 +200,11 @@ def create_beam_job_run_model(
     """
     model_id = beam_job_models.BeamJobRunModel.get_new_id()
     model = beam_job_models.BeamJobRunModel(
-        id=model_id, job_name=job_name, dataflow_job_id=dataflow_job_id,
-        latest_job_state=beam_job_models.BeamJobState.PENDING.value)
+        id=model_id,
+        job_name=job_name,
+        dataflow_job_id=dataflow_job_id,
+        latest_job_state=beam_job_models.BeamJobState.PENDING.value,
+    )
     model.update_timestamps()
     return model
 
@@ -196,13 +224,14 @@ def create_beam_job_run_result_model(
     """
     model_id = beam_job_models.BeamJobRunResultModel.get_new_id()
     model = beam_job_models.BeamJobRunResultModel(
-        id=model_id, job_id=job_id, stdout=stdout, stderr=stderr)
+        id=model_id, job_id=job_id, stdout=stdout, stderr=stderr
+    )
     model.update_timestamps()
     return model
 
 
 def get_beam_job_run_from_model(
-    beam_job_run_model: beam_job_models.BeamJobRunModel
+    beam_job_run_model: beam_job_models.BeamJobRunModel,
 ) -> beam_job_domain.BeamJobRun:
     """Returns a domain object corresponding to the given BeamJobRunModel.
 
@@ -213,7 +242,11 @@ def get_beam_job_run_from_model(
         BeamJobRun. The corresponding domain object.
     """
     return beam_job_domain.BeamJobRun(
-        beam_job_run_model.id, beam_job_run_model.job_name,
-        beam_job_run_model.latest_job_state, beam_job_run_model.created_on,
+        beam_job_run_model.id,
+        beam_job_run_model.job_name,
+        beam_job_run_model.latest_job_state,
+        beam_job_run_model.created_on,
         beam_job_run_model.last_updated,
-        beam_job_run_model.dataflow_job_id is None)
+        beam_job_run_model.dataflow_job_id is None,
+        dataflow_job_id=beam_job_run_model.dataflow_job_id,
+    )

@@ -17,51 +17,53 @@
  */
 
 import Mousetrap from 'mousetrap';
-import { Injectable, ApplicationRef } from '@angular/core';
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
-import { KeyboardShortcutHelpModalComponent } from 'components/keyboard-shortcut-help/keyboard-shortcut-help-modal.component';
-import { WindowRef } from 'services/contextual/window-ref.service';
-
+import {Injectable, ApplicationRef} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {KeyboardShortcutHelpModalComponent} from 'components/keyboard-shortcut-help/keyboard-shortcut-help-modal.component';
+import {WindowRef} from 'services/contextual/window-ref.service';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class KeyboardShortcutService {
   constructor(
     private windowRef: WindowRef,
     private ngbModal: NgbModal,
-    private appRef: ApplicationRef) {}
+    private appRef: ApplicationRef
+  ) {}
 
   openQuickReference(): void {
     this.ngbModal.dismissAll();
-    this.ngbModal.open(
-      KeyboardShortcutHelpModalComponent, {backdrop: true});
+    this.ngbModal.open(KeyboardShortcutHelpModalComponent, {backdrop: true});
     this.appRef.tick();
   }
 
   bindExplorationPlayerShortcuts(): void {
     Mousetrap.bind('s', () => {
-      var skipButton = <HTMLElement>document.querySelector(
-        '.oppia-skip-to-content');
+      var skipButton = document.querySelector(
+        '.oppia-skip-to-content'
+      ) as HTMLElement;
       if (skipButton !== null) {
-        skipButton.focus();
+        skipButton.click();
       }
     });
 
     Mousetrap.bind('k', () => {
-      var previousButton = <HTMLElement>document.querySelector(
-        '.oppia-back-button');
+      var previousButton = document.querySelector(
+        '.oppia-back-button'
+      ) as HTMLElement;
       if (previousButton !== null) {
         previousButton.focus();
       }
     });
 
     Mousetrap.bind('j', () => {
-      var nextButton = <HTMLElement>document.querySelector(
-        '.oppia-next-button');
-      var continueButton = <HTMLElement>document.querySelector(
-        '.oppia-learner-confirm-button');
+      var nextButton = document.querySelector(
+        '.oppia-next-button'
+      ) as HTMLElement;
+      var continueButton = document.querySelector(
+        '.oppia-learner-confirm-button'
+      ) as HTMLElement;
       if (nextButton !== null) {
         nextButton.focus();
       }
@@ -73,27 +75,33 @@ export class KeyboardShortcutService {
     Mousetrap.bind('?', () => {
       this.openQuickReference();
     });
+
+    Mousetrap.bind('left', () => {
+      let previousButton = document.querySelector(
+        '.oppia-back-button'
+      ) as HTMLElement;
+      if (previousButton !== null) {
+        previousButton.click();
+      }
+    });
+
+    Mousetrap.bind('right', () => {
+      let nextButton = document.querySelector(
+        '.oppia-next-button'
+      ) as HTMLElement;
+      if (nextButton !== null) {
+        nextButton.click();
+      }
+    });
   }
 
   bindLibraryPageShortcuts(): void {
-    Mousetrap.bind('/', () => {
-      var searchBar = <HTMLElement>document.querySelector(
-        '.oppia-search-bar-text-input');
-      searchBar.focus();
-      return false;
-    });
-
-    Mousetrap.bind('c', () => {
-      var categoryBar = <HTMLElement>document.querySelector(
-        '.oppia-search-bar-dropdown-toggle');
-      categoryBar.focus();
-    });
-
     Mousetrap.bind('s', () => {
-      var skipButton = <HTMLElement>document.querySelector(
-        '.oppia-skip-to-content');
+      var skipButton = document.querySelector(
+        '.oppia-skip-to-content'
+      ) as HTMLElement;
       if (skipButton !== null) {
-        skipButton.focus();
+        skipButton.click();
       }
     });
 
@@ -102,9 +110,8 @@ export class KeyboardShortcutService {
     });
   }
 
-
   bindNavigationShortcuts(): void {
-    Mousetrap.bind('ctrl+0', () => {
+    Mousetrap.bind('ctrl+6', () => {
       this.windowRef.nativeWindow.location.href = '/get-started';
     });
 
@@ -129,6 +136,3 @@ export class KeyboardShortcutService {
     });
   }
 }
-
-angular.module('oppia').factory(
-  'KeyboardShortcutService', downgradeInjectable(KeyboardShortcutService));

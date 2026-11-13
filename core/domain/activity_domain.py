@@ -16,10 +16,8 @@
 
 """Domain object for a reference to an activity."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core import python_utils
 from core.constants import constants
 
 from typing import Dict, List
@@ -62,12 +60,13 @@ class ActivityReference:
         Raises:
             Exception. The activity type is invalid.
         """
-        if (self.type != constants.ACTIVITY_TYPE_EXPLORATION and
-                self.type != constants.ACTIVITY_TYPE_COLLECTION):
+        if self.type not in (
+            constants.ACTIVITY_TYPE_EXPLORATION,
+            constants.ACTIVITY_TYPE_COLLECTION,
+        ):
             raise Exception('Invalid activity type: %s' % self.type)
-        if not isinstance(self.id, python_utils.BASESTRING):
-            raise Exception(
-                'Expected id to be a string but found %s' % self.id)
+        if not isinstance(self.id, str):
+            raise Exception('Expected id to be a string but found %s' % self.id)
 
     def to_dict(self) -> Dict[str, str]:
         """Returns a dict representing this ActivityReference domain object.
@@ -84,7 +83,7 @@ class ActivityReference:
     @classmethod
     def from_dict(
         cls, activity_reference_dict: Dict[str, str]
-    ) -> 'ActivityReference':
+    ) -> ActivityReference:
         """Return the ActivityReference object from a dict.
 
         Args:
@@ -95,7 +94,8 @@ class ActivityReference:
             ActivityReference. The corresponding ActivityReference object.
         """
         return cls(
-            activity_reference_dict['type'], activity_reference_dict['id'])
+            activity_reference_dict['type'], activity_reference_dict['id']
+        )
 
 
 class ActivityReferences:

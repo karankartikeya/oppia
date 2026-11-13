@@ -16,28 +16,29 @@
  * @fileoverview Unit tests for the CkEditor copy toolbar component.
  */
 
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
 
-import { CkEditorCopyToolbarComponent } from
+import {
+  CkEditorCopyToolbarComponent,
   // eslint-disable-next-line max-len
-  'components/ck-editor-helpers/ck-editor-copy-toolbar/ck-editor-copy-toolbar.component';
-import { CkEditorCopyContentService } from
-  'components/ck-editor-helpers/ck-editor-copy-content.service';
-
+} from 'components/ck-editor-helpers/ck-editor-copy-toolbar/ck-editor-copy-toolbar.component';
+import {CkEditorCopyContentService} from 'components/ck-editor-helpers/ck-editor-copy-content.service';
 
 describe('CkEditor copy toolbar', () => {
   let component: CkEditorCopyToolbarComponent;
   let fixture: ComponentFixture<CkEditorCopyToolbarComponent>;
-  let ckCopyService;
-  let dummyRichTextEditor;
+  let ckCopyService: CkEditorCopyContentService;
+  let dummyRichTextEditor: HTMLElement;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [CkEditorCopyToolbarComponent],
-      providers: [{
-        provide: CkEditorCopyContentService,
-        useClass: MockCkEditorCopyContentService
-      }]
+      providers: [
+        {
+          provide: CkEditorCopyContentService,
+          useClass: MockCkEditorCopyContentService,
+        },
+      ],
     }).compileComponents();
   }));
 
@@ -45,8 +46,9 @@ describe('CkEditor copy toolbar', () => {
     fixture = TestBed.createComponent(CkEditorCopyToolbarComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
-    ckCopyService = (
-      fixture.debugElement.injector.get(CkEditorCopyContentService));
+    ckCopyService = fixture.debugElement.injector.get(
+      CkEditorCopyContentService
+    );
   });
 
   beforeEach(() => {
@@ -56,8 +58,10 @@ describe('CkEditor copy toolbar', () => {
   });
 
   it('should toggle copy mode correctly', () => {
-    const toggleCopyModeSpy = spyOn(ckCopyService, 'toggleCopyMode')
-      .and.callThrough();
+    const toggleCopyModeSpy = spyOn(
+      ckCopyService,
+      'toggleCopyMode'
+    ).and.callThrough();
 
     expect(ckCopyService.copyModeActive).toBe(false);
 

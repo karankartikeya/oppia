@@ -16,78 +16,87 @@
  * @fileoverview Unit tests for testInteractionPanel.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { StateEditorRefreshService } from
-  'pages/exploration-editor-page/services/state-editor-refresh.service';
-import { ReadOnlyExplorationBackendApiService } from
-  'domain/exploration/read-only-exploration-backend-api.service';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, waitForAsync, TestBed} from '@angular/core/testing';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {ExplorationStatesService} from 'pages/exploration-editor-page/services/exploration-states.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {TestInteractionPanel} from './test-interaction-panel.component';
 
-describe('Test Interaction Panel directive', function() {
-  var $scope = null;
-  var $uibModalInstance = null;
-  var CurrentInteractionService = null;
-  var ExplorationStatesService = null;
-  var ctrl = null;
-  var stateName = 'Introduction';
-  var state = {
-    interaction: {
-      id: 'NumberWithUnits'
-    }
-  };
+class MockNgbModal {
+  close() {
+    return Promise.resolve();
+  }
+}
 
-  importAllAngularServices();
+class MockExplorationStatesService {
+  getState(item1: string) {
+    return {
+      interaction: {
+        id: 'TextInput',
+      },
+    };
+  }
+}
 
-  beforeEach(angular.mock.module('oppia'));
+describe('Test Interaction Panel Component', () => {
+  let component: TestInteractionPanel;
+  let fixture: ComponentFixture<TestInteractionPanel>;
+  let currentInteractionService: CurrentInteractionService;
+
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      declarations: [TestInteractionPanel],
+      providers: [
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
+        },
+        {
+          provide: ExplorationStatesService,
+          useClass: MockExplorationStatesService,
+        },
+        CurrentInteractionService,
+        UrlInterpolationService,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
+  }));
 
   beforeEach(() => {
-    TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule]
-    });
+    fixture = TestBed.createComponent(TestInteractionPanel);
+    component = fixture.componentInstance;
+
+    currentInteractionService = TestBed.inject(CurrentInteractionService);
+
+    fixture.detectChanges();
   });
 
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.value(
-      'StateEditorRefreshService', TestBed.get(StateEditorRefreshService));
-    $provide.value(
-      'ReadOnlyExplorationBackendApiService',
-      TestBed.get(ReadOnlyExplorationBackendApiService));
-  }));
+  it('should initialize controller properties after its initialization', () => {
+    spyOn(currentInteractionService, 'isSubmitButtonDisabled').and.returnValue(
+      false
+    );
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    var $rootScope = $injector.get('$rootScope');
-    CurrentInteractionService = $injector.get('CurrentInteractionService');
-    ExplorationStatesService = $injector.get('ExplorationStatesService');
+    component.stateName = 'TextInput';
+    component.ngOnInit();
+    let isSubmitButtonDisabled = component.isSubmitButtonDisabled();
 
-    $uibModalInstance = jasmine.createSpyObj(
-      '$uibModalInstance', ['close', 'dismiss']);
+    expect(component.interactionIsInline).toEqual(true);
+    expect(component.userBlueImgUrl).toEqual(
+      '/assets/images/avatar/user_blue_150px.png'
+    );
+    expect(isSubmitButtonDisabled).toEqual(false);
+  });
 
-    spyOn(ExplorationStatesService, 'getState').and.returnValue(state);
-    spyOn(CurrentInteractionService, 'isSubmitButtonDisabled').and
-      .returnValue(false);
+  it('should submit answer when clicking on button', () => {
+    spyOn(currentInteractionService, 'submitAnswer').and.stub();
 
-    $scope = $rootScope.$new();
-    ctrl = $componentController('testInteractionPanel', {
-      $scope: $scope,
-      $uibModalInstance: $uibModalInstance,
-    }, {
-      getStateName: () => stateName
-    });
-    ctrl.$onInit();
-    CurrentInteractionService.updateViewWithNewAnswer();
-  }));
+    component.stateName = 'TextInput';
+    component.ngOnInit();
+    component.onSubmitAnswerFromButton();
 
-  it('should initialize controller properties after its initialization',
-    function() {
-      expect($scope.isSubmitButtonDisabled()).toBe(false);
-      expect($scope.interactionIsInline).toBe(true);
-    });
-
-  it('should submit answer when clicking on button', function() {
-    spyOn(CurrentInteractionService, 'submitAnswer');
-    $scope.onSubmitAnswerFromButton();
-    ctrl.$onDestroy();
-    expect(CurrentInteractionService.submitAnswer).toHaveBeenCalled();
+    expect(component.interactionIsInline).toEqual(true);
+    expect(currentInteractionService.submitAnswer).toHaveBeenCalled();
   });
 });

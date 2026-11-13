@@ -16,27 +16,29 @@
 
 """Provides an Apache Beam API for operating on NDB models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core import feconf
 from core.jobs import job_utils
 from core.platform import models
 
 import apache_beam as beam
 from apache_beam import pvalue
 from apache_beam.io.gcp.datastore.v1new import datastoreio
-
 from typing import Optional
 
 MYPY = False
 if MYPY:  # pragma: no cover
-    from mypy_imports import datastore_services
+    from mypy_imports import app_identity_services, datastore_services
 
+app_identity_services = models.Registry.import_app_identity_services()
 datastore_services = models.Registry.import_datastore_services()
 
 
-class GetModels(beam.PTransform): # type: ignore[misc]
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that PTransform class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'PTransform' (has type 'Any')), we added an ignore here.
+class GetModels(beam.PTransform):  # type: ignore[misc]
     """Reads NDB models from the datastore using a query."""
 
     def __init__(
@@ -48,7 +50,7 @@ class GetModels(beam.PTransform): # type: ignore[misc]
             query: datastore_services.Query. The query used to fetch models.
             label: str|None. The label of the PTransform.
         """
-        super(GetModels, self).__init__(label=label)
+        super().__init__(label=label)
         self.query = query
 
     def expand(
@@ -66,17 +68,22 @@ class GetModels(beam.PTransform): # type: ignore[misc]
             PCollection. The PCollection of models.
         """
         query = job_utils.get_beam_query_from_ndb_query(
-            self.query, namespace=pbegin.pipeline.options.namespace)
+            self.query, namespace=pbegin.pipeline.options.namespace
+        )
         return (
             pbegin.pipeline
-            | 'Reading %r from the datastore' % self.query >> (
-                datastoreio.ReadFromDatastore(query))
-            | 'Transforming %r into NDB models' % self.query >> (
-                beam.Map(job_utils.get_ndb_model_from_beam_entity))
+            | 'Reading %r from the datastore' % self.query
+            >> (datastoreio.ReadFromDatastore(query))
+            | 'Transforming %r into NDB models' % self.query
+            >> (beam.Map(job_utils.get_ndb_model_from_beam_entity))
         )
 
 
-class PutModels(beam.PTransform): # type: ignore[misc]
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that PTransform class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'PTransform' (has type 'Any')), we added an ignore here.
+class PutModels(beam.PTransform):  # type: ignore[misc]
     """Writes NDB models to the datastore."""
 
     def expand(
@@ -94,16 +101,21 @@ class PutModels(beam.PTransform): # type: ignore[misc]
             PCollection. An empty PCollection. This is needed because all
             expand() methods need to return some PCollection.
         """
+        oppia_project_id = app_identity_services.get_application_id()
         return (
             entities
-            | 'Transforming the NDB models into Apache Beam entities' >> (
-                beam.Map(job_utils.get_beam_entity_from_ndb_model))
-            | 'Writing the NDB models to the datastore' >> (
-                datastoreio.WriteToDatastore(feconf.OPPIA_PROJECT_ID))
+            | 'Transforming the NDB models into Apache Beam entities'
+            >> (beam.Map(job_utils.get_beam_entity_from_ndb_model))
+            | 'Writing the NDB models to the datastore'
+            >> (datastoreio.WriteToDatastore(oppia_project_id))
         )
 
 
-class DeleteModels(beam.PTransform): # type: ignore[misc]
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that PTransform class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'PTransform' (has type 'Any')), we added an ignore here.
+class DeleteModels(beam.PTransform):  # type: ignore[misc]
     """Deletes NDB models from the datastore."""
 
     def expand(
@@ -121,10 +133,11 @@ class DeleteModels(beam.PTransform): # type: ignore[misc]
             PCollection. An empty PCollection. This is needed because all
             expand() methods need to return some PCollection.
         """
+        oppia_project_id = app_identity_services.get_application_id()
         return (
             entities
-            | 'Transforming the NDB keys into Apache Beam keys' >> (
-                beam.Map(job_utils.get_beam_key_from_ndb_key))
-            | 'Deleting the NDB keys from the datastore' >> (
-                datastoreio.DeleteFromDatastore(feconf.OPPIA_PROJECT_ID))
+            | 'Transforming the NDB keys into Apache Beam keys'
+            >> (beam.Map(job_utils.get_beam_key_from_ndb_key))
+            | 'Deleting the NDB keys from the datastore'
+            >> (datastoreio.DeleteFromDatastore(oppia_project_id))
         )

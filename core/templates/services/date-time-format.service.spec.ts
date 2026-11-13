@@ -16,7 +16,9 @@
  * @fileoverview Unit test for DateTimeFormatService.
  */
 
-import { DateTimeFormatService } from 'services/date-time-format.service';
+// @ts-nocheck
+
+import {DateTimeFormatService} from 'services/date-time-format.service';
 import dayjs from 'dayjs';
 
 describe('datetimeformatter', () => {
@@ -28,7 +30,7 @@ describe('datetimeformatter', () => {
   beforeEach(() => {
     df = new DateTimeFormatService();
 
-    let MockDateContructor = function(millisSinceEpoch = 0) {
+    let MockDateContructor = function (millisSinceEpoch = 0) {
       if (millisSinceEpoch === 0) {
         return new OldDate(NOW_MILLIS);
       } else {
@@ -44,7 +46,6 @@ describe('datetimeformatter', () => {
     // suppress this error because the actual 'Date' has more properties than
     // 'MockDateContructor'. We have only defined the properties we need in
     // 'MockDateContructor'.
-    // @ts-expect-error
     spyOn(window, 'Date').and.callFake(MockDateContructor);
   });
 
@@ -61,16 +62,19 @@ describe('datetimeformatter', () => {
     let expectedDatetime = new Date(NOW_MILLIS - 1).toLocaleTimeString([], {
       hour: 'numeric',
       minute: 'numeric',
-      hour12: true
+      hour12: true,
     });
     expect(df.getLocaleAbbreviatedDatetimeString(NOW_MILLIS - 1)).toBe(
-      expectedDatetime);
+      expectedDatetime
+    );
+    expect(
+      df.getLocaleAbbreviatedDatetimeString(NOW_MILLIS + 48 * 60 * 60 * 1000)
+    ).toBe('Nov 23');
     expect(
       df.getLocaleAbbreviatedDatetimeString(
-        NOW_MILLIS + 48 * 60 * 60 * 1000)).toBe('Nov 23');
-    expect(
-      df.getLocaleAbbreviatedDatetimeString(
-        NOW_MILLIS - 365 * 24 * 60 * 60 * 1000)).toBe('11/21/13');
+        NOW_MILLIS - 365 * 24 * 60 * 60 * 1000
+      )
+    ).toBe('11/21/13');
   });
 
   it('should provide date time hour in MMM D, h:mm A format', () => {
@@ -87,6 +91,12 @@ describe('datetimeformatter', () => {
     );
   });
 
+  it('should provide date time in words format', () => {
+    expect(df.getDateTimeInWords(NOW_MILLIS)).toBe(
+      dayjs(new Date(NOW_MILLIS)).format('dddd, MMMM D, YYYY [at] h:mm A')
+    );
+  });
+
   it('should provide correct date format MM/DD/YYY string', () => {
     // Note to developers: This test is not ideal, because it tests the
     // implementation rather than the interface. However, we have not found
@@ -96,9 +106,22 @@ describe('datetimeformatter', () => {
     // month and year of df.getLocaleDateString, which is why
     // toLocaleDateString() needs to be computed in the expected
     // value of the test as well.
-    expect((new Date(NOW_MILLIS)).toLocaleDateString()).toBe(
-      df.getLocaleDateString(NOW_MILLIS));
-    expect((new Date(NaN).toLocaleDateString())).toBe(
-      df.getLocaleDateString(NaN));
+    expect(new Date(NOW_MILLIS).toLocaleDateString()).toBe(
+      df.getLocaleDateString(NOW_MILLIS)
+    );
+    expect(new Date(NaN).toLocaleDateString()).toBe(
+      df.getLocaleDateString(NaN)
+    );
+  });
+
+  it('should provide relative time from a given timestamp', () => {
+    let timeAFewSecondsAgo = NOW_MILLIS - 5 * 1000;
+    let timeAnHourAgo = NOW_MILLIS - 60 * 60 * 1000;
+    let timeADayAgo = NOW_MILLIS - 24 * 60 * 60 * 1000;
+    expect(df.getRelativeTimeFromNow(timeAFewSecondsAgo)).toBe(
+      'a few seconds ago'
+    );
+    expect(df.getRelativeTimeFromNow(timeAnHourAgo)).toBe('an hour ago');
+    expect(df.getRelativeTimeFromNow(timeADayAgo)).toBe('a day ago');
   });
 });

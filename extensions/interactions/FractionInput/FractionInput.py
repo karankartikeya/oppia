@@ -14,68 +14,74 @@
 
 """Python configuration for FractionInput interaction."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from extensions.interactions import base
+
+from typing import List, Optional
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from extensions import domain
 
 
 class FractionInput(base.BaseInteraction):
     """Interaction for fraction input."""
 
-    name = 'Fraction Input'
-    description = 'Allows learners to enter integers and fractions.'
-    display_mode = base.DISPLAY_MODE_INLINE
-    is_trainable = False
-    _dependency_ids = []
-    answer_type = 'Fraction'
-    instructions = None
-    narrow_instructions = None
-    needs_summary = False
-    can_have_solution = True
-    show_generic_submit_button = True
+    name: str = 'Fraction Input'
+    description: str = 'Allows learners to enter integers and fractions.'
+    display_mode: str = base.DISPLAY_MODE_INLINE
+    is_trainable: bool = False
+    _dependency_ids: List[str] = []
+    answer_type: str = 'Fraction'
+    instructions: Optional[str] = None
+    narrow_instructions: Optional[str] = None
+    needs_summary: bool = False
+    can_have_solution: bool = True
+    show_generic_submit_button: bool = True
 
-    _customization_arg_specs = [{
-        'name': 'requireSimplestForm',
-        'description': 'Require the learner\'s answer to be in simplest form',
-        'schema': {
-            'type': 'bool',
+    _customization_arg_specs: List[domain.CustomizationArgSpecsDict] = [
+        {
+            'name': 'requireSimplestForm',
+            'description': 'Require the learner\'s answer to be in simplest form',
+            'schema': {
+                'type': 'bool',
+            },
+            'default_value': False,
         },
-        'default_value': False
-    }, {
-        'name': 'allowImproperFraction',
-        'description': 'Allow improper fractions in the learner\'s answer',
-        'schema': {
-            'type': 'bool',
+        {
+            'name': 'allowImproperFraction',
+            'description': 'Allow improper fractions in the learner\'s answer',
+            'schema': {
+                'type': 'bool',
+            },
+            'default_value': True,
         },
-        'default_value': True
-    }, {
-        'name': 'allowNonzeroIntegerPart',
-        'description': 'Allow the answer to contain an integer part',
-        'schema': {
-            'type': 'bool',
+        {
+            'name': 'allowNonzeroIntegerPart',
+            'description': 'Allow the answer to contain an integer part',
+            'schema': {
+                'type': 'bool',
+            },
+            'default_value': True,
         },
-        'default_value': True
-    }, {
-        'name': 'customPlaceholder',
-        'description': 'Custom placeholder text (optional)',
-        'schema': {
-            'type': 'custom',
-            'obj_type': 'SubtitledUnicode'
+        {
+            'name': 'customPlaceholder',
+            'description': 'Custom placeholder text (optional)',
+            'schema': {'type': 'custom', 'obj_type': 'SubtitledUnicode'},
+            'default_value': {'content_id': None, 'unicode_str': ''},
         },
-        'default_value': {
-            'content_id': None,
-            'unicode_str': ''
+    ]
+
+    _answer_visualization_specs: List[base.AnswerVisualizationSpecsDict] = [
+        {
+            # Table with answer counts for top N answers.
+            'id': 'FrequencyTable',
+            'options': {
+                'column_headers': ['Answer', 'Count'],
+                'title': 'Top answers',
+            },
+            'calculation_id': 'Top10AnswerFrequencies',
+            'addressed_info_is_supported': True,
         }
-    }]
-
-    _answer_visualization_specs = [{
-        # Table with answer counts for top N answers.
-        'id': 'FrequencyTable',
-        'options': {
-            'column_headers': ['Answer', 'Count'],
-            'title': 'Top answers',
-        },
-        'calculation_id': 'Top10AnswerFrequencies',
-        'addressed_info_is_supported': True,
-    }]
+    ]

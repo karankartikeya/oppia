@@ -1,106 +1,79 @@
-var argv = require('yargs').positional('terminalEnabled', {
-  type: 'boolean',
-  'default': false
-}).argv;
+// Copyright 2026 The Oppia Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-var generatedJs = 'third_party/generated/js/third_party.js';
-if (argv.prodEnv) {
-  generatedJs = (
-    'third_party/generated/js/third_party.min.js');
-}
+/**
+ * @fileoverview Karma configuration for frontend unit tests.
+ *
+ * This configuration uses the Angular CLI's karma builder for compilation
+ * and preprocessing. The Angular CLI handles TypeScript compilation, HTML
+ * template processing, and CSS processing internally via its own webpack
+ * configuration.
+ */
 
-module.exports = function(config) {
+var karma = require('karma');
+
+// Generate a random number between 0 and 999 to use as the seed for the
+// frontend test execution order.
+let jasmineSeed = Math.floor(Math.random() * 1000);
+// eslint-disable-next-line no-console
+console.log(`Seed for Frontend Test Execution Order ${jasmineSeed}`);
+
+module.exports = function (config: InstanceType<typeof karma.Config>) {
   config.set({
     basePath: '../../',
-    frameworks: ['jasmine'],
-    files: [
-      // Constants must be loaded before everything else.
-      // Since jquery, angular-mocks and math-expressions
-      // are not bundled, they will be treated separately.
-      'third_party/static/jquery-3.5.1/jquery.min.js',
-      'third_party/static/angularjs-1.8.2/angular.js',
-      'core/templates/karma.module.ts',
-      'third_party/static/angularjs-1.8.2/angular-mocks.js',
-      '/third_party/static/lamejs-1.2.0/worker-example/worker-realtime.js',
-      generatedJs,
-      // Note that unexpected errors occur ("Cannot read property 'num' of
-      // undefined" in MusicNotesInput.js) if the order of core/templates/...
-      // and extensions/... are switched. The test framework may be flaky.
-      'core/templates/**/*_directive.html',
-      'core/templates/**/*.directive.html',
-      'core/templates/**/*.component.html',
-      'core/templates/**/*.template.html',
-      // This is a file that is generated on running the run_frontend_tests.py
-      // script. This generated file is a combination of all the spec files
-      // since Karma is unable to run tests on multiple files due to some
-      // unknown reason.
-      'core/templates/combined-tests.spec.ts',
-      {
-        pattern: 'assets/**',
-        watched: false,
-        served: true,
-        included: false
-      },
-      {
-        pattern: 'extensions/**/*.png',
-        watched: false,
-        served: true,
-        included: false
-      },
-      'extensions/interactions/**/*.directive.html',
-      'extensions/interactions/**/*.component.html',
-      'extensions/interactions/*.json',
-      'core/tests/data/*.json'
+    frameworks: ['jasmine', '@angular-devkit/build-angular'],
+    plugins: [
+      'karma-coverage-istanbul-reporter',
+      'karma-jasmine',
+      'karma-chrome-launcher',
+      require('@angular-devkit/build-angular/plugins/karma'),
     ],
-    exclude: [
-      'local_compiled_js/core/templates/**/*-e2e.js',
-      'local_compiled_js/extensions/**/protractor.js',
-      'backend_prod_files/extensions/**',
-      'extensions/classifiers/proto/*'
-    ],
-    proxies: {
-      // Karma serves files under the /base directory.
-      // We access files directly in our code, for example /folder/,
-      // so we need to proxy the requests from /folder/ to /base/folder/.
-      '/assets/': '/base/assets/',
-      '/extensions/': '/base/extensions/'
+    client: {
+      jasmine: {
+        random: true,
+        seed: jasmineSeed,
+      },
     },
-    preprocessors: {
-      'core/templates/*.ts': ['webpack'],
-      'core/templates/**/*.ts': ['webpack'],
-      'extensions/**/*.ts': ['webpack'],
-      // Note that these files should contain only directive templates, and no
-      // Jinja expressions. They should also be specified within the 'files'
-      // list above.
-      'core/templates/**/*_directive.html': ['ng-html2js'],
-      'core/templates/**/*.directive.html': ['ng-html2js'],
-      'core/templates/**/*.component.html': ['ng-html2js'],
-      'core/templates/**/*.template.html': ['ng-html2js'],
-      'extensions/interactions/**/*.directive.html': ['ng-html2js'],
-      'extensions/interactions/**/*.component.html': ['ng-html2js'],
-      'extensions/interactions/*.json': ['json_fixtures'],
-      'core/tests/data/*.json': ['json_fixtures']
-    },
+    crossOriginAttribute: true,
     reporters: ['progress', 'coverage-istanbul'],
+    // Angular 11 natively uses `karma-coverage-istanbul-reporter` for code coverage
+    // via the `@angular-devkit/build-angular` plugin. This configuration explicitly directs the output
+    // to the parent directory to maintain compatibility with existing CI scripts.
+    // Also note: In angular.json, `"sourceRoot": ""` allows the Angular CLI to discover files in `core/`
+    // and `extensions/` for instrumentation, since they sit outside a standard `src/` folder.
     coverageIstanbulReporter: {
       reports: ['html', 'json', 'lcovonly'],
       dir: '../karma_coverage_reports/',
       fixWebpackSourcePaths: true,
       'report-config': {
-        html: { outdir: 'html' }
-      }
+        html: {outdir: 'html'},
+      },
     },
     autoWatch: true,
     browsers: ['CI_Chrome'],
     // Kill the browser if it does not capture in the given timeout [ms].
-    captureTimeout: 60000,
+    captureTimeout: 120000,
     browserNoActivityTimeout: 120000,
     browserDisconnectTimeout: 60000,
     browserDisconnectTolerance: 3,
     browserConsoleLogOptions: {
       level: 'log',
       format: '%b %T: %m',
-      terminal: argv.terminalEnabled
+      // Note: `KARMA_TERMINAL_ENABLED` is explicitly injected as a process environment
+      // variable by `scripts/run_frontend_tests.py` when the `--verbose` flag is passed.
+      // It is not natively provided by the Angular CLI.
+      terminal: process.env.KARMA_TERMINAL_ENABLED === 'true',
     },
     // Continue running in the background after running tests.
     singleRun: true,
@@ -114,114 +87,9 @@ module.exports = function(config) {
           '--no-sandbox',
           '--disable-gpu',
           '--disable-dev-shm-usage',
-          '--js-flags=--max-old-space-size=2048'
-        ]
-      }
-    },
-
-    plugins: [
-      'karma-coverage-istanbul-reporter',
-      'karma-jasmine',
-      'karma-chrome-launcher',
-      'karma-ng-html2js-preprocessor',
-      'karma-json-fixtures-preprocessor',
-      'karma-coverage',
-      'karma-webpack'
-    ],
-    ngHtml2JsPreprocessor: {
-      moduleName: 'directiveTemplates',
-      // Key ngHtml2JsPreprocessor adds the html inside $templateCache,
-      // the key that we use for that cache needs to be exactly the same as
-      // the templateUrl in directive JS. The stripPrefix and prependPrefix are
-      // used for modifying the $templateCache keys.
-      // If the key starts with core/ we need to get rid of that.
-      stripPrefix: 'core/',
-      // Every key must start with /.
-      prependPrefix: '/',
-    },
-    jsonFixturesPreprocessor: {
-      variableName: '__fixtures__'
-    },
-
-    webpack: {
-      mode: 'development',
-      resolve: {
-        modules: [
-          'core/tests/data',
-          'assets',
-          'core/templates',
-          'extensions',
-          'node_modules',
-          'third_party',
+          '--js-flags=--max-old-space-size=5120',
         ],
-        extensions: ['.ts', '.js', '.json', '.html', '.svg', '.png'],
-        alias: {
-          // These both are used so that we can refer to them in imports using
-          // their full path: 'assets/{{filename}}'.
-          'assets/constants': 'constants.ts',
-          'assets/rich_text_components_definitions':
-            'rich_text_components_definitions.ts'
-        }
       },
-      devtool: 'inline-cheap-source-map',
-      module: {
-        rules: [
-          {
-            test: /\.ts$/,
-            use: [
-              'cache-loader',
-              {
-                loader: 'ts-loader',
-                options: {
-                  // Typescript checks do the type checking.
-                  transpileOnly: true
-                }
-              },
-              {
-                loader: 'angular2-template-loader'
-              }
-            ]
-          },
-          {
-            test: /\.html$/,
-            exclude: /(directive|component)\.html$/,
-            loader: 'underscore-template-loader'
-          },
-          {
-            test: /(directive|component)\.html$/,
-            loader: 'html-loader',
-            options: {
-              attributes: false,
-            },
-          },
-          {
-            // Exclude all the spec files from the report.
-            test: /^(?!.*(s|S)pec\.ts$).*\.ts$/,
-            enforce: 'post',
-            use: {
-              loader: 'istanbul-instrumenter-loader',
-              options: { esModules: true }
-            }
-          },
-          {
-            test: /\.css$/,
-            use: [
-              {
-                loader: 'style-loader',
-                options: {
-                  esModule: false
-                }
-              },
-              {
-                loader: 'css-loader',
-                options: {
-                  url: false,
-                }
-              }
-            ]
-          }
-        ]
-      }
-    }
+    },
   });
 };

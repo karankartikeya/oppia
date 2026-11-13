@@ -16,50 +16,80 @@
  * @fileoverview Component for the main page of the story viewer.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { StoryViewerBackendApiService } from 'domain/story_viewer/story-viewer-backend-api.service';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { UrlService } from 'services/contextual/url.service';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { UserService } from 'services/user.service';
-import { AppConstants } from 'app.constants';
-import { WindowRef } from 'services/contextual/window-ref.service';
-import { LoaderService } from 'services/loader.service';
-import { PageTitleService } from 'services/page-title.service';
-import { AlertsService } from 'services/alerts.service';
-import { StoryPlaythrough } from 'domain/story_viewer/story-playthrough.model';
-import { ReadOnlyStoryNode } from 'domain/story_viewer/read-only-story-node.model';
+import {
+  Component,
+  ElementRef,
+  OnInit,
+  ViewChild,
+  OnDestroy,
+  ViewEncapsulation,
+} from '@angular/core';
+import {TranslateService} from '@ngx-translate/core';
+import {Subscription} from 'rxjs';
+
+import {StoryViewerBackendApiService} from 'domain/story_viewer/story-viewer-backend-api.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {UrlService} from 'services/contextual/url.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {UserService} from 'services/user.service';
+import {AppConstants} from 'app.constants';
+import {WindowRef} from 'services/contextual/window-ref.service';
+import {LoaderService} from 'services/loader.service';
+import {PageTitleService} from 'services/page-title.service';
+import {AlertsService} from 'services/alerts.service';
+import {StoryPlaythrough} from 'domain/story_viewer/story-playthrough.model';
+import {ReadOnlyStoryNode} from 'domain/story_viewer/read-only-story-node.model';
+import {
+  I18nLanguageCodeService,
+  TranslationKeyType,
+} from 'services/i18n-language-code.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+
+import constants from 'assets/constants';
 
 interface IconParametersArray {
-  thumbnailIconUrl: string,
-  left: string,
-  top: string,
-  thumbnailBgColor: string,
+  thumbnailIconUrl: string;
+  left: string;
+  top: string;
+  thumbnailBgColor: string;
 }
 
 @Component({
   selector: 'oppia-story-viewer-page',
-  templateUrl: './story-viewer-page.component.html'
+  templateUrl: './story-viewer-page.component.html',
+  styleUrls: ['./story-viewer-page.component.css'],
+  encapsulation: ViewEncapsulation.Emulated,
 })
-export class StoryViewerPageComponent implements OnInit {
-  storyPlaythroughObject: StoryPlaythrough;
-  storyId: string;
-  storyIsLoaded: boolean;
-  isLoggedIn: boolean;
-  topicUrlFragment: string;
-  classroomUrlFragment: string;
-  storyUrlFragment: string;
-  storyTitle: string;
-  storyDescription: string;
-  pathIconParameters: IconParametersArray[];
-  topicName: string;
-  thumbnailFilename: string;
-  thumbnailBgColor: string;
-  storyNodes: ReadOnlyStoryNode[];
-  iconUrl: string;
+export class StoryViewerPageComponent implements OnInit, OnDestroy {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @ViewChild('overlay') overlay!: ElementRef<HTMLDivElement>;
+  @ViewChild('skip') skipButton!: ElementRef<HTMLButtonElement>;
+  storyPlaythroughObject!: StoryPlaythrough;
+  storyId!: string;
+  topicUrlFragment!: string;
+  classroomUrlFragment!: string;
+  storyUrlFragment!: string;
+  storyTitle!: string;
+  storyTitleTranslationKey!: string;
+  storyDescription!: string;
+  storyDescTranslationKey!: string;
+  pathIconParameters!: IconParametersArray[];
+  topicName!: string;
+  thumbnailFilename!: string;
+  thumbnailBgColor!: string;
+  storyNodes!: ReadOnlyStoryNode[];
+  iconUrl!: string;
+  directiveSubscriptions = new Subscription();
+  showLoginOverlay: boolean = true;
+  storyIsLoaded: boolean = false;
+  isLoggedIn: boolean = false;
+  storyNodesTitleTranslationKeys: string[] = [];
+  storyNodesDescTranslationKeys: string[] = [];
   constructor(
     private urlInterpolationService: UrlInterpolationService,
+    private i18nLanguageCodeService: I18nLanguageCodeService,
     private assetsBackendApiService: AssetsBackendApiService,
     private userService: UserService,
     private windowRef: WindowRef,
@@ -67,8 +97,26 @@ export class StoryViewerPageComponent implements OnInit {
     private loaderService: LoaderService,
     private storyViewerBackendApiService: StoryViewerBackendApiService,
     private pageTitleService: PageTitleService,
-    private alertsService: AlertsService
+    private alertsService: AlertsService,
+    private translateService: TranslateService,
+    private platformFeatureService: PlatformFeatureService
   ) {}
+
+  focusSkipButton(eventTarget: EventTarget | null, isLoggedIn: boolean): void {
+    if (isLoggedIn || !this.showLoginOverlay) {
+      return;
+    }
+    // The focus event target is the element that the login container wraps,
+    // so it is always an Element. Null or non-Element targets are treated as
+    // outside the login container.
+    if (
+      !(eventTarget instanceof Element) ||
+      eventTarget.closest('.story-viewer-login-container') !==
+        this.overlay.nativeElement
+    ) {
+      this.skipButton.nativeElement.focus();
+    }
+  }
 
   getStaticImageUrl(imagePath: string): string {
     return this.urlInterpolationService.getStaticImageUrl(imagePath);
@@ -83,19 +131,14 @@ export class StoryViewerPageComponent implements OnInit {
 
   generatePathIconParameters(): IconParametersArray[] {
     let iconParametersArray: IconParametersArray[] = [];
-    for (
-      let i = 0; i < this.storyPlaythroughObject.getStoryNodeCount();
-      i++) {
+    for (let i = 0; i < this.storyPlaythroughObject.getStoryNodeCount(); i++) {
       this.thumbnailFilename = this.storyNodes[i].getThumbnailFilename();
       this.thumbnailBgColor = this.storyNodes[i].getThumbnailBgColor();
-      if (this.thumbnailFilename === null) {
-        this.iconUrl = '';
-        this.thumbnailFilename = '';
-      } else {
-        this.iconUrl = this.assetsBackendApiService.getThumbnailUrlForPreview(
-          AppConstants.ENTITY_TYPE.STORY, this.storyId,
-          this.thumbnailFilename);
-      }
+      this.iconUrl = this.assetsBackendApiService.getThumbnailUrlForPreview(
+        AppConstants.ENTITY_TYPE.STORY,
+        this.storyId,
+        this.thumbnailFilename
+      );
       iconParametersArray.push({
         thumbnailIconUrl: this.iconUrl,
         left: '225px',
@@ -106,79 +149,208 @@ export class StoryViewerPageComponent implements OnInit {
     return iconParametersArray;
   }
 
-  signIn(): void {
-    this.userService.getLoginUrlAsync().then(
-      (loginUrl) => {
-        loginUrl ? this.windowRef.nativeWindow.location.href = loginUrl : (
-          this.windowRef.nativeWindow.location.reload());
-      });
+  hideLoginOverlay(): void {
+    this.showLoginOverlay = false;
   }
 
-  getExplorationUrl(
-      node: { getExplorationId: () => string;
-              getId: () => string; }): string {
+  signIn(): void {
+    this.userService.getLoginUrlAsync().then(loginUrl => {
+      loginUrl
+        ? (this.windowRef.nativeWindow.location.href = loginUrl)
+        : this.windowRef.nativeWindow.location.reload();
+    });
+  }
+
+  getExplorationUrl(node: ReadOnlyStoryNode): string {
     let result = '/explore/' + node.getExplorationId();
     result = this.urlService.addField(
-      result, 'topic_url_fragment',
-      this.urlService.getTopicUrlFragmentFromLearnerUrl());
+      result,
+      'topic_url_fragment',
+      this.urlService.getTopicUrlFragmentFromLearnerUrl()
+    );
     result = this.urlService.addField(
-      result, 'classroom_url_fragment',
-      this.urlService.getClassroomUrlFragmentFromLearnerUrl());
+      result,
+      'classroom_url_fragment',
+      this.urlService.getClassroomUrlFragmentFromLearnerUrl()
+    );
+    let storyUrlFragment = this.urlService.getStoryUrlFragmentFromLearnerUrl();
+    if (storyUrlFragment === null) {
+      throw new Error('Story url fragment is null');
+    }
     result = this.urlService.addField(
-      result, 'story_url_fragment',
-      this.urlService.getStoryUrlFragmentFromLearnerUrl());
-    result = this.urlService.addField(
-      result, 'node_id', node.getId());
+      result,
+      'story_url_fragment',
+      storyUrlFragment
+    );
+    result = this.urlService.addField(result, 'node_id', node.getId());
     return result;
+  }
+
+  subscribeToOnLangChange(): void {
+    this.directiveSubscriptions.add(
+      this.translateService.onLangChange.subscribe(() => {
+        this.setPageTitle();
+      })
+    );
+  }
+
+  setPageTitle(): void {
+    let translatedTitle = this.translateService.instant(
+      'I18N_STORY_VIEWER_PAGE_TITLE',
+      {
+        topicName: this.topicName,
+        storyTitle: this.storyTitle,
+      }
+    );
+    this.pageTitleService.setDocumentTitle(translatedTitle);
   }
 
   ngOnInit(): void {
     this.storyIsLoaded = false;
     this.isLoggedIn = false;
-    this.userService.getUserInfoAsync().then((userInfo) => {
+    this.userService.getUserInfoAsync().then(userInfo => {
       this.isLoggedIn = userInfo.isLoggedIn();
     });
-    this.topicUrlFragment = (
-      this.urlService.getTopicUrlFragmentFromLearnerUrl());
-    this.classroomUrlFragment = (
-      this.urlService.getClassroomUrlFragmentFromLearnerUrl());
-    this.storyUrlFragment = (
-      this.urlService.getStoryUrlFragmentFromLearnerUrl());
+    this.topicUrlFragment = this.urlService.getTopicUrlFragmentFromLearnerUrl();
+    this.classroomUrlFragment =
+      this.urlService.getClassroomUrlFragmentFromLearnerUrl();
+    let storyUrlFragment = this.urlService.getStoryUrlFragmentFromLearnerUrl();
+    if (storyUrlFragment === null) {
+      throw new Error('Story url fragment is null');
+    }
+    this.storyUrlFragment = storyUrlFragment;
     this.loaderService.showLoadingScreen('Loading');
-    this.storyViewerBackendApiService.fetchStoryDataAsync(
-      this.topicUrlFragment,
-      this.classroomUrlFragment,
-      this.storyUrlFragment).then(
-      (storyDataDict) => {
-        this.storyIsLoaded = true;
-        this.storyPlaythroughObject = storyDataDict;
-        this.storyNodes = this.storyPlaythroughObject.getStoryNodes();
-        this.storyId = this.storyPlaythroughObject.getStoryId();
-        this.topicName = this.storyPlaythroughObject.topicName;
-        this.pageTitleService.setDocumentTitle(
-          `Learn ${this.topicName} | ${storyDataDict.title} | Oppia`);
-        this.pageTitleService.updateMetaTag(
-          storyDataDict.getMetaTagContent());
-        this.storyTitle = storyDataDict.title;
-        this.storyDescription = storyDataDict.description;
+    this.storyViewerBackendApiService
+      .fetchStoryDataAsync(
+        this.topicUrlFragment,
+        this.classroomUrlFragment,
+        this.storyUrlFragment
+      )
+      .then(
+        storyDataDict => {
+          this.storyIsLoaded = true;
+          this.storyPlaythroughObject = storyDataDict;
+          this.storyNodes = this.storyPlaythroughObject.getStoryNodes();
+          this.storyId = this.storyPlaythroughObject.getStoryId();
+          this.topicName = this.storyPlaythroughObject.topicName;
+          this.pageTitleService.updateMetaTag(
+            storyDataDict.getMetaTagContent()
+          );
+          this.storyTitle = storyDataDict.title;
 
-        this.loaderService.hideLoadingScreen();
-        this.pathIconParameters = this.generatePathIconParameters();
-      },
-      (errorResponse) => {
-        let errorCodes = AppConstants.FATAL_ERROR_CODES;
-        if (errorCodes.indexOf(errorResponse.status) !== -1) {
-          this.alertsService.addWarning('Failed to get dashboard data');
+          // The onLangChange event is initially fired before the story is
+          // loaded. Hence the first setpageTitle() call needs to made
+          // manually, and the onLangChange subscription is added after
+          // the story is loaded.
+          this.setPageTitle();
+          this.subscribeToOnLangChange();
+          this.storyTitleTranslationKey =
+            this.i18nLanguageCodeService.getStoryTranslationKey(
+              this.storyId,
+              TranslationKeyType.TITLE
+            );
+          this.storyDescription = storyDataDict.description;
+          this.storyDescTranslationKey =
+            this.i18nLanguageCodeService.getStoryTranslationKey(
+              this.storyId,
+              TranslationKeyType.DESCRIPTION
+            );
+          this.loaderService.hideLoadingScreen();
+          this.pathIconParameters = this.generatePathIconParameters();
+          for (let idx in this.storyNodes) {
+            let storyNode: ReadOnlyStoryNode = this.storyNodes[idx];
+            let storyNodeTitleTranslationKey =
+              this.i18nLanguageCodeService.getExplorationTranslationKey(
+                storyNode.getExplorationId(),
+                TranslationKeyType.TITLE
+              );
+            let storyNodeDescTranslationKey =
+              this.i18nLanguageCodeService.getExplorationTranslationKey(
+                storyNode.getExplorationId(),
+                TranslationKeyType.DESCRIPTION
+              );
+            this.storyNodesTitleTranslationKeys.push(
+              storyNodeTitleTranslationKey
+            );
+            this.storyNodesDescTranslationKeys.push(
+              storyNodeDescTranslationKey
+            );
+          }
+        },
+        errorResponse => {
+          let errorCodes = AppConstants.FATAL_ERROR_CODES;
+          if (errorCodes.indexOf(errorResponse.status) !== -1) {
+            this.alertsService.addWarning('Failed to get dashboard data');
+          }
         }
-      }
-    );
+      );
 
     // The pathIconParameters is an array containing the co-ordinates,
     // background color and icon url for the icons generated on the
     // path.
     this.pathIconParameters = [];
   }
-}
 
-angular.module('oppia').directive('oppiaStoryViewerPage',
-  downgradeComponent({component: StoryViewerPageComponent}));
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+
+  isHackyStoryTitleTranslationDisplayed(): boolean {
+    return (
+      this.i18nLanguageCodeService.isHackyTranslationAvailable(
+        this.storyTitleTranslationKey
+      ) && !this.i18nLanguageCodeService.isCurrentLanguageEnglish()
+    );
+  }
+
+  isHackyStoryDescTranslationDisplayed(): boolean {
+    return (
+      this.i18nLanguageCodeService.isHackyTranslationAvailable(
+        this.storyDescTranslationKey
+      ) && !this.i18nLanguageCodeService.isCurrentLanguageEnglish()
+    );
+  }
+
+  isHackyStoryNodeTitleTranslationDisplayed(index: number): boolean {
+    return (
+      this.i18nLanguageCodeService.isHackyTranslationAvailable(
+        this.storyNodesTitleTranslationKeys[index]
+      ) && !this.i18nLanguageCodeService.isCurrentLanguageEnglish()
+    );
+  }
+
+  isHackyStoryNodeDescTranslationDisplayed(index: number): boolean {
+    return (
+      this.i18nLanguageCodeService.isHackyTranslationAvailable(
+        this.storyNodesDescTranslationKeys[index]
+      ) && !this.i18nLanguageCodeService.isCurrentLanguageEnglish()
+    );
+  }
+
+  isSerialChapterFeatureLearnerFlagEnabled(): boolean {
+    return this.platformFeatureService.status.SerialChapterLaunchLearnerView
+      .isEnabled;
+  }
+
+  isChapterPublished(node: ReadOnlyStoryNode): boolean {
+    return node.getStatus() === constants.STORY_NODE_STATUS_PUBLISHED;
+  }
+
+  isChapterReadyToPublish(node: ReadOnlyStoryNode): boolean {
+    return node.getStatus() === constants.STORY_NODE_STATUS_READY_TO_PUBLISH;
+  }
+
+  isChapterDisplayedAsComingSoon(node: ReadOnlyStoryNode): boolean {
+    return (
+      this.isSerialChapterFeatureLearnerFlagEnabled() &&
+      this.isChapterReadyToPublish(node)
+    );
+  }
+
+  getChapterExplorationUrl(node: ReadOnlyStoryNode): string | null {
+    if (this.isChapterDisplayedAsComingSoon(node)) {
+      return null;
+    }
+    return this.getExplorationUrl(node);
+  }
+}

@@ -16,25 +16,37 @@
  * @fileoverview unit tests for the Continue button interaction.
  */
 
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { OppiaInteractiveContinue } from './oppia-interactive-continue.component';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { ContextService } from 'services/context.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { ContinueRulesService } from './continue-rules.service';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {OppiaInteractiveContinue} from './oppia-interactive-continue.component';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {PageContextService} from 'services/page-context.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {ContinueRulesService} from './continue-rules.service';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+
+class MockI18nLanguageCodeService {
+  isCurrentLanguageRTL() {
+    return true;
+  }
+}
 
 describe('OppiaInteractiveContinue', () => {
   let component: OppiaInteractiveContinue;
   let fixture: ComponentFixture<OppiaInteractiveContinue>;
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
 
   class mockInteractionAttributesExtractorService {
-    getValuesFromAttributes(interactionId, attributes) {
+    getValuesFromAttributes(
+      interactionId: InteractionSpecsKey,
+      attributes: Record<string, string>
+    ) {
       return {
         buttonText: {
           value: {
-            unicode: attributes.buttonTextWithValue}
-        }
+            unicode: attributes.buttonTextWithValue,
+          },
+        },
       };
     }
   }
@@ -50,46 +62,60 @@ describe('OppiaInteractiveContinue', () => {
         expect(answer).toBe('Please continue.');
       },
       registerCurrentInteraction: (
-          submitAnswerFn: Function, validateExpressionFn) => {
+        submitAnswerFn: Function,
+        validateExpressionFn: Function
+      ) => {
         submitAnswerFn();
         expect(validateExpressionFn).toBeNull();
-      }
+      },
     };
 
     // This cannot be taken outside and made common since it results in
     // karma coverage reporting that lines are not covered.
-    beforeEach(async(() => {
+    beforeEach(waitForAsync(() => {
       TestBed.configureTestingModule({
         declarations: [OppiaInteractiveContinue],
-        providers: [ContinueRulesService,
+        providers: [
+          ContinueRulesService,
           {
             provide: InteractionAttributesExtractorService,
-            useClass: mockInteractionAttributesExtractorService
+            useClass: mockInteractionAttributesExtractorService,
           },
           {
             provide: CurrentInteractionService,
-            useValue: mockCurrentInteractionService
-          }
-        ]
+            useValue: mockCurrentInteractionService,
+          },
+          {
+            provide: I18nLanguageCodeService,
+            useClass: MockI18nLanguageCodeService,
+          },
+        ],
       }).compileComponents();
     }));
 
     beforeEach(() => {
       // The component needs to be created twice since each time a different
       // mockCurrentInteractionService is used.
-      contextService = TestBed.get(ContextService);
+      pageContextService = TestBed.inject(PageContextService);
       fixture = TestBed.createComponent(OppiaInteractiveContinue);
       component = fixture.componentInstance;
       component.buttonTextWithValue = 'Continue';
     });
 
-    it('should initialise component when component is played' +
-    ' in the exploration player', () => {
-      component.ngOnInit();
-
-      expect(component.isInEditorMode).toBe(false);
-      expect(component.buttonText).toBe('Continue');
+    it('should get RTL language status correctly', () => {
+      expect(component.isLanguageRTL()).toBeTrue();
     });
+
+    it(
+      'should initialise component when component is played' +
+        ' in the exploration player',
+      () => {
+        component.ngOnInit();
+
+        expect(component.isInEditorMode).toBe(false);
+        expect(component.buttonText).toBe('Continue');
+      }
+    );
   });
 
   describe('custom Continue button text', () => {
@@ -100,48 +126,56 @@ describe('OppiaInteractiveContinue', () => {
         expect(answer).toBe('Continue button');
       },
       registerCurrentInteraction: (
-          submitAnswerFn: Function, validateExpressionFn) => {
+        submitAnswerFn: Function,
+        validateExpressionFn: Function
+      ) => {
         submitAnswerFn();
-      }
+      },
     };
 
     // This cannot be taken outside and made common since it results in
     // karma coverage reporting that lines are not covered.
-    beforeEach(async(() => {
+    beforeEach(waitForAsync(() => {
       TestBed.configureTestingModule({
         declarations: [OppiaInteractiveContinue],
-        providers: [ContinueRulesService,
+        providers: [
+          ContinueRulesService,
           {
             provide: InteractionAttributesExtractorService,
-            useClass: mockInteractionAttributesExtractorService
+            useClass: mockInteractionAttributesExtractorService,
           },
           {
             provide: CurrentInteractionService,
-            useValue: mockCurrentInteractionService
-          }
-        ]
+            useValue: mockCurrentInteractionService,
+          },
+        ],
       }).compileComponents();
     }));
 
     beforeEach(() => {
       // The component needs to be created twice since each time a different
       // mockCurrentInteractionService is used.
-      contextService = TestBed.get(ContextService);
+      pageContextService = TestBed.inject(PageContextService);
       fixture = TestBed.createComponent(OppiaInteractiveContinue);
       component = fixture.componentInstance;
       component.buttonTextWithValue = 'Continue button';
     });
 
-    it('should initialise component when component is played' +
-    ' in the exploration player', () => {
-      component.ngOnInit();
+    it(
+      'should initialise component when component is played' +
+        ' in the exploration player',
+      () => {
+        component.ngOnInit();
 
-      expect(component.isInEditorMode).toBe(false);
-      expect(component.buttonText).toBe('Continue button');
-    });
+        expect(component.isInEditorMode).toBe(false);
+        expect(component.buttonText).toBe('Continue button');
+      }
+    );
 
     it('should set isInEditorMode to true when in exploration editor', () => {
-      spyOn(contextService, 'isInExplorationEditorMode').and.returnValue(true);
+      spyOn(pageContextService, 'isInExplorationEditorMode').and.returnValue(
+        true
+      );
       expect(component.isInEditorMode).toBe(false);
 
       component.ngOnInit();

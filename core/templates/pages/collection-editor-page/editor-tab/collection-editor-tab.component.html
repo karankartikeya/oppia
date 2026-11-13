@@ -1,5 +1,5 @@
 <div *ngIf="hasLoadedCollection()">
-  <div class="collection-editor-cards-container protractor-test-collection-editor-cards-container">
+  <div class="collection-editor-cards-container e2e-test-collection-editor-cards-container">
     <mat-card class="oppia-page-card oppia-long-text">
       <!-- Collection node list graph -->
       <div class="collection-editor-node-list-container">
@@ -37,46 +37,3 @@
     </mat-card>
   </div>
 </div>
-
-<style>
-  .collection-editor-cards-container {
-    margin: auto;
-    max-width: 898px;
-    position: relative;
-  }
-
-  .collection-editor-last-node {
-    margin-right: 20px;
-  }
-
-  .collection-editor-node-list-container {
-    background-color: white;
-    border: 1px solid #BDBDBD;
-    display: block;
-    margin: 30px auto;
-    min-width: 98%;
-    overflow-x: auto;
-    padding: 70px 20px;
-    text-align: center;
-    white-space: nowrap;
-    width: 98%;
-  }
-
-  .collection-editor-node-container, .collection-editor-node-connector-container {
-    display: inline-block;
-  }
-
-  .collection-editor-node-connector-container {
-    margin-left: -4px;
-    width: 45px;
-  }
-
-  .collection-editor-node-connector {
-    height: 30px;
-    width: 50px;
-  }
-
-  svg {
-    color: #88888A;
-  }
-</style>

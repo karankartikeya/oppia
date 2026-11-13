@@ -20,105 +20,146 @@
  * followed by the name of the arg.
  */
 
-import { ChangeDetectorRef, Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {ChangeDetectorRef, Component, Input, OnInit} from '@angular/core';
 import isUndefined from 'lodash/isUndefined';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { InteractionRulesService } from 'pages/exploration-player-page/services/answer-classification.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { NumericInputCustomizationArgs } from 'interactions/customization-args-defs';
-import { NumericInputRulesService } from './numeric-input-rules.service';
-import { NumericInputValidationService } from './numeric-input-validation.service';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {NumericInputCustomizationArgs} from 'interactions/customization-args-defs';
+import {NumericInputRulesService} from './numeric-input-rules.service';
+import {NumericInputValidationService} from './numeric-input-validation.service';
+import type {NumericInputAnswer} from 'interactions/answer-defs';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
+
+interface NumericInputFormSchema {
+  // The object literal in ngOnInit assigns 'float', so the type is fixed to
+  // the literal to keep the schema assignable to the Schema type.
+  type: 'float';
+  ui_config: {};
+}
 
 @Component({
   selector: 'oppia-interactive-numeric-input',
-  templateUrl: './numeric-input-interaction.component.html'
+  templateUrl: './numeric-input-interaction.component.html',
 })
 export class InteractiveNumericInput implements OnInit {
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() requireNonnegativeInputWithValue: string = '';
-  @Input() savedSolution;
-  @Input() labelForFocusTarget;
-  errorString = '';
+  @Input() lastAnswer!: NumericInputAnswer | null;
+  @Input() savedSolution!: NumericInputAnswer;
+  @Input() labelForFocusTarget!: string;
+  // Answer is empty string if the user has not yet entered an answer. This is
+  // the case when the user has not yet clicked the submit button. The answer
+  // becomes null when the learner clears the input or types text that cannot
+  // be parsed as a number, so that a previously valid answer cannot be
+  // submitted after the input has been cleared or invalidated.
+  answer!: number | string | null;
+  NUMERIC_INPUT_FORM_SCHEMA!: NumericInputFormSchema;
+  errorMessageI18nKey: string = '';
   requireNonnegativeInput: boolean = false;
-  answer = null;
-  NUMERIC_INPUT_FORM_SCHEMA: { type: string; 'ui_config': {}; };
   constructor(
     private currentInteractionService: CurrentInteractionService,
     private numericInputRulesService: NumericInputRulesService,
     private numericInputValidationService: NumericInputValidationService,
     private changeDetectorRef: ChangeDetectorRef,
-    private interactionAttributesExtractorService:
-      InteractionAttributesExtractorService
-  ) { }
+    private interactionAttributesExtractorService: InteractionAttributesExtractorService
+  ) {}
 
-  private isAnswerValid(): boolean {
+  isAnswerValid(): boolean {
+    if (typeof this.answer === 'string') {
+      return false;
+    }
     return (
       this.answer !== undefined &&
       this.answer !== null &&
-      this.answer !== '' &&
       isUndefined(
-        this.numericInputValidationService.getErrorString(
-          this.answer, this.requireNonnegativeInput)));
+        this.numericInputValidationService.validateNumber(
+          this.answer,
+          this.requireNonnegativeInput
+        )
+      )
+    );
   }
 
-  submitAnswer(answer: number): void {
-    if (this.isAnswerValid()) {
-      this.currentInteractionService.onSubmit(
-        answer as unknown as string,
-        this.numericInputRulesService as unknown as InteractionRulesService);
+  submitAnswer(answer: number | string | null): void {
+    if (
+      typeof answer !== 'number' &&
+      this.currentInteractionService.showNoResponseError()
+    ) {
+      this.errorMessageI18nKey = 'I18N_INTERACTIONS_NUMERIC_INPUT_NO_RESPONSE';
+      this.currentInteractionService.updateAnswerIsValid(false);
+      return;
     }
+
+    // The answer is only submitted when it is a valid number. The typeof
+    // check is redundant with isAnswerValid() at runtime, but it lets the
+    // compiler narrow the answer to a number before it is passed to onSubmit.
+    if (typeof answer === 'number' && this.isAnswerValid()) {
+      this.currentInteractionService.onSubmit(
+        answer,
+        this.numericInputRulesService
+      );
+    }
+    this.currentInteractionService.updateAnswerIsValid(this.isAnswerValid());
   }
 
   private getAttributesObject() {
     return {
-      requireNonnegativeInputWithValue:
-        this.requireNonnegativeInputWithValue
+      requireNonnegativeInputWithValue: this.requireNonnegativeInputWithValue,
     };
   }
 
-  onAnswerChange(answer: string | number): void {
-    if (this.answer === answer) {
+  onAnswerChange(answer: SchemaDefaultValue): void {
+    // The float editor emits null when the input is cleared or when it holds
+    // text that cannot be parsed as a number. Treat null (and any other
+    // unexpected value) as an empty/invalid answer so that a previously valid
+    // answer cannot be submitted after the input has been cleared or
+    // invalidated.
+    const newAnswer: number | string | null =
+      typeof answer === 'number' || typeof answer === 'string' ? answer : null;
+    if (this.answer === newAnswer) {
       return;
     }
-    this.answer = answer;
+    this.answer = newAnswer;
+    this.errorMessageI18nKey = '';
+    this.currentInteractionService.updateAnswerIsValid(this.isAnswerValid());
+    this.currentInteractionService.updateCurrentAnswer(this.answer);
     this.changeDetectorRef.detectChanges();
   }
 
-  getSchema(): { type: string; 'ui_config': {}; } {
+  getSchema(): NumericInputFormSchema {
     return this.NUMERIC_INPUT_FORM_SCHEMA;
   }
 
-  getLabelForFocusTarget(): string | null {
+  getLabelForFocusTarget(): string {
     return this.labelForFocusTarget;
   }
 
   ngOnInit(): void {
-    const {
-      requireNonnegativeInput
-    } = this.interactionAttributesExtractorService.getValuesFromAttributes(
-      'NumericInput',
-      this.getAttributesObject()
-    ) as NumericInputCustomizationArgs;
+    const {requireNonnegativeInput} =
+      this.interactionAttributesExtractorService.getValuesFromAttributes(
+        'NumericInput',
+        this.getAttributesObject()
+      ) as NumericInputCustomizationArgs;
     this.requireNonnegativeInput = requireNonnegativeInput.value;
-    this.answer = (
-      this.savedSolution !== undefined ?
-      this.savedSolution : ''
-    );
-    this.labelForFocusTarget = this.labelForFocusTarget || null;
+    this.answer =
+      this.lastAnswer !== null && this.lastAnswer !== undefined
+        ? this.lastAnswer
+        : this.savedSolution !== undefined
+          ? this.savedSolution
+          : '';
 
     this.NUMERIC_INPUT_FORM_SCHEMA = {
       type: 'float',
       ui_config: {
-        checkRequireNonnegativeInput: this.requireNonnegativeInput
-      }
+        checkRequireNonnegativeInput: this.requireNonnegativeInput,
+      },
     };
 
     this.currentInteractionService.registerCurrentInteraction(
-      () => this.submitAnswer(this.answer), () => this.isAnswerValid());
+      () => this.submitAnswer(this.answer),
+      () => this.isAnswerValid()
+    );
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaInteractiveNumericInput', downgradeComponent({
-    component: InteractiveNumericInput
-  }) as angular.IDirectiveFactory);

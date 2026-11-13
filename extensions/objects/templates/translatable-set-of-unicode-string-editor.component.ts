@@ -16,55 +16,65 @@
  * @fileoverview Directive for translatable set of unicode string editor.
  */
 
-import { ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
+import {
+  ChangeDetectorRef,
+  Component,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+} from '@angular/core';
+
+import {TranslatableSetOfStringSchema} from './translatable-set-of-normalized-string-editor.component';
+import {SchemaDefaultValue} from 'services/schema-default-value.service';
 
 @Component({
   selector: 'translatable-set-of-unicode-string-editor',
-  templateUrl: './translatable-set-of-unicode-string-editor.component.html'
+  templateUrl: './translatable-set-of-unicode-string-editor.component.html',
 })
-export class TranslatableSetOfUnicodeStringEditorComponent {
+export class TranslatableSetOfUnicodeStringEditorComponent implements OnInit {
   // This property is initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
-  @Input() value!: { unicodeStrSet: string };
+  @Input() value!: {unicodeStrSet: string[]};
   @Output() valueChanged = new EventEmitter();
-  schema: {
-    type: string;
-    items: { type: string; };
-    validators: { id: string; }[];
-  } = {
+  schema: TranslatableSetOfStringSchema = {
     type: 'list',
     items: {
-      type: 'unicode'
+      type: 'unicode',
     },
-    validators: [{
-      id: 'is_uniquified'
-    }]
+    validators: [
+      {
+        id: 'is_uniquified',
+      },
+    ],
   };
 
-  constructor(private changeDetectorRef: ChangeDetectorRef) { }
+  constructor(private changeDetectorRef: ChangeDetectorRef) {}
 
-  updateValue(val: string): void {
+  ngOnInit(): void {
+    if (this.value === undefined) {
+      this.value = {
+        unicodeStrSet: [],
+      };
+    }
+  }
+
+  updateValue(val: SchemaDefaultValue): void {
+    // The schema-based-editor emits a SchemaDefaultValue. Guard the value to
+    // ensure only unicode string arrays are accepted.
+    if (!Array.isArray(val)) {
+      return;
+    }
     if (this.value.unicodeStrSet === val) {
       return;
     }
-    this.value.unicodeStrSet = val;
+    this.value.unicodeStrSet = val as string[];
     this.valueChanged.emit(this.value);
     this.changeDetectorRef.detectChanges();
   }
 
-  getSchema(): {
-    type: string;
-    items: { type: string; };
-    validators: { id: string; }[];
-    } {
+  getSchema(): TranslatableSetOfStringSchema {
     return this.schema;
   }
 }
-
-angular.module('oppia').directive(
-  'translatableSetOfUnicodeStringEditor',
-  downgradeComponent({
-    component: TranslatableSetOfUnicodeStringEditorComponent
-  }) as angular.IDirectiveFactory);

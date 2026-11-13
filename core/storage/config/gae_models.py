@@ -16,89 +16,35 @@
 
 """Models relating to configuration properties and platform parameters."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core.platform import models
 import core.storage.base_model.gae_models as base_models
+from core.platform import models
 
-from typing import Any, Dict, List
+from typing import Dict, List
 
 MYPY = False
-if MYPY: # pragma: no cover
-    from mypy_imports import datastore_services
+if MYPY:  # pragma: no cover
+    # Here, we are importing 'platform_parameter_domain' only for type checking.
+    from core.domain import (  # pylint: disable=invalid-import
+        platform_parameter_domain,
+    )
+    from mypy_imports import base_models, datastore_services
 
 datastore_services = models.Registry.import_datastore_services()
 
 
-class ConfigPropertySnapshotMetadataModel(
-        base_models.BaseSnapshotMetadataModel):
-    """Storage model for the metadata for a config property snapshot."""
-
-    pass
-
-
-class ConfigPropertySnapshotContentModel(base_models.BaseSnapshotContentModel):
-    """Storage model for the content for a config property snapshot."""
-
-    @staticmethod
-    def get_deletion_policy() -> base_models.DELETION_POLICY:
-        """Model doesn't contain any data directly corresponding to a user."""
-        return base_models.DELETION_POLICY.NOT_APPLICABLE
-
-
-class ConfigPropertyModel(base_models.VersionedModel):
-    """A class that represents a named configuration property.
-
-    The id is the name of the property.
-    """
-
-    SNAPSHOT_METADATA_CLASS = ConfigPropertySnapshotMetadataModel
-    SNAPSHOT_CONTENT_CLASS = ConfigPropertySnapshotContentModel
-
-    # The property value.
-    value = datastore_services.JsonProperty(indexed=False)
-
-    @staticmethod
-    def get_deletion_policy() -> base_models.DELETION_POLICY:
-        """ConfigPropertyModel is not related to users."""
-        return base_models.DELETION_POLICY.NOT_APPLICABLE
-
-    @staticmethod
-    def get_model_association_to_user(
-    ) -> base_models.MODEL_ASSOCIATION_TO_USER:
-        """Model does not contain user data."""
-        return base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER
-
-    @classmethod
-    def get_export_policy(cls) -> Dict[str, base_models.EXPORT_POLICY]:
-        """Model doesn't contain any data directly corresponding to a user."""
-        return dict(super(cls, cls).get_export_policy(), **{
-            'value': base_models.EXPORT_POLICY.NOT_APPLICABLE
-        })
-
-    # TODO(#13523): Change 'commit_cmds' to domain object/TypedDict to
-    # remove Any from type-annotation below.
-    # We have ignored [override] here because the signature of this method
-    # doesn't match with VersionedModel.commit().
-    # https://mypy.readthedocs.io/en/stable/error_code_list.html#check-validity-of-overrides-override
-    def commit( # type: ignore[override]
-            self,
-            committer_id: str,
-            commit_cmds: List[Dict[str, Any]]
-    ) -> None:
-        super(ConfigPropertyModel, self).commit(committer_id, '', commit_cmds)
-
-
 class PlatformParameterSnapshotMetadataModel(
-        base_models.BaseSnapshotMetadataModel):
+    base_models.BaseSnapshotMetadataModel
+):
     """Storage model for the metadata for a platform parameter snapshot."""
 
     pass
 
 
 class PlatformParameterSnapshotContentModel(
-        base_models.BaseSnapshotContentModel):
+    base_models.BaseSnapshotContentModel
+):
     """Storage model for the content for a platform parameter snapshot."""
 
     @staticmethod
@@ -118,8 +64,10 @@ class PlatformParameterModel(base_models.VersionedModel):
     SNAPSHOT_CONTENT_CLASS = PlatformParameterSnapshotContentModel
 
     rules = datastore_services.JsonProperty(repeated=True)
-    rule_schema_version = (
-        datastore_services.IntegerProperty(required=True, indexed=True))
+    rule_schema_version = datastore_services.IntegerProperty(
+        required=True, indexed=True
+    )
+    default_value = datastore_services.JsonProperty()
 
     @staticmethod
     def get_deletion_policy() -> base_models.DELETION_POLICY:
@@ -127,28 +75,32 @@ class PlatformParameterModel(base_models.VersionedModel):
         return base_models.DELETION_POLICY.NOT_APPLICABLE
 
     @staticmethod
-    def get_model_association_to_user(
-    ) -> base_models.MODEL_ASSOCIATION_TO_USER:
+    def get_model_association_to_user() -> (
+        base_models.MODEL_ASSOCIATION_TO_USER
+    ):
         """Model does not contain user data."""
         return base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER
 
     @classmethod
     def get_export_policy(cls) -> Dict[str, base_models.EXPORT_POLICY]:
         """Model doesn't contain any data directly corresponding to a user."""
-        return dict(super(cls, cls).get_export_policy(), **{
-            'rules': base_models.EXPORT_POLICY.NOT_APPLICABLE,
-            'rule_schema_version': base_models.EXPORT_POLICY.NOT_APPLICABLE
-        })
+        return dict(
+            super(cls, cls).get_export_policy(),
+            **{
+                'rules': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'rule_schema_version': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'default_value': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+            },
+        )
 
-    # TODO(#13523): Change 'rule_dicts' to domain object/TypedDict to
-    # remove Any from type-annotation below.
     @classmethod
     def create(
-            cls,
-            param_name: str,
-            rule_dicts: List[Dict[str, Any]],
-            rule_schema_version: int
-    ) -> 'PlatformParameterModel':
+        cls,
+        param_name: str,
+        rule_dicts: List[platform_parameter_domain.PlatformParameterRuleDict],
+        rule_schema_version: int,
+        default_value: platform_parameter_domain.PlatformDataTypes,
+    ) -> PlatformParameterModel:
         """Creates a PlatformParameterModel instance.
 
         Args:
@@ -162,9 +114,13 @@ class PlatformParameterModel(base_models.VersionedModel):
                         PlatformParameterFilter objects, having the following
                         structure:
                             - type: str. The type of the filter.
-                            - value: *. The value of the filter to match
-                                against.
+                            - conditions: list((str, str)). Each element of the
+                                list is a 2-tuple (op, value), where op is the
+                                operator for comparison and value is the value
+                                used for comparison.
             rule_schema_version: int. The schema version for the rule dicts.
+            default_value: PlatformDataTypes. The default value of the platform
+                parameter.
 
         Returns:
             PlatformParameterModel. The created PlatformParameterModel
@@ -173,4 +129,83 @@ class PlatformParameterModel(base_models.VersionedModel):
         return cls(
             id=param_name,
             rules=rule_dicts,
-            rule_schema_version=rule_schema_version)
+            rule_schema_version=rule_schema_version,
+            default_value=default_value,
+        )
+
+
+class FeatureFlagConfigModel(base_models.BaseModel):
+    """A class that represents named dynamic feature-flag.
+    This model only stores fields that can be updated in run time.
+
+    The id is the name of the feature-flag.
+    """
+
+    # Whether the feature flag is force enabled for all the users.
+    force_enable_for_all_users = datastore_services.BooleanProperty(
+        default=False, indexed=True
+    )
+    # The percentage of logged-in users for which the feature flag will
+    # be enabled. The value of this field should be between 0 and 100.
+    rollout_percentage = datastore_services.IntegerProperty(
+        default=0, indexed=True
+    )
+    # A list of IDs of user groups for which the feature flag will be enabled.
+    user_group_ids = datastore_services.StringProperty(repeated=True)
+
+    @staticmethod
+    def get_deletion_policy() -> base_models.DELETION_POLICY:
+        """FeatureFlagConfigModel is not related to users."""
+        return base_models.DELETION_POLICY.NOT_APPLICABLE
+
+    @staticmethod
+    def get_model_association_to_user() -> (
+        base_models.MODEL_ASSOCIATION_TO_USER
+    ):
+        """Model does not contain user data."""
+        return base_models.MODEL_ASSOCIATION_TO_USER.NOT_CORRESPONDING_TO_USER
+
+    @classmethod
+    def get_export_policy(cls) -> Dict[str, base_models.EXPORT_POLICY]:
+        """Model doesn't contain any data directly corresponding to a user."""
+        return dict(
+            super(cls, cls).get_export_policy(),
+            **{
+                'force_enable_for_all_users': (
+                    base_models.EXPORT_POLICY.NOT_APPLICABLE
+                ),
+                'rollout_percentage': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+                'user_group_ids': base_models.EXPORT_POLICY.NOT_APPLICABLE,
+            },
+        )
+
+    @classmethod
+    def create(
+        cls,
+        feature_flag_name: str,
+        force_enable_for_all_users: bool,
+        rollout_percentage: int,
+        user_group_ids: List[str],
+    ) -> FeatureFlagConfigModel:
+        """Creates FeatureFlagConfigModel instance.
+
+        Args:
+            feature_flag_name: str. The name of the feature-flag.
+            force_enable_for_all_users: bool. Whether to force-enable the
+                feature-flag for all the users.
+            rollout_percentage: int. The defined percentage of logged-in
+                users for which the feature should be enabled.
+            user_group_ids: List[str]. The list of ids of UserGroup objects.
+
+        Returns:
+            FeatureFlagConfigModel. The created FeatureFlagConfigModel instance.
+        """
+        feature_flag_entity = cls(
+            id=feature_flag_name,
+            force_enable_for_all_users=force_enable_for_all_users,
+            rollout_percentage=rollout_percentage,
+            user_group_ids=user_group_ids,
+        )
+        feature_flag_entity.update_timestamps()
+        feature_flag_entity.put()
+        return feature_flag_entity

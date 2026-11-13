@@ -16,52 +16,71 @@
  * @fileoverview Unit test for GuppyInitializationService
  */
 
-import { TestBed } from '@angular/core/testing';
+import {TestBed} from '@angular/core/testing';
 
-import { GuppyInitializationService } from
-  'services/guppy-initialization.service';
-
-declare global {
-  interface Window {
-    Guppy: Object;
-  }
-}
+import {
+  KNOWN_CSS,
+  LazyCssLoaderService,
+} from 'services/lazy-css-loader.service';
+import {GuppyInitializationService} from 'services/guppy-initialization.service';
 
 class MockGuppy {
   constructor(id: string, config: Object) {}
 
   engine = {
-    end: () => {}
+    end: () => {},
   };
 
   render(): void {}
-  'import_text'(): void {}
+  import_text(): void {}
   asciimath(): string {
     return 'Dummy value';
   }
+  activate(): void {}
+
   configure(name: string, val: Object): void {}
   static event(name: string, handler: Function): void {
     handler({focused: true});
   }
+
   static configure(name: string, val: Object): void {}
-  static 'remove_global_symbol'(symbol: string): void {}
-  static 'add_global_symbol'(name: string, symbol: Object): void {}
+  static remove_global_symbol(symbol: string): void {}
+  static add_global_symbol(name: string, symbol: Object): void {}
 }
 
 describe('GuppyInitializationService', () => {
   let guppyInitializationService: GuppyInitializationService;
+  let lazyCssLoaderService: LazyCssLoaderService;
 
   beforeEach(() => {
     guppyInitializationService = TestBed.inject(GuppyInitializationService);
-    window.Guppy = MockGuppy;
+    lazyCssLoaderService = TestBed.inject(LazyCssLoaderService);
+    window.Guppy = MockGuppy as unknown as Guppy;
   });
 
-  it('should assign a random id to the guppy divs', function() {
+  it('should lazy load guppy css before creating guppy instances', () => {
+    const loadCssSpy = spyOn(lazyCssLoaderService, 'loadCss');
     let mockDocument = document.createElement('div');
     mockDocument.classList.add('guppy-div-creator', 'guppy_active');
-    angular.element(document).find('body').append(mockDocument.outerHTML);
+    document.body.insertAdjacentHTML('beforeend', mockDocument.outerHTML);
 
+    guppyInitializationService.init('guppy-div-creator', 'placeholder', 'x');
+
+    expect(loadCssSpy).toHaveBeenCalledWith(KNOWN_CSS.GUPPY);
+  });
+
+  it('should assign a random id to the guppy divs', function () {
+    let mockDocument = document.createElement('div');
+    mockDocument.classList.add('guppy-div-creator', 'guppy_active');
+    document.body.insertAdjacentHTML('beforeend', mockDocument.outerHTML);
+
+    const guppySpy = spyOn(MockGuppy.prototype, 'configure');
     guppyInitializationService.init('guppy-div-creator', 'placeholder', 'x=y');
+
+    expect(guppySpy).toHaveBeenCalledWith(
+      'empty_content',
+      '\\color{grey}{\\small \\text{placeholder}}'
+    );
 
     let guppyDivs = document.querySelectorAll('.guppy-div-creator');
     for (let i = 0; i < guppyDivs.length; i++) {
@@ -69,21 +88,41 @@ describe('GuppyInitializationService', () => {
     }
   });
 
-  it('should find active guppy div', function() {
+  it('should find active guppy div', function () {
     let mockDocument = document.createElement('div');
     mockDocument.classList.add('guppy-div-creator', 'guppy_active');
-    angular.element(document).find('body').append(mockDocument.outerHTML);
+    document.body.insertAdjacentHTML('beforeend', mockDocument.outerHTML);
 
     guppyInitializationService.init('guppy-div-creator', 'placeholder', 'x');
 
     expect(guppyInitializationService.findActiveGuppyObject()).not.toBe(
-      undefined);
+      undefined
+    );
   });
 
-  it('should correctly change and get the value of showOSK var', function() {
+  it('should correctly change and get the value of showOSK var', function () {
     guppyInitializationService.setShowOSK(true);
-    expect(guppyInitializationService.getShowOSK()).toBeTrue();
+    expect(guppyInitializationService.getShowOSK()).toBe(true);
     guppyInitializationService.setShowOSK(false);
-    expect(guppyInitializationService.getShowOSK()).toBeFalse();
+    expect(guppyInitializationService.getShowOSK()).toBe(false);
+  });
+
+  it('should activate the most recent guppy instance', function () {
+    let mockDocument = document.createElement('div');
+    mockDocument.classList.add('guppy-div-creator', 'guppy_active');
+    document.body.insertAdjacentHTML('beforeend', mockDocument.outerHTML);
+
+    guppyInitializationService.init('guppy-div-creator', 'placeholder', 'x');
+
+    const activateSpy = spyOn(MockGuppy.prototype, 'activate');
+    guppyInitializationService.activate();
+
+    expect(activateSpy).toHaveBeenCalled();
+  });
+
+  it('should do nothing when activate is called with no guppy instances', function () {
+    expect(() => {
+      guppyInitializationService.activate();
+    }).not.toThrowError();
   });
 });

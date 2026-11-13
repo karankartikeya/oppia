@@ -16,26 +16,22 @@
  * @fileoverview Module for the contact page.
  */
 
-import { NgModule } from '@angular/core';
-import { SharedComponentsModule } from 'components/shared-component.module';
-import { ContactPageComponent } from './contact-page.component';
-import { ContactPageRootComponent } from './contact-page-root.component';
-import { CommonModule } from '@angular/common';
-import { ContactPageRoutingModule } from './contact-page-routing.module';
+import {NgModule} from '@angular/core';
+import {SharedComponentsModule} from 'components/shared-component.module';
+import {ContactPageComponent} from './contact-page.component';
+import {ContactPageRootComponent} from './contact-page-root.component';
+import {CommonModule} from '@angular/common';
+import {ContactPageRoutingModule} from './contact-page-routing.module';
+import {CampaignBannerModule} from 'components/campaign-banner/campaign-banner-module';
 
 @NgModule({
   imports: [
     CommonModule,
     SharedComponentsModule,
-    ContactPageRoutingModule
+    ContactPageRoutingModule,
+    CampaignBannerModule,
   ],
-  declarations: [
-    ContactPageComponent,
-    ContactPageRootComponent
-  ],
-  entryComponents: [
-    ContactPageComponent,
-    ContactPageRootComponent
-  ]
+  declarations: [ContactPageComponent, ContactPageRootComponent],
+  entryComponents: [ContactPageComponent, ContactPageRootComponent],
 })
 export class ContactPageModule {}

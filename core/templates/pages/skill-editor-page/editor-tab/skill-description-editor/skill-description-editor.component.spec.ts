@@ -12,16 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { EventEmitter, NO_ERRORS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ConceptCard } from 'domain/skill/ConceptCardObjectFactory';
-import { SkillRights, SkillRightsBackendDict } from 'domain/skill/skill-rights.model';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {ConceptCard} from 'domain/skill/concept-card.model';
+import {ValidatorsService} from 'services/validators.service';
+import {
+  SkillRights,
+  SkillRightsBackendDict,
+} from 'domain/skill/skill-rights.model';
 
-import { SkillUpdateService } from 'domain/skill/skill-update.service';
-import { Skill, SkillObjectFactory } from 'domain/skill/SkillObjectFactory';
-import { SkillEditorStateService } from 'pages/skill-editor-page/services/skill-editor-state.service';
-import { SkillDescriptionEditorComponent } from './skill-description-editor.component';
+import {SkillUpdateService} from 'domain/skill/skill-update.service';
+import {Skill} from 'domain/skill/skill.model';
+import {SkillEditorStateService} from 'pages/skill-editor-page/services/skill-editor-state.service';
+import {SkillDescriptionEditorComponent} from './skill-description-editor.component';
 
 /**
  * @fileoverview Unit tests for SkillDescriptionEditorComponent.
@@ -33,11 +37,11 @@ describe('Skill Description Editor Component', () => {
 
   let skillUpdateService: SkillUpdateService;
   let skillEditorStateService: SkillEditorStateService;
-  let skillObjectFactory: SkillObjectFactory;
 
-  let sampleSkillRights: SkillRights = null;
-  let skillRightsDict: SkillRightsBackendDict = null;
-  let sampleSkill: Skill = null;
+  let sampleSkillRights: SkillRights;
+  let skillRightsDict: SkillRightsBackendDict;
+  let sampleSkill: Skill;
+  let validatorsService: ValidatorsService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -46,9 +50,9 @@ describe('Skill Description Editor Component', () => {
       providers: [
         SkillUpdateService,
         SkillEditorStateService,
-        SkillEditorStateService
+        ValidatorsService,
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   });
 
@@ -58,25 +62,35 @@ describe('Skill Description Editor Component', () => {
 
     skillUpdateService = TestBed.inject(SkillUpdateService);
     skillEditorStateService = TestBed.inject(SkillEditorStateService);
-    skillObjectFactory = TestBed.inject(SkillObjectFactory);
+    validatorsService = TestBed.inject(ValidatorsService);
   });
 
   beforeEach(() => {
     skillRightsDict = {
       skill_id: '0',
-      can_edit_skill_description: true
+      can_edit_skill_description: true,
     };
 
-    sampleSkillRights = SkillRights.createFromBackendDict(
-      skillRightsDict);
+    sampleSkillRights = SkillRights.createFromBackendDict(skillRightsDict);
 
     sampleSkill = new Skill(
-      'id1', 'Skill description loading', [], [], {} as ConceptCard, 'en',
-      1, 0, 'id1', false, []);
+      'id1',
+      'Skill description loading',
+      [],
+      [],
+      {} as ConceptCard,
+      'en',
+      1,
+      0,
+      'id1',
+      false,
+      []
+    );
 
     spyOn(skillEditorStateService, 'getSkill').and.returnValue(sampleSkill);
-    spyOn(skillEditorStateService, 'getSkillRights')
-      .and.returnValue(sampleSkillRights);
+    spyOn(skillEditorStateService, 'getSkillRights').and.returnValue(
+      sampleSkillRights
+    );
   });
 
   afterEach(() => {
@@ -101,12 +115,10 @@ describe('Skill Description Editor Component', () => {
 
   it('should set properties when initialized', () => {
     let mockEventEmitter = new EventEmitter();
-    spyOnProperty(skillEditorStateService, 'onSkillChange')
-      .and.returnValue(mockEventEmitter);
+    spyOnProperty(skillEditorStateService, 'onSkillChange').and.returnValue(
+      mockEventEmitter
+    );
 
-    expect(component.skill).toBe(null);
-    expect(component.tmpSkillDescription).toBe(null);
-    expect(component.skillRights).toBe(null);
     expect(component.errorMsg).toBe('');
 
     component.ngOnInit();
@@ -120,19 +132,25 @@ describe('Skill Description Editor Component', () => {
 
   it('should save skill description successfully', () => {
     let saveSkillDescriptionSpy = spyOn(
-      skillUpdateService, 'setSkillDescription').and.returnValue(null);
-    spyOn(skillObjectFactory, 'hasValidDescription').and.returnValue(true);
+      skillUpdateService,
+      'setSkillDescription'
+    ).and.callThrough();
+    spyOn(component.onSaveDescription, 'emit').and.callThrough();
+    spyOn(validatorsService, 'hasValidDescription').and.returnValue(true);
     component.ngOnInit();
     // Old Description.
     expect(component.tmpSkillDescription).toBe('Skill description loading');
 
     component.saveSkillDescription('newSkillDescription');
     expect(saveSkillDescriptionSpy).toHaveBeenCalled();
+    expect(component.onSaveDescription.emit).toHaveBeenCalled();
   });
 
   it('should not save skill description if it is old description', () => {
     let saveSkillDescriptionSpy = spyOn(
-      skillUpdateService, 'setSkillDescription').and.returnValue(null);
+      skillUpdateService,
+      'setSkillDescription'
+    ).and.callThrough();
     component.ngOnInit();
     // Old Description.
     expect(component.tmpSkillDescription).toBe('Skill description loading');
@@ -143,8 +161,10 @@ describe('Skill Description Editor Component', () => {
 
   it('should not save skill description if it has invalid character', () => {
     let saveSkillDescriptionSpy = spyOn(
-      skillUpdateService, 'setSkillDescription').and.returnValue(null);
-    spyOn(skillObjectFactory, 'hasValidDescription').and.returnValue(false);
+      skillUpdateService,
+      'setSkillDescription'
+    ).and.callThrough();
+    spyOn(validatorsService, 'hasValidDescription').and.returnValue(false);
     component.ngOnInit();
     // Old Description.
     expect(component.tmpSkillDescription).toBe('Skill description loading');

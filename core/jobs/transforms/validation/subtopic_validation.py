@@ -16,8 +16,7 @@
 
 """Beam DoFns and PTransforms to provide validation of subtopic models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.domain import subtopic_page_domain
 from core.jobs import job_utils
@@ -25,21 +24,29 @@ from core.jobs.decorators import validation_decorators
 from core.jobs.transforms.validation import base_validation
 from core.platform import models
 
+from typing import Optional, Type
+
 MYPY = False
-if MYPY: # pragma: no cover
+if MYPY:  # pragma: no cover
     from mypy_imports import subtopic_models
 
-(subtopic_models,) = models.Registry.import_models([models.NAMES.subtopic])
+(subtopic_models,) = models.Registry.import_models([models.Names.SUBTOPIC])
 
 
 @validation_decorators.AuditsExisting(
-    subtopic_models.SubtopicPageSnapshotMetadataModel)
+    subtopic_models.SubtopicPageSnapshotMetadataModel
+)
 class ValidateSubtopicPageSnapshotMetadataModel(
-        base_validation.BaseValidateCommitCmdsSchema):
-    """Overrides _get_change_domain_class for SubtopicPageSnapshotMetadataModel.
-    """
+    base_validation.BaseValidateCommitCmdsSchema[
+        subtopic_models.SubtopicPageSnapshotMetadataModel
+    ]
+):
+    """Overrides _get_change_domain_class for SubtopicPageSnapshotMetadataModel."""
 
-    def _get_change_domain_class(self, unused_input_model): # pylint: disable=unused-argument
+    def _get_change_domain_class(
+        self,
+        unused_input_model: subtopic_models.SubtopicPageSnapshotMetadataModel,  # pylint: disable=unused-argument
+    ) -> Type[subtopic_page_domain.SubtopicPageChange]:
         """Returns a change domain class.
 
         Args:
@@ -53,13 +60,20 @@ class ValidateSubtopicPageSnapshotMetadataModel(
 
 
 @validation_decorators.AuditsExisting(
-    subtopic_models.SubtopicPageCommitLogEntryModel)
+    subtopic_models.SubtopicPageCommitLogEntryModel
+)
 class ValidateSubtopicPageCommitLogEntryModel(
-        base_validation.BaseValidateCommitCmdsSchema):
-    """Overrides _get_change_domain_class for SubtopicPageCommitLogEntryModel.
-    """
+    base_validation.BaseValidateCommitCmdsSchema[
+        subtopic_models.SubtopicPageCommitLogEntryModel
+    ]
+):
+    """Overrides _get_change_domain_class for SubtopicPageCommitLogEntryModel."""
 
-    def _get_change_domain_class(self, input_model):
+    # Here we use MyPy ignore because the signature of this method doesn't
+    # match with super class's _get_change_domain_class() method.
+    def _get_change_domain_class(  # type: ignore[override]
+        self, input_model: subtopic_models.SubtopicPageCommitLogEntryModel
+    ) -> Optional[Type[subtopic_page_domain.SubtopicPageChange]]:
         """Returns a change domain class.
 
         Args:

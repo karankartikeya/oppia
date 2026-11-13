@@ -16,12 +16,24 @@
 
 """Base class for visualizations of summarized learner answers."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
-from core import schema_utils
-from core import utils
+from core import schema_utils, utils
 from core.domain import calculation_registry
+
+from typing import Any, Dict, List, Mapping, TypedDict, Union
+
+OptionsDictType = Mapping[str, Union[str, List[str], bool]]
+
+
+class OptionsSpecsDict(TypedDict):
+    """Type for the _OPTIONS_SPECS class variable."""
+
+    name: str
+    description: str
+    # Here we use type Any because values in schema dictionary can be of type
+    # str, List, Dict, nested Dict and other types too.
+    schema: Dict[str, Any]
 
 
 class BaseVisualization:
@@ -30,20 +42,24 @@ class BaseVisualization:
     # Option specifications for the visualization, including their descriptions
     # and schemas. Overridden in subclasses. Used for testing that the
     # answer_visualization_specs in visualizations are valid.
-    _OPTIONS_SPECS = []
+    _OPTIONS_SPECS: List[OptionsSpecsDict] = []
 
     @property
-    def id(self):
+    def id(self) -> str:
         """The name of the class."""
         return self.__class__.__name__
 
     def __init__(
-            self, calculation_id, options_dict, addressed_info_is_supported):
+        self,
+        calculation_id: str,
+        options_dict: OptionsDictType,
+        addressed_info_is_supported: bool,
+    ) -> None:
         self.options = options_dict
         self.calculation_id = calculation_id
         self.addressed_info_is_supported = addressed_info_is_supported
 
-    def validate(self):
+    def validate(self) -> None:
         """Validates a visualization object.
 
         This is only used in tests for the validity of interactions.
@@ -52,27 +68,30 @@ class BaseVisualization:
         calculation_registry.Registry.get_calculation_by_id(self.calculation_id)
 
         # Check that the options_dict is valid.
-        expected_option_names = sorted([
-            spec['name'] for spec in self._OPTIONS_SPECS
-        ])
+        expected_option_names = sorted(
+            [spec['name'] for spec in self._OPTIONS_SPECS]
+        )
         actual_option_names = sorted(self.options.keys())
         if actual_option_names != expected_option_names:
             raise utils.ValidationError(
                 'For visualization %s, expected option names %s; received '
-                'names %s' %
-                (self.id, expected_option_names, actual_option_names))
+                'names %s'
+                % (self.id, expected_option_names, actual_option_names)
+            )
 
         # Check that the schemas are correct.
         for spec in self._OPTIONS_SPECS:
             schema_utils.normalize_against_schema(
-                self.options[spec['name']], spec['schema'])
+                self.options[spec['name']], spec['schema']
+            )
 
         # Check that addressed_info_is_supported is valid.
         if not isinstance(self.addressed_info_is_supported, bool):
             raise utils.ValidationError(
                 'For visualization %s, expected a bool value for '
-                'addressed_info_is_supported; received %s' %
-                (self.id, self.addressed_info_is_supported))
+                'addressed_info_is_supported; received %s'
+                % (self.id, self.addressed_info_is_supported)
+            )
 
 
 class ClickHexbins(BaseVisualization):
@@ -91,27 +110,30 @@ class ClickHexbins(BaseVisualization):
     https://cran.r-project.org/web/packages/hexbin/vignettes/hexagon_binning.pdf
     """
 
-    _OPTIONS_SPECS = []
+    _OPTIONS_SPECS: List[OptionsSpecsDict] = []
 
 
 class FrequencyTable(BaseVisualization):
     """A visualization representing a two-column table with answer counts."""
 
-    _OPTIONS_SPECS = [{
-        'name': 'column_headers',
-        'description': 'The headers for the columns.',
-        'schema': {
-            'type': 'list',
-            'items': {
-                'type': 'unicode',
+    _OPTIONS_SPECS: List[OptionsSpecsDict] = [
+        {
+            'name': 'column_headers',
+            'description': 'The headers for the columns.',
+            'schema': {
+                'type': 'list',
+                'items': {
+                    'type': 'unicode',
+                },
+                'len': 2,
             },
-            'len': 2,
         },
-    }, {
-        'name': 'title',
-        'description': 'The title of the visualization.',
-        'schema': {'type': 'unicode'}
-    }]
+        {
+            'name': 'title',
+            'description': 'The title of the visualization.',
+            'schema': {'type': 'unicode'},
+        },
+    ]
 
 
 class EnumeratedFrequencyTable(BaseVisualization):
@@ -122,21 +144,24 @@ class EnumeratedFrequencyTable(BaseVisualization):
     The #1 entry is shown by default, all others start hidden.
     """
 
-    _OPTIONS_SPECS = [{
-        'name': 'column_headers',
-        'description': 'The headers for the columns.',
-        'schema': {
-            'type': 'list',
-            'items': {
-                'type': 'unicode',
+    _OPTIONS_SPECS: List[OptionsSpecsDict] = [
+        {
+            'name': 'column_headers',
+            'description': 'The headers for the columns.',
+            'schema': {
+                'type': 'list',
+                'items': {
+                    'type': 'unicode',
+                },
+                'len': 2,
             },
-            'len': 2,
         },
-    }, {
-        'name': 'title',
-        'description': 'The title of the visualization.',
-        'schema': {'type': 'unicode'}
-    }]
+        {
+            'name': 'title',
+            'description': 'The title of the visualization.',
+            'schema': {'type': 'unicode'},
+        },
+    ]
 
 
 class SortedTiles(BaseVisualization):
@@ -144,12 +169,15 @@ class SortedTiles(BaseVisualization):
     tiles.
     """
 
-    _OPTIONS_SPECS = [{
-        'name': 'header',
-        'description': 'Header for the tiles.',
-        'schema': {'type': 'unicode'}
-    }, {
-        'name': 'use_percentages',
-        'description': 'Summarize frequency through percentages',
-        'schema': {'type': 'bool'},
-    }]
+    _OPTIONS_SPECS: List[OptionsSpecsDict] = [
+        {
+            'name': 'header',
+            'description': 'Header for the tiles.',
+            'schema': {'type': 'unicode'},
+        },
+        {
+            'name': 'use_percentages',
+            'description': 'Summarize frequency through percentages',
+            'schema': {'type': 'bool'},
+        },
+    ]

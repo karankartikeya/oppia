@@ -14,64 +14,158 @@
 
 """Tests for the image validation service."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import os
 
-from core import feconf
-from core import python_utils
-from core import utils
+from core import feconf, utils
 from core.domain import image_validation_services
 from core.tests import test_utils
+
+from typing import Union
 
 
 class ImageValidationServiceTests(test_utils.GenericTestBase):
 
-    def setUp(self):
-        super(ImageValidationServiceTests, self).setUp()
-        with python_utils.open_file(
-            os.path.join(feconf.TESTS_DATA_DIR, 'img.png'),
-            'rb', encoding=None) as f:
+    def setUp(self) -> None:
+        super().setUp()
+        with open(
+            os.path.join(feconf.TESTS_DATA_DIR, 'img.png'), 'rb', encoding=None
+        ) as f:
             self.raw_image = f.read()
 
-    def _assert_validation_error(
-            self, image, filename, expected_error_substring):
+    def _assert_image_validation_error(
+        self,
+        image: Union[str, bytes],
+        filename: str,
+        entity_type: str,
+        expected_error_substring: str,
+    ) -> None:
         """Checks that the image passes validation."""
-        with self.assertRaisesRegexp(
-            utils.ValidationError, expected_error_substring):
+        with self.assertRaisesRegex(
+            utils.ValidationError, expected_error_substring
+        ):
             image_validation_services.validate_image_and_filename(
-                image, filename)
+                image, filename, entity_type
+            )
 
-    def test_image_validation_checks(self):
-        self._assert_validation_error(None, 'image.png', 'No image supplied')
-        self._assert_validation_error(
-            self.raw_image, None, 'No filename supplied')
+    def test_image_validation_checks(self) -> None:
+        # TODO(#13059): Here we use MyPy ignore because after we fully type the
+        # codebase we plan to get rid of the tests that intentionally test wrong
+        # inputs that we can normally catch by typing.
+        self._assert_image_validation_error(
+            None,  # type: ignore[arg-type]
+            'image.png',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'No image supplied',
+        )
+        # TODO(#13059): Here we use MyPy ignore because after we fully type the
+        # codebase we plan to get rid of the tests that intentionally test wrong
+        # inputs that we can normally catch by typing.
+        self._assert_image_validation_error(
+            self.raw_image,
+            None,  # type: ignore[arg-type]
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'No filename supplied',
+        )
 
         large_image = '<svg><path d="%s" /></svg>' % (
-            'M150 0 L75 200 L225 200 Z ' * 4000)
-        self._assert_validation_error(
-            large_image, 'image.svg', 'Image exceeds file size limit of 100 KB')
+            'M150 0 L75 200 L225 200 Z ' * 4000
+        )
+        self._assert_image_validation_error(
+            large_image,
+            'image.svg',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Image exceeds file size limit of 100 KB',
+        )
 
-        invalid_svg = '<badsvg></badsvg>'
-        self._assert_validation_error(
-            invalid_svg, 'image.svg',
-            'Unsupported tags/attributes found in the SVG')
+        large_image = '<svg><path d="%s" /></svg>' % (
+            'M150 0 L75 200 L225 200 Z ' * 50000
+        )
+        self._assert_image_validation_error(
+            large_image,
+            'image.svg',
+            feconf.ENTITY_TYPE_BLOG_POST,
+            'Image exceeds file size limit of 1024 KB',
+        )
+        self._assert_image_validation_error(
+            large_image,
+            'image.svg',
+            feconf.ENTITY_TYPE_FEEDBACK,
+            'Image exceeds file size limit of 1024 KB',
+        )
 
-        no_xmlns_attribute_svg = invalid_svg = '<svg></svg>'
-        self._assert_validation_error(
-            no_xmlns_attribute_svg, 'image.svg',
-            'The svg tag does not contains the \'xmlns\' attribute.')
+        invalid_svg = b'<badsvg></badsvg>'
+        self._assert_image_validation_error(
+            invalid_svg,
+            'image.svg',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Unsupported tags/attributes found in the SVG',
+        )
 
-        self._assert_validation_error(
-            b'not an image', 'image.png', 'Image not recognized')
-
-        self._assert_validation_error(
-            self.raw_image, '.png', 'Invalid filename')
-        self._assert_validation_error(
-            self.raw_image, 'image/image.png',
-            'Filenames should not include slashes')
-        self._assert_validation_error(
-            self.raw_image, 'image', 'Image filename with no extension')
-        self._assert_validation_error(
-            self.raw_image, 'image.pdf', 'Expected a filename ending in .png')
+        no_xmlns_attribute_svg = invalid_svg = b'<svg></svg>'
+        self._assert_image_validation_error(
+            no_xmlns_attribute_svg,
+            'image.svg',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'The svg tag does not contains the \'xmlns\' attribute.',
+        )
+        corrupted_image_data = (
+            b'\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff'
+        )
+        bmp_image_data = (
+            b'BM\x1a\x00\x00\x00\x00\x00\x00\x00\x1a\x00\x00\x00'
+            b'\x0c\x00\x00\x00\x01\x00\x01\x00\x01\x00\x18\x00\xff\xff\xff'
+            b'\x00\x00\x00'
+        )
+        self._assert_image_validation_error(
+            bmp_image_data,
+            'image.png',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Image uses unsupported format',
+        )
+        self._assert_image_validation_error(
+            corrupted_image_data,
+            'image.png',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Image not recognized',
+        )
+        self._assert_image_validation_error(
+            self.raw_image,
+            '.png',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Invalid filename',
+        )
+        self._assert_image_validation_error(
+            self.raw_image,
+            'image/image.png',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Filenames should not include slashes',
+        )
+        self._assert_image_validation_error(
+            self.raw_image,
+            'image',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Image filename with no extension',
+        )
+        self._assert_image_validation_error(
+            self.raw_image,
+            'image.pdf',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Expected a filename ending in .png',
+        )
+        base64_encoded_string = 'SGVsbG8gV29ybGQh'
+        self._assert_image_validation_error(
+            base64_encoded_string,
+            'image.svg',
+            feconf.ENTITY_TYPE_EXPLORATION,
+            'Image not recognized',
+        )
+        xmlns_attribute_svg = '<svg xmlns="http://www.w3.org/2000/svg" ></svg>'
+        base64_encoded_xmlns_attribute_svg = xmlns_attribute_svg.encode('utf-8')
+        validated_image = image_validation_services.validate_image_and_filename(
+            base64_encoded_xmlns_attribute_svg,
+            'image.svg',
+            feconf.ENTITY_TYPE_EXPLORATION,
+        )
+        self.assertEqual('svg', validated_image)

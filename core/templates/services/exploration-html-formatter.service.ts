@@ -16,57 +16,83 @@
  * @fileoverview Utility services for explorations which may be shared by both
  * the learner and editor views.
  */
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { Injectable } from '@angular/core';
+import {Injectable} from '@angular/core';
 
-import { CamelCaseToHyphensPipe } from
-  'filters/string-utility-filters/camel-case-to-hyphens.pipe';
-import { ExtensionTagAssemblerService } from
-  'services/extension-tag-assembler.service';
-import { HtmlEscaperService } from 'services/html-escaper.service';
-import { InteractionAnswer } from 'interactions/answer-defs';
-import { InteractionCustomizationArgs } from
-  'interactions/customization-args-defs';
-
+import {AppConstants} from 'app.constants';
+import {CamelCaseToHyphensPipe} from 'filters/string-utility-filters/camel-case-to-hyphens.pipe';
+import {ExtensionTagAssemblerService} from 'services/extension-tag-assembler.service';
+import {HtmlEscaperService} from 'services/html-escaper.service';
+import {InteractionAnswer} from 'interactions/answer-defs';
+import {InteractionCustomizationArgs} from 'interactions/customization-args-defs';
 
 // A service that provides a number of utility functions useful to both the
 // editor and player.
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ExplorationHtmlFormatterService {
   private readonly migratedInteractions: string[] = [
     'AlgebraicExpressionInput',
     'CodeRepl',
     'Continue',
+    'DragAndDropSortInput',
+    'EndExploration',
     'FractionInput',
     'GraphInput',
     'ImageClickInput',
+    'InteractiveMap',
+    'MathEquationInput',
+    'MultipleChoiceInput',
+    'NumberWithUnits',
+    'ItemSelectionInput',
+    'MusicNotesInput',
     'NumericExpressionInput',
     'NumericInput',
-    'InteractiveMap',
-    'MultipleChoiceInput',
+    'PencilCodeEditor',
+    'RatioExpressionInput',
     'SetInput',
     'TextInput',
-    'MathEquationInput'
   ];
 
   constructor(
-      private camelCaseToHyphens: CamelCaseToHyphensPipe,
-      private extensionTagAssembler: ExtensionTagAssemblerService,
-      private htmlEscaper: HtmlEscaperService
+    private camelCaseToHyphens: CamelCaseToHyphensPipe,
+    private extensionTagAssembler: ExtensionTagAssemblerService,
+    private htmlEscaper: HtmlEscaperService
   ) {}
+
+  private getDisplayedNumericExpressionAnswer(
+    answer: InteractionAnswer,
+    interactionId: string,
+    interactionCustomizationArgs: InteractionCustomizationArgs
+  ): InteractionAnswer {
+    if (
+      interactionId !== 'NumericExpressionInput' ||
+      !('useFractionForDivision' in interactionCustomizationArgs) ||
+      typeof answer !== 'string'
+    ) {
+      return answer;
+    }
+    const useFractionForDivision =
+      interactionCustomizationArgs.useFractionForDivision as
+        | boolean
+        | {value: boolean};
+    const shouldUseFraction =
+      typeof useFractionForDivision === 'boolean'
+        ? useFractionForDivision
+        : useFractionForDivision.value;
+    if (shouldUseFraction) {
+      return answer;
+    }
+    return answer.replace(/\//g, '÷');
+  }
+
   /**
    * @param {string} interactionId - The interaction id.
-   * @param {object} interactionCustomizationArgSpecs - The various
+   * @param {object} interactionCustomizationArgs - The various
    *   attributes that the interaction depends on.
-   * @param {boolean} parentHasLastAnswerProperty - If this function is
-   *   called in the exploration_player view (including the preview mode),
-   *   callers should ensure that parentHasLastAnswerProperty is set to
-   *   true and $scope.lastAnswer =
-   *   PlayerTranscriptService.getLastAnswerOnDisplayedCard(index) is set on
-   *   the parent controller of the returned tag.
-   *   Otherwise, parentHasLastAnswerProperty should be set to false.
+   * @param {boolean} parentHasLastAnswerProperty - Indicates whether the parent
+   *   component has a property for the last answer. If true, the attribute
+   *   'last-answer' will be set to 'lastAnswer', otherwise it will be set to 'null'.
    * @param {string} labelForFocusTarget - The label for setting focus on
    *   the interaction.
    * @param {string} savedSolution - The name of property that needs to be bound
@@ -74,101 +100,146 @@ export class ExplorationHtmlFormatterService {
    *   scope where the return value of this function is compiled.
    */
   getInteractionHtml(
-      interactionId: string,
-      interactionCustomizationArgs: InteractionCustomizationArgs,
-      parentHasLastAnswerProperty: boolean,
-      labelForFocusTarget: string,
-      savedSolution: string | null): string {
-    var htmlInteractionId = this.camelCaseToHyphens.transform(interactionId);
-    var element = $('<oppia-interactive-' + htmlInteractionId + '>');
-
-    element = (
-      this.extensionTagAssembler.formatCustomizationArgAttrs(
-        element, interactionCustomizationArgs));
-    const tagEnd = '></oppia-interactive-' + htmlInteractionId + '>';
-    let directiveOuterHtml = element.get(0).outerHTML.replace(tagEnd, '');
-    let spaceToBeAdded = true;
-    const getLastAnswer = (): string => {
-      let propValue = parentHasLastAnswerProperty ? 'lastAnswer' : 'null';
-      if (this.migratedInteractions.indexOf(interactionId) >= 0) {
-        return '[last-answer]="' + propValue + '"';
-      } else {
-        return 'last-answer="' + propValue + '"';
-      }
-    };
-    if (savedSolution) {
+    interactionId: string,
+    interactionCustomizationArgs: InteractionCustomizationArgs,
+    parentHasLastAnswerProperty: boolean,
+    labelForFocusTarget: string | null,
+    savedSolution: 'savedSolution' | null
+  ): string {
+    let availableInteractionIds = Array.prototype.concat.apply(
+      [],
+      AppConstants.ALLOWED_INTERACTION_CATEGORIES.map(
+        category => category.interaction_ids
+      )
+    );
+    if (!availableInteractionIds.includes(interactionId)) {
+      throw new Error(`Invalid interaction id: ${interactionId}.`);
+    }
+    let htmlInteractionId = this.camelCaseToHyphens.transform(interactionId);
+    // The createElement is safe because we verify that the interactionId
+    // belongs to a list of interaction IDs.
+    let element = document.createElement(
+      `oppia-interactive-${htmlInteractionId}`
+    );
+    element = this.extensionTagAssembler.formatCustomizationArgAttrs(
+      element,
+      interactionCustomizationArgs
+    );
+    // The setAttribute is safe because we verify that the savedSolution
+    // is 'savedMemento()'.
+    if (savedSolution === 'savedSolution') {
       // TODO(#12292): Refactor this once all interactions have been migrated to
       // Angular 2+, such that we don't need to parse the string in the
       // interaction directives/components.
-      if (spaceToBeAdded) {
-        directiveOuterHtml += ' ';
-      }
+      element.setAttribute('saved-solution', savedSolution);
+      // If interaction is migrated, we only check whether the attribute can be
+      // added, since we cannot add it in proper Angular form using
+      // 'setAttribute'. The rest is done below using string concatenation.
       if (this.migratedInteractions.indexOf(interactionId) >= 0) {
-        directiveOuterHtml += '[saved-solution]="' + savedSolution + '" ';
-      } else {
-        directiveOuterHtml += 'saved-solution="' + savedSolution + '" ';
+        element.removeAttribute('saved-solution');
       }
-      spaceToBeAdded = false;
+    } else if (savedSolution !== null) {
+      throw new Error(`Unexpected saved solution: ${savedSolution}.`);
     }
-    if (labelForFocusTarget) {
-      if (spaceToBeAdded) {
-        directiveOuterHtml += ' ';
-      }
-      directiveOuterHtml += (
-        'label-for-focus-target="' + labelForFocusTarget + '" ');
-      spaceToBeAdded = false;
+
+    const alphanumericRegex = new RegExp('^[a-zA-Z0-9]+$');
+    // The setAttribute is safe because we verify that the labelForFocusTarget
+    // is only formed of alphanumeric characters.
+    if (labelForFocusTarget && alphanumericRegex.test(labelForFocusTarget)) {
+      element.setAttribute('label-for-focus-target', labelForFocusTarget);
+    } else if (labelForFocusTarget) {
+      throw new Error(
+        `Unexpected label for focus target: ${labelForFocusTarget}.`
+      );
     }
-    if (spaceToBeAdded) {
-      directiveOuterHtml += ' ';
+
+    let lastAnswerPropValue = parentHasLastAnswerProperty
+      ? 'lastAnswer'
+      : 'null';
+    // The setAttribute is safe because the only possible value is 'lastAnswer'
+    // as per the line above.
+    element.setAttribute('last-answer', lastAnswerPropValue);
+    // If interaction is migrated, we only check whether the attribute can be
+    // added, since we cannot add it in proper Angular form using
+    // 'setAttribute'. The rest is done below using string concatenation.
+    if (this.migratedInteractions.indexOf(interactionId) >= 0) {
+      element.removeAttribute('last-answer');
     }
-    directiveOuterHtml += getLastAnswer() + tagEnd;
-    return directiveOuterHtml;
+
+    // TODO(#8472): Remove the following code after we migrate this part of
+    // the codebase into the Angular 2+.
+    // This is done because 'setAttribute' doesn't allow some characters to be
+    // set as attribute keys (like '[' or ']'). So when interaction is migrated
+    // we first test whether the other parts of the attribute can be added
+    // (code above) and then we add the attribute using string concatenation.
+    let interactionHtml = element.outerHTML;
+    const tagEnd = '></oppia-interactive-' + htmlInteractionId + '>';
+    let interactionHtmlWithoutEnd = interactionHtml.replace(tagEnd, '');
+    if (savedSolution === 'savedSolution') {
+      interactionHtmlWithoutEnd += ` [saved-solution]="${savedSolution}"`;
+    }
+    interactionHtmlWithoutEnd += ` [last-answer]="${lastAnswerPropValue}"`;
+    return interactionHtmlWithoutEnd + tagEnd;
   }
 
   getAnswerHtml(
-      answer: string, interactionId: string,
-      interactionCustomizationArgs: InteractionCustomizationArgs): string {
+    answer: InteractionAnswer,
+    interactionId: string | null,
+    interactionCustomizationArgs: InteractionCustomizationArgs
+  ): string {
+    // TODO(#14464): Remove this check once interaction ID is
+    // not allowed to be null.
+    if (interactionId === null) {
+      throw new Error('InteractionId cannot be null');
+    }
+    const displayedAnswer = this.getDisplayedNumericExpressionAnswer(
+      answer,
+      interactionId,
+      interactionCustomizationArgs
+    );
+    var element = document.createElement(
+      `oppia-response-${this.camelCaseToHyphens.transform(interactionId)}`
+    );
+    element.setAttribute(
+      'answer',
+      this.htmlEscaper.objToEscapedJson(displayedAnswer)
+    );
     // TODO(sll): Get rid of this special case for multiple choice.
-    var interactionChoices = null;
-
     if ('choices' in interactionCustomizationArgs) {
-      interactionChoices = interactionCustomizationArgs.choices.value;
+      let interactionChoices = interactionCustomizationArgs.choices.value;
+      element.setAttribute(
+        'choices',
+        this.htmlEscaper.objToEscapedJson(interactionChoices)
+      );
     }
-
-    var el = $(
-      '<oppia-response-' + this.camelCaseToHyphens.transform(
-        interactionId) + '>');
-    el.attr('answer', this.htmlEscaper.objToEscapedJson(answer));
-    if (interactionChoices) {
-      el.attr('choices', this.htmlEscaper.objToEscapedJson(
-        interactionChoices));
-    }
-    return ($('<div>').append(el)).html();
+    return element.outerHTML;
   }
 
   getShortAnswerHtml(
-      answer: InteractionAnswer, interactionId: string,
-      interactionCustomizationArgs: InteractionCustomizationArgs): string {
-    var interactionChoices = null;
-
+    answer: InteractionAnswer,
+    interactionId: string,
+    interactionCustomizationArgs: InteractionCustomizationArgs
+  ): string {
+    const displayedAnswer = this.getDisplayedNumericExpressionAnswer(
+      answer,
+      interactionId,
+      interactionCustomizationArgs
+    );
+    let element = document.createElement(
+      `oppia-short-response-${this.camelCaseToHyphens.transform(interactionId)}`
+    );
+    element.setAttribute(
+      'answer',
+      this.htmlEscaper.objToEscapedJson(displayedAnswer)
+    );
     // TODO(sll): Get rid of this special case for multiple choice.
     if ('choices' in interactionCustomizationArgs) {
-      interactionChoices = interactionCustomizationArgs.choices.value.map(
-        choice => choice.html);
+      let interactionChoices = interactionCustomizationArgs.choices.value;
+      element.setAttribute(
+        'choices',
+        this.htmlEscaper.objToEscapedJson(interactionChoices)
+      );
     }
-
-    var el = $(
-      '<oppia-short-response-' + this.camelCaseToHyphens.transform(
-        interactionId) + '>');
-    el.attr('answer', this.htmlEscaper.objToEscapedJson(answer));
-    if (interactionChoices) {
-      el.attr('choices', this.htmlEscaper.objToEscapedJson(
-        interactionChoices));
-    }
-    return ($('<span>').append(el)).html();
+    return element.outerHTML;
   }
 }
-
-angular.module('oppia').factory(
-  'ExplorationHtmlFormatterService',
-  downgradeInjectable(ExplorationHtmlFormatterService));

@@ -17,25 +17,28 @@
  * about collections from the backend.
  */
 
-import { downgradeInjectable } from '@angular/upgrade/static';
-import { HttpClient } from '@angular/common/http';
-import { EventEmitter, Injectable } from '@angular/core';
+import {HttpClient} from '@angular/common/http';
+import {EventEmitter, Injectable} from '@angular/core';
 
 import cloneDeep from 'lodash/cloneDeep';
 
-import { AppConstants } from 'app.constants';
-import { CollectionBackendDict, Collection } from
-  'domain/collection/collection.model';
-import { UrlInterpolationService } from
-  'domain/utilities/url-interpolation.service';
+import {AppConstants} from 'app.constants';
+import {
+  CollectionBackendDict,
+  Collection,
+} from 'domain/collection/collection.model';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
 
 interface CollectionCache {
   [collectionId: string]: Collection;
 }
 
+// When creating a new collection, title will be
+// initialized with null value. This will be null until populated
+// from the backend and provided themselves by the user.
 interface CollectionDetails {
   canEdit: boolean;
-  title: string;
+  title: string | null;
 }
 
 interface CollectionDetailsCache {
@@ -43,10 +46,10 @@ interface CollectionDetailsCache {
 }
 
 export interface ReadOnlyCollectionBackendResponse {
-  'meta_name': string;
-  'can_edit': boolean;
-  'meta_description': string;
-  'collection': CollectionBackendDict;
+  meta_name: string;
+  can_edit: boolean;
+  meta_description: string;
+  collection_dict: CollectionBackendDict;
 }
 
 // TODO(bhenning): For preview mode, this service should be replaced by a
@@ -54,53 +57,64 @@ export interface ReadOnlyCollectionBackendResponse {
 // the collection instead. This file should not be included on the page in that
 // scenario.
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ReadOnlyCollectionBackendApiService {
   constructor(
     private http: HttpClient,
-    private urlInterpolationService: UrlInterpolationService) {}
+    private urlInterpolationService: UrlInterpolationService
+  ) {}
+
   private _collectionCache: CollectionCache = {};
   private _collectionDetailsCache: CollectionDetailsCache = {};
   private _collectionLoadedEventEmitter = new EventEmitter<void>();
 
   private _fetchCollection(
-      collectionId: string,
-      successCallback: (value: Collection) => void,
-      errorCallback: (reason: string) => void): void {
+    collectionId: string,
+    successCallback: (value: Collection) => void,
+    errorCallback: (reason: string) => void
+  ): void {
     var collectionDataUrl = this.urlInterpolationService.interpolateUrl(
-      AppConstants.COLLECTION_DATA_URL_TEMPLATE, {
-        collection_id: collectionId
-      });
+      AppConstants.COLLECTION_DATA_URL_TEMPLATE,
+      {
+        collection_id: collectionId,
+      }
+    );
 
-    this.http.get<ReadOnlyCollectionBackendResponse>(
-      collectionDataUrl).toPromise().then(response => {
-      this._cacheCollectionDetails(response);
-      var collectionObject = Collection.create(
-        response.collection);
-      if (successCallback) {
-        successCallback(collectionObject);
-        this._collectionLoadedEventEmitter.emit();
-      }
-    }, errorResponse => {
-      if (errorCallback) {
-        errorCallback(errorResponse.error.error);
-      }
-    });
+    this.http
+      .get<ReadOnlyCollectionBackendResponse>(collectionDataUrl)
+      .toPromise()
+      .then(
+        response => {
+          this._cacheCollectionDetails(response);
+          var collectionObject = Collection.create(response.collection_dict);
+          if (successCallback) {
+            successCallback(collectionObject);
+            this._collectionLoadedEventEmitter.emit();
+          }
+        },
+        errorResponse => {
+          if (errorCallback) {
+            errorCallback(errorResponse.error.error);
+          }
+        }
+      );
   }
 
   private _cacheCollectionDetails(
-      details: ReadOnlyCollectionBackendResponse): void {
-    this._collectionDetailsCache[details.collection.id] = {
-      canEdit: details.can_edit,
-      title: details.collection.title,
-    };
+    details: ReadOnlyCollectionBackendResponse
+  ): void {
+    if (details.collection_dict.id !== null) {
+      this._collectionDetailsCache[details.collection_dict.id] = {
+        canEdit: details.can_edit,
+        title: details.collection_dict.title,
+      };
+    }
   }
 
   private _isCached(collectionId: string): boolean {
     return this._collectionCache.hasOwnProperty(collectionId);
   }
-
 
   /**
    * Behaves in the exact same way as fetchCollectionAsync (including callback
@@ -119,13 +133,17 @@ export class ReadOnlyCollectionBackendApiService {
           this._collectionLoadedEventEmitter.emit();
         }
       } else {
-        this._fetchCollection(collectionId, collection => {
-          // Save the fetched collection to avoid future fetches.
-          this._collectionCache[collectionId] = collection;
-          if (resolve) {
-            resolve(cloneDeep(collection));
-          }
-        }, reject);
+        this._fetchCollection(
+          collectionId,
+          collection => {
+            // Save the fetched collection to avoid future fetches.
+            this._collectionCache[collectionId] = collection;
+            if (resolve) {
+              resolve(cloneDeep(collection));
+            }
+          },
+          reject
+        );
       }
     });
   }
@@ -166,7 +184,3 @@ export class ReadOnlyCollectionBackendApiService {
     return this._collectionLoadedEventEmitter;
   }
 }
-
-angular.module('oppia').factory(
-  'ReadOnlyCollectionBackendApiService',
-  downgradeInjectable(ReadOnlyCollectionBackendApiService));

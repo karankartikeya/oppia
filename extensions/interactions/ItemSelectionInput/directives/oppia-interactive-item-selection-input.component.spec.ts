@@ -12,232 +12,556 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { BrowserCheckerService } from 'domain/utilities/browser-checker.service';
-
 /**
  * @fileoverview Unit tests for the ItemSelectionInput interaction.
  */
 
-describe('oppiaInteractiveItemSelectionInput', function() {
-  let ctrl = null;
-  let browserCheckerService: BrowserCheckerService = null;
-  let currentInteractionService = null;
+// @ts-nocheck
 
-  let mockCurrentInteractionService = {
-    onSubmit: function(answer, rulesService) {},
-    registerCurrentInteraction: function(submitAnswerFn, isAnswerValid) {
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {InteractiveItemSelectionInputComponent} from './oppia-interactive-item-selection-input.component';
+import {BrowserCheckerService} from 'domain/utilities/browser-checker.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {MockTranslatePipe} from 'tests/unit-test-utils';
+import {PlayerTranscriptService} from 'pages/exploration-player-page/services/player-transcript.service';
+import {Interaction} from 'domain/exploration/interaction.model';
+import {StateCard} from 'domain/state_card/state-card.model';
+import {InteractionAnswer, ItemSelectionAnswer} from 'interactions/answer-defs';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+
+describe('oppiaInteractiveItemSelectionInput', function () {
+  let component: InteractiveItemSelectionInputComponent;
+  let fixture: ComponentFixture<InteractiveItemSelectionInputComponent>;
+  let browserCheckerService: BrowserCheckerService;
+  let currentInteractionService: CurrentInteractionService;
+  let playerTranscriptService: PlayerTranscriptService;
+  let displayedCard: StateCard;
+
+  class MockInteractionAttributesExtractorService {
+    getValuesFromAttributes(
+      interactionId: InteractionSpecsKey,
+      attributes: Record<string, string>
+    ) {
+      return {
+        choices: {
+          value: JSON.parse(attributes.choicesWithValue),
+        },
+        maxAllowableSelectionCount: {
+          value: JSON.parse(attributes.maxAllowableSelectionCountWithValue),
+        },
+        minAllowableSelectionCount: {
+          value: JSON.parse(attributes.minAllowableSelectionCountWithValue),
+        },
+      };
+    }
+  }
+
+  class MockCurrentInteractionService {
+    onSubmit(
+      answer: ItemSelectionAnswer,
+      rulesService: CurrentInteractionService
+    ) {}
+
+    updateCurrentAnswer(answer: InteractionAnswer | null): void {}
+
+    registerCurrentInteraction(
+      submitAnswerFn: Function,
+      validateExpressionFn: Function
+    ) {
       submitAnswerFn();
-      isAnswerValid();
+      validateExpressionFn();
     }
-  };
-  let mockItemSelectionInputRulesService = {};
-  let mockInteractionAttributesExtractorService = {
-    getValuesFromAttributes: function(interactionId, attrs) {
-      return attrs;
-    }
-  };
+  }
 
-  importAllAngularServices();
-  beforeEach(angular.mock.module('oppia'));
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.value(
-      'CurrentInteractionService', mockCurrentInteractionService);
-    $provide.value(
-      'ItemSelectionInputRulesService',
-      mockItemSelectionInputRulesService);
-    $provide.value(
-      'InteractionAttributesExtractorService',
-      mockInteractionAttributesExtractorService);
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      declarations: [InteractiveItemSelectionInputComponent, MockTranslatePipe],
+      providers: [
+        {
+          provide: InteractionAttributesExtractorService,
+          useClass: MockInteractionAttributesExtractorService,
+        },
+        {
+          provide: CurrentInteractionService,
+          useClass: MockCurrentInteractionService,
+        },
+        BrowserCheckerService,
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
+  beforeEach(() => {
+    browserCheckerService = TestBed.inject(BrowserCheckerService);
+    currentInteractionService = TestBed.inject(CurrentInteractionService);
+    fixture = TestBed.createComponent(InteractiveItemSelectionInputComponent);
+    playerTranscriptService = TestBed.inject(PlayerTranscriptService);
+    component = fixture.componentInstance;
+
+    let contentId: string = 'content_id';
+    let interaction = {} as Interaction;
+    displayedCard = new StateCard(
+      'test_name',
+      'content',
+      'interaction',
+      interaction,
+      [],
+      contentId
+    );
+  });
+
   describe('when only one choice is allowed to be selected', () => {
-    beforeEach(angular.mock.module('oppia', function($provide) {
-      $provide.value('$attrs', {
-        choices: [
-          {
-            html: 'choice 1',
-            contentId: 'ca_choices_1'
-          },
-          {
-            html: 'choice 2',
-            contentId: 'ca_choices_2'
-          },
-          {
-            html: 'choice 3',
-            contentId: 'ca_choices_3'
-          },
-        ],
-        maxAllowableSelectionCount: 1,
-        minAllowableSelectionCount: 1
-      });
-    }));
-    beforeEach(angular.mock.inject(function($injector, $componentController) {
-      browserCheckerService = $injector.get('BrowserCheckerService');
-      currentInteractionService = $injector.get('CurrentInteractionService');
-      ctrl = $componentController('oppiaInteractiveItemSelectionInput');
-    }));
+    beforeEach(() => {
+      component.choicesWithValue =
+        '[' +
+        '{' +
+        '    "html": "choice 1",' +
+        '    "contentId": "ca_choices_1"' +
+        '},' +
+        '{' +
+        '    "html": "choice 2",' +
+        '    "contentId": "ca_choices_2"' +
+        '},' +
+        '{' +
+        '    "html": "choice 3",' +
+        '    "contentId": "ca_choices_3"' +
+        '}' +
+        ']';
+      component.maxAllowableSelectionCountWithValue = '1';
+      component.minAllowableSelectionCountWithValue = '1';
+    });
 
     it('should initialise component when user adds interaction', () => {
-      ctrl.$onInit();
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      component.ngOnInit();
 
-      expect(ctrl.choices).toEqual([
-        'choice 1', 'choice 2', 'choice 3'
-      ]);
-      expect(ctrl.userSelections).toEqual({
+      expect(component.choices).toEqual(['choice 1', 'choice 2', 'choice 3']);
+      expect(component.userSelections).toEqual({
         'choice 1': false,
         'choice 2': false,
-        'choice 3': false
+        'choice 3': false,
       });
-      expect(ctrl.maxAllowableSelectionCount).toBe(1);
-      expect(ctrl.minAllowableSelectionCount).toBe(1);
-      expect(ctrl.displayCheckboxes).toBeFalse();
-      expect(ctrl.preventAdditionalSelections).toBeFalse();
-      expect(ctrl.notEnoughSelections).toBeTrue();
+      expect(component.maxAllowableSelectionCount).toBe(1);
+      expect(component.minAllowableSelectionCount).toBe(1);
+      expect(component.displayCheckboxes).toBe(false);
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(true);
     });
 
-    it('should deselect previously selected option and select the option' +
-    ' checked by the user', () => {
-      let e = {
-        currentTarget: {
-          classList: {
-            add: () => {},
-            remove: () => {}
-          }
-        } as unknown as Element
-      };
-      spyOn(browserCheckerService, 'isMobileDevice').and.returnValue(false);
-      spyOn(currentInteractionService, 'onSubmit').and.callThrough();
-      spyOn(ctrl, 'submitAnswer').and.callThrough();
-      spyOn(document, 'querySelector')
-        .withArgs('button.multiple-choice-option.selected').and.returnValue(
-          e.currentTarget);
-      ctrl.$onInit();
-      ctrl.userSelections = {
-        'choice 2': true
-      };
+    it('should throw error if content id is null', () => {
+      component.choicesValue = [
+        {
+          html: 'choice 1',
+          _contentId: null,
+        },
+      ] as SubtitledHtml[];
 
-      ctrl.submitMultipleChoiceAnswer(e, 0);
-
-      expect(ctrl.userSelections).toEqual({
-        'choice 1': true,
-      });
-      expect(ctrl.submitAnswer).toHaveBeenCalledTimes(2);
-      expect(currentInteractionService.onSubmit).toHaveBeenCalledTimes(2);
+      expect(() => {
+        component.getContentId();
+      }).toThrowError('Content id is null');
     });
 
-    it('should not submit answer when user click an option if user is using a' +
-    ' mobile', () => {
-      let e = {
-        currentTarget: {
+    it('should return content id correctly', () => {
+      component.choicesValue = [
+        {
+          html: 'choice 1',
+          _contentId: 'content0',
+        },
+      ] as SubtitledHtml[];
+
+      expect(component.getContentId()).toEqual('content0');
+    });
+
+    it(
+      'should deselect previously selected option and select the option' +
+        ' checked by the user',
+      () => {
+        spyOn(playerTranscriptService, 'getCard').and.returnValue(
+          displayedCard
+        );
+        let dummyMouseEvent = new MouseEvent('Mouse');
+        spyOn(currentInteractionService, 'updateCurrentAnswer');
+        spyOn(browserCheckerService, 'isMobileDevice').and.returnValue(false);
+        spyOn(document, 'querySelector')
+          .withArgs('button.multiple-choice-option.selected')
+          .and.returnValue({
+            // This throws "Type '{ add: () => void; remove: () => void; }'
+            // is missing the following properties from type 'DOMTokenList':
+            // length, value, contains, item, and 4 more". We need to suppress
+            // this error because typescript expects more
+            // properties than just one add and remove.
+            // We need only add and remove for testing purposes.
+            classList: {
+              add: () => {
+                return;
+              },
+              remove: () => {
+                return;
+              },
+              contains: (text: string) => {
+                return true;
+              },
+            },
+          });
+        spyOnProperty(dummyMouseEvent, 'currentTarget').and.returnValue({
           classList: {
-            add: () => {},
-            remove: () => {}
-          }
-        } as unknown as Element
-      };
-      spyOn(browserCheckerService, 'isMobileDevice').and.returnValue(true);
-      spyOn(currentInteractionService, 'onSubmit').and.callThrough();
-      spyOn(ctrl, 'submitAnswer').and.callThrough();
-      spyOn(document, 'querySelector')
-        .withArgs('button.multiple-choice-option.selected').and.returnValue(
-          e.currentTarget);
-      ctrl.$onInit();
-      ctrl.userSelections = {
-        'choice 2': true
-      };
+            add: () => {
+              return;
+            },
+            remove: () => {
+              return;
+            },
+            contains: (text: string) => {
+              return true;
+            },
+          },
+        } as unknown as EventTarget);
+        spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+        spyOn(component, 'submitAnswer').and.callThrough();
+        component.ngOnInit();
+        component.userSelections = {
+          'choice 2': true,
+        };
 
-      ctrl.submitMultipleChoiceAnswer(e, 0);
+        component.submitMultipleChoiceAnswer(dummyMouseEvent, 0);
 
-      expect(ctrl.userSelections).toEqual({
+        expect(component.userSelections).toEqual({
+          'choice 1': true,
+        });
+        expect(component.submitAnswer).toHaveBeenCalledTimes(1);
+        expect(currentInteractionService.onSubmit).toHaveBeenCalledTimes(1);
+        expect(
+          currentInteractionService.updateCurrentAnswer
+        ).toHaveBeenCalledWith(['ca_choices_1']);
+      }
+    );
+
+    it('should be able to call onsubmit event while submitting answer', () => {
+      component.userSelections = {
         'choice 1': true,
-      });
-      expect(ctrl.submitAnswer).toHaveBeenCalledTimes(1);
+      };
+      component.choices = ['choice 1', 'choice 2'];
+      component.choicesValue = [
+        SubtitledHtml.createDefault('choice 1', 'content_id_1'),
+      ];
+
+      spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+
+      component.submitAnswer();
+
       expect(currentInteractionService.onSubmit).toHaveBeenCalledTimes(1);
     });
+
+    it(
+      'should not submit answer when user click an option if user is using a' +
+        ' mobile',
+      () => {
+        spyOn(playerTranscriptService, 'getCard').and.returnValue(
+          displayedCard
+        );
+        let dummyMouseEvent = new MouseEvent('Mouse');
+        spyOn(browserCheckerService, 'isMobileDevice').and.returnValue(true);
+        spyOn(currentInteractionService, 'updateCurrentAnswer');
+        spyOn(document, 'querySelector')
+          .withArgs('button.multiple-choice-option.selected')
+          .and.returnValue({
+            // This throws "Type '{ add: () => void; remove: () => void; }'
+            // is missing the following properties from type 'DOMTokenList':
+            // length, value, contains, item, and 4 more". We need to suppress
+            // this error because typescript expects more
+            // properties than just one add and remove.
+            // We need only add and remove for testing purposes.
+            classList: {
+              add: () => {
+                return;
+              },
+              remove: () => {
+                return;
+              },
+              contains: (text: string) => {
+                return true;
+              },
+            },
+          });
+        spyOnProperty(dummyMouseEvent, 'currentTarget').and.returnValue({
+          classList: {
+            add: () => {
+              return;
+            },
+            remove: () => {
+              return;
+            },
+            contains: (text: string) => {
+              return true;
+            },
+          },
+        } as unknown as EventTarget);
+        spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+        spyOn(component, 'submitAnswer').and.callThrough();
+        component.ngOnInit();
+        component.userSelections = {
+          'choice 2': true,
+        };
+
+        component.submitMultipleChoiceAnswer(dummyMouseEvent, 0);
+
+        expect(component.userSelections).toEqual({
+          'choice 1': true,
+        });
+        expect(component.submitAnswer).toHaveBeenCalledTimes(1);
+        expect(currentInteractionService.onSubmit).toHaveBeenCalledTimes(1);
+        expect(
+          currentInteractionService.updateCurrentAnswer
+        ).toHaveBeenCalledWith(['ca_choices_1']);
+      }
+    );
   });
 
   describe('when multiple choices are allowed to be selected', () => {
-    beforeEach(angular.mock.module('oppia', function($provide) {
-      $provide.value('$attrs', {
-        choices: [
-          {
-            html: 'choice 1',
-            contentId: 'ca_choices_1'
-          },
-          {
-            html: 'choice 2',
-            contentId: 'ca_choices_2'
-          },
-          {
-            html: 'choice 3',
-            contentId: 'ca_choices_3'
-          },
-        ],
-        maxAllowableSelectionCount: 2,
-        minAllowableSelectionCount: 1
-      });
-    }));
-    beforeEach(angular.mock.inject(function($injector, $componentController) {
-      ctrl = $componentController('oppiaInteractiveItemSelectionInput');
-      ctrl.$onInit();
-    }));
+    beforeEach(() => {
+      component.choicesWithValue =
+        '[' +
+        '{' +
+        '    "html": "choice 1",' +
+        '    "contentId": "ca_choices_1"' +
+        '},' +
+        '{' +
+        '    "html": "choice 2",' +
+        '    "contentId": "ca_choices_2"' +
+        '},' +
+        '{' +
+        '    "html": "choice 3",' +
+        '    "contentId": "ca_choices_3"' +
+        '}' +
+        ']';
+      component.maxAllowableSelectionCountWithValue = '2';
+      component.minAllowableSelectionCountWithValue = '1';
+    });
 
     it('should initialise component when user adds interaction', () => {
-      expect(ctrl.choices).toEqual([
-        'choice 1', 'choice 2', 'choice 3'
-      ]);
-      expect(ctrl.userSelections).toEqual({
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      component.ngOnInit();
+      expect(component.choices).toEqual(['choice 1', 'choice 2', 'choice 3']);
+      expect(component.userSelections).toEqual({
         'choice 1': false,
         'choice 2': false,
-        'choice 3': false
+        'choice 3': false,
       });
-      expect(ctrl.maxAllowableSelectionCount).toBe(2);
-      expect(ctrl.minAllowableSelectionCount).toBe(1);
-      expect(ctrl.displayCheckboxes).toBeTrue();
-      expect(ctrl.preventAdditionalSelections).toBeFalse();
-      expect(ctrl.notEnoughSelections).toBeTrue();
+      expect(component.maxAllowableSelectionCount).toBe(2);
+      expect(component.minAllowableSelectionCount).toBe(1);
+      expect(component.displayCheckboxes).toBe(true);
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(true);
+    });
+
+    it('should restore selected choices from lastAnswer on re-init', () => {
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      component.lastAnswer = ['ca_choices_1', 'ca_choices_3'];
+
+      component.ngOnInit();
+
+      expect(component.userSelections).toEqual({
+        'choice 1': true,
+        'choice 2': false,
+        'choice 3': true,
+      });
+      expect(component.selectionCount).toBe(2);
+    });
+
+    it('should ignore unknown content ids in lastAnswer on re-init', () => {
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      component.lastAnswer = ['ca_choices_1', 'unknown_content_id'];
+
+      component.ngOnInit();
+
+      expect(component.userSelections).toEqual({
+        'choice 1': true,
+        'choice 2': false,
+        'choice 3': false,
+      });
+      expect(component.selectionCount).toBe(1);
     });
 
     it('should toggle checkbox when user clicks checkbox', () => {
-      ctrl.userSelections = {
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      spyOn(currentInteractionService, 'updateCurrentAnswer');
+      component.ngOnInit();
+      component.userSelections = {
         'choice 1': true,
         'choice 2': false,
-        'choice 3': false
+        'choice 3': false,
       };
-      expect(ctrl.selectionCount).toBeUndefined();
-      expect(ctrl.newQuestion).toBeUndefined();
-      expect(ctrl.preventAdditionalSelections).toBeFalse();
-      expect(ctrl.notEnoughSelections).toBeTrue();
+      expect(component.selectionCount).toBe(0);
+      expect(component.newQuestion).toBe(false);
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(true);
 
-      ctrl.onToggleCheckbox();
+      component.onToggleCheckbox();
 
-      expect(ctrl.newQuestion).toBe(false);
-      expect(ctrl.selectionCount).toBe(1);
+      expect(component.newQuestion).toBe(false);
+      expect(component.selectionCount).toBe(1);
       // The preventAdditionalSelections is set to true when the
       // maxAllowableSelectionCount is reached. Therefore we test to
       // ensure preventAdditionalSelections is false because the count has
       // not been reached.
-      expect(ctrl.preventAdditionalSelections).toBeFalse();
-      expect(ctrl.notEnoughSelections).toBeFalse();
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(false);
+      expect(
+        currentInteractionService.updateCurrentAnswer
+      ).toHaveBeenCalledWith(['ca_choices_1']);
     });
 
-    it('should prevent users from selecting more options when' +
-    ' \'maxAllowableSelectionCount\' has been reached', () => {
-      ctrl.userSelections = {
+    it(
+      'should prevent users from selecting more options when' +
+        " 'maxAllowableSelectionCount' has been reached",
+      () => {
+        spyOn(playerTranscriptService, 'getCard').and.returnValue(
+          displayedCard
+        );
+        spyOn(currentInteractionService, 'updateCurrentAnswer');
+        component.ngOnInit();
+        component.userSelections = {
+          'choice 1': true,
+          'choice 2': true,
+          'choice 3': false,
+        };
+        expect(component.selectionCount).toBe(0);
+        expect(component.preventAdditionalSelections).toBe(false);
+        expect(component.notEnoughSelections).toBe(true);
+
+        component.onToggleCheckbox();
+
+        expect(component.selectionCount).toBe(2);
+        expect(component.preventAdditionalSelections).toBe(true);
+        expect(component.notEnoughSelections).toBe(false);
+        expect(
+          currentInteractionService.updateCurrentAnswer
+        ).toHaveBeenCalledWith(['ca_choices_1', 'ca_choices_2']);
+      }
+    );
+  });
+
+  describe('when an exact number of choices are allowed to be selected', () => {
+    beforeEach(() => {
+      component.choicesWithValue =
+        '[' +
+        '{' +
+        '    "html": "choice 1",' +
+        '    "contentId": "ca_choices_1"' +
+        '},' +
+        '{' +
+        '    "html": "choice 2",' +
+        '    "contentId": "ca_choices_2"' +
+        '},' +
+        '{' +
+        '    "html": "choice 3",' +
+        '    "contentId": "ca_choices_3"' +
+        '}' +
+        ']';
+      component.maxAllowableSelectionCountWithValue = '3';
+      component.minAllowableSelectionCountWithValue = '3';
+    });
+
+    it('should initialise component when user adds interaction', () => {
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      component.ngOnInit();
+      expect(component.choices).toEqual(['choice 1', 'choice 2', 'choice 3']);
+      expect(component.userSelections).toEqual({
+        'choice 1': false,
+        'choice 2': false,
+        'choice 3': false,
+      });
+      expect(component.maxAllowableSelectionCount).toBe(3);
+      expect(component.minAllowableSelectionCount).toBe(3);
+      expect(component.displayCheckboxes).toBe(true);
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(false);
+      expect(component.exactSelections).toBe(true);
+    });
+
+    it('should toggle checkbox when user clicks checkbox', () => {
+      spyOn(playerTranscriptService, 'getCard').and.returnValue(displayedCard);
+      spyOn(currentInteractionService, 'updateCurrentAnswer');
+      component.ngOnInit();
+      component.userSelections = {
         'choice 1': true,
-        'choice 2': true,
-        'choice 3': false
+        'choice 2': false,
+        'choice 3': false,
       };
-      expect(ctrl.selectionCount).toBeUndefined();
-      expect(ctrl.preventAdditionalSelections).toBeFalse();
-      expect(ctrl.notEnoughSelections).toBeTrue();
+      expect(component.selectionCount).toBe(0);
+      expect(component.newQuestion).toBe(false);
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(false);
+      expect(component.exactSelections).toBe(true);
 
-      ctrl.onToggleCheckbox();
+      component.onToggleCheckbox();
 
-      expect(ctrl.selectionCount).toBe(2);
-      expect(ctrl.preventAdditionalSelections).toBeTrue();
-      expect(ctrl.notEnoughSelections).toBeFalse();
+      expect(component.newQuestion).toBe(false);
+      expect(component.selectionCount).toBe(1);
+      // The preventAdditionalSelections is set to true when the
+      // maxAllowableSelectionCount is reached. Therefore we test to
+      // ensure preventAdditionalSelections is false because the count has
+      // not been reached.
+      expect(component.preventAdditionalSelections).toBe(false);
+      expect(component.notEnoughSelections).toBe(false);
+      expect(
+        currentInteractionService.updateCurrentAnswer
+      ).toHaveBeenCalledWith(['ca_choices_1']);
     });
+
+    it(
+      'should prevent users from selecting more options when' +
+        " 'maxAllowableSelectionCount' has been reached",
+      () => {
+        spyOn(playerTranscriptService, 'getCard').and.returnValue(
+          displayedCard
+        );
+        spyOn(currentInteractionService, 'updateCurrentAnswer');
+        component.ngOnInit();
+        component.userSelections = {
+          'choice 1': true,
+          'choice 2': true,
+          'choice 3': true,
+        };
+        expect(component.selectionCount).toBe(0);
+        expect(component.preventAdditionalSelections).toBe(false);
+        expect(component.notEnoughSelections).toBe(false);
+        expect(component.exactSelections).toBe(true);
+
+        component.onToggleCheckbox();
+
+        expect(component.selectionCount).toBe(3);
+        expect(component.preventAdditionalSelections).toBe(true);
+        expect(component.notEnoughSelections).toBe(false);
+        expect(
+          currentInteractionService.updateCurrentAnswer
+        ).toHaveBeenCalledWith([
+          'ca_choices_1',
+          'ca_choices_2',
+          'ca_choices_3',
+        ]);
+      }
+    );
+  });
+
+  it('should call submitAnswer when Enter key is pressed', () => {
+    component.userSelections = {
+      'choice 1': true,
+    };
+    component.choices = ['choice 1', 'choice 2'];
+    component.choicesValue = [
+      SubtitledHtml.createDefault('choice 1', 'content_id_1'),
+    ];
+    spyOn(component, 'submitAnswer').and.callThrough();
+    spyOn(currentInteractionService, 'onSubmit').and.callThrough();
+    const event = new KeyboardEvent('keydown', {key: 'Enter'});
+
+    component.handleEnterKey(event);
+
+    expect(component.submitAnswer).toHaveBeenCalled();
+    expect(currentInteractionService.onSubmit).toHaveBeenCalled();
   });
 });

@@ -12,12 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ComponentFixture, fakeAsync, TestBed, tick, waitForAsync } from '@angular/core/testing';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { MockRouterModule } from 'hybrid-router-module-provider';
-import { ProfileLinkImageBackendApiService } from './profile-link-image-backend-api.service';
-import { ProfileLinkImageComponent } from './profile-link-image.component';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {
+  ComponentFixture,
+  fakeAsync,
+  TestBed,
+  tick,
+  waitForAsync,
+} from '@angular/core/testing';
+import {RouterModule} from '@angular/router';
+import {APP_BASE_HREF} from '@angular/common';
+
+import {UserService} from 'services/user.service';
+import {ProfileLinkImageComponent} from './profile-link-image.component';
 
 /**
  * @fileoverview Unit tests for ProfileLinkImageComponent.
@@ -26,57 +33,39 @@ import { ProfileLinkImageComponent } from './profile-link-image.component';
 describe('ProfileLinkImageComponent', () => {
   let component: ProfileLinkImageComponent;
   let fixture: ComponentFixture<ProfileLinkImageComponent>;
-  let urlInterpolationService: UrlInterpolationService;
-  let profileLinkImageBackendApiService: ProfileLinkImageBackendApiService;
+  let userService: UserService;
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-        MockRouterModule
+      imports: [HttpClientTestingModule, RouterModule.forRoot([])],
+      declarations: [ProfileLinkImageComponent],
+      providers: [
+        {
+          provide: APP_BASE_HREF,
+          useValue: '/',
+        },
       ],
-      declarations: [
-        ProfileLinkImageComponent
-      ]
     }).compileComponents();
   }));
 
   beforeEach(() => {
     fixture = TestBed.createComponent(ProfileLinkImageComponent);
     component = fixture.componentInstance;
-    urlInterpolationService = TestBed.inject(UrlInterpolationService);
-    profileLinkImageBackendApiService = TestBed.inject(
-      ProfileLinkImageBackendApiService);
+    userService = TestBed.inject(UserService);
   });
 
   it('should show profile picture on initialisation', fakeAsync(() => {
     component.username = 'user1';
-    spyOn(urlInterpolationService, 'getStaticImageUrl').and.returnValue(
-      'default-image-url');
-
-    spyOn(profileLinkImageBackendApiService, 'fetchProfilePictureDataAsync')
-      .and.returnValue(Promise.resolve('path/to/base64-profile-picture-url'));
-
-    component.ngOnInit();
-    tick();
-
-    expect(component.profileImageUrl).toBe(
-      '/preferenceshandler/profile_picture_by_username/user1');
-    expect(component.profilePicture).toBe('path/to/base64-profile-picture-url');
-  }));
-
-  it('should show the default profile picture user hasn\'t set or has' +
-    ' removed their profile picture', fakeAsync(() => {
-    component.username = 'user1';
-    spyOn(urlInterpolationService, 'getStaticImageUrl').and.returnValue(
-      'default-image-url');
-
-    spyOn(profileLinkImageBackendApiService, 'fetchProfilePictureDataAsync')
-      .and.returnValue(Promise.resolve(null));
+    spyOn(userService, 'getProfileImageDataUrl').and.returnValue([
+      'default-image-url-png',
+      'default-image-url-webp',
+    ]);
 
     component.ngOnInit();
     tick();
-    expect(component.profilePicture).toBe('default-image-url');
+
+    expect(component.profilePicturePngDataUrl).toBe('default-image-url-png');
+    expect(component.profilePictureWebpDataUrl).toBe('default-image-url-webp');
   }));
 
   it('should link the username/profile to the image if linkable', () => {

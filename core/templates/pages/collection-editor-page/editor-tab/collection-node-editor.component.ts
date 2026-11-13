@@ -18,40 +18,49 @@
  * and also delete the collection node represented by this directive.
  */
 
-import { Component, Input, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { CollectionNode } from 'domain/collection/collection-node.model';
-import { Collection } from 'domain/collection/collection.model';
-import { AlertsService } from 'services/alerts.service';
-import { CollectionEditorStateService } from '../services/collection-editor-state.service';
-import { CollectionLinearizerService } from '../services/collection-linearizer.service';
+import {Component, Input, OnInit} from '@angular/core';
+import {CollectionNode} from 'domain/collection/collection-node.model';
+import {Collection} from 'domain/collection/collection.model';
+import {AlertsService} from 'services/alerts.service';
+import {CollectionEditorStateService} from '../services/collection-editor-state.service';
+import {CollectionLinearizerService} from '../services/collection-linearizer.service';
 
 @Component({
   selector: 'oppia-collection-node-editor',
-  templateUrl: './collection-node-editor.component.html'
+  templateUrl: './collection-node-editor.component.html',
+  styleUrls: ['./collection-node-editor.component.css'],
 })
 export class CollectionNodeEditorComponent implements OnInit {
-  @Input() collectionNode: CollectionNode;
-  @Input() linearIndex: number;
-  explorationId: string;
-  collection: Collection;
-  hrefUrl: string;
+  // These properties are initialized using Angular lifecycle hooks
+  // and we need to do non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  @Input() collectionNode!: CollectionNode;
+  @Input() linearIndex!: number;
+  explorationId!: string;
+  collection!: Collection;
+  hrefUrl!: string;
 
   constructor(
     private collectionLinearizerService: CollectionLinearizerService,
     private alertsService: AlertsService,
-    private collectionEditorStateService: CollectionEditorStateService,
+    private collectionEditorStateService: CollectionEditorStateService
   ) {}
 
   // Deletes this collection node from the frontend collection
   // object and also updates the changelist.
   deleteNode(): void {
     this.explorationId = this.collectionNode.getExplorationId();
-    if (!this.collectionLinearizerService.removeCollectionNode(
-      this.collection, this.explorationId)) {
+    if (
+      !this.collectionLinearizerService.removeCollectionNode(
+        this.collection,
+        this.explorationId
+      )
+    ) {
       this.alertsService.fatalWarning(
         'Internal collection editor error. Could not delete ' +
-        'exploration by ID: ' + this.explorationId);
+          'exploration by ID: ' +
+          this.explorationId
+      );
     }
   }
 
@@ -59,11 +68,17 @@ export class CollectionNodeEditorComponent implements OnInit {
   // collection, if possible.
   shiftNodeLeft(): void {
     this.explorationId = this.collectionNode.getExplorationId();
-    if (!this.collectionLinearizerService.shiftNodeLeft(
-      this.collection, this.explorationId)) {
+    if (
+      !this.collectionLinearizerService.shiftNodeLeft(
+        this.collection,
+        this.explorationId
+      )
+    ) {
       this.alertsService.fatalWarning(
         'Internal collection editor error. Could not shift node left ' +
-        'with ID: ' + this.explorationId);
+          'with ID: ' +
+          this.explorationId
+      );
     }
   }
 
@@ -71,11 +86,17 @@ export class CollectionNodeEditorComponent implements OnInit {
   // collection, if possible.
   shiftNodeRight(): void {
     this.explorationId = this.collectionNode.getExplorationId();
-    if (!this.collectionLinearizerService.shiftNodeRight(
-      this.collection, this.explorationId)) {
+    if (
+      !this.collectionLinearizerService.shiftNodeRight(
+        this.collection,
+        this.explorationId
+      )
+    ) {
       this.alertsService.fatalWarning(
         'Internal collection editor error. Could not shift node ' +
-        'right with ID: ' + this.explorationId);
+          'right with ID: ' +
+          this.explorationId
+      );
     }
   }
 
@@ -84,7 +105,3 @@ export class CollectionNodeEditorComponent implements OnInit {
     this.hrefUrl = '/create/' + this.collection.getExplorationIds();
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaCollectionNodeEditor', downgradeComponent(
-    {component: CollectionNodeEditorComponent}));

@@ -16,20 +16,21 @@
  * @fileoverview Service to preload image into AssetsBackendApiService's cache.
  */
 
-import { Injectable } from '@angular/core';
-import { SafeResourceUrl } from '@angular/platform-browser';
-import { downgradeInjectable } from '@angular/upgrade/static';
+import {Injectable} from '@angular/core';
+import {SafeResourceUrl} from '@angular/platform-browser';
 
-import { AppConstants } from 'app.constants';
-import { Exploration } from 'domain/exploration/ExplorationObjectFactory';
-import { ExtractImageFilenamesFromModelService } from 'pages/exploration-player-page/services/extract-image-filenames-from-model.service';
-import { AssetsBackendApiService } from 'services/assets-backend-api.service';
-import { ComputeGraphService } from 'services/compute-graph.service';
-import { ContextService } from 'services/context.service';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
+import {AppConstants} from 'app.constants';
+import {Exploration} from 'domain/exploration/exploration.model';
+import {ExtractImageFilenamesFromModelService} from 'pages/exploration-player-page/services/extract-image-filenames-from-model.service';
+import {AssetsBackendApiService} from 'services/assets-backend-api.service';
+import {ComputeGraphService} from 'services/compute-graph.service';
+import {PageContextService} from 'services/page-context.service';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
 
 interface ImageCallback {
-  resolveMethod: (_: string) => void;
+  // This property will be null when the SVG uploaded is not valid or when
+  // the image is not yet uploaded.
+  resolveMethod: (src: string | SafeResourceUrl | null) => void;
   rejectMethod: () => void;
 }
 
@@ -40,21 +41,24 @@ export interface ImageDimensions {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ImagePreloaderService {
   constructor(
-      private assetsBackendApiService: AssetsBackendApiService,
-      private computeGraphService: ComputeGraphService,
-      private contextService: ContextService,
-      private ExtractImageFilenamesFromModelService:
-        ExtractImageFilenamesFromModelService,
-      private svgSanitizerService: SvgSanitizerService) {}
+    private assetsBackendApiService: AssetsBackendApiService,
+    private computeGraphService: ComputeGraphService,
+    private pageContextService: PageContextService,
+    private ExtractImageFilenamesFromModelService: ExtractImageFilenamesFromModelService,
+    private svgSanitizerService: SvgSanitizerService
+  ) {}
 
+  // This property is initialized using int method and we need to do
+  // non-null assertion. For more information, see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
+  private exploration!: Exploration;
   private filenamesOfImageCurrentlyDownloading: string[] = [];
   private filenamesOfImageToBeDownloaded: string[] = [];
   private filenamesOfImageFailedToDownload: string[] = [];
-  private exploration: Exploration = null;
   private imagePreloaderServiceHasStarted: boolean = false;
   // Variable imageLoadedCallback is an object of objects (identified by the
   // filenames which are being downloaded at the time they are required by the
@@ -84,20 +88,26 @@ export class ImagePreloaderService {
    *                                   preloader should start.
    */
   kickOffImagePreloader(sourceStateName: string): void {
-    this.filenamesOfImageToBeDownloaded = (
-      this.getImageFilenamesInBfsOrder(sourceStateName));
-    const imageFilesInGivenState = (
+    this.filenamesOfImageToBeDownloaded =
+      this.getImageFilenamesInBfsOrder(sourceStateName);
+    const imageFilesInGivenState =
       this.ExtractImageFilenamesFromModelService.getImageFilenamesInState(
-        this.exploration.states.getState(sourceStateName)));
-    this.filenamesOfImageFailedToDownload = (
+        this.exploration.states.getState(sourceStateName)
+      );
+    this.filenamesOfImageFailedToDownload =
       this.filenamesOfImageFailedToDownload.filter(
-        filename => !imageFilesInGivenState.includes(filename)));
-    while (this.filenamesOfImageCurrentlyDownloading.length <
+        filename => !imageFilesInGivenState.includes(filename)
+      );
+    while (
+      this.filenamesOfImageCurrentlyDownloading.length <
         AppConstants.MAX_NUM_IMAGE_FILES_TO_DOWNLOAD_SIMULTANEOUSLY &&
-        this.filenamesOfImageToBeDownloaded.length > 0) {
+      this.filenamesOfImageToBeDownloaded.length > 0
+    ) {
       const imageFilename = this.filenamesOfImageToBeDownloaded.shift();
-      this.filenamesOfImageCurrentlyDownloading.push(imageFilename);
-      this.loadImage(imageFilename);
+      if (imageFilename) {
+        this.filenamesOfImageCurrentlyDownloading.push(imageFilename);
+        this.loadImage(imageFilename);
+      }
     }
   }
 
@@ -126,10 +136,12 @@ export class ImagePreloaderService {
       this.ExtractImageFilenamesFromModelService.getImageFilenamesInState(
         state
       ).forEach(filename => {
-        var isFileCurrentlyDownloading = (
-          this.filenamesOfImageCurrentlyDownloading.includes(filename));
-        if (!this.assetsBackendApiService.isCached(filename) &&
-            !isFileCurrentlyDownloading) {
+        var isFileCurrentlyDownloading =
+          this.filenamesOfImageCurrentlyDownloading.includes(filename);
+        if (
+          !this.assetsBackendApiService.isCached(filename) &&
+          !isFileCurrentlyDownloading
+        ) {
           numImagesNeitherInCacheNorDownloading += 1;
         }
         if (isFileCurrentlyDownloading) {
@@ -137,8 +149,10 @@ export class ImagePreloaderService {
         }
       });
 
-      if (numImagesNeitherInCacheNorDownloading > 0 &&
-          numImageFilesCurrentlyDownloading <= 1) {
+      if (
+        numImagesNeitherInCacheNorDownloading > 0 &&
+        numImageFilesCurrentlyDownloading <= 1
+      ) {
         this.cancelPreloading();
         this.kickOffImagePreloader(stateName);
       }
@@ -146,45 +160,51 @@ export class ImagePreloaderService {
   }
 
   /**
-  * Gets the dimensions of the images from the filename provided.
-  * @param {string} filename - The string from which the dimensions of the
-  *                           images should be extracted.
-  */
+   * Gets the dimensions of the images from the filename provided.
+   * @param {string} filename - The string from which the dimensions of the
+   *                           images should be extracted.
+   */
   getDimensionsOfImage(filename: string): ImageDimensions {
     const dimensionsRegex = RegExp(
-      '[^/]+_height_([0-9]+)_width_([0-9]+)\.(png|jpeg|jpg|gif|svg)$', 'g');
+      '[^/]+_height_([0-9]+)_width_([0-9]+)\\.(png|jpeg|jpg|gif|svg)$',
+      'g'
+    );
     var imageDimensions = dimensionsRegex.exec(filename);
     if (imageDimensions) {
       var dimensions = {
         height: Number(imageDimensions[1]),
-        width: Number(imageDimensions[2])
+        width: Number(imageDimensions[2]),
       };
       return dimensions;
     } else {
       throw new Error(
-        `Input path ${filename} is invalid, it does not contain dimensions.`);
+        `Input path ${filename} is invalid, it does not contain dimensions.`
+      );
     }
   }
 
   /**
-  * Gets the dimensions of the math SVGs from the SVG filename provided.
-  * @param {string} filename - The string from which the dimensions of the
-  *                           math SVGs should be extracted.
-  */
+   * Gets the dimensions of the math SVGs from the SVG filename provided.
+   * @param {string} filename - The string from which the dimensions of the
+   *                           math SVGs should be extracted.
+   */
   getDimensionsOfMathSvg(filename: string): ImageDimensions {
     var dimensionsRegex = RegExp(
-      '[^/]+_height_([0-9d]+)_width_([0-9d]+)_vertical_([0-9d]+)\.svg', 'g');
+      '[^/]+_height_([0-9d]+)_width_([0-9d]+)_vertical_([0-9d]+)\\.svg',
+      'g'
+    );
     var imageDimensions = dimensionsRegex.exec(filename);
     if (imageDimensions) {
       var dimensions = {
         height: Number(imageDimensions[1].replace('d', '.')),
         width: Number(imageDimensions[2].replace('d', '.')),
-        verticalPadding: Number(imageDimensions[3].replace('d', '.'))
+        verticalPadding: Number(imageDimensions[3].replace('d', '.')),
       };
       return dimensions;
     } else {
       throw new Error(
-        `Input path ${filename} is invalid, it does not contain dimensions.`);
+        `Input path ${filename} is invalid, it does not contain dimensions.`
+      );
     }
   }
 
@@ -202,14 +222,24 @@ export class ImagePreloaderService {
   }
 
   private convertImageFileToSafeBase64Url(
-      imageFile: Blob,
-      callback: (src: string | ArrayBuffer | SafeResourceUrl) => void): void {
+    imageFile: Blob,
+    callback: (
+      // This property will be null when the SVG uploaded is not valid or when
+      // the image is not yet uploaded. Also FileReader.result dependency is
+      // of type null.
+      src: string | SafeResourceUrl | null
+    ) => void
+  ): void {
     const reader = new FileReader();
     reader.onloadend = () => {
       if (imageFile.type === 'image/svg+xml') {
         callback(
           this.svgSanitizerService.getTrustedSvgResourceUrl(
-            <string> reader.result));
+            // Typecasting is needed because FileReader.result dependency is of
+            // type ArrayBuffer | string | null.
+            reader.result as string
+          )
+        );
       } else {
         callback(reader.result);
       }
@@ -224,25 +254,32 @@ export class ImagePreloaderService {
    * @param {function} onLoadCallback - Function that is called when the
    *                                    Url of the loaded image is obtained.
    */
-  async getImageUrlAsync(filename: string): Promise<string|ArrayBuffer> {
+  async getImageUrlAsync(
+    filename: string
+  ): Promise<string | SafeResourceUrl | null> {
     return new Promise((resolve, reject) => {
-      if (this.assetsBackendApiService.isCached(filename) ||
-          this.isInFailedDownload(filename)) {
-        this.assetsBackendApiService.loadImage(
-          this.contextService.getEntityType(),
-          this.contextService.getEntityId(), filename
-        ).then(
-          loadedImageFile => {
+      let entityType = this.pageContextService.getEntityType();
+      if (
+        entityType &&
+        (this.assetsBackendApiService.isCached(filename) ||
+          this.isInFailedDownload(filename))
+      ) {
+        this.assetsBackendApiService
+          .loadImage(
+            entityType,
+            this.pageContextService.getEntityId(),
+            filename
+          )
+          .then(loadedImageFile => {
             if (this.isInFailedDownload(loadedImageFile.filename)) {
               this.removeFromFailedDownload(loadedImageFile.filename);
             }
             this.convertImageFileToSafeBase64Url(loadedImageFile.data, resolve);
-          },
-          reject);
+          }, reject);
       } else {
         this.imageLoadedCallback[filename] = {
           resolveMethod: resolve,
-          rejectMethod: reject
+          rejectMethod: reject,
         };
       }
     });
@@ -270,17 +307,23 @@ export class ImagePreloaderService {
    *                                   be obtained.
    */
   private getImageFilenamesInBfsOrder(sourceStateName: string): string[] {
-    var stateNamesInBfsOrder = (
-      this.computeGraphService.computeBfsTraversalOfStates(
-        this.exploration.getInitialState().name, this.exploration.getStates(),
-        sourceStateName));
-    var imageFilenames = [];
+    const explorationInitStateName = this.exploration.getInitialState().name;
+    var imageFilenames: string[] = [];
+    if (explorationInitStateName) {
+      var stateNamesInBfsOrder =
+        this.computeGraphService.computeBfsTraversalOfStates(
+          explorationInitStateName,
+          this.exploration.getStates(),
+          sourceStateName
+        );
 
-    stateNamesInBfsOrder.forEach(stateName => {
-      var state = this.exploration.states.getState(stateName);
-      this.ExtractImageFilenamesFromModelService.getImageFilenamesInState(state)
-        .forEach(filename => imageFilenames.push(filename));
-    });
+      stateNamesInBfsOrder.forEach(stateName => {
+        var state = this.exploration.states.getState(stateName);
+        this.ExtractImageFilenamesFromModelService.getImageFilenamesInState(
+          state
+        ).forEach(filename => imageFilenames.push(filename));
+      });
+    }
     return imageFilenames;
   }
 
@@ -293,12 +336,16 @@ export class ImagePreloaderService {
   private removeCurrentAndLoadNextImage(filename: string): void {
     this.filenamesOfImageCurrentlyDownloading.splice(
       this.filenamesOfImageCurrentlyDownloading.findIndex(
-        imageFilename => filename === imageFilename),
-      1);
+        imageFilename => filename === imageFilename
+      ),
+      1
+    );
     if (this.filenamesOfImageToBeDownloaded.length > 0) {
       var nextImageFilename = this.filenamesOfImageToBeDownloaded.shift();
-      this.filenamesOfImageCurrentlyDownloading.push(nextImageFilename);
-      this.loadImage(nextImageFilename);
+      if (nextImageFilename) {
+        this.filenamesOfImageCurrentlyDownloading.push(nextImageFilename);
+        this.loadImage(nextImageFilename);
+      }
     }
   }
 
@@ -307,30 +354,33 @@ export class ImagePreloaderService {
    * @param {string} imageFilename - The filename of the image to be loaded.
    */
   private loadImage(imageFilename: string): void {
-    this.assetsBackendApiService.loadImage(
-      AppConstants.ENTITY_TYPE.EXPLORATION,
-      this.contextService.getExplorationId(), imageFilename
-    ).then(
-      loadedImage => {
-        this.removeCurrentAndLoadNextImage(loadedImage.filename);
-        if (this.imageLoadedCallback[loadedImage.filename]) {
-          var onLoadImageResolve = (
-            this.imageLoadedCallback[loadedImage.filename].resolveMethod);
-          this.convertImageFileToSafeBase64Url(
-            loadedImage.data, onLoadImageResolve);
-          this.imageLoadedCallback[loadedImage.filename] = null;
+    this.assetsBackendApiService
+      .loadImage(
+        AppConstants.ENTITY_TYPE.EXPLORATION,
+        this.pageContextService.getExplorationId(),
+        imageFilename
+      )
+      .then(
+        loadedImage => {
+          this.removeCurrentAndLoadNextImage(loadedImage.filename);
+          if (this.imageLoadedCallback[loadedImage.filename]) {
+            var onLoadImageResolve =
+              this.imageLoadedCallback[loadedImage.filename].resolveMethod;
+            this.convertImageFileToSafeBase64Url(
+              loadedImage.data,
+              onLoadImageResolve
+            );
+            delete this.imageLoadedCallback[loadedImage.filename];
+          }
+        },
+        filename => {
+          if (this.imageLoadedCallback[filename]) {
+            this.imageLoadedCallback[filename].rejectMethod();
+            delete this.imageLoadedCallback[filename];
+          }
+          this.filenamesOfImageFailedToDownload.push(filename);
+          this.removeCurrentAndLoadNextImage(filename);
         }
-      },
-      filename => {
-        if (this.imageLoadedCallback[filename]) {
-          this.imageLoadedCallback[filename].rejectMethod();
-          this.imageLoadedCallback[filename] = null;
-        }
-        this.filenamesOfImageFailedToDownload.push(filename);
-        this.removeCurrentAndLoadNextImage(filename);
-      });
+      );
   }
 }
-
-angular.module('oppia').factory(
-  'ImagePreloaderService', downgradeInjectable(ImagePreloaderService));

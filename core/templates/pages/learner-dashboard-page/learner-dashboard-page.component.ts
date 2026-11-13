@@ -12,270 +12,369 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 /**
  * @fileoverview Component for the learner dashboard.
  */
 
-import { Component, OnInit } from '@angular/core';
-import { downgradeComponent } from '@angular/upgrade/static';
-import { SafeResourceUrl } from '@angular/platform-browser';
-import { trigger, state, style, transition,
-  animate, group } from '@angular/animations';
+import {Component, OnInit, OnDestroy, ViewEncapsulation} from '@angular/core';
+import {
+  trigger,
+  state,
+  style,
+  transition,
+  animate,
+  group,
+} from '@angular/animations';
+import {TranslateService} from '@ngx-translate/core';
+import {Subscription} from 'rxjs';
 
-import { AppConstants } from 'app.constants';
-import { LearnerExplorationSummary } from 'domain/summary/learner-exploration-summary.model';
-import { CollectionSummary } from 'domain/collection/collection-summary.model';
-import { FeedbackThreadSummary } from 'domain/feedback_thread/feedback-thread-summary.model';
-import { ProfileSummary } from 'domain/user/profile-summary.model';
-import { FeedbackMessageSummary } from 'domain/feedback_message/feedback-message-summary.model';
-import { LearnerDashboardBackendApiService } from 'domain/learner_dashboard/learner-dashboard-backend-api.service';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { ThreadStatusDisplayService } from 'pages/exploration-editor-page/feedback-tab/services/thread-status-display.service';
-import { SuggestionModalForLearnerDashboardService } from 'pages/learner-dashboard-page/suggestion-modal/suggestion-modal-for-learner-dashboard.service';
-import { LearnerDashboardPageConstants } from 'pages/learner-dashboard-page/learner-dashboard-page.constants';
-import { AlertsService } from 'services/alerts.service';
-import { DeviceInfoService } from 'services/contextual/device-info.service';
-import { DateTimeFormatService } from 'services/date-time-format.service';
-import { LoaderService } from 'services/loader.service';
-import { UserService } from 'services/user.service';
-import { FocusManagerService } from 'services/stateful/focus-manager.service';
-import { StorySummary } from 'domain/story/story-summary.model';
-import { LearnerTopicSummary } from 'domain/topic/learner-topic-summary.model';
+import {AppConstants} from 'app.constants';
+import {LearnerExplorationSummary} from 'domain/summary/learner-exploration-summary.model';
+import {CollectionSummary} from 'domain/collection/collection-summary.model';
+import {ProfileSummary} from 'domain/user/profile-summary.model';
+import {
+  LearnerDashboardBackendApiService,
+  SubtopicMasterySummaryBackendDict,
+} from 'domain/learner_dashboard/learner-dashboard-backend-api.service';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {LearnerDashboardPageConstants} from 'pages/learner-dashboard-page/learner-dashboard-page.constants';
+import {AlertsService} from 'services/alerts.service';
+import {LoaderService} from 'services/loader.service';
+import {UserService} from 'services/user.service';
+import {FocusManagerService} from 'services/stateful/focus-manager.service';
+import {StorySummary} from 'domain/story/story-summary.model';
+import {LearnerTopicSummary} from 'domain/topic/learner-topic-summary.model';
+import {WindowDimensionsService} from 'services/contextual/window-dimensions.service';
+import {PageTitleService} from 'services/page-title.service';
+import {UrlService} from 'services/contextual/url.service';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {FeedbackBackendApiService} from 'domain/feedback/feedback-backend-api.service';
+
+interface LearnerDashboardExplorationsData {
+  completedExplorationsList: LearnerExplorationSummary[];
+  incompleteExplorationsList: LearnerExplorationSummary[];
+  subscriptionList: ProfileSummary[];
+}
 
 @Component({
   selector: 'oppia-learner-dashboard-page',
   templateUrl: './learner-dashboard-page.component.html',
-  styleUrls: [],
+  styleUrls: ['./learner-dashboard-page.component.css'],
+  encapsulation: ViewEncapsulation.None,
   animations: [
     trigger('slideInOut', [
-      state('true', style({
-        'max-height': '500px', opacity: '1', visibility: 'visible'
-      })),
-      state('false', style({
-        'max-height': '0px', opacity: '0', visibility: 'hidden'
-      })),
-      transition('true => false', [group([
-        animate('500ms ease-in-out', style({
-          opacity: '0'
-        })),
-        animate('500ms ease-in-out', style({
-          'max-height': '0px'
-        })),
-        animate('500ms ease-in-out', style({
-          visibility: 'hidden'
-        }))
-      ]
-      )]),
-      transition('false => true', [group([
-        animate('500ms ease-in-out', style({
-          visibility: 'visible'
-        })),
-        animate('500ms ease-in-out', style({
-          'max-height': '500px'
-        })),
-        animate('500ms ease-in-out', style({
-          opacity: '1'
-        }))
-      ]
-      )])
-    ])
-  ]
+      state(
+        'true',
+        style({
+          'max-height': '500px',
+          opacity: '1',
+          visibility: 'visible',
+        })
+      ),
+      state(
+        'false',
+        style({
+          'max-height': '0px',
+          opacity: '0',
+          visibility: 'hidden',
+        })
+      ),
+      transition('true => false', [
+        group([
+          animate(
+            '500ms ease-in-out',
+            style({
+              opacity: '0',
+            })
+          ),
+          animate(
+            '500ms ease-in-out',
+            style({
+              'max-height': '0px',
+            })
+          ),
+          animate(
+            '500ms ease-in-out',
+            style({
+              visibility: 'hidden',
+            })
+          ),
+        ]),
+      ]),
+      transition('false => true', [
+        group([
+          animate(
+            '500ms ease-in-out',
+            style({
+              visibility: 'visible',
+            })
+          ),
+          animate(
+            '500ms ease-in-out',
+            style({
+              'max-height': '500px',
+            })
+          ),
+          animate(
+            '500ms ease-in-out',
+            style({
+              opacity: '1',
+            })
+          ),
+        ]),
+      ]),
+    ]),
+  ],
 })
-export class LearnerDashboardPageComponent implements OnInit {
-  threadIndex: number;
+export class LearnerDashboardPageComponent implements OnInit, OnDestroy {
+  LEARNER_DASHBOARD_SECTION_I18N_IDS =
+    LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS;
 
-  FEEDBACK_THREADS_SORT_BY_KEYS_AND_I18N_IDS = (
-    LearnerDashboardPageConstants.FEEDBACK_THREADS_SORT_BY_KEYS_AND_I18N_IDS);
-  LEARNER_DASHBOARD_SECTION_I18N_IDS = (
-    LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS);
-  LEARNER_DASHBOARD_SUBSECTION_I18N_IDS = (
-    LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS);
+  LEARNER_DASHBOARD_SUBSECTION_I18N_IDS =
+    LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS;
+
   username: string = '';
 
-  isCurrentFeedbackSortDescending: boolean;
-  currentFeedbackThreadsSortType: string;
+  // These properties below are initialized using Angular lifecycle hooks
+  // where we need to do non-null assertion. For more information see
+  // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
 
-  completedExplorationsList: LearnerExplorationSummary[];
-  completedCollectionsList: CollectionSummary[];
-  completedStoriesList: StorySummary[];
-  learntTopicsList: LearnerTopicSummary[];
-  partiallyLearntTopicsList: LearnerTopicSummary[];
-  incompleteExplorationsList: LearnerExplorationSummary[];
-  incompleteCollectionsList: CollectionSummary[];
-  topicsToLearn: LearnerTopicSummary[];
-  allTopics: LearnerTopicSummary[];
-  untrackedTopics: Record<string, LearnerTopicSummary[]>;
-  subscriptionsList: ProfileSummary[];
+  completedExplorationsList!: LearnerExplorationSummary[];
+  completedCollectionsList!: CollectionSummary[];
+  completedStoriesList!: StorySummary[];
+  learntTopicsList!: LearnerTopicSummary[];
+  partiallyLearntTopicsList!: LearnerTopicSummary[];
+  incompleteExplorationsList!: LearnerExplorationSummary[];
+  incompleteCollectionsList!: CollectionSummary[];
+  topicsToLearn!: LearnerTopicSummary[];
+  allTopics!: LearnerTopicSummary[];
+  untrackedTopics!: Record<string, LearnerTopicSummary[]>;
+  subscriptionsList!: ProfileSummary[];
 
-  completedToIncompleteCollections: string[];
-  learntToPartiallyLearntTopics: string[];
-  threadSummaries: FeedbackThreadSummary[];
-  numberOfUnreadThreads: number;
-  explorationPlaylist: LearnerExplorationSummary[];
-  collectionPlaylist: CollectionSummary[];
-  activeSection: string;
-  activeSubsection: string;
-  feedbackThreadActive: boolean;
+  completedToIncompleteCollections!: string[];
+  learntToPartiallyLearntTopics!: string[];
+  activeSection!: string;
+  activeSubsection!: string;
 
-  messageSendingInProgress: boolean;
-  profilePictureDataUrl: SafeResourceUrl;
-  newMessage: {
-    'text': string
-  };
-  loadingFeedbacks: boolean;
-  explorationTitle: string;
-  threadStatus: string;
-  explorationId: string;
-  threadId: string;
-  messageSummaries: FeedbackMessageSummary[];
-  threadSummary: FeedbackThreadSummary;
-  communityLibraryUrl = (
-    '/' + AppConstants.PAGES_REGISTERED_WITH_FRONTEND.LIBRARY_INDEX.ROUTE);
+  profilePicturePngDataUrl!: string;
+  profilePictureWebpDataUrl!: string;
+
+  communityLessonsDataLoaded: boolean = false;
   homeImageUrl: string = '';
   todolistImageUrl: string = '';
   progressImageUrl: string = '';
+  windowIsNarrow: boolean = false;
+  directiveSubscriptions = new Subscription();
+  LEARNER_GROUP_FEATURE_IS_ENABLED: boolean = false;
+  subtopicMasteries: Record<string, SubtopicMasterySummaryBackendDict> = {};
+  curatedExplorationIds = new Set<string>();
+  unreadMySuggestionsCount: number = 0;
 
   constructor(
     private alertsService: AlertsService,
-    private deviceInfoService: DeviceInfoService,
-    private dateTimeFormatService: DateTimeFormatService,
+    private windowDimensionService: WindowDimensionsService,
     private focusManagerService: FocusManagerService,
-    private learnerDashboardBackendApiService:
-      LearnerDashboardBackendApiService,
+    private learnerDashboardBackendApiService: LearnerDashboardBackendApiService,
     private loaderService: LoaderService,
-    private suggestionModalForLearnerDashboardService:
-      SuggestionModalForLearnerDashboardService,
-    private threadStatusDisplayService: ThreadStatusDisplayService,
     private urlInterpolationService: UrlInterpolationService,
     private userService: UserService,
+    private translateService: TranslateService,
+    private pageTitleService: PageTitleService,
+    private urlService: UrlService,
+    private platFeatService: PlatformFeatureService,
+    private feedbackBackendApiService: FeedbackBackendApiService
   ) {}
 
-  ngOnInit(): void {
-    let userProfileImagePromise =
-      this.userService.getProfileImageDataUrlAsync();
-    userProfileImagePromise.then(
-      dataUrl => {
-        this.profilePictureDataUrl =
-          decodeURIComponent(dataUrl);
+  populateCuratedExplorationIds(): void {
+    this.curatedExplorationIds.clear();
+    (this.allTopics || []).forEach(topic => {
+      (topic.getCanonicalStorySummaryDicts() || []).forEach(storySummary => {
+        (storySummary.getAllNodes() || []).forEach(nodeSummary => {
+          const expId = nodeSummary.getExplorationId();
+          if (expId !== null) {
+            this.curatedExplorationIds.add(expId);
+          }
+        });
       });
+    });
+  }
 
+  filterExplorationsData(responseData: LearnerDashboardExplorationsData): void {
+    this.populateCuratedExplorationIds();
+
+    this.completedExplorationsList = (
+      responseData.completedExplorationsList || []
+    ).filter(
+      (exp: LearnerExplorationSummary) =>
+        !this.curatedExplorationIds.has(exp.id)
+    );
+
+    this.incompleteExplorationsList = (
+      responseData.incompleteExplorationsList || []
+    ).filter(
+      (exp: LearnerExplorationSummary) =>
+        !this.curatedExplorationIds.has(exp.id)
+    );
+
+    this.subscriptionsList = responseData.subscriptionList;
+  }
+
+  ngOnInit(): void {
     this.loaderService.showLoadingScreen('Loading');
 
     let userInfoPromise = this.userService.getUserInfoAsync();
     userInfoPromise.then(userInfo => {
-      this.username = userInfo.getUsername();
+      const username = userInfo.getUsername();
+      if (username) {
+        this.username = username;
+        [this.profilePicturePngDataUrl, this.profilePictureWebpDataUrl] =
+          this.userService.getProfileImageDataUrl(username);
+      } else {
+        this.profilePictureWebpDataUrl =
+          this.urlInterpolationService.getStaticImageUrl(
+            AppConstants.DEFAULT_PROFILE_IMAGE_WEBP_PATH
+          );
+        this.profilePicturePngDataUrl =
+          this.urlInterpolationService.getStaticImageUrl(
+            AppConstants.DEFAULT_PROFILE_IMAGE_PNG_PATH
+          );
+      }
     });
     this.homeImageUrl = this.getStaticImageUrl('/learner_dashboard/home.svg');
     this.todolistImageUrl = this.getStaticImageUrl(
-      '/learner_dashboard/todolist.svg');
+      '/learner_dashboard/todolist.svg'
+    );
     this.progressImageUrl = this.getStaticImageUrl(
-      '/learner_dashboard/progress.svg');
+      '/learner_dashboard/progress.svg'
+    );
 
-    let dashboardTopicAndStoriesDataPromise = (
-      this.learnerDashboardBackendApiService
-        .fetchLearnerDashboardTopicsAndStoriesDataAsync());
+    let dashboardTopicAndStoriesDataPromise =
+      this.learnerDashboardBackendApiService.fetchLearnerDashboardTopicsAndStoriesDataAsync();
     dashboardTopicAndStoriesDataPromise.then(
       responseData => {
-        this.completedStoriesList = (
-          responseData.completedStoriesList);
-        this.learntTopicsList = (
-          responseData.learntTopicsList);
-        this.partiallyLearntTopicsList = (
-          responseData.partiallyLearntTopicsList);
-        this.topicsToLearn = (
-          responseData.topicsToLearnList);
-        this.untrackedTopics = (
-          responseData.untrackedTopics);
-        this.allTopics = (
-          responseData.allTopicsList);
-        this.learntToPartiallyLearntTopics = (
-          responseData.learntToPartiallyLearntTopics);
-        this.activeSection = (
-          LearnerDashboardPageConstants
-            .LEARNER_DASHBOARD_SECTION_I18N_IDS.HOME);
-        this.activeSubsection = (
-          LearnerDashboardPageConstants
-            .LEARNER_DASHBOARD_SUBSECTION_I18N_IDS.SKILL_PROFICIENCY
-        );
-      }, errorResponseStatus => {
+        this.completedStoriesList = responseData.completedStoriesList;
+        this.learntTopicsList = responseData.learntTopicsList;
+        this.partiallyLearntTopicsList = responseData.partiallyLearntTopicsList;
+        this.topicsToLearn = responseData.topicsToLearnList;
+        this.untrackedTopics = responseData.untrackedTopics;
+        this.allTopics = responseData.allTopicsList;
+        this.learntToPartiallyLearntTopics =
+          responseData.learntToPartiallyLearntTopics;
+        this.activeSection =
+          LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS.HOME;
+        this.activeSubsection =
+          LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS.SKILL_PROFICIENCY;
+        if (this.urlService.getUrlParams().active_tab === 'learner-groups') {
+          this.activeSection =
+            LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS.LEARNER_GROUPS;
+        }
         if (
-          AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1) {
+          this.isShowRedesignedLearnerDashboardActive() &&
+          this.isNewExplorationEditorFeedbackTabEnabled() &&
+          this.urlService.getUrlParams().active_tab === 'my-suggestions'
+        ) {
+          this.activeSection =
+            LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS.MY_SUGGESTIONS;
+        }
+
+        return this.getSubtopicMasteryData();
+      },
+      errorResponseStatus => {
+        if (
+          AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+        ) {
           this.alertsService.addWarning(
-            'Failed to get learner dashboard topics and stories data');
+            'Failed to get learner dashboard topics and stories data'
+          );
         }
       }
     );
 
-    let dashboardCollectionsDataPromise = (
-      this.learnerDashboardBackendApiService
-        .fetchLearnerDashboardCollectionsDataAsync());
+    this.LEARNER_GROUP_FEATURE_IS_ENABLED =
+      this.platFeatService.status.LearnerGroupsAreEnabled.isEnabled;
+    if (this.isNewExplorationEditorFeedbackTabEnabled()) {
+      this.fetchUnreadMySuggestionsCount();
+    }
+
+    let dashboardCollectionsDataPromise =
+      this.learnerDashboardBackendApiService.fetchLearnerDashboardCollectionsDataAsync();
     dashboardCollectionsDataPromise.then(
       responseData => {
-        this.completedCollectionsList = (
-          responseData.completedCollectionsList);
-        this.incompleteCollectionsList = (
-          responseData.incompleteCollectionsList);
-        this.completedToIncompleteCollections = (
-          responseData.completedToIncompleteCollections);
-        this.collectionPlaylist = responseData.collectionPlaylist;
-      }, errorResponseStatus => {
+        this.completedCollectionsList = responseData.completedCollectionsList;
+        this.incompleteCollectionsList = responseData.incompleteCollectionsList;
+        this.completedToIncompleteCollections =
+          responseData.completedToIncompleteCollections;
+      },
+      errorResponseStatus => {
         if (
-          AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1) {
+          AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+        ) {
           this.alertsService.addWarning(
-            'Failed to get learner dashboard collections data');
+            'Failed to get learner dashboard collections data'
+          );
         }
       }
     );
 
-    let dashboardExplorationsDataPromise = (
-      this.learnerDashboardBackendApiService
-        .fetchLearnerDashboardExplorationsDataAsync());
-    dashboardExplorationsDataPromise.then(
-      responseData => {
-        this.isCurrentFeedbackSortDescending = true;
-        this.currentFeedbackThreadsSortType = (
-          LearnerDashboardPageConstants
-            .FEEDBACK_THREADS_SORT_BY_KEYS_AND_I18N_IDS.LAST_UPDATED.key);
-        this.completedExplorationsList = (
-          responseData.completedExplorationsList);
-        this.incompleteExplorationsList = (
-          responseData.incompleteExplorationsList);
-        this.subscriptionsList = responseData.subscriptionList;
-        this.threadSummaries = responseData.threadSummaries;
-        this.numberOfUnreadThreads =
-          responseData.numberOfUnreadThreads;
-        this.explorationPlaylist = responseData.explorationPlaylist;
-        this.feedbackThreadActive = false;
-      }, errorResponseStatus => {
-        if (
-          AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1) {
-          this.alertsService.addWarning(
-            'Failed to get learner dashboard explorations data');
+    let dashboardExplorationsDataPromise =
+      this.learnerDashboardBackendApiService.fetchLearnerDashboardExplorationsDataAsync();
+    dashboardTopicAndStoriesDataPromise.finally(() => {
+      dashboardExplorationsDataPromise.then(
+        responseData => {
+          this.filterExplorationsData(responseData);
+        },
+        errorResponseStatus => {
+          if (
+            AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+          ) {
+            this.alertsService.addWarning(
+              'Failed to get learner dashboard explorations data'
+            );
+          }
         }
-      }
-    );
+      );
+    });
 
     Promise.all([
       userInfoPromise,
-      dashboardTopicAndStoriesDataPromise,
       dashboardCollectionsDataPromise,
-      dashboardExplorationsDataPromise
-    ]).then(() => {
-      setTimeout(() => {
-        this.loaderService.hideLoadingScreen();
-        // So that focus is applied after the loading screen has dissapeared.
-        this.focusManagerService.setFocusWithoutScroll('ourLessonsBtn');
-      }, 0);
-    }).catch(errorResponse => {
-      // This is placed here in order to satisfy Unit tests.
-    });
+      dashboardExplorationsDataPromise,
+      dashboardTopicAndStoriesDataPromise,
+    ])
+      .then(() => {
+        setTimeout(() => {
+          this.loaderService.hideLoadingScreen();
+          // So that focus is applied after the loading screen has dissapeared.
+          this.communityLessonsDataLoaded = true;
+          this.focusManagerService.setFocusWithoutScroll('ourLessonsBtn');
+        }, 0);
+      })
+      .catch(errorResponse => {
+        // This is placed here in order to satisfy Unit tests.
+      });
 
-    this.loadingFeedbacks = false;
+    this.windowIsNarrow = this.windowDimensionService.isWindowNarrow();
+    this.directiveSubscriptions.add(
+      this.windowDimensionService.getResizeEvent().subscribe(() => {
+        this.windowIsNarrow = this.windowDimensionService.isWindowNarrow();
+      })
+    );
+    this.directiveSubscriptions.add(
+      this.translateService.onLangChange.subscribe(() => {
+        this.setPageTitle();
+      })
+    );
+  }
 
-    this.newMessage = {
-      text: ''
-    };
+  ngOnDestroy(): void {
+    this.directiveSubscriptions.unsubscribe();
+  }
+
+  setPageTitle(): void {
+    let translatedTitle = this.translateService.instant(
+      'I18N_LEARNER_DASHBOARD_PAGE_TITLE'
+    );
+    this.pageTitleService.setDocumentTitle(translatedTitle);
   }
 
   getStaticImageUrl(imagePath: string): string {
@@ -283,149 +382,202 @@ export class LearnerDashboardPageComponent implements OnInit {
   }
 
   setActiveSection(newActiveSectionName: string): void {
+    if (
+      newActiveSectionName ===
+        LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+          .MY_CERTIFICATES &&
+      !this.isCertificateAssessmentEnabled()
+    ) {
+      return;
+    }
+    if (
+      newActiveSectionName ===
+        LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+          .MY_SUGGESTIONS &&
+      !this.isNewExplorationEditorFeedbackTabEnabled()
+    ) {
+      return;
+    }
     this.activeSection = newActiveSectionName;
-    if (this.activeSection ===
-      LearnerDashboardPageConstants
-        .LEARNER_DASHBOARD_SECTION_I18N_IDS.FEEDBACK &&
-      this.feedbackThreadActive === true) {
-      this.feedbackThreadActive = false;
+    if (
+      this.activeSection ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .COMMUNITY_LESSONS
+    ) {
+      this.loaderService.showLoadingScreen('Loading');
+      let dashboardCollectionsDataPromise =
+        this.learnerDashboardBackendApiService.fetchLearnerDashboardCollectionsDataAsync();
+      dashboardCollectionsDataPromise.then(
+        responseData => {
+          this.completedCollectionsList = responseData.completedCollectionsList;
+          this.incompleteCollectionsList =
+            responseData.incompleteCollectionsList;
+          this.completedToIncompleteCollections =
+            responseData.completedToIncompleteCollections;
+        },
+        errorResponseStatus => {
+          if (
+            AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+          ) {
+            this.alertsService.addWarning(
+              'Failed to get learner dashboard collections data'
+            );
+          }
+        }
+      );
+
+      let dashboardExplorationsDataPromise =
+        this.learnerDashboardBackendApiService.fetchLearnerDashboardExplorationsDataAsync();
+      dashboardExplorationsDataPromise.then(
+        responseData => {
+          this.filterExplorationsData(responseData);
+        },
+        errorResponseStatus => {
+          if (
+            AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+          ) {
+            this.alertsService.addWarning(
+              'Failed to get learner dashboard explorations data'
+            );
+          }
+        }
+      );
+      Promise.all([
+        dashboardCollectionsDataPromise,
+        dashboardExplorationsDataPromise,
+      ])
+        .then(() => {
+          setTimeout(() => {
+            this.loaderService.hideLoadingScreen();
+            this.communityLessonsDataLoaded = true;
+            // So that focus is applied after the loading screen has dissapeared.
+            this.focusManagerService.setFocusWithoutScroll('ourLessonsBtn');
+          }, 0);
+        })
+        .catch(errorResponse => {
+          // This is placed here in order to satisfy Unit tests.
+        });
     }
   }
 
   setActiveSubsection(newActiveSubsectionName: string): void {
     this.activeSubsection = newActiveSubsectionName;
-  }
-
-  checkMobileView(): boolean {
-    return this.deviceInfoService.isMobileDevice();
-  }
-
-  showUsernamePopover(subscriberUsername: string): string {
-    // The popover on the subscription card is only shown if the length
-    // of the subscriber username is greater than 10 and the user hovers
-    // over the truncated username.
-    if (subscriberUsername.length > 10) {
-      return 'mouseenter';
-    } else {
-      return 'none';
-    }
-  }
-
-  setFeedbackSortingOptions(sortType: string): void {
-    if (sortType === this.currentFeedbackThreadsSortType) {
-      this.isCurrentFeedbackSortDescending = (
-        !this.isCurrentFeedbackSortDescending);
-    } else {
-      this.currentFeedbackThreadsSortType = sortType;
-    }
-  }
-
-  getValueOfFeedbackThreadSortKey(): string {
-    // 'Last Updated' is the default sorting operation
-    // so we will return 'lastUpdatedMsecs' to SortByPipe when Last Updated
-    // option is selected in the drop down menu.
-    return this.currentFeedbackThreadsSortType;
-  }
-
-  onClickThread(
-      threadStatus: string, explorationId: string,
-      threadId: string, explorationTitle: string): void {
-    this.loadingFeedbacks = true;
-    let threadDataUrl = this.urlInterpolationService.interpolateUrl(
-      '/learnerdashboardthreadhandler/<threadId>', {
-        threadId: threadId
-      });
-    this.explorationTitle = explorationTitle;
-    this.feedbackThreadActive = true;
-    this.threadStatus = threadStatus;
-    this.explorationId = explorationId;
-    this.threadId = threadId;
-
-    for (let index = 0; index < this.threadSummaries.length; index++) {
-      if (this.threadSummaries[index].threadId === threadId) {
-        this.threadIndex = index;
-        let threadSummary = this.threadSummaries[index];
-        if (!threadSummary.lastMessageIsRead) {
-          this.numberOfUnreadThreads -= 1;
+    if (
+      this.activeSubsection ===
+      LearnerDashboardPageConstants.LEARNER_DASHBOARD_SUBSECTION_I18N_IDS
+        .LESSONS
+    ) {
+      this.loaderService.showLoadingScreen('Loading');
+      let dashboardCollectionsDataPromise =
+        this.learnerDashboardBackendApiService.fetchLearnerDashboardCollectionsDataAsync();
+      dashboardCollectionsDataPromise.then(
+        responseData => {
+          this.completedCollectionsList = responseData.completedCollectionsList;
+          this.incompleteCollectionsList =
+            responseData.incompleteCollectionsList;
+          this.completedToIncompleteCollections =
+            responseData.completedToIncompleteCollections;
+        },
+        errorResponseStatus => {
+          if (
+            AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+          ) {
+            this.alertsService.addWarning(
+              'Failed to get learner dashboard collections data'
+            );
+          }
         }
-        threadSummary.markTheLastTwoMessagesAsRead();
-      }
-    }
+      );
 
-    this.learnerDashboardBackendApiService.onClickThreadAsync(threadDataUrl)
-      .then((messageSummaryList) => {
-        let messageSummaryDicts = messageSummaryList;
-        this.messageSummaries = [];
-        for (let index = 0; index < messageSummaryDicts.length; index++) {
-          this.messageSummaries.push(
-            FeedbackMessageSummary.createFromBackendDict(
-              messageSummaryDicts[index]));
+      let dashboardExplorationsDataPromise =
+        this.learnerDashboardBackendApiService.fetchLearnerDashboardExplorationsDataAsync();
+      dashboardExplorationsDataPromise.then(
+        responseData => {
+          this.filterExplorationsData(responseData);
+        },
+        errorResponseStatus => {
+          if (
+            AppConstants.FATAL_ERROR_CODES.indexOf(errorResponseStatus) !== -1
+          ) {
+            this.alertsService.addWarning(
+              'Failed to get learner dashboard explorations data'
+            );
+          }
         }
-        this.loadingFeedbacks = false;
+      );
+      Promise.all([
+        dashboardCollectionsDataPromise,
+        dashboardExplorationsDataPromise,
+      ])
+        .then(() => {
+          setTimeout(() => {
+            this.loaderService.hideLoadingScreen();
+            this.communityLessonsDataLoaded = true;
+            // So that focus is applied after the loading screen has dissapeared.
+            this.focusManagerService.setFocusWithoutScroll('ourLessonsBtn');
+          }, 0);
+        })
+        .catch(errorResponse => {
+          // This is placed here in order to satisfy Unit tests.
+        });
+    }
+  }
+
+  isShowRedesignedLearnerDashboardActive(): boolean {
+    return this.platFeatService.status.ShowRedesignedLearnerDashboard.isEnabled;
+  }
+
+  isCertificateAssessmentEnabled(): boolean {
+    return this.platFeatService.status.EnableCertificateAssessment.isEnabled;
+  }
+
+  isNewExplorationEditorFeedbackTabEnabled(): boolean {
+    return this.platFeatService.status.ExplorationEditorNewCreatorFeedbackTab
+      .isEnabled;
+  }
+
+  getDashboardTabHeading(): string {
+    switch (this.activeSection) {
+      case LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .HOME:
+        return 'I18N_LEARNER_DASHBOARD_HOME_SECTION_HEADING';
+      case LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .PROGRESS:
+        return 'I18N_LEARNER_DASHBOARD_PROGRESS_SECTION_HEADING';
+      case LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .GOALS:
+        return 'I18N_LEARNER_DASHBOARD_GOALS_SECTION_HEADING';
+      case LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .MY_CERTIFICATES:
+        return 'I18N_LEARNER_DASHBOARD_MY_CERTIFICATES_SECTION_HEADING';
+      case LearnerDashboardPageConstants.LEARNER_DASHBOARD_SECTION_I18N_IDS
+        .MY_SUGGESTIONS:
+        return 'I18N_LEARNER_DASHBOARD_MY_SUGGESTIONS_SECTION_HEADING';
+      default:
+        return `No valid I18N key for heading of ${this.activeSection}`;
+    }
+  }
+
+  async getSubtopicMasteryData(): Promise<void> {
+    this.subtopicMasteries =
+      await this.learnerDashboardBackendApiService.fetchSubtopicMastery([
+        ...this.partiallyLearntTopicsList.map(topic => topic.id),
+        ...this.learntTopicsList.map(topic => topic.id),
+      ]);
+  }
+
+  fetchUnreadMySuggestionsCount(): void {
+    this.feedbackBackendApiService
+      .fetchMyFeedbackUnreadCountAsync()
+      .then(unreadCount => {
+        this.unreadMySuggestionsCount = unreadCount;
+      })
+      .catch(() => {
+        this.unreadMySuggestionsCount = 0;
       });
   }
 
-  showAllThreads(): void {
-    this.feedbackThreadActive = false;
-    this.threadIndex = null;
-  }
-
-  addNewMessage(threadId: string, newMessage: string): void {
-    let url = this.urlInterpolationService.interpolateUrl(
-      '/threadhandler/<threadId>', {
-        threadId: threadId
-      });
-    let payload = {
-      updated_status: null,
-      updated_subject: null,
-      text: newMessage
-    };
-    this.messageSendingInProgress = true;
-    this.learnerDashboardBackendApiService
-      .addNewMessageAsync(url, payload).then(() => {
-        this.threadSummary = this.threadSummaries[this.threadIndex];
-        this.threadSummary.appendNewMessage(
-          newMessage, this.username);
-        this.messageSendingInProgress = false;
-        this.newMessage.text = null;
-        let newMessageSummary = (
-          FeedbackMessageSummary.createNewMessage(
-            this.threadSummary.totalMessageCount, newMessage,
-            this.username, String(this.profilePictureDataUrl)));
-        this.messageSummaries.push(newMessageSummary);
-      });
-  }
-
-  showSuggestionModal(
-      newContent: string, oldContent: string, description: string): void {
-    this.suggestionModalForLearnerDashboardService.showSuggestionModal(
-      'edit_exploration_state_content',
-      {
-        newContent: newContent,
-        oldContent: oldContent,
-        description: description
-      }
-    );
-  }
-
-  getLabelClass(status: string): string {
-    return this.threadStatusDisplayService.getLabelClass(status);
-  }
-
-  getHumanReadableStatus(status: string): string {
-    return this.threadStatusDisplayService.getHumanReadableStatus(status);
-  }
-
-  getLocaleAbbreviatedDatetimeString(millisSinceEpoch: number): string {
-    return this.dateTimeFormatService.getLocaleAbbreviatedDatetimeString(
-      millisSinceEpoch);
-  }
-
-  decodePngURIData(base64ImageData: string): string {
-    return decodeURIComponent(base64ImageData);
+  onMySuggestionsUnreadCountChanged(unreadCount: number): void {
+    this.unreadMySuggestionsCount = unreadCount;
   }
 }
-
-angular.module('oppia').directive(
-  'oppiaLearnerDashboardPage', downgradeComponent(
-    {component: LearnerDashboardPageComponent}));

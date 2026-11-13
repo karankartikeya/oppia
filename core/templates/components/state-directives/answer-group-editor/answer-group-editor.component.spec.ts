@@ -16,21 +16,51 @@
  * @fileoverview Unit test for Answer Group Editor Component.
  */
 
-import { EventEmitter } from '@angular/core';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { Rule } from 'domain/exploration/RuleObjectFactory';
+// @ts-nocheck
 
-describe('AnswerGroupEditorComponent', () => {
-  let ctrl = null;
-  let $rootScope = null;
-  let $scope = null;
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {
+  ComponentFixture,
+  waitForAsync,
+  TestBed,
+  fakeAsync,
+  tick,
+} from '@angular/core/testing';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {StateInteractionIdService} from 'components/state-editor/state-editor-properties-services/state-interaction-id.service';
+import {Rule} from 'domain/exploration/rule.model';
+import {ParameterizeRuleDescriptionPipe} from 'filters/parameterize-rule-description.pipe';
+import {ResponsesService} from 'pages/exploration-editor-page/editor-tab/services/responses.service';
+import {TrainingDataEditorPanelService} from 'pages/exploration-editor-page/editor-tab/training-panel/training-data-editor-panel.service';
+import {AlertsService} from 'services/alerts.service';
+import {ExternalSaveService} from 'services/external-save.service';
+import {AnswerGroupEditor} from './answer-group-editor.component';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {Outcome} from 'domain/exploration/outcome.model';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
 
-  let ExternalSaveService = null;
-  let StateEditorService = null;
-  let StateInteractionIdService = null;
-  let ResponsesService = null;
-  let AlertsService = null;
-  let TrainingDataEditorPanelService = null;
+class MockPlatformFeatureService {
+  status = {
+    ExplorationEditorCanTagMisconceptions: {
+      isEnabled: true,
+    },
+  };
+}
+
+describe('Answer Group Editor Component', () => {
+  let component: AnswerGroupEditor;
+  let fixture: ComponentFixture<AnswerGroupEditor>;
+  let externalSaveService: ExternalSaveService;
+  let stateEditorService: StateEditorService;
+  let stateInteractionIdService: StateInteractionIdService;
+  let responsesService: ResponsesService;
+  let alertsService: AlertsService;
+  let trainingDataEditorPanelService: TrainingDataEditorPanelService;
+  let mockOnExternalSave = new EventEmitter();
+  let mockOnUpdateAnswerChoices = new EventEmitter();
+  let mockOnInteractionIdChanged = new EventEmitter();
+  let mockPlatformFeatureService = new MockPlatformFeatureService();
 
   let answerChoices = [
     {
@@ -47,396 +77,595 @@ describe('AnswerGroupEditorComponent', () => {
     },
   ];
 
-  beforeEach(angular.mock.module('oppia'));
-  importAllAngularServices();
-
-  afterEach(() => {
-    ctrl.$onDestroy();
-  });
-
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.constant('INTERACTION_SPECS', {
-      TextInput: {
-        is_linear: false,
-        is_terminal: false,
-        is_trainable: true,
-        rule_descriptions: {
-          StartsWith: 'starts with at least one of' +
-          ' {{x|TranslatableSetOfNormalizedString}}',
-          Contains: 'contains at least one of' +
-          ' {{x|TranslatableSetOfNormalizedString}}',
-          Equals: 'is equal to at least one of ' +
-          '{{x|TranslatableSetOfNormalizedString}}, without ' +
-          'taking case into account',
-          FuzzyEquals: 'is equal to at least one of ' +
-          '{{x|TranslatableSetOfNormalizedString}}, ' +
-          'misspelled by at most one character'
-        }
-      },
-      MultipleChoiceInput: {
-        is_linear: false,
-        is_terminal: false,
-        is_trainable: false,
-        rule_descriptions: {}
-      }
-    });
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      declarations: [AnswerGroupEditor, ParameterizeRuleDescriptionPipe],
+      providers: [
+        ExternalSaveService,
+        StateEditorService,
+        StateInteractionIdService,
+        ResponsesService,
+        AlertsService,
+        TrainingDataEditorPanelService,
+        {
+          provide: PlatformFeatureService,
+          useValue: mockPlatformFeatureService,
+        },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    }).compileComponents();
   }));
 
-  beforeEach(angular.mock.inject(function($injector, $componentController) {
-    $rootScope = $injector.get('$rootScope');
-    $scope = $rootScope.$new();
+  beforeEach(() => {
+    fixture = TestBed.createComponent(AnswerGroupEditor);
+    component = fixture.componentInstance;
 
-    ExternalSaveService = $injector.get('ExternalSaveService');
-    StateEditorService = $injector.get('StateEditorService');
-    StateInteractionIdService = $injector.get('StateInteractionIdService');
-    ResponsesService = $injector.get('ResponsesService');
-    AlertsService = $injector.get('AlertsService');
-    TrainingDataEditorPanelService = $injector.get(
-      'TrainingDataEditorPanelService');
+    externalSaveService = TestBed.inject(ExternalSaveService);
+    stateEditorService = TestBed.inject(StateEditorService);
+    stateInteractionIdService = TestBed.inject(StateInteractionIdService);
+    responsesService = TestBed.inject(ResponsesService);
+    alertsService = TestBed.inject(AlertsService);
+    trainingDataEditorPanelService = TestBed.inject(
+      TrainingDataEditorPanelService
+    );
 
-    ctrl = $componentController('answerGroupEditor', {
-      $scope: $scope
-    }, {
-      getOnSaveAnswerGroupRulesFn: () => {
-        return () => {};
-      },
-      getOnSaveNextContentIdIndex: () => {
-        return () => {};
-      },
-      showMarkAllAudioAsNeedingUpdateModalIfRequired: () => {}
-    });
-  }));
-
-  it('should set component properties on initialization', () => {
-    spyOn(ResponsesService, 'getActiveRuleIndex').and.returnValue(1);
-    spyOn(ResponsesService, 'getAnswerChoices').and.returnValue(answerChoices);
-
-    expect(ctrl.rulesMemento).toBe(undefined);
-    expect(ctrl.activeRuleIndex).toBe(undefined);
-    expect(ctrl.editAnswerGroupForm).toBe(undefined);
-    expect(ctrl.answerChoices).toEqual(undefined);
-
-    ctrl.$onInit();
-
-    expect(ctrl.rulesMemento).toBe(null);
-    expect(ctrl.activeRuleIndex).toBe(1);
-    expect(ctrl.editAnswerGroupForm).toEqual({});
-    expect(ctrl.answerChoices).toEqual(answerChoices);
-  });
-
-  it('should save rules when current rule is valid and user' +
-    ' triggers an external save', () => {
-    let externalSaveEmitter = new EventEmitter();
-    spyOnProperty(ExternalSaveService, 'onExternalSave').and.returnValue(
-      externalSaveEmitter);
-    spyOn(StateEditorService, 'checkCurrentRuleInputIsValid').and.returnValue(
-      true);
-    spyOn(ctrl, 'saveRules').and.stub();
-
-    ctrl.$onInit();
-    ctrl.activeRuleIndex = 1;
-
-    externalSaveEmitter.emit();
-    $scope.$apply();
-
-    expect(ctrl.saveRules).toHaveBeenCalled();
-  });
-
-  it('should warning message when current rule is invalid and user' +
-    ' triggers an external save', () => {
-    let externalSaveEmitter = new EventEmitter();
-    spyOnProperty(ExternalSaveService, 'onExternalSave').and.returnValue(
-      externalSaveEmitter);
-    spyOn(StateEditorService, 'checkCurrentRuleInputIsValid').and.returnValue(
-      false);
-    spyOn(AlertsService, 'addInfoMessage');
-
-    ctrl.$onInit();
-    ctrl.activeRuleIndex = 1;
-    AlertsService.addMessage('info', 'Some other message', 0);
-
-    externalSaveEmitter.emit();
-    $scope.$apply();
-
-    expect(AlertsService.addInfoMessage).toHaveBeenCalledWith(
-      'There was an unsaved rule input which was invalid' +
-      ' and has been discarded.'
+    spyOn(externalSaveService, 'onExternalSave').and.returnValue(
+      mockOnExternalSave
+    );
+    spyOn(stateEditorService, 'onUpdateAnswerChoices').and.returnValue(
+      mockOnUpdateAnswerChoices
+    );
+    spyOn(stateInteractionIdService, 'onInteractionIdChanged').and.returnValue(
+      mockOnInteractionIdChanged
     );
   });
 
-  it('should get answer choices when user updates answer choices', () => {
+  it('should set component properties on initialization', () => {
+    spyOn(responsesService, 'getActiveRuleIndex').and.returnValue(1);
+    spyOn(responsesService, 'getAnswerChoices').and.returnValue(answerChoices);
+
+    expect(component.rulesMemento).toBe(null);
+    expect(component.activeRuleIndex).toBeUndefined();
+    expect(component.editAnswerGroupForm).toEqual({});
+    expect(component.answerChoices).toBeUndefined();
+
+    component.ngOnInit();
+
+    expect(component.rulesMemento).toBe(null);
+    expect(component.activeRuleIndex).toBe(1);
+    expect(component.editAnswerGroupForm).toEqual({});
+    expect(component.answerChoices).toEqual(answerChoices);
+
+    component.ngOnDestroy();
+  });
+
+  it(
+    'should save rules when current rule is valid and user' +
+      ' triggers an external save',
+    fakeAsync(() => {
+      const outcome = Outcome.createNew(null, 'feedback_1', 'Feedback', []);
+      let externalSaveEmitter = new EventEmitter();
+      spyOnProperty(externalSaveService, 'onExternalSave').and.returnValue(
+        externalSaveEmitter
+      );
+      spyOn(stateEditorService, 'checkCurrentRuleInputIsValid').and.returnValue(
+        true
+      );
+      spyOn(component, 'saveRules').and.stub();
+
+      component.ngOnInit();
+      component.activeRuleIndex = 1;
+      component.sendOnSaveTaggedMisconception(null);
+      component.sendOnSaveAnswerGroupCorrectnessLabel(outcome);
+      component.sendOnSaveAnswerGroupFeedback(outcome);
+
+      externalSaveEmitter.emit();
+      tick();
+
+      expect(component.saveRules).toHaveBeenCalled();
+
+      component.ngOnDestroy();
+    })
+  );
+
+  it(
+    'should warning message when current rule is invalid and user' +
+      ' triggers an external save',
+    fakeAsync(() => {
+      let externalSaveEmitter = new EventEmitter();
+      spyOnProperty(externalSaveService, 'onExternalSave').and.returnValue(
+        externalSaveEmitter
+      );
+      spyOn(stateEditorService, 'checkCurrentRuleInputIsValid').and.returnValue(
+        false
+      );
+      spyOn(alertsService, 'addInfoMessage');
+
+      component.ngOnInit();
+      component.activeRuleIndex = 1;
+      alertsService.addMessage('info', 'Some other message', 0);
+      // The 'unknown' type is used here to bypass type checking for testing
+      // purposes.
+      component.sendOnSaveAnswerGroupDest(undefined as unknown as Outcome);
+      // The 'unknown' type is used here to bypass type checking for testing
+      // purposes.
+      component.sendOnSaveAnswerGroupDestIfStuck(
+        undefined as unknown as Outcome
+      );
+
+      externalSaveEmitter.emit();
+      tick();
+
+      expect(alertsService.addInfoMessage).toHaveBeenCalledWith(
+        'There was an unsaved rule input which was invalid' +
+          ' and has been discarded.'
+      );
+
+      component.ngOnDestroy();
+    })
+  );
+
+  it('should return back when ruleTypes length is 0', () => {
+    spyOn(component, 'getCurrentInteractionId').and.returnValue('Continue');
+    spyOn(component, 'changeActiveRuleIndex').and.stub();
+
+    component.addNewRule();
+
+    expect(component.changeActiveRuleIndex).not.toHaveBeenCalled();
+  });
+
+  it('should throw error when adding rule before interaction is selected', () => {
+    spyOn(component, 'getCurrentInteractionId').and.returnValue(null);
+
+    expect(() => component.addNewRule()).toThrowError(
+      'Cannot add a rule before an interaction is selected.'
+    );
+  });
+
+  it('should get answer choices when user updates answer choices', fakeAsync(() => {
     let updateAnswerChoicesEmitter = new EventEmitter();
-    spyOnProperty(StateEditorService, 'onUpdateAnswerChoices').and.returnValue(
-      updateAnswerChoicesEmitter);
-    spyOn(ResponsesService, 'getAnswerChoices').and.returnValue(answerChoices);
+    spyOnProperty(stateEditorService, 'onUpdateAnswerChoices').and.returnValue(
+      updateAnswerChoicesEmitter
+    );
+    spyOn(responsesService, 'getAnswerChoices').and.returnValue(answerChoices);
 
-    ctrl.$onInit();
+    component.ngOnInit();
     updateAnswerChoicesEmitter.emit();
-    $scope.$apply();
+    tick();
 
-    expect(ctrl.answerChoices).toEqual(answerChoices);
-  });
+    expect(component.answerChoices).toEqual(answerChoices);
 
-  it('should save rules and get answer choices when interaction' +
-    ' is changed', () => {
-    let interactionIdChangedEmitter = new EventEmitter();
-    spyOnProperty(StateInteractionIdService, 'onInteractionIdChanged')
-      .and.returnValue(interactionIdChangedEmitter);
-    spyOn(ctrl, 'saveRules').and.stub();
-    spyOn(ResponsesService, 'getAnswerChoices').and.returnValue(answerChoices);
+    component.ngOnDestroy();
+  }));
 
-    ctrl.$onInit();
-    ctrl.activeRuleIndex = 1;
+  it(
+    'should save rules and get answer choices when interaction' + ' is changed',
+    fakeAsync(() => {
+      let interactionIdChangedEmitter = new EventEmitter();
+      spyOnProperty(
+        stateInteractionIdService,
+        'onInteractionIdChanged'
+      ).and.returnValue(interactionIdChangedEmitter);
+      spyOn(component, 'saveRules').and.stub();
+      spyOn(responsesService, 'getAnswerChoices').and.returnValue(
+        answerChoices
+      );
 
-    interactionIdChangedEmitter.emit();
-    $scope.$apply();
+      component.ngOnInit();
+      component.activeRuleIndex = 1;
 
-    expect(ctrl.saveRules).toHaveBeenCalled();
-    expect(ctrl.answerChoices).toEqual(answerChoices);
-  });
+      interactionIdChangedEmitter.emit();
+      tick();
+
+      expect(component.saveRules).toHaveBeenCalled();
+      expect(component.answerChoices).toEqual(answerChoices);
+
+      component.ngOnDestroy();
+    })
+  );
 
   it('should check if editor is in question mode', () => {
-    spyOn(StateEditorService, 'isInQuestionMode').and.returnValue(true);
+    spyOn(stateEditorService, 'isInQuestionMode').and.returnValue(true);
 
-    expect(ctrl.isInQuestionMode()).toBe(true);
+    expect(component.isInQuestionMode()).toBe(true);
   });
 
-  it('should get current interaction\'s ID', () => {
-    StateInteractionIdService.savedMemento = 'TextIput';
+  it("should get current interaction's ID", () => {
+    stateInteractionIdService.savedMemento = 'TextInput';
 
-    expect(ctrl.getCurrentInteractionId()).toBe('TextIput');
+    expect(component.getCurrentInteractionId()).toBe('TextInput');
   });
 
   it('should get default input values for different variable type', () => {
-    expect(ctrl.getDefaultInputValue('Null')).toBe(null);
-    expect(ctrl.getDefaultInputValue('Boolean')).toBe(false);
-    expect(ctrl.getDefaultInputValue('Int')).toBe(0);
-    expect(ctrl.getDefaultInputValue('PositiveInt')).toBe(1);
-    expect(ctrl.getDefaultInputValue('UnicodeString')).toBe('');
-    expect(ctrl.getDefaultInputValue('NormalizedString')).toBe('');
-    expect(ctrl.getDefaultInputValue('MathExpressionContent')).toBe('');
-    expect(ctrl.getDefaultInputValue('Html')).toBe('');
-    expect(ctrl.getDefaultInputValue('SanitizedUrl')).toBe('');
-    expect(ctrl.getDefaultInputValue('Filepath')).toBe('');
-    expect(ctrl.getDefaultInputValue('CodeEvaluation')).toEqual({
+    expect(component.getDefaultInputValue('Null')).toBe(null);
+    expect(component.getDefaultInputValue('Boolean')).toBe(false);
+    expect(component.getDefaultInputValue('Int')).toBe(0);
+    expect(component.getDefaultInputValue('PositiveInt')).toBe(1);
+    expect(component.getDefaultInputValue('UnicodeString')).toBe('');
+    expect(component.getDefaultInputValue('NormalizedString')).toBe('');
+    expect(component.getDefaultInputValue('MathExpressionContent')).toBe('');
+    expect(component.getDefaultInputValue('Html')).toBe('');
+    expect(component.getDefaultInputValue('SanitizedUrl')).toBe('');
+    expect(component.getDefaultInputValue('Filepath')).toBe('');
+    expect(component.getDefaultInputValue('CodeEvaluation')).toEqual({
       code: '',
       error: '',
       evaluation: '',
-      output: ''
+      output: '',
     });
-    expect(ctrl.getDefaultInputValue('CoordTwoDim')).toEqual([
-      0, 0
-    ]);
-    expect(ctrl.getDefaultInputValue('MusicPhrase')).toEqual([]);
-    expect(ctrl.getDefaultInputValue('CheckedProof')).toEqual({
+    expect(component.getDefaultInputValue('CoordTwoDim')).toEqual([0, 0]);
+    expect(component.getDefaultInputValue('MusicPhrase')).toEqual([]);
+    expect(component.getDefaultInputValue('CheckedProof')).toEqual({
       assumptions_string: '',
       correct: false,
       proof_string: '',
-      target_string: ''
+      target_string: '',
     });
-    expect(ctrl.getDefaultInputValue('Graph')).toEqual({
+    expect(component.getDefaultInputValue('Graph')).toEqual({
       edges: [],
       isDirected: false,
       isLabeled: false,
       isWeighted: false,
-      vertices: []
+      vertices: [],
     });
-    expect(ctrl.getDefaultInputValue('NormalizedRectangle2D')).toEqual([
+    expect(component.getDefaultInputValue('NormalizedRectangle2D')).toEqual([
       [0, 0],
-      [0, 0]
+      [0, 0],
     ]);
-    expect(ctrl.getDefaultInputValue('ImageRegion')).toEqual({
-      area: [[0, 0], [0, 0]],
-      regionType: ''
+    expect(component.getDefaultInputValue('ImageRegion')).toEqual({
+      area: [
+        [0, 0],
+        [0, 0],
+      ],
+      regionType: '',
     });
-    expect(ctrl.getDefaultInputValue('ImageWithRegions')).toEqual({
+    expect(component.getDefaultInputValue('ImageWithRegions')).toEqual({
       imagePath: '',
-      labeledRegions: []
+      labeledRegions: [],
     });
-    expect(ctrl.getDefaultInputValue('ClickOnImage')).toEqual({
+    expect(component.getDefaultInputValue('ClickOnImage')).toEqual({
       clickPosition: [0, 0],
-      clickedRegions: []
+      clickedRegions: [],
     });
-    expect(ctrl.getDefaultInputValue('TranslatableSetOfNormalizedString'))
-      .toEqual({
-        contentId: null,
-        normalizedStrSet: []
-      });
-    expect(ctrl.getDefaultInputValue('TranslatableSetOfUnicodeString'))
-      .toEqual({
-        contentId: null,
-        normalizedStrSet: []
-      });
+    expect(
+      component.getDefaultInputValue('TranslatableSetOfNormalizedString')
+    ).toEqual({
+      contentId: null,
+      normalizedStrSet: [],
+    });
+    expect(
+      component.getDefaultInputValue('TranslatableSetOfUnicodeString')
+    ).toEqual({
+      contentId: null,
+      normalizedStrSet: [],
+    });
   });
 
-  it('should add new rule when user click on \'+ Add Another' +
-    ' Possible Answer\'', () => {
-    ctrl.rules = [];
-    StateInteractionIdService.savedMemento = 'TextInput';
+  it(
+    "should add new rule when user click on '+ Add Another" +
+      " Possible Answer'",
+    () => {
+      component.rules = [];
+      stateInteractionIdService.savedMemento = 'TextInput';
 
-    ctrl.addNewRule();
+      component.addNewRule();
 
-    expect(ctrl.rules).toEqual([
-      new Rule('StartsWith', {
-        x: {
-          contentId: null,
-          normalizedStrSet: []
-        }
-      }, {
-        x: 'TranslatableSetOfNormalizedString'
-      })
-    ]);
-  });
+      expect(component.rules).toEqual([
+        new Rule(
+          'StartsWith',
+          {
+            x: {
+              contentId: null,
+              normalizedStrSet: [],
+            },
+          },
+          {
+            x: 'TranslatableSetOfNormalizedString',
+          }
+        ),
+      ]);
+    }
+  );
 
   it('should not add rule for interaction specs without description', () => {
-    StateInteractionIdService.savedMemento = 'MultipleChoiceInput';
-
-    expect(ctrl.addNewRule()).toBe(undefined);
+    stateInteractionIdService.savedMemento = 'MultipleChoiceInput';
+    component.rules = [];
+    expect(component.addNewRule()).toBe(undefined);
   });
 
   it('should delete rule when user clicks on delete', () => {
-    ctrl.originalContentIdToContent = {
-      id1: 'content'
+    component.originalContentIdToContent = {
+      id1: 'content',
     };
-    ctrl.rules = [
-      new Rule('StartsWith', {
-        x: {
-          contentId: 'id1',
-          normalizedStrSet: []
+    component.rules = [
+      new Rule(
+        'StartsWith',
+        {
+          x: {
+            contentId: 'id1',
+            normalizedStrSet: [],
+          },
+        },
+        {
+          x: 'TranslatableSetOfNormalizedString',
         }
-      }, {
-        x: 'TranslatableSetOfNormalizedString'
-      }),
-      new Rule('StartsWith', {
-        x: {
-          contentId: 'id2',
-          normalizedStrSet: []
+      ),
+      new Rule(
+        'StartsWith',
+        {
+          x: {
+            contentId: 'id2',
+            normalizedStrSet: [],
+          },
+        },
+        {
+          x: 'TranslatableSetOfNormalizedString',
         }
-      }, {
-        x: 'TranslatableSetOfNormalizedString'
-      })
+      ),
     ];
 
-    ctrl.deleteRule(1);
+    component.deleteRule(1);
 
-    expect(ctrl.rules).toEqual([
-      new Rule('StartsWith', {
-        x: {
-          contentId: 'id1',
-          normalizedStrSet: []
+    expect(component.rules).toEqual([
+      new Rule(
+        'StartsWith',
+        {
+          x: {
+            contentId: 'id1',
+            normalizedStrSet: [],
+          },
+        },
+        {
+          x: 'TranslatableSetOfNormalizedString',
         }
-      }, {
-        x: 'TranslatableSetOfNormalizedString'
-      })
+      ),
     ]);
   });
 
   it('should show warning if user deletes the only existing rule', () => {
-    ctrl.rules = [
-      new Rule('StartsWith', {
-        x: {
-          contentId: 'id1',
-          normalizedStrSet: []
+    component.rules = [
+      new Rule(
+        'StartsWith',
+        {
+          x: {
+            contentId: 'id1',
+            normalizedStrSet: [],
+          },
+        },
+        {
+          x: 'TranslatableSetOfNormalizedString',
         }
-      }, {
-        x: 'TranslatableSetOfNormalizedString'
-      })
+      ),
     ];
-    spyOn(AlertsService, 'addWarning');
+    spyOn(alertsService, 'addWarning');
 
-    ctrl.deleteRule(0);
+    component.deleteRule(0);
 
-    expect(ctrl.rules).toEqual([]);
-    expect(AlertsService.addWarning).toHaveBeenCalledWith(
+    expect(component.rules).toEqual([]);
+    expect(alertsService.addWarning).toHaveBeenCalledWith(
       'All answer groups must have at least one rule.'
     );
   });
 
   it('should cancel active rule edits, when user clicks on cancel', () => {
-    let rule1 = new Rule('StartsWith', {
-      x: {
-        contentId: 'id1',
-        normalizedStrSet: []
+    let rule1 = new Rule(
+      'StartsWith',
+      {
+        x: {
+          contentId: 'id1',
+          normalizedStrSet: [],
+        },
+      },
+      {
+        x: 'TranslatableSetOfNormalizedString',
       }
-    }, {
-      x: 'TranslatableSetOfNormalizedString'
-    });
-    let rule2 = new Rule('StartsWith', {
-      x: {
-        contentId: 'id2',
-        normalizedStrSet: []
+    );
+    let rule2 = new Rule(
+      'StartsWith',
+      {
+        x: {
+          contentId: 'id2',
+          normalizedStrSet: [],
+        },
+      },
+      {
+        x: 'TranslatableSetOfNormalizedString',
       }
-    }, {
-      x: 'TranslatableSetOfNormalizedString'
-    });
+    );
 
-    ctrl.rules = [rule1];
-    ctrl.rulesMemento = [rule2];
+    component.rules = [rule1];
+    component.rulesMemento = [rule2];
 
-    ctrl.cancelActiveRuleEdit();
+    component.cancelActiveRuleEdit();
 
-    expect(ctrl.rules).toEqual([rule2]);
+    expect(component.rules).toEqual([rule2]);
   });
 
   it('should check if ML is enabled', () => {
-    expect(ctrl.isMLEnabled()).toBe(false);
+    expect(component.isMLEnabled()).toBe(false);
   });
 
-  it('should open training data editor when user click on' +
-    ' \'Modify Training Data\'', () => {
-    spyOn(TrainingDataEditorPanelService, 'openTrainingDataEditor');
+  it(
+    'should open training data editor when user click on' +
+      " 'Modify Training Data'",
+    () => {
+      spyOn(trainingDataEditorPanelService, 'openTrainingDataEditor');
 
-    ctrl.openTrainingDataEditor();
+      component.openTrainingDataEditor();
 
-    expect(TrainingDataEditorPanelService.openTrainingDataEditor)
-      .toHaveBeenCalled();
-  });
+      expect(
+        trainingDataEditorPanelService.openTrainingDataEditor
+      ).toHaveBeenCalled();
+    }
+  );
 
   it('should check if current interaction is trainable', () => {
     // We set the current interaction as TextInput, which is trainable.
-    StateInteractionIdService.savedMemento = 'TextInput';
+    stateInteractionIdService.savedMemento = 'TextInput';
 
-    expect(ctrl.isCurrentInteractionTrainable()).toBe(true);
+    expect(component.isCurrentInteractionTrainable()).toBe(true);
 
-    // We set the current interaction as MultipleChoiceInpit, which is not
+    // We set the current interaction as MultipleChoiceInput, which is not
     // trainable, according to the values provided during setup.
-    StateInteractionIdService.savedMemento = 'MultipleChoiceInput';
+    stateInteractionIdService.savedMemento = 'MultipleChoiceInput';
 
-    expect(ctrl.isCurrentInteractionTrainable()).toBe(false);
+    expect(component.isCurrentInteractionTrainable()).toBe(false);
 
-    // An error is thrown if an invalid interaction ID is passed.
-    StateInteractionIdService.savedMemento = 'InvalidInteraction';
+    // The 'unknown' type is used here to force an invalid interaction ID
+    // for testing error handling.
+    stateInteractionIdService.savedMemento =
+      'InvalidInteraction' as unknown as InteractionSpecsKey;
+    component.rules = [];
+    component.rules.push(
+      new Rule(
+        'dummyRule1',
+        {
+          x: {
+            contentId: null,
+            normalizedStrSet: [],
+          },
+        },
+        {
+          x: 'dummyInputType1',
+        }
+      )
+    );
+    component.rules.push(
+      new Rule(
+        'dummyRule2',
+        {
+          x: {
+            contentId: null,
+            normalizedStrSet: [],
+          },
+        },
+        {
+          x: 'dummyInputType2',
+        }
+      )
+    );
 
-    expect(() => ctrl.isCurrentInteractionTrainable())
-      .toThrowError('Invalid interaction id');
+    expect(() => component.isCurrentInteractionTrainable()).toThrowError(
+      'Invalid interaction id - InvalidInteraction. Answer group rules: ' +
+        'dummyRule1, dummyRule2'
+    );
   });
 
   it('should not open rule editor if it is in read-only mode', () => {
-    spyOn(ctrl, 'changeActiveRuleIndex');
+    spyOn(component, 'changeActiveRuleIndex');
 
-    ctrl.isEditable = false;
+    component.isEditable = false;
 
-    expect(ctrl.openRuleEditor()).toBe(undefined);
-    expect(ctrl.changeActiveRuleIndex).not.toHaveBeenCalled();
+    expect(component.openRuleEditor(0)).toBe(undefined);
+    expect(component.changeActiveRuleIndex).not.toHaveBeenCalled();
   });
 
   it('should open rule editor if it is not in read-only mode', () => {
-    let rule1 = new Rule('StartsWith', {
-      x: {
-        contentId: 'id1',
-        normalizedStrSet: []
+    let rule1 = new Rule(
+      'StartsWith',
+      {
+        x: {
+          contentId: 'id1',
+          normalizedStrSet: [],
+        },
+      },
+      {
+        x: 'TranslatableSetOfNormalizedString',
       }
-    }, {
-      x: 'TranslatableSetOfNormalizedString'
+    );
+    component.rules = [rule1];
+    spyOn(component, 'changeActiveRuleIndex');
+
+    component.isEditable = true;
+
+    component.openRuleEditor(0);
+
+    expect(component.rulesMemento).toEqual([rule1]);
+    expect(component.changeActiveRuleIndex).toHaveBeenCalled();
+  });
+
+  it('should get misconception outcome from current outcome and cache it', () => {
+    component.outcome = Outcome.createNew(
+      null,
+      'feedback_1',
+      'Feedback text',
+      []
+    );
+
+    const firstCall = component.misconceptionOutcome;
+    expect(firstCall).toEqual({
+      feedback: {
+        content_id: 'feedback_1',
+        html: 'Feedback text',
+      },
+      labelledAsCorrect: false,
     });
-    ctrl.rules = [rule1];
-    spyOn(ctrl, 'changeActiveRuleIndex');
 
-    ctrl.isEditable = true;
+    // Should return the cached object if outcome is the same.
+    const secondCall = component.misconceptionOutcome;
+    expect(secondCall).toBe(firstCall);
 
-    ctrl.openRuleEditor();
+    // Should recreate if outcome feedback changes.
+    component.outcome.feedback.html = 'New feedback';
+    const thirdCall = component.misconceptionOutcome;
+    expect(thirdCall).not.toBe(firstCall);
+    expect(thirdCall.feedback.html).toBe('New feedback');
+  });
 
-    expect(ctrl.rulesMemento).toEqual([rule1]);
-    expect(ctrl.changeActiveRuleIndex).toHaveBeenCalled();
+  it('should get default misconception outcome if outcome is undefined and cache it', () => {
+    // Force outcome to be undefined.
+    // The 'unknown' type is used here to bypass type checking for testing purposes.
+    component.outcome = undefined as unknown as Outcome;
+
+    const firstCall = component.misconceptionOutcome;
+    expect(firstCall).toEqual({
+      feedback: {
+        html: '',
+        content_id: 'default_outcome',
+      },
+      labelledAsCorrect: false,
+    });
+
+    // Successive calls should return the same cached default object.
+    const secondCall = component.misconceptionOutcome;
+    expect(secondCall).toBe(firstCall);
+
+    // If it becomes defined, it should recreate.
+    component.outcome = Outcome.createNew(
+      null,
+      'feedback_1',
+      'Feedback text',
+      []
+    );
+    const thirdCall = component.misconceptionOutcome;
+    expect(thirdCall).not.toBe(firstCall);
+    expect(thirdCall.feedback.html).toBe('Feedback text');
+  });
+
+  it('should save answer group feedback for misconception outcome', () => {
+    component.outcome = Outcome.createNew(
+      null,
+      'feedback_1',
+      'Old feedback',
+      []
+    );
+    spyOn(component.onSaveAnswerGroupFeedback, 'emit');
+
+    component.sendOnSaveAnswerGroupFeedback({
+      feedback: {
+        content_id: 'feedback_1',
+        html: 'New feedback',
+      },
+      labelledAsCorrect: false,
+    });
+
+    expect(component.onSaveAnswerGroupFeedback.emit).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        feedback: jasmine.objectContaining({
+          html: 'New feedback',
+        }),
+      })
+    );
   });
 });

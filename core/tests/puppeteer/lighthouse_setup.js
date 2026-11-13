@@ -16,99 +16,422 @@
  * @fileoverview Puppeteer script to collects dynamic urls for lighthouse tests.
  */
 
-var FirebaseAdmin = require('firebase-admin');
 const process = require('process');
 const puppeteer = require('puppeteer');
+const {PuppeteerScreenRecorder} = require('puppeteer-screen-recorder');
+const fs = require('fs');
 
-const ADMIN_URL = 'http://127.0.0.1:8181/admin';
-const CREATOR_DASHBOARD_URL = 'http://127.0.0.1:8181/creator-dashboard';
-const TOPIC_AND_SKILLS_DASHBOARD_URL = 'http://127.0.0.1:8181/topics-and-skills-dashboard';
+const ADMIN_URL = 'http://localhost:8181/admin';
+const CREATOR_DASHBOARD_URL = 'http://localhost:8181/creator-dashboard';
+const TOPIC_AND_SKILLS_DASHBOARD_URL =
+  'http://localhost:8181/topics-and-skills-dashboard';
+const RELEASE_COORDINATOR_URL = 'http://localhost:8181/release-coordinator';
+const LOGOUT_URL = 'http://localhost:8181/logout';
+// The second account seeded as a learner of the learner group. The
+// learner-group-viewer page requires its user to be a learner, and the primary
+// test admin cannot be both the facilitator and a learner of the same group.
+const LEARNER_ACCOUNT_EMAIL = 'learner@example.com';
+const LEARNER_ACCOUNT_USERNAME = 'username2';
 // Read more about networkidle0
 // https://github.com/puppeteer/puppeteer/blob/main/docs/api.md#pagegotourl-options
 const networkIdle = 'networkidle0';
+// Bounds every DOM wait that does not pass its own timeout, so a stuck page
+// fails the shard with a specific error instead of hanging until the CI step
+// times out.
+const SETUP_ACTION_TIMEOUT_MS = 60000;
+// Bounds navigations, which need more slack than DOM waits because the
+// emulated appserver and the development-mode bundles are slow to settle.
+const SETUP_NAVIGATION_TIMEOUT_MS = 120000;
+// Bounds the poll for a generated-data status message. Data generation writes
+// many entities and can legitimately take longer than a single DOM wait.
+const SETUP_STATUS_MESSAGE_TIMEOUT_MS = 120000;
+// Hard ceiling on the whole setup. If a defect slips past the per-action
+// timeouts, this aborts the shard well before the 45-minute CI step limit so
+// the failure is reported against the setup rather than the job timeout.
+const SETUP_WATCHDOG_MS = 20 * 60 * 1000;
+// The admin activities tab and the exploration editor render their progress
+// messages into these elements after a data-generation or save action.
+const statusMessageSelector = '.oppia-status-message-container';
+const toastMessageSelector = '.e2e-test-toast-message';
+// The toast the editor shows after a manual save succeeds.
+const saveSuccessMessage = 'Changes saved.';
 
 var explorationEditorUrl = 'Exploration editor not loaded';
-var collectionEditorUrl = 'Collection editor not loaded';
 var topicEditorUrl = 'Topic editor not loaded';
 var skillEditorUrl = 'Skill editor not loaded';
 var storyEditorUrl = 'Story editor not loaded';
 
-var emailInput = '.protractor-test-sign-in-email-input';
-var signInButton = '.protractor-test-sign-in-button';
-var usernameInput = '.protractor-test-username-input';
-var agreeToTermsCheckBox = '.protractor-test-agree-to-terms-checkbox';
-var registerUser = '.protractor-test-register-user:not([disabled])';
+var explorationId = 'Exploration editor not loaded';
+var topicId = 'Topic editor not loaded';
+var skillId = 'Skill editor not loaded';
+var storyId = 'Story editor not loaded';
+var blogUrlFragment = 'Blog post page not loaded';
+var learnerGroupUrl = 'Learner group not loaded';
+var feedbackReportId = 'Feedback report not created';
+
+var emailInput = '.e2e-test-sign-in-email-input';
+var signInButton = '.e2e-test-sign-in-button';
+var usernameInput = '.e2e-test-username-input';
+var agreeToTermsCheckBox = '.e2e-test-agree-to-terms-checkbox';
+var registerUser = '.e2e-test-register-user:not([disabled])';
 var navbarToggle = '.oppia-navbar-dropdown-toggle';
 
-var createButtonSelector = '.protractor-test-create-activity';
-var dismissWelcomeModalSelector = '.protractor-test-dismiss-welcome-modal';
+var createButtonSelector = '.e2e-test-create-activity';
+var creationModalSelector = '.e2e-test-creation-modal';
+var createExplorationInModalSelector = '.e2e-test-create-exploration';
+var dismissWelcomeModalSelector = '.e2e-test-dismiss-welcome-modal';
+var stateEditSelector = '.e2e-test-state-edit-content';
+var saveContentButton = '.e2e-test-save-state-content';
+var addInteractionButton = '.e2e-test-open-add-interaction-modal';
+var endIneractionSelector = '.e2e-test-interaction-tile-EndExploration';
+var saveInteractionButton = '.e2e-test-save-interaction';
+var saveChangesButton = '.e2e-test-save-changes';
+var saveDraftButton = '.e2e-test-save-draft-button';
+var autosaveIndicatorSelector = '.e2e-test-autosave-indicator';
+// The editor reports save failures in modals rather than in a toast, so these
+// selectors let the save wait fail with the modal's text instead of waiting for
+// a toast that will never appear.
+var versionMismatchModalSelector = '.e2e-test-lost-changes-modal';
+var saveErrorModalSelector = '.oppia-error-modal-body';
+var publishExplorationButton = '.e2e-test-publish-exploration';
+var explorationTitleInput = '.e2e-test-exploration-title-input-modal';
+var explorationGoalInput = '.e2e-test-exploration-objective-input-modal';
+var expCategoryDropdownElement =
+  '.e2e-test-exploration-category-metadata-modal';
+var expConfirmPublishButton = '.e2e-test-confirm-pre-publication';
+var explorationConfirmPublish = '.e2e-test-confirm-publish';
+var createTopicButtonSelector = '.e2e-test-create-topic-button';
+var topicUrlFragmentField =
+  '.e2e-test-new-topic-url-fragment-field .e2e-test-url-fragment-field';
+var topicNameField = '.e2e-test-new-topic-name-field';
+var topicDescriptionField = '.e2e-test-new-topic-description-field';
+var topicPageTitleFragmField = '.e2e-test-new-page-title-fragm-field';
+var topicThumbnailButton = '.e2e-test-photo-button';
+var topicUploadButton = '.e2e-test-photo-upload-input';
+var imageUploadLabel = '.e2e-test-image-upload-label';
+var topicPhotoSubmit = 'button.e2e-test-photo-upload-submit';
+var thumbnailContainer = '.e2e-test-thumbnail-container';
+var confirmTopicCreationButton = '.e2e-test-confirm-topic-creation-button';
+var createdTopicLink = '.e2e-test-topic-name';
 
-var createCollectionButtonSelector = '.protractor-test-create-collection';
-var addExplorationInput = '.protractor-test-add-exploration-input';
-
-var createTopicButtonSelector = '.protractor-test-create-topic-button';
-var topicNameField = '.protractor-test-new-topic-name-field';
-var topicUrlFragmentField = '.protractor-test-new-topic-url-fragment-field';
-var topicDescriptionField = '.protractor-test-new-topic-description-field';
-var topicThumbnailButton = '.protractor-test-photo-button';
-var topicUploadButton = '.protractor-test-photo-upload-input';
-var topicPhotoSubmit = '.protractor-test-photo-upload-submit';
-var thumbnailContainer = '.protractor-test-thumbnail-container';
-var confirmTopicCreationButton =
-  '.protractor-test-confirm-topic-creation-button';
-var createdTopicLink = '.protractor-test-topic-name';
-
-var createStoryButtonSelector = '.protractor-test-create-story-button';
-var storyNameField = '.protractor-test-new-story-title-field';
-var storyUrlFragmentField = '.protractor-test-new-story-url-fragment-field';
-var storyDescriptionField = '.protractor-test-new-story-description-field';
-var storyThumbnailButton = '.protractor-test-photo-button';
-var storyUploadButton = '.protractor-test-photo-upload-input';
-var storyPhotoSubmit = '.protractor-test-photo-upload-submit';
-var confirmStoryCreationButton =
-  '.protractor-test-confirm-story-creation-button';
+var createStoryButtonSelector = '.e2e-test-create-story-button';
+var storyNameField = '.e2e-test-new-story-title-field';
+var storyUrlFragmentField =
+  '.e2e-test-create-new-story-url-fragment-field .e2e-test-url-fragment-field';
+var storyDescriptionField = '.e2e-test-new-story-description-field';
+var storyThumbnailButton =
+  'oppia-create-new-story-modal .e2e-test-photo-button';
+var storyUploadButton = '.e2e-test-photo-upload-input';
+var storyPhotoSubmit = '.e2e-test-photo-upload-submit';
+var confirmStoryCreationButton = '.e2e-test-confirm-story-creation-button';
 
 var createSkillButtonSelector = '.puppeteer-test-add-skill-button';
-var skillDescriptionField = '.protractor-test-new-skill-description-field';
-var skillOpenConceptCard = '.protractor-test-open-concept-card';
-var confirmSkillCreationButton =
-  '.protractor-test-confirm-skill-creation-button';
-var skillReviewMaterialInput = '.oppia-rte';
-var skillCkEditor = '.protractor-test-ck-editor';
+var skillDescriptionField = '.e2e-test-new-skill-description-field';
+var skillOpenConceptCard = '.e2e-test-open-concept-card';
+var confirmSkillCreationButton = '.e2e-test-confirm-skill-creation-button';
+var skillReviewMaterialInput = '.e2e-test-concept-card-text .e2e-test-rte';
 
-var usernameInputFieldForRolesEditing = (
-  '.protractor-test-username-for-role-editor');
-var editUserRoleButton = '.protractor-test-role-edit-button';
-var roleEditorContainer = '.protractor-test-roles-editor-card-container';
-var addNewRoleButton = '.protractor-test-add-new-role-button';
-var roleSelect = '.protractor-test-new-role-selector';
-var cookieBannerAcceptButton = (
-  '.protractor-test-oppia-cookie-banner-accept-button');
+var usernameInputFieldForRolesEditing = '.e2e-test-username-for-role-editor';
+var editUserRoleButton = '.e2e-test-role-edit-button';
+var roleEditorContainer = '.e2e-test-roles-editor-card-container';
+var addNewRoleButton = '.e2e-test-add-new-role-button';
+var roleSelect = '.e2e-test-new-role-selector';
+var featuresTabSelector = '.e2e-test-features-tab';
+var featureFlagRowSelector = '.e2e-test-feature-flag';
+var featureFlagNameSelector = '.e2e-test-feature-name';
+var featureFlagValueSelector = '.e2e-test-value-selector';
+var featureFlagSaveButtonSelector = '.e2e-test-save-button';
+var generateTopicButton = '.load-dummy-new-structures-data-button';
+var generateClassroomButton = '.load-dummy-math-classroom';
+var blogGenerateButton = '.e2e-test-generate-blog-post';
+var classroomEditButton = '.e2e-test-edit-classroom-config-button';
+var diagnosticTestStatusButton = '.e2e-test-toggle-diagnostic-test-status-btn';
+var classroomSaveButton = '.e2e-test-save-classroom-config-button';
+var classroomNameView = '.e2e-test-classroom-name-view';
+var generateClassroomCountInput =
+  '#label-target-number-of-classrooms-to-generate';
+var generateDefaultClassroomCountInput =
+  '#label-target-number-of-default-classrooms-to-generate';
+var generateDefaultClassroomButton = '.load-dummy-default-classroom';
+var generateExplorationsCountInput = '#label-target-explorations-to-generate';
+var generateExplorationsPublishInput = '#label-target-explorations-to-publish';
+var reloadExplorationButton = '.e2e-test-reload-exploration-button';
+var reloadExplorationRow = '.e2e-test-reload-exploration-row';
+var reloadExplorationTitle = '.e2e-test-reload-exploration-title';
+var reloadCollectionButton = '.e2e-test-reload-collection-button';
+var reloadCollectionRow = '.e2e-test-reload-collection-row';
+var reloadCollectionTitle = '.e2e-test-reload-collection-title';
+var topicThumbnailResetButton = '.e2e-test-thumbnail-reset-button';
+var topicMetaTagInput = '.e2e-test-topic-meta-tag-content-field';
+var saveTopicButton = '.e2e-test-save-topic-button';
+var topicCommitMessageInput = '.e2e-test-commit-message-input';
+var publishChangesButton = '.e2e-test-close-save-modal-button';
+var cookieBannerAcceptButton = '.e2e-test-oppia-cookie-banner-accept-button';
 
-const login = async function(browser, page) {
-  try {
-    // eslint-disable-next-line dot-notation
-    await page.goto(
-      ADMIN_URL, { waitUntil: networkIdle});
-    await page.waitForSelector(emailInput, {visible: true});
-    await page.type(emailInput, 'testadmin@example.com');
-    await page.click(signInButton);
-    // Checks if the user's account was already made.
+var roleOptionLabels = {
+  ADMIN: 'curriculum admin',
+  COLLECTION_EDITOR: 'collection editor',
+  FULL_USER: 'full user',
+  RELEASE_COORDINATOR: 'release coordinator',
+  TECH_TEAM_LEAD: 'tech team lead',
+  TRANSLATION_ADMIN: 'translation admin',
+  VOICEOVER_ADMIN: 'voiceover admin',
+};
+
+// Wraps a setup step so it logs its name and elapsed time to stdout. This
+// surfaces each scaffolded piece of data (login, generated explorations,
+// generated classrooms, and so on) in the CI logs, which makes it easy to see
+// which step consumes the most time in a shard setup.
+const logStep = async function (name, step) {
+  // eslint-disable-next-line no-console
+  console.log(`[lighthouse-setup] ${name}...`);
+  const startTime = Date.now();
+  await step();
+  const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+  // eslint-disable-next-line no-console
+  console.log(`[lighthouse-setup] ${name} done (${elapsedSeconds}s)`);
+};
+
+// Applies the viewport and default timeouts used by every page the setup
+// drives, so a stuck Puppeteer call fails within the shard's per-action budget
+// instead of hanging until the CI step times out.
+const configurePage = async function (page) {
+  await page.setViewport({
+    width: 1920,
+    height: 1080,
+  });
+  await page.setDefaultTimeout(SETUP_ACTION_TIMEOUT_MS);
+  await page.setDefaultNavigationTimeout(SETUP_NAVIGATION_TIMEOUT_MS);
+};
+
+// Runs a setup step with a time limit, and retries it if it fails.
+//
+// Each attempt gets timeoutMs milliseconds and its own page. If the action
+// throws, or takes longer than that, the attempt counts as failed and we try
+// again, up to maxAttempts times. Running each attempt on a fresh page lets a
+// timed-out attempt be aborted by closing that page, so the abandoned
+// Puppeteer calls cannot keep driving the page that the retry is using. Pages
+// share the browser's cookie jar, so the login performed by earlier steps still
+// applies.
+//
+// Why: Puppeteer functions like page.$$, page.evaluate and page.select have no
+// timeout of their own. If the browser renderer gets stuck, one of them can
+// wait forever and freeze the whole shard for the rest of the CI job. Giving
+// each attempt its own deadline (and retrying) means a brief hiccup either
+// clears on the retry or fails quickly with the step name, instead of hanging.
+const retryStep = async function (
+  browser,
+  name,
+  action,
+  maxAttempts,
+  timeoutMs
+) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptPage = await browser.newPage();
+    await configurePage(attemptPage);
+    let timeoutId = null;
+    const deadlinePromise = new Promise((resolve, reject) => {
+      timeoutId = setTimeout(
+        () =>
+          reject(new Error(`Step timed out after ${timeoutMs}ms: ${name}.`)),
+        timeoutMs
+      );
+    });
+
+    const attemptPromise = action(attemptPage);
+    attemptPromise.catch(() => undefined);
     try {
-      let cookies = await page.cookies();
-      if (!cookies.find(item => item.name === 'OPPIA_COOKIES_ACKNOWLEDGED')) {
-        await page.waitForSelector(cookieBannerAcceptButton, {visible: true});
-        await page.click(cookieBannerAcceptButton);
-      }
-      await page.waitForSelector(usernameInput, {visible: true});
-      await page.type(usernameInput, 'username1');
-      await page.click(agreeToTermsCheckBox);
-      await page.waitForSelector(registerUser);
-      await page.click(registerUser);
-      await page.waitForSelector(navbarToggle);
+      lastError = null;
+      await Promise.race([attemptPromise, deadlinePromise]);
+      return;
     } catch (error) {
-      // Already Signed in.
+      lastError = error;
+      // eslint-disable-next-line no-console
+      console.log(
+        `Setup step failed on attempt ${attempt}/${maxAttempts}: ${name}`
+      );
+      // eslint-disable-next-line no-console
+      console.log(error);
+    } finally {
+      clearTimeout(timeoutId);
+      // Closing the page stops any Puppeteer call from this attempt that is
+      // still running, so it cannot interfere with the next attempt. The page
+      // might already be gone if the browser crashed, so ignore errors from
+      // closing it.
+      await attemptPage.close().catch(() => undefined);
     }
+  }
+  throw lastError;
+};
+
+// Waits up to timeoutMs for the element matching selector to show
+// expectedText, checking once a second.
+//
+// The wait is time-limited on purpose: if the expected message never appears
+// (for example, because a save failed without reporting an error), the shard
+// fails right away with the text that was actually on the page. Otherwise this
+// would keep checking until the whole CI job gives up.
+const waitForStatusMessage = async function (
+  page,
+  selector,
+  expectedText,
+  timeoutMs
+) {
+  const deadline = Date.now() + timeoutMs;
+  let observedText = '';
+  while (Date.now() < deadline) {
+    // The page.evaluate call has no built-in timeout, so record whatever is on
+    // the page at each poll to make a timeout failure diagnosable.
+    observedText = await page.evaluate(sel => {
+      const element = document.querySelector(sel);
+      return element ? element.textContent.trim() : '';
+    }, selector);
+    if (observedText === expectedText) {
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for status message ` +
+      `"${expectedText}". Last observed text in ${selector}: ` +
+      `"${observedText}".`
+  );
+};
+
+// Waits until the editor is not autosaving.
+//
+// The editor autosaves the draft shortly after every edit, and a manual save
+// discards that draft. If an autosave lands after the manual save, it recreates
+// the draft against the pre-save version, and the backend reports a version
+// mismatch instead of saving. Waiting for the autosave indicator to disappear
+// keeps the two saves from overlapping.
+const waitForAutosaveToFinish = async function (page) {
+  await page.waitForFunction(
+    selector => document.querySelector(selector) === null,
+    {timeout: SETUP_ACTION_TIMEOUT_MS},
+    autosaveIndicatorSelector
+  );
+};
+
+// Returns a description of the modal that blocked a save, or an empty string
+// when no such modal is on the page.
+const getSaveFailureDescription = async function (page) {
+  return page.evaluate(
+    selectors => {
+      const modals = [
+        ['version mismatch', selectors.versionMismatch],
+        ['error', selectors.error],
+      ];
+      for (const [name, selector] of modals) {
+        const element = document.querySelector(selector);
+        if (element) {
+          const modal = element.closest('ngb-modal-window') || element;
+          const text = modal.textContent.replace(/\s+/g, ' ').trim();
+          return `${name} modal: "${text}"`;
+        }
+      }
+      return '';
+    },
+    {
+      versionMismatch: versionMismatchModalSelector,
+      error: saveErrorModalSelector,
+    }
+  );
+};
+
+// Waits for the toast that confirms a manual save, failing as soon as a save
+// error or version-mismatch modal appears so the shard reports the modal text
+// instead of a bare timeout.
+const waitForExplorationSaveResult = async function (page) {
+  const deadline = Date.now() + SETUP_STATUS_MESSAGE_TIMEOUT_MS;
+  let observedToastText = '';
+  while (Date.now() < deadline) {
+    observedToastText = await page.evaluate(sel => {
+      const element = document.querySelector(sel);
+      return element ? element.textContent.trim() : '';
+    }, toastMessageSelector);
+    if (observedToastText === saveSuccessMessage) {
+      return;
+    }
+    const failureDescription = await getSaveFailureDescription(page);
+    if (failureDescription) {
+      throw new Error(`Exploration save failed with a ${failureDescription}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  throw new Error(
+    `Timed out after ${SETUP_STATUS_MESSAGE_TIMEOUT_MS}ms waiting for the ` +
+      `'${saveSuccessMessage}' toast. Last observed toast text: ` +
+      `"${observedToastText}".`
+  );
+};
+
+const login = async function (
+  browser,
+  page,
+  email = 'testadmin@example.com',
+  username = 'username1'
+) {
+  try {
+    // Puppeteer's networkidle0 can wait forever on the heavy /admin page when
+    // its background requests keep a connection open (seen as a local hang),
+    // so allow up to two connections and cap the wait to surface a hard error
+    // instead of spinning silently.
+    await page.goto(ADMIN_URL, {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+    await page.waitForSelector(emailInput, {visible: true});
+    await page.type(emailInput, email);
+    await page.click(signInButton);
+
+    let cookies = await page.cookies();
+    if (!cookies.find(item => item.name === 'OPPIA_COOKIES_ACKNOWLEDGED')) {
+      // The consent banner may not render in every run (it can be dismissed
+      // or not yet hydrated), so its acknowledgement is best-effort: try to
+      // accept it but continue even if it does not appear in time.
+      try {
+        await page.waitForSelector(cookieBannerAcceptButton, {
+          visible: true,
+          timeout: 5000,
+        });
+        await page.click(cookieBannerAcceptButton);
+      } catch (error) {
+        // Best-effort: login proceeds without the banner acknowledgement.
+      }
+    }
+
+    let usernameInputElement = null;
+    try {
+      usernameInputElement = await page.waitForSelector(usernameInput, {
+        visible: true,
+        timeout: 5000,
+      });
+    } catch (error) {
+      // Already signed in.
+    }
+
+    if (usernameInputElement === null) {
+      await page.waitForSelector(navbarToggle);
+      return;
+    }
+
+    await usernameInputElement.type(username);
+    await Promise.all([
+      page.waitForResponse(response =>
+        response.url().includes('/usernamehandler/data')
+      ),
+      page.evaluate(selector => {
+        document.querySelector(selector).blur();
+      }, usernameInput),
+    ]);
+    await page.click('.e2e-test-email-preferences-radio-no');
+    await page.waitForSelector(agreeToTermsCheckBox, {visible: true});
+    await page.click(agreeToTermsCheckBox);
+    await page.waitForSelector(registerUser);
+    await page.click(registerUser);
+    await page.waitForSelector(navbarToggle);
   } catch (e) {
     // eslint-disable-next-line no-console
     console.log('Login Failed');
@@ -118,42 +441,206 @@ const login = async function(browser, page) {
   }
 };
 
-const setRole = async function(browser, page, role) {
-  try {
-    // eslint-disable-next-line dot-notation
-    await page.goto(
-      'http://127.0.0.1:8181/admin#/roles', { waitUntil: networkIdle });
-    await page.waitForSelector(usernameInputFieldForRolesEditing);
-    await page.type(usernameInputFieldForRolesEditing, 'username1');
-    await page.waitForSelector(editUserRoleButton);
-    await page.click(editUserRoleButton);
-    await page.waitForSelector(roleEditorContainer);
+// Signs the current user out so that the next login can authenticate as a
+// different account. The logout page signs out of Firebase and then redirects,
+// so the navigation completes while still on the transient /logout url.
+const logout = async function (browser, page) {
+  await page.goto(LOGOUT_URL, {waitUntil: 'networkidle2', timeout: 60000});
+  await page.waitForTimeout(2000);
+};
 
+const setRole = async function (browser, page, role) {
+  try {
     await page.waitForSelector(addNewRoleButton);
     await page.click(addNewRoleButton);
 
     await page.click(roleSelect);
-    var selector = `mat-option[ng-reflect-value="${role}"]`;
-    await page.click(selector);
+    await page.waitForSelector('mat-option');
+    const roleOptionWasSelected = await page.evaluate(
+      (role, roleOptionLabels) => {
+        const roleOptionLabel = roleOptionLabels[role];
+        if (!roleOptionLabel) {
+          throw new Error(`No role option label configured for ${role}.`);
+        }
+
+        const normalizedRoleOptionLabel = roleOptionLabel.toLowerCase();
+        const normalizedRole = role.toLowerCase();
+        const options = Array.from(document.querySelectorAll('mat-option'));
+        const match = options.find(option => {
+          const optionValue = (
+            option.getAttribute('ng-reflect-value') ||
+            option.getAttribute('value') ||
+            option.id ||
+            ''
+          ).toLowerCase();
+          const optionLabel = option.textContent.trim().toLowerCase();
+
+          return (
+            optionValue === normalizedRole ||
+            optionLabel === normalizedRoleOptionLabel ||
+            optionLabel === normalizedRole
+          );
+        });
+
+        if (!match) {
+          return false;
+        }
+
+        match.click();
+        return true;
+      },
+      role,
+      roleOptionLabels
+    );
+
+    if (roleOptionWasSelected) {
+      // Wait for the backend to accept the role before adding the next one.
+      // The role add is not transactional (fetch, append, save), so concurrent
+      // adds for the same user could drop roles. Awaiting each response keeps
+      // the adds strictly sequential and surfaces server errors promptly.
+      await page.waitForResponse(response =>
+        response.url().includes('/adminrolehandler')
+      );
+    } else {
+      const roleIsAlreadyAssigned = await page.evaluate(
+        (role, roleOptionLabels, roleEditorContainer) => {
+          const roleOptionLabel = roleOptionLabels[role];
+          const roleEditorText = document
+            .querySelector(roleEditorContainer)
+            .textContent.toLowerCase();
+          return roleEditorText.includes(roleOptionLabel.toLowerCase());
+        },
+        role,
+        roleOptionLabels,
+        roleEditorContainer
+      );
+      if (!roleIsAlreadyAssigned) {
+        throw new Error(`Could not find role option for ${role}.`);
+      }
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const selectExplorationInCreationModal = async function (page) {
+  await page.waitForSelector(creationModalSelector, {visible: true});
+  await page.waitForSelector(createExplorationInModalSelector, {
+    visible: true,
+  });
+  await page.click(createExplorationInModalSelector);
+};
+
+const getExplorationEditorUrl = async function (browser, page) {
+  try {
+    await page.goto(CREATOR_DASHBOARD_URL, {waitUntil: networkIdle});
+    await page.waitForSelector(createButtonSelector, {visible: true});
+
+    await page.click(createButtonSelector);
+
+    // The create button opens a creation modal when the user has the
+    // collection-creator role. Detect whether the modal appeared and, if so,
+    // select the exploration option via a dedicated helper.
+    const isCreationModalVisible = await page
+      .waitForSelector(creationModalSelector, {visible: true, timeout: 10000})
+      .then(() => true)
+      .catch(() => false);
+
+    if (isCreationModalVisible) {
+      await selectExplorationInCreationModal(page);
+    }
+
+    // Wait for the navigation to the created exploration's editor before
+    // interacting with it.
+    await page.waitForFunction(
+      urlFragment => document.URL.indexOf(urlFragment) !== -1,
+      {},
+      '/create/'
+    );
+
+    // The exploration creation flow may or may not show a welcome modal,
+    // depending on prior state, so the dismissal is optional to avoid
+    // blocking the whole shard setup when the modal never appears.
+    try {
+      await page.waitForSelector(dismissWelcomeModalSelector, {
+        visible: true,
+        timeout: 30000,
+      });
+      await page.click(dismissWelcomeModalSelector);
+      await page.waitForTimeout(3000);
+    } catch (e) {
+      if (!(e instanceof puppeteer.errors.TimeoutError)) {
+        throw e;
+      }
+    }
+    await page.waitForSelector(stateEditSelector, {visible: true});
+    await page.click(stateEditSelector);
+    await page.waitForTimeout(5000);
+    await page.waitForSelector(saveContentButton, {visible: true});
+    await page.click(saveContentButton);
     await page.waitForTimeout(2000);
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.log(e);
-    process.exit(1);
-  }
-};
+    await page.waitForSelector(addInteractionButton, {visible: true});
+    await page.click(addInteractionButton);
+    await page.waitForTimeout(3000);
+    await page.waitForSelector(endIneractionSelector, {visible: true});
+    await page.click(endIneractionSelector);
+    await page.waitForSelector(saveInteractionButton, {visible: true});
+    await page.click(saveInteractionButton);
+    await page.waitForTimeout(2000);
 
-const getExplorationEditorUrl = async function(browser, page) {
-  try {
-    // eslint-disable-next-line dot-notation
-    await page.goto(
-      CREATOR_DASHBOARD_URL, { waitUntil: networkIdle });
+    await page.waitForSelector(saveChangesButton, {visible: true});
+    // Let any pending autosave finish before saving manually, so the autosave
+    // cannot recreate the draft after the manual save discards it.
+    await waitForAutosaveToFinish(page);
+    await page.click(saveChangesButton);
 
-    await page.waitForSelector(createButtonSelector, {visible: true});
-    await page.click(createButtonSelector);
-    await page.waitForSelector(
-      dismissWelcomeModalSelector, {visible: true});
+    await page.waitForSelector(saveDraftButton, {visible: true});
+    await page.click(saveDraftButton);
+
+    await waitForExplorationSaveResult(page);
+
+    await page.waitForTimeout(3000);
+    await page.waitForSelector(publishExplorationButton);
+    await page.click(publishExplorationButton);
+
+    await page.waitForTimeout(3000);
+    await page.waitForSelector(explorationTitleInput, {visible: true});
+    await page.type(explorationTitleInput, 'Sample exploration');
+
+    await page.waitForSelector(explorationGoalInput, {visible: true});
+    await page.type(explorationGoalInput, 'Sample exploration goal');
+
+    await page.waitForTimeout(3000);
+    await page.waitForSelector(expCategoryDropdownElement, {visible: true});
+    await page.click(expCategoryDropdownElement);
+    await page.waitForSelector('mat-option .mat-option-text', {
+      visible: true,
+    });
+    await page.evaluate(() => {
+      const options = Array.from(
+        document.querySelectorAll('mat-option .mat-option-text')
+      );
+
+      const match = options.find(el => el.textContent.trim() === 'Algebra');
+
+      if (match) {
+        match.closest('mat-option').click();
+      } else {
+        throw new Error('Could not find Algebra category option');
+      }
+    });
+
+    await page.waitForTimeout(3000);
+    await page.waitForSelector(expConfirmPublishButton, {visible: true});
+    await page.click(expConfirmPublishButton);
+    await page.waitForTimeout(5000);
+    await page.waitForSelector(explorationConfirmPublish, {visible: true});
+    await page.click(explorationConfirmPublish);
+
     explorationEditorUrl = await page.url();
+    explorationId = explorationEditorUrl.split('/')[4];
   } catch (e) {
     // eslint-disable-next-line no-console
     console.log(e);
@@ -161,39 +648,20 @@ const getExplorationEditorUrl = async function(browser, page) {
   }
 };
 
-const getCollectionEditorUrl = async function(browser, page) {
+const getTopicEditorUrl = async function (browser, page) {
   try {
-    // Load in Collection
-    // eslint-disable-next-line dot-notation
-    await page.goto(
-      CREATOR_DASHBOARD_URL, { waitUntil: networkIdle });
-    await page.waitForSelector(createButtonSelector, {visible: true});
-    await page.click(createButtonSelector);
-    await page.waitForSelector(
-      createCollectionButtonSelector, {visible: true});
-    await page.click(createCollectionButtonSelector);
-    await page.waitForSelector(
-      addExplorationInput, {visible: true});
-    collectionEditorUrl = await page.url();
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.log(e);
-    process.exit(1);
-  }
-};
-
-const getTopicEditorUrl = async function(browser, page) {
-  try {
-    // eslint-disable-next-line dot-notation
-    await page.goto(
-      TOPIC_AND_SKILLS_DASHBOARD_URL, { waitUntil: networkIdle });
+    await page.goto(TOPIC_AND_SKILLS_DASHBOARD_URL, {waitUntil: networkIdle});
     await page.waitForSelector(createTopicButtonSelector, {visible: true});
     await page.click(createTopicButtonSelector);
 
     await page.waitForSelector(topicNameField, {visible: true});
     await page.type(topicNameField, 'Topic1 TASD');
+    await page.waitForSelector(topicUrlFragmentField, {
+      visible: true,
+    });
     await page.type(topicUrlFragmentField, 'topic-tasd-one');
     await page.type(topicDescriptionField, 'Topic 1 description');
+    await page.type(topicPageTitleFragmField, 'page-fragment');
     await page.click(topicThumbnailButton);
     await page.waitForSelector(topicUploadButton, {visible: true});
 
@@ -211,14 +679,13 @@ const getTopicEditorUrl = async function(browser, page) {
     await browser.pages();
 
     // Refresh page and click on topic link.
-    // eslint-disable-next-line dot-notation
-    await page.goto(
-      TOPIC_AND_SKILLS_DASHBOARD_URL, { waitUntil: networkIdle });
+    await page.goto(TOPIC_AND_SKILLS_DASHBOARD_URL, {waitUntil: networkIdle});
     await page.waitForSelector(createdTopicLink, {visible: true});
     await page.click(createdTopicLink);
     await page.waitForSelector(createStoryButtonSelector);
 
     topicEditorUrl = await page.url();
+    topicId = topicEditorUrl.split('/')[4];
   } catch (e) {
     // eslint-disable-next-line no-console
     console.log(e);
@@ -226,16 +693,18 @@ const getTopicEditorUrl = async function(browser, page) {
   }
 };
 
-const getStoryEditorUrl = async function(browser, page) {
+const getStoryEditorUrl = async function (browser, page) {
   try {
-    // eslint-disable-next-line dot-notation
-    await page.goto(topicEditorUrl, { waitUntil: networkIdle });
+    await page.goto(topicEditorUrl, {waitUntil: networkIdle});
     await page.waitForSelector(createStoryButtonSelector, {visible: true});
     await page.click(createStoryButtonSelector);
 
     await page.waitForSelector(storyNameField, {visible: true});
     await page.type(storyNameField, 'Story TASD');
-    await page.type(storyUrlFragmentField, 'story-url-one');
+    await page.waitForSelector(storyUrlFragmentField, {
+      visible: true,
+    });
+    await page.type(storyUrlFragmentField, 'storyurlone');
     await page.type(storyDescriptionField, 'Story 1 description');
     await page.click(storyThumbnailButton);
     await page.waitForSelector(storyUploadButton, {visible: true});
@@ -251,6 +720,7 @@ const getStoryEditorUrl = async function(browser, page) {
     await page.click(confirmStoryCreationButton);
     await page.waitForTimeout(15000);
     storyEditorUrl = await page.url();
+    storyId = storyEditorUrl.split('/')[4];
   } catch (e) {
     // eslint-disable-next-line no-console
     console.log(e);
@@ -258,10 +728,9 @@ const getStoryEditorUrl = async function(browser, page) {
   }
 };
 
-const getSkillEditorUrl = async function(browser, page) {
+const getSkillEditorUrl = async function (browser, page) {
   try {
-    // eslint-disable-next-line dot-notation
-    await page.goto(topicEditorUrl, { waitUntil: networkIdle });
+    await page.goto(topicEditorUrl, {waitUntil: networkIdle});
     await page.waitForSelector(createSkillButtonSelector, {visible: true});
     await page.click(createSkillButtonSelector);
 
@@ -269,11 +738,10 @@ const getSkillEditorUrl = async function(browser, page) {
     await page.type(skillDescriptionField, 'Skill Description here');
     await page.click(skillOpenConceptCard);
     await page.waitForSelector(skillReviewMaterialInput, {visible: true});
-    await page.waitForSelector(skillCkEditor, {visible: true});
-    await page.click(skillCkEditor);
-    await page.keyboard.type('Skill Overview here');
+    await page.click(skillReviewMaterialInput);
+    await page.type(skillReviewMaterialInput, 'Skill Overview here');
 
-    await page.waitForSelector(confirmSkillCreationButton, {visible: true});
+    await page.waitForSelector(`${confirmSkillCreationButton}:not([disabled])`);
     await page.waitForTimeout(5000);
     await page.click(confirmSkillCreationButton);
     // Doing waitForTimeout(15000) to handle new tab being opened.
@@ -282,6 +750,7 @@ const getSkillEditorUrl = async function(browser, page) {
     skillEditorUrl = await pages[2].url();
     if (await skillEditorUrl.includes('topic_editor')) {
       skillEditorUrl = await pages[3].url();
+      skillId = skillEditorUrl.split('/')[4];
     }
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -290,35 +759,1043 @@ const getSkillEditorUrl = async function(browser, page) {
   }
 };
 
-const main = async function() {
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
-  FirebaseAdmin.initializeApp({projectId: 'dev-project-id'});
-  // Change headless to false to see the puppeteer actions.
-  const browser = await puppeteer.launch({headless: true});
-  const page = await browser.newPage();
-  await page.setViewport({
-    width: 1920,
-    height: 1080
+const generateDataForTopicAndStoryPlayer = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: networkIdle,
+    });
+
+    await page.waitForSelector(generateTopicButton);
+    await page.click(generateTopicButton);
+
+    await waitForStatusMessage(
+      page,
+      statusMessageSelector,
+      'Dummy new structures data generated successfully.',
+      SETUP_STATUS_MESSAGE_TIMEOUT_MS
+    );
+  } catch (e) {
+    console.error(e);
+    process.exit(1);
+  }
+};
+
+const generateDataForClassroom = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: networkIdle,
+    });
+
+    await page.waitForSelector(generateClassroomButton);
+    // Only the first dummy math classroom is needed here: it backs the
+    // diagnostic test toggle and the topic thumbnails. The classroom routes
+    // get their additional populated classrooms from generateBareClassrooms.
+    await page.type(generateClassroomCountInput, '1');
+    await page.click(generateClassroomButton);
+
+    await waitForStatusMessage(
+      page,
+      statusMessageSelector,
+      'Dummy new classroom generated successfully.',
+      SETUP_STATUS_MESSAGE_TIMEOUT_MS
+    );
+    await addThumbnailToTopic(page, 'Fraction');
+    await addThumbnailToTopic(page, 'Addition');
+    await addThumbnailToTopic(page, 'Subtraction');
+    await addThumbnailToTopic(page, 'Multiplication');
+    await addThumbnailToTopic(page, 'Division');
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const generateBareClassrooms = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: networkIdle,
+    });
+
+    await page.waitForSelector(generateDefaultClassroomCountInput);
+    await page.type(generateDefaultClassroomCountInput, '5');
+    await page.waitForSelector(generateDefaultClassroomButton);
+    await page.click(generateDefaultClassroomButton);
+
+    await waitForStatusMessage(
+      page,
+      statusMessageSelector,
+      'Dummy default classrooms generated successfully.',
+      SETUP_STATUS_MESSAGE_TIMEOUT_MS
+    );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const generateDataForBlogPosts = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: networkIdle,
+    });
+
+    await page.waitForSelector(blogGenerateButton);
+
+    // The activities tab provides a separate generate button for each dummy
+    // blog post title. Each click creates a single blog post, so 11 dummy
+    // blog posts are generated by cycling through the available buttons.
+    const successMessage = 'Dummy Blog Post generated successfully.';
+    for (let i = 0; i < 11; i++) {
+      const blogGenerateButtons = await page.$$(blogGenerateButton);
+      await blogGenerateButtons[i % blogGenerateButtons.length].click();
+      await waitForStatusMessage(
+        page,
+        statusMessageSelector,
+        successMessage,
+        SETUP_STATUS_MESSAGE_TIMEOUT_MS
+      );
+    }
+
+    // Navigate to the blog homepage and open the first published blog post to
+    // capture its URL fragment, which is needed for the blog post page
+    // lighthouse check.
+    await page.goto('http://localhost:8181/blog', {waitUntil: networkIdle});
+    await page.waitForSelector('.e2e-test-blog-post-list .blog-card', {
+      visible: true,
+    });
+    const blogCards = await page.$$('.e2e-test-blog-post-list .blog-card');
+    await blogCards[0].click();
+    await page.waitForFunction(() =>
+      window.location.pathname.startsWith('/blog/')
+    );
+    blogUrlFragment = new URL(await page.url()).pathname.split('/')[2];
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const generateDummyExplorations = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: networkIdle,
+    });
+
+    await page.waitForSelector(generateExplorationsCountInput);
+    await page.type(generateExplorationsCountInput, '5');
+    await page.waitForSelector(generateExplorationsPublishInput);
+    await page.type(generateExplorationsPublishInput, '5');
+
+    // The generate button uses the shared .oppia-generate-exploration-text
+    // class across several cards, so it is targeted by its label text instead.
+    await page.waitForXPath(
+      "//*[contains(normalize-space(text()), 'Generate Explorations')]"
+    );
+    const [generateButton] = await page.$x(
+      "//*[contains(normalize-space(text()), 'Generate Explorations')]"
+    );
+    await generateButton.click();
+
+    await waitForStatusMessage(
+      page,
+      statusMessageSelector,
+      'Dummy explorations generated successfully.',
+      SETUP_STATUS_MESSAGE_TIMEOUT_MS
+    );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const reloadAllInteractionsExploration = async function (browser, page) {
+  try {
+    // Like the login navigation, the admin activities tab can keep a
+    // background connection open, so avoid networkidle0 which can wait
+    // forever; allow up to two connections and cap the wait.
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+
+    // The reload button opens a native confirm dialog. While that dialog is
+    // open, Puppeteer's page can wait forever, so we accept the first dialog
+    // that appears before clicking.
+    //
+    // The handler is added with page.once, so it fires only for that first
+    // dialog. A later reload step in the same session has no leftover handler
+    // that could accept a dialog twice, which Puppeteer rejects with
+    // "Cannot accept dialog which is already handled!".
+    page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+
+    // Locate the reload button for the all_interactions demo exploration so
+    // that the exploration editor, player and new lesson player pages have
+    // content exercising every interaction type to render. Cap the wait so a
+    // slow render of the activity rows fails loudly instead of hanging.
+    await page.waitForSelector(reloadExplorationRow, {timeout: 60000});
+    const reloadButtons = await page.$$(reloadExplorationButton);
+    let reloadStarted = false;
+    for (let i = 0; i < reloadButtons.length; i++) {
+      const title = await page.evaluate(
+        (el, sel, titleSelector) =>
+          el.closest(sel).querySelector(titleSelector).textContent.trim(),
+        reloadButtons[i],
+        reloadExplorationRow,
+        reloadExplorationTitle
+      );
+      if (title === 'all_interactions') {
+        await reloadButtons[i].click();
+        reloadStarted = true;
+        break;
+      }
+    }
+    if (!reloadStarted) {
+      throw new Error(
+        'The all_interactions demo exploration reload button was not found.'
+      );
+    }
+
+    // After the reload finishes, the admin activities page shows a status
+    // message. page.waitForFunction keeps checking that message until it reads
+    // 'Data reloaded successfully.' (once a second, up to two minutes) and
+    // throws if it never appears. That is the same job the old hand-written
+    // retry loop did, just with less code.
+    await page.waitForFunction(
+      () => {
+        const statusMessageElement = document.querySelector(
+          '.oppia-status-message-container'
+        );
+        return (
+          statusMessageElement &&
+          statusMessageElement.textContent.trim() ===
+            'Data reloaded successfully.'
+        );
+      },
+      {polling: 1000, timeout: 120000}
+    );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const reloadDemoCollection = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/admin#/activities', {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+
+    // The reload button opens a native confirm dialog. While that dialog is
+    // open, Puppeteer's page can wait forever, so we accept the first dialog
+    // that appears before clicking.
+    //
+    // The handler is added with page.once, so it fires only for that first
+    // dialog. A later reload step in the same session has no leftover handler
+    // that could accept a dialog twice, which Puppeteer rejects with
+    // "Cannot accept dialog which is already handled!".
+    page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+
+    await page.waitForSelector(reloadCollectionRow, {timeout: 60000});
+    const reloadButtons = await page.$$(reloadCollectionButton);
+    let reloadStarted = false;
+    for (let i = 0; i < reloadButtons.length; i++) {
+      const title = await page.evaluate(
+        (el, sel, titleSelector) =>
+          el.closest(sel).querySelector(titleSelector).textContent.trim(),
+        reloadButtons[i],
+        reloadCollectionRow,
+        reloadCollectionTitle
+      );
+      if (title === 'welcome_to_collections.yaml') {
+        await reloadButtons[i].click();
+        reloadStarted = true;
+        break;
+      }
+    }
+    if (!reloadStarted) {
+      throw new Error(
+        'The welcome_to_collections.yaml demo collection reload button was ' +
+          'not found.'
+      );
+    }
+
+    // After the reload finishes, the admin activities page shows a status
+    // message. page.waitForFunction keeps checking that message until it reads
+    // 'Data reloaded successfully.' (once a second, up to two minutes) and
+    // throws if it never appears. That is the same job the old hand-written
+    // retry loop did, just with less code.
+    await page.waitForFunction(
+      () => {
+        const statusMessageElement = document.querySelector(
+          '.oppia-status-message-container'
+        );
+        return (
+          statusMessageElement &&
+          statusMessageElement.textContent.trim() ===
+            'Data reloaded successfully.'
+        );
+      },
+      {polling: 1000, timeout: 120000}
+    );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const enableDiagnosticTestForMathClassroom = async function (browser, page) {
+  try {
+    await page.goto('http://localhost:8181/classroom-admin', {
+      waitUntil: networkIdle,
+    });
+
+    // Open the details of the first dummy math classroom that was generated
+    // by the generate dummy classrooms action. The tile name renders with
+    // surrounding whitespace, so normalize it before comparing.
+    const classroomTileXPath =
+      "//*[contains(@class, 'e2e-test-classroom-tile')][.//*[contains(@class, 'e2e-test-classroom-tile-name')][normalize-space(text())='math']]";
+    await page.waitForXPath(classroomTileXPath);
+    const [classroomTileElement] = await page.$x(classroomTileXPath);
+    await classroomTileElement.click();
+
+    // Enter the editor mode to reveal the diagnostic test status toggle.
+    await page.waitForSelector(classroomEditButton, {visible: true});
+    await page.click(classroomEditButton);
+
+    // Enable the diagnostic test for the math classroom.
+    await page.waitForSelector(diagnosticTestStatusButton, {visible: true});
+    await page.click(diagnosticTestStatusButton);
+
+    // Wait for the save button to become enabled and save the changes.
+    await page.waitForSelector(classroomSaveButton, {visible: true});
+    await page.waitForFunction(
+      selector => {
+        const button = document.querySelector(selector);
+        return button && !button.disabled;
+      },
+      {},
+      classroomSaveButton
+    );
+
+    await page.$eval(classroomSaveButton, element => {
+      element.scrollIntoView({block: 'center', inline: 'center'});
+      element.click();
+    });
+
+    // Wait for the classroom data to be saved and the editor to close.
+    await page.waitForSelector(classroomNameView, {visible: true});
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+// Force-enables a feature flag for every user through the release coordinator
+// page. Page routes gated behind a flag render the error page while the flag is
+// disabled, and there is no other way to turn a flag on for the audit server,
+// so the setup has to enable it before the checks run. The setup server runs in
+// the DEV stage, where every feature flag is listed, and the flag config is
+// persisted to the shared datastore that the audit server later reads.
+//
+// The navigation waits for 'domcontentloaded' rather than 'networkidle0',
+// because the page opens on the beam jobs tab, whose component polls the
+// backend on an interval, so the network never goes idle and a networkidle0
+// wait always times out. The subsequent waits for the features tab and the
+// flag rows cover the page's asynchronous rendering.
+const enableFeatureFlagForAllUsers = async function (
+  browser,
+  page,
+  featureFlagName
+) {
+  // Saving a flag opens a native confirm dialog, and an unanswered dialog
+  // blocks the renderer, so the Puppeteer call that triggered it (and the
+  // navigation on a retry) never resolves. Accept dialogs for the duration of
+  // this step, and remove the handler at the end so a later step cannot
+  // double-accept one, which Puppeteer rejects with "Cannot accept dialog
+  // which is already handled!".
+  const acceptDialog = async dialog => {
+    await dialog.accept().catch(() => undefined);
+  };
+  page.on('dialog', acceptDialog);
+  try {
+    await page.goto(RELEASE_COORDINATOR_URL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120000,
+    });
+    await page.waitForSelector(featuresTabSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+    await page.click(featuresTabSelector);
+    await page.waitForSelector(featureFlagRowSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+
+    const featureFlagRows = await page.$$(featureFlagRowSelector);
+    for (let i = 0; i < featureFlagRows.length; i++) {
+      const featureFlagNameElement = await featureFlagRows[i].$(
+        featureFlagNameSelector
+      );
+      if (featureFlagNameElement === null) {
+        continue;
+      }
+      const rowFeatureFlagName = await page.evaluate(
+        element => element.textContent.trim(),
+        featureFlagNameElement
+      );
+      if (rowFeatureFlagName !== featureFlagName) {
+        continue;
+      }
+
+      const valueSelector = await featureFlagRows[i].$(
+        featureFlagValueSelector
+      );
+      if (valueSelector === null) {
+        throw new Error(
+          `Value selector not found for feature flag: ${featureFlagName}.`
+        );
+      }
+      // The force-enable select is bound with [ngValue], so "Yes" is rendered
+      // with the Angular-encoded option value "0: true".
+      await valueSelector.select('0: true');
+
+      const saveButton = await featureFlagRows[i].$(
+        featureFlagSaveButtonSelector
+      );
+      if (saveButton === null) {
+        throw new Error(
+          `Save button not found for feature flag: ${featureFlagName}.`
+        );
+      }
+      await saveButton.click();
+      await featureFlagRows[i].waitForSelector(
+        `${featureFlagSaveButtonSelector}[disabled]`,
+        {visible: true, timeout: 60000}
+      );
+      return;
+    }
+
+    throw new Error(`Feature flag not found: ${featureFlagName}.`);
+  } finally {
+    page.off('dialog', acceptDialog);
+  }
+};
+
+// Fetches the CSRF token that the frontend attaches to state-changing requests.
+// The token endpoint guards its JSON with a five-character XSSI prefix, so the
+// prefix is stripped before parsing.
+const getCsrfToken = async function (page) {
+  return page.evaluate(async () => {
+    const response = await fetch('/csrfhandler', {credentials: 'same-origin'});
+    const responseText = await response.text();
+    return JSON.parse(responseText.substring(5)).token;
   });
-  await login(browser, page);
-  await getExplorationEditorUrl(browser, page);
+};
 
-  await setRole(browser, page, 'COLLECTION_EDITOR');
-  await getCollectionEditorUrl(browser, page);
+// Creates a learner group as the logged-in facilitator and invites the given
+// learner, returning the new group id. The learner is invited rather than added
+// directly, because only accepting an invitation records the group on the
+// learner's own user model, which the learner group progress endpoints read.
+const createLearnerGroupAndInviteLearner = async function (
+  browser,
+  page,
+  title,
+  description,
+  invitedLearnerUsername
+) {
+  try {
+    const csrfToken = await getCsrfToken(page);
+    const learnerGroupId = await page.evaluate(
+      async (csrfToken, title, description, invitedLearnerUsername) => {
+        const createResponse = await fetch('/create_learner_group_handler', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: new URLSearchParams({
+            csrf_token: csrfToken,
+            payload: JSON.stringify({
+              group_title: title,
+              group_description: description,
+            }),
+          }).toString(),
+        });
+        if (!createResponse.ok) {
+          return null;
+        }
+        // The server's render_json prefixes every JSON body with the
+        // five-byte XSSI prefix, which the Angular frontend strips in an HTTP
+        // interceptor but this raw fetch does not. Parsing the prefix as JSON
+        // throws "Unexpected token ) in JSON at position 0".
+        const createBody = JSON.parse(
+          (await createResponse.text()).substring(5)
+        );
 
-  await setRole(browser, page, 'ADMIN');
-  await getTopicEditorUrl(browser, page);
-  await getStoryEditorUrl(browser, page);
-  await getSkillEditorUrl(browser, page);
-  await process.stdout.write(
-    [
-      explorationEditorUrl,
-      collectionEditorUrl,
-      topicEditorUrl,
-      storyEditorUrl,
-      skillEditorUrl,
-    ].join('\n')
+        const updateResponse = await fetch(
+          `/update_learner_group_handler/${createBody.id}`,
+          {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({
+              csrf_token: csrfToken,
+              payload: JSON.stringify({
+                group_title: title,
+                group_description: description,
+                learner_usernames: [],
+                invited_learner_usernames: [invitedLearnerUsername],
+                subtopic_page_ids: [],
+                story_ids: [],
+              }),
+            }).toString(),
+          }
+        );
+        return updateResponse.ok ? createBody.id : null;
+      },
+      csrfToken,
+      title,
+      description,
+      invitedLearnerUsername
+    );
+
+    if (!learnerGroupId) {
+      throw new Error('Failed to create the learner group.');
+    }
+    return learnerGroupId;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log('Failed to create the learner group');
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+// Accepts the logged-in learner's invitation to the given group. Accepting is
+// what adds the group to the learner's own user model, so an invited-but-not-
+// accepted learner would break the learner-group-viewer page.
+const acceptLearnerGroupInvitation = async function (
+  browser,
+  page,
+  learnerGroupId,
+  learnerUsername
+) {
+  try {
+    const csrfToken = await getCsrfToken(page);
+    const invitationAccepted = await page.evaluate(
+      async (csrfToken, learnerGroupId, learnerUsername) => {
+        const response = await fetch(
+          `/learner_group_learner_invitation_handler/${learnerGroupId}`,
+          {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({
+              csrf_token: csrfToken,
+              payload: JSON.stringify({
+                learner_username: learnerUsername,
+                is_invitation_accepted: 'true',
+                progress_sharing_permission: 'false',
+              }),
+            }).toString(),
+          }
+        );
+        return response.ok;
+      },
+      csrfToken,
+      learnerGroupId,
+      learnerUsername
+    );
+
+    if (!invitationAccepted) {
+      throw new Error('Failed to accept the learner group invitation.');
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log('Failed to accept the learner group invitation');
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+// Creates a platform feedback report through the public submission endpoint so
+// that the technical feedback detail page has a real report to render. The page
+// is audited at /technical-feedback-dashboard/<team>/<report_id> and returns a
+// 404, which the browser logs as a console error, unless that report exists.
+// The backend derives the report's team from the first path segment of the
+// submitted page_url: segments in TECHNICAL_EXTERNAL_DASHBOARD_PATHS route to
+// "tech-external" and every other segment routes to "tech-internal". This
+// submits from a page that routes to "tech-internal", so the audited URL in
+// core/tests/lighthouse-pages.json uses that team.
+const createTechnicalFeedbackReport = async function (browser, page) {
+  try {
+    const csrfToken = await getCsrfToken(page);
+    const reportId = await page.evaluate(async csrfToken => {
+      const response = await fetch('/platform-feedback', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+          csrf_token: csrfToken,
+          payload: JSON.stringify({
+            source: 'app',
+            report_message: 'Technical feedback report seeded for Lighthouse.',
+            page_url: 'http://localhost:8181/creator-dashboard',
+            include_technical_logs: false,
+          }),
+        }).toString(),
+      });
+      if (!response.ok) {
+        return null;
+      }
+      // The server's render_json prefixes every JSON body with the five-byte
+      // XSSI prefix, which the Angular frontend strips in an HTTP interceptor
+      // but this raw fetch does not.
+      const responseBody = JSON.parse((await response.text()).substring(5));
+      return responseBody.id;
+    }, csrfToken);
+
+    if (!reportId) {
+      throw new Error('Failed to create the technical feedback report.');
+    }
+    return reportId;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log('Failed to create the technical feedback report');
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const addThumbnailToTopic = async function (page, topicName) {
+  try {
+    await page.goto(TOPIC_AND_SKILLS_DASHBOARD_URL, {waitUntil: networkIdle});
+
+    const topicLinkXPath = `//a[contains(text(), "${topicName}")]`;
+    await page.waitForXPath(topicLinkXPath);
+    const [topicLinkElement] = await page.$x(topicLinkXPath);
+    await topicLinkElement.click();
+    await page.waitForTimeout(5000);
+
+    await page.waitForSelector(topicThumbnailButton);
+    await page.click(topicThumbnailButton);
+
+    await page.waitForSelector(topicThumbnailResetButton);
+    await page.click(topicThumbnailResetButton);
+
+    // The file input is always in the DOM but CSS-hidden. A reset click that
+    // lands during the preview fade-in can be swallowed, which leaves the
+    // upload UI hidden, so re-trigger the reset from inside waitForFunction
+    // until the upload label becomes visible.
+    await page.waitForFunction(
+      (uploadLabelSelector, resetButtonSelector) => {
+        const uploadLabel = document.querySelector(uploadLabelSelector);
+        if (uploadLabel && uploadLabel.offsetParent !== null) {
+          return true;
+        }
+        const resetButton = document.querySelector(resetButtonSelector);
+        if (resetButton && resetButton.offsetParent !== null) {
+          resetButton.click();
+        }
+        return false;
+      },
+      {polling: 1000, timeout: 45000},
+      imageUploadLabel,
+      topicThumbnailResetButton
+    );
+
+    const elementHandle = await page.$(topicUploadButton);
+    await elementHandle.uploadFile('core/tests/data/test2_svg.svg');
+
+    await page.waitForSelector(thumbnailContainer, {visible: true});
+    await page.click(topicPhotoSubmit);
+    await page.waitForTimeout(3000);
+
+    await page.waitForSelector(topicMetaTagInput);
+    await page.focus(topicMetaTagInput);
+    await page.type(topicMetaTagInput, 'meta');
+    await page.keyboard.press('Tab');
+
+    await page.waitForSelector(saveTopicButton);
+    await page.click(saveTopicButton);
+    await page.waitForSelector(topicCommitMessageInput);
+    await page.focus(topicCommitMessageInput);
+    await page.type(topicCommitMessageInput, 'Updated thumbnail');
+
+    await page.waitForSelector(publishChangesButton);
+    await page.click(publishChangesButton);
+    await page.waitForTimeout(10000);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+// Assigns the given roles, one at a time. Each assignment navigates to the
+// admin roles page and waits on several UI selectors, so only the roles a
+// shard's pages actually require are passed in to avoid wasting setup time.
+const setRoles = async function (browser, page, roles) {
+  try {
+    // Load the roles editor once and assign every role within the same
+    // session. Reloading the admin roles tab for each role used to repeat the
+    // page load and the username look-up steps, so assigning roles no longer
+    // performs one navigation per role.
+    await page.goto('http://localhost:8181/admin#/roles', {
+      waitUntil: 'networkidle2',
+      timeout: 60000,
+    });
+    await page.waitForSelector(usernameInputFieldForRolesEditing, {
+      visible: true,
+    });
+    await page.type(usernameInputFieldForRolesEditing, 'username1');
+    await page.click(editUserRoleButton);
+    await page.waitForSelector(roleEditorContainer, {visible: true});
+
+    for (let i = 0; i < roles.length; i++) {
+      await setRole(browser, page, roles[i]);
+    }
+    // Let the editor render the final role list before the setup continues. A
+    // single settle is enough now that the page no longer reloads per role.
+    await page.waitForTimeout(2000);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log(e);
+    process.exit(1);
+  }
+};
+
+const shard2Setup = async function (browser, page) {
+  await logStep('logging in', () => login(browser, page));
+  // Shard 2 audits the release-coordinator role-gated page and the
+  // contributor-admin-dashboard (translation admin) page, so only these two
+  // roles are assigned. Its data generation uses the admin activities tab,
+  // which the CI super-admin user can access without an additional role.
+  await logStep('assigning roles', () =>
+    setRoles(browser, page, ['RELEASE_COORDINATOR', 'TRANSLATION_ADMIN'])
   );
+  await logStep('exploration editor setup', () =>
+    getExplorationEditorUrl(browser, page)
+  );
+  await logStep('generating blog posts', () =>
+    generateDataForBlogPosts(browser, page)
+  );
+};
+
+const shard3Setup = async function (browser, page) {
+  await logStep('logging in', () => login(browser, page));
+  // Shard 3 audits the classroom-admin (curriculum admin) and voiceover-admin
+  // (voiceover admin) role-gated pages, so these roles are assigned. The
+  // release coordinator role is still assigned because the per-URL feature flag
+  // toggles in puppeteer-login-script.js need it. Its other pages (classrooms,
+  // classroom, creator-dashboard, exploration-editor, exploration-player,
+  // exploration-player-embed, community-library, pending-account-deletion) are
+  // public or login-only, so no topic/story/skill generation is needed here.
+  await logStep('assigning roles', () =>
+    setRoles(browser, page, ['ADMIN', 'VOICEOVER_ADMIN', 'RELEASE_COORDINATOR'])
+  );
+
+  // The new_lesson_player flag is toggled per audited URL in
+  // puppeteer-login-script.js, so that the legacy exploration player pages
+  // (which need it disabled) and the new lesson player pages (which need it
+  // enabled) can both be audited in this shard.
+  // The exploration editor setup creates the exploration that backs the
+  // exploration-editor, exploration-player and exploration-player-embed pages.
+  await logStep('exploration editor setup', () =>
+    getExplorationEditorUrl(browser, page)
+  );
+  // The populated math classroom backs the /learn/math (classroom) page.
+  await logStep('generating math classroom', () =>
+    generateDataForClassroom(browser, page)
+  );
+  // Dummy explorations populate the creator-dashboard and community-library
+  // page listings, and the all-interactions exploration gives the player
+  // pages content for every interaction type.
+  await logStep('generating dummy explorations', () =>
+    generateDummyExplorations(browser, page)
+  );
+  await logStep('loading all-interactions exploration', () =>
+    reloadAllInteractionsExploration(browser, page)
+  );
+  // The demo collection backs the collection editor and collection player
+  // pages.
+  await logStep('reloading demo collection', () =>
+    reloadDemoCollection(browser, page)
+  );
+  // Bare classrooms populate the /learn (classrooms) listing page.
+  await logStep('generating bare classrooms', () =>
+    generateBareClassrooms(browser, page)
+  );
+};
+
+const shard4Setup = async function (browser, page) {
+  await logStep('logging in', () => login(browser, page));
+  // Shard 4 audits the topics-and-skills-dashboard (curriculum admin), the
+  // topic/story/skill editors, the diagnostic test player page, and the
+  // practice, node-practice, mastery-challenge and end-of-arc-test pages.
+  // The release coordinator role is still assigned because the per-URL feature
+  // flag toggles in puppeteer-login-script.js need it.
+  await logStep('assigning roles', () =>
+    setRoles(browser, page, ['ADMIN', 'RELEASE_COORDINATOR'])
+  );
+
+  // The story_editor_arcs flag is toggled per audited URL in
+  // puppeteer-login-script.js, so that the legacy practice page (which needs
+  // it disabled) and the node-practice, mastery-challenge and end-of-arc-test
+  // pages (which need it enabled) can all be audited in this shard.
+  // The structures step seeds the staging topic (dummy-topic-one), its story
+  // and subtopic. The staging topic backs the topic/story/practice/subtopic
+  // pages, and its story nodes back the node-practice page.
+  await logStep('generating topic and story data', () =>
+    generateDataForTopicAndStoryPlayer(browser, page)
+  );
+  // The topic, story and skill editor pages need real entity ids, which are
+  // captured by creating each entity through its editor UI.
+  await logStep('creating topic editor', () =>
+    getTopicEditorUrl(browser, page)
+  );
+  await logStep('creating story editor', () =>
+    getStoryEditorUrl(browser, page)
+  );
+  await logStep('creating skill editor', () =>
+    getSkillEditorUrl(browser, page)
+  );
+  // The math classroom backs the diagnostic test player page, which needs the
+  // diagnostic test to be enabled on the classroom-admin page.
+  await logStep('generating math classroom', () =>
+    generateDataForClassroom(browser, page)
+  );
+  await logStep('enabling diagnostic test', () =>
+    enableDiagnosticTestForMathClassroom(browser, page)
+  );
+};
+
+const shard5Setup = async function (browser, page) {
+  await logStep('logging in', () => login(browser, page));
+  // Shard 5 audits the technical-feedback dashboard and its detail page, which
+  // are gated on the ACTION_ACCESS_TECHNICAL_FEEDBACK_DASHBOARD action
+  // (granted only by the TECH_TEAM_LEAD role, see role_services.py) and on the
+  // technical_feedback_dashboard_enabled feature flag. The facilitator
+  // dashboard and the learner group pages are gated on the
+  // learner_groups_are_enabled feature flag. Enabling either feature flag
+  // requires the RELEASE_COORDINATOR role, so all three roles are assigned
+  // here.
+  await logStep('assigning roles', () =>
+    setRoles(browser, page, ['TECH_TEAM_LEAD', 'RELEASE_COORDINATOR'])
+  );
+
+  await logStep('enabling learner groups feature flag', () =>
+    retryStep(
+      browser,
+      'enabling the learner_groups_are_enabled feature flag',
+      attemptPage =>
+        enableFeatureFlagForAllUsers(
+          browser,
+          attemptPage,
+          'learner_groups_are_enabled'
+        ),
+      2,
+      150000
+    )
+  );
+
+  await logStep('enabling technical feedback feature flag', () =>
+    retryStep(
+      browser,
+      'enabling the technical_feedback_dashboard_enabled feature flag',
+      attemptPage =>
+        enableFeatureFlagForAllUsers(
+          browser,
+          attemptPage,
+          'technical_feedback_dashboard_enabled'
+        ),
+      2,
+      150000
+    )
+  );
+  // The technical feedback detail page reads a single report by id, so a report
+  // is seeded here; without it the page renders a 404 and logs a browser
+  // console error. The submission endpoint is open access, so it is created
+  // here while the test admin is still logged in.
+  await logStep('creating technical feedback report', async () => {
+    feedbackReportId = await createTechnicalFeedbackReport(browser, page);
+  });
+  // The learner-group-editor page is gated on the logged-in user being a
+  // facilitator of the group and the learner-group-viewer page on that user
+  // being a learner of it. A single account cannot be both (the learner group
+  // validator forbids a facilitator from also being a learner), so a second
+  // account is registered here and audited on the viewer page by the per-url
+  // login script. Registering it first makes its username resolvable when the
+  // group invites it below.
+  await logStep('registering learner account', async () => {
+    await logout(browser, page);
+    await login(browser, page, LEARNER_ACCOUNT_EMAIL, LEARNER_ACCOUNT_USERNAME);
+  });
+  // The group is created by the test admin as its facilitator, then the learner
+  // account is invited. Accepting the invitation (below) records the group on
+  // the learner's own user model, which the viewer page reads.
+  let learnerGroupId = null;
+  await logStep('creating learner group', async () => {
+    await logout(browser, page);
+    await login(browser, page);
+    learnerGroupId = await createLearnerGroupAndInviteLearner(
+      browser,
+      page,
+      'Lighthouse learner group',
+      'Learner group seeded for the lighthouse checks.',
+      LEARNER_ACCOUNT_USERNAME
+    );
+    learnerGroupUrl = `http://localhost:8181/edit-learner-group/${learnerGroupId}`;
+  });
+  await logStep('accepting learner group invitation', async () => {
+    await logout(browser, page);
+    await login(browser, page, LEARNER_ACCOUNT_EMAIL, LEARNER_ACCOUNT_USERNAME);
+    await acceptLearnerGroupInvitation(
+      browser,
+      page,
+      learnerGroupId,
+      LEARNER_ACCOUNT_USERNAME
+    );
+  });
+};
+
+const main = async function () {
+  // Change headless to false to see the puppeteer actions.
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [],
+  });
+  const page = await browser.newPage();
+  await configurePage(page);
+  // Last-resort ceiling for the whole setup; see SETUP_WATCHDOG_MS.
+  const watchdogId = setTimeout(() => {
+    console.error(
+      `[lighthouse-setup] Setup exceeded the ${SETUP_WATCHDOG_MS}ms watchdog ` +
+        'and was aborted.'
+    );
+    process.exit(1);
+  }, SETUP_WATCHDOG_MS);
+
+  var recorder = null;
+  let record = process.argv[2] && process.argv[2] === '-record';
+  let videoPath = process.argv[3];
+  if (record && videoPath) {
+    // Start recording via puppeteer-screen-recorder.
+    const Config = {
+      followNewTab: true,
+      fps: 25,
+      ffmpeg_Path: null,
+      videoFrame: {
+        width: 1920,
+        height: 1080,
+      },
+      videoCrf: 18,
+      videoCodec: 'libx264',
+      videoPreset: 'ultrafast',
+      videoBitrate: 1000,
+      autopad: {
+        color: 'black' | '#35A5FF',
+      },
+      aspectRatio: '16:9',
+    };
+    recorder = new PuppeteerScreenRecorder(page, Config);
+    // Create directory for video in opensource.
+    await recorder.start(videoPath);
+  }
+
+  const shard = Number(process.env.LIGHTHOUSE_SHARD);
+  // Shards have dedicated, minimal setups. Shards 2, 3, 4 and 5 assign the
+  // roles their pages need and seed any data those pages read; shard 1 audits
+  // only static, public pages, so it needs no setup at all.
+  const shardSetupRunners = {
+    1: async function () {},
+    2: shard2Setup,
+    3: shard3Setup,
+    4: shard4Setup,
+    5: shard5Setup,
+  };
+  const runShardSetup = shardSetupRunners[shard];
+  if (!runShardSetup) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `No setup exists for LIGHTHOUSE_SHARD ${shard}. Configured shards: ` +
+        `${Object.keys(shardSetupRunners).join(', ')}.`
+    );
+    process.exit(1);
+  }
+  // Only record the entities and URL lines produced by the steps the current
+  // shard ran, so that unresolvable URLs are not reported. The flags below
+  // mirror the setup steps each shard function executes.
+  const setupKind =
+    shard === 2
+      ? 'blog'
+      : shard === 3
+        ? 'data-player'
+        : shard === 4
+          ? 'editors'
+          : shard === 5
+            ? 'role-gated'
+            : 'static';
+  const ranBlogSetup = setupKind === 'blog';
+  const ranExplorationSetup =
+    setupKind === 'data-player' || setupKind === 'blog';
+  const ranTopicStorySkillSetup = setupKind === 'editors';
+  const ranRoleGatedSetup = setupKind === 'role-gated';
+
+  await runShardSetup(browser, page);
+
+  var envEntries = [];
+  if (ranExplorationSetup) {
+    envEntries.push(`exploration_id=${explorationId}`);
+  }
+  if (ranTopicStorySkillSetup) {
+    envEntries.push(`topic_id=${topicId}`);
+    envEntries.push(`story_id=${storyId}`);
+    envEntries.push(`skill_id=${skillId}`);
+  }
+  if (ranBlogSetup) {
+    envEntries.push(`blog_post_url_fragment=${blogUrlFragment}`);
+  }
+  fs.writeFileSync('core/tests/puppeteer/.env', envEntries.join('\n'));
+
+  var urls = [];
+  if (ranTopicStorySkillSetup) {
+    urls.push(topicEditorUrl);
+    urls.push(storyEditorUrl);
+    urls.push(skillEditorUrl);
+  }
+  if (ranExplorationSetup) {
+    urls.push(explorationEditorUrl);
+  }
+  if (ranBlogSetup) {
+    urls.push(`http://localhost:8181/blog/${blogUrlFragment}`);
+  }
+  if (ranRoleGatedSetup) {
+    urls.push(learnerGroupUrl);
+    urls.push(
+      'http://localhost:8181/technical-feedback-dashboard/tech-internal/' +
+        feedbackReportId
+    );
+  }
+  await process.stdout.write(urls.join('\n'));
+  if (record) {
+    await recorder.stop();
+  }
+  clearTimeout(watchdogId);
   await page.close();
   process.exit(0);
 };

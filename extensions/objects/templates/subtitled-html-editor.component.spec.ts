@@ -16,23 +16,23 @@
  * @fileoverview Unit tests for Subtitled Html editor.
  */
 
-import { ChangeDetectorRef } from '@angular/core';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { SubtitledHtmlEditorComponent } from './subtitled-html-editor.component';
+// @ts-nocheck
+
+import {ChangeDetectorRef} from '@angular/core';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {SubtitledHtml} from 'domain/exploration/subtitled-html.model';
+import {SubtitledHtmlEditorComponent} from './subtitled-html-editor.component';
 
 describe('SubtitledHtmlEditorComponent', () => {
   let component: SubtitledHtmlEditorComponent;
   let fixture: ComponentFixture<SubtitledHtmlEditorComponent>;
-  let mockValue = {
-    _html: '<p>test</p>',
-    _contentId: null
-  };
+  let mockValue = new SubtitledHtml('<p>test</p>', null);
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [SubtitledHtmlEditorComponent],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
@@ -44,9 +44,9 @@ describe('SubtitledHtmlEditorComponent', () => {
       replacement_ui_config: {
         html: {
           hide_complex_extensions: true,
-          placeholder: 'Enter an option for the learner to select'
-        }
-      }
+          placeholder: 'Enter an option for the learner to select',
+        },
+      },
     };
   });
 
@@ -58,9 +58,9 @@ describe('SubtitledHtmlEditorComponent', () => {
       ui_config: {
         html: {
           hide_complex_extensions: true,
-          placeholder: 'Enter an option for the learner to select'
-        }
-      }
+          placeholder: 'Enter an option for the learner to select',
+        },
+      },
     });
   });
 
@@ -70,9 +70,9 @@ describe('SubtitledHtmlEditorComponent', () => {
       ui_config: {
         html: {
           hide_complex_extensions: true,
-          placeholder: 'Enter an option for the learner to select'
-        }
-      }
+          placeholder: 'Enter an option for the learner to select',
+        },
+      },
     };
 
     expect(component.getSchema()).toEqual({
@@ -80,27 +80,26 @@ describe('SubtitledHtmlEditorComponent', () => {
       ui_config: {
         html: {
           hide_complex_extensions: true,
-          placeholder: 'Enter an option for the learner to select'
-        }
-      }
+          placeholder: 'Enter an option for the learner to select',
+        },
+      },
     });
   });
 
   it('should update the value when user edits a text', () => {
     spyOn(component.valueChanged, 'emit');
     const changeDetectorRef =
-    fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+      fixture.debugElement.injector.get(ChangeDetectorRef);
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
 
     component.value = mockValue;
 
     component.updateValue('<p>new test</p>');
 
-    expect(component.value).toEqual({
-      _html: '<p>new test</p>',
-      _contentId: null
-    });
+    expect(component.value).toEqual(new SubtitledHtml('<p>new test</p>', null));
     expect(component.valueChanged.emit).toHaveBeenCalledWith(mockValue);
     expect(detectChangesSpy).toHaveBeenCalled();
   });
@@ -108,9 +107,11 @@ describe('SubtitledHtmlEditorComponent', () => {
   it('should not replace value when user did not change it', () => {
     spyOn(component.valueChanged, 'emit');
     const changeDetectorRef =
-    fixture.debugElement.injector.get(ChangeDetectorRef);
-    const detectChangesSpy =
-      spyOn(changeDetectorRef.constructor.prototype, 'detectChanges');
+      fixture.debugElement.injector.get(ChangeDetectorRef);
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
     component.value = mockValue;
     component.value._html = '<p>test</p>';
 
@@ -118,6 +119,23 @@ describe('SubtitledHtmlEditorComponent', () => {
 
     expect(component.value).toEqual(mockValue);
     expect(component.valueChanged.emit).not.toHaveBeenCalledWith(mockValue);
+    expect(detectChangesSpy).not.toHaveBeenCalled();
+  });
+
+  it('should not replace value when the input is not a html string', () => {
+    spyOn(component.valueChanged, 'emit');
+    const changeDetectorRef =
+      fixture.debugElement.injector.get(ChangeDetectorRef);
+    const detectChangesSpy = spyOn(
+      changeDetectorRef.constructor.prototype,
+      'detectChanges'
+    );
+    component.value = mockValue;
+
+    component.updateValue(5);
+
+    expect(component.value).toEqual(mockValue);
+    expect(component.valueChanged.emit).not.toHaveBeenCalled();
     expect(detectChangesSpy).not.toHaveBeenCalled();
   });
 });

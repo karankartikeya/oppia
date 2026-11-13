@@ -18,18 +18,16 @@
  */
 
 export interface LearnerDashboardActivityIdsDict {
-  'incomplete_exploration_ids': string[];
-  'incomplete_collection_ids': string[];
-  'partially_learnt_topic_ids': string[];
-  'completed_exploration_ids': string[];
-  'completed_story_ids': string[];
-  'learnt_topic_ids': string[];
-  'completed_collection_ids': string[];
-  'topic_ids_to_learn': string[];
-  'all_topic_ids': string[];
-  'untracked_topic_ids': string[];
-  'exploration_playlist_ids': string[];
-  'collection_playlist_ids': string[];
+  incomplete_exploration_ids: string[];
+  incomplete_collection_ids: string[];
+  partially_learnt_topic_ids: string[];
+  completed_exploration_ids: string[];
+  completed_story_ids: string[];
+  learnt_topic_ids: string[];
+  completed_collection_ids: string[];
+  topic_ids_to_learn: string[];
+  all_topic_ids: string[];
+  untracked_topic_ids: string[];
 }
 
 export class LearnerDashboardActivityIds {
@@ -43,17 +41,19 @@ export class LearnerDashboardActivityIds {
   topicIdsToLearn: string[];
   allTopicIds: string[];
   untrackedTopicIds: string[];
-  explorationPlaylistIds: string[];
-  collectionPlaylistIds: string[];
 
   constructor(
-      incompleteExplorationIds: string[], incompleteCollectionIds: string[],
-      partiallyLearntTopicIds: string[],
-      completedExplorationIds: string[], completedCollectionIds: string[],
-      completedStoryIds: string[], learntTopicIds: string[],
-      topicIdsToLearn: string[], allTopicIds: string[],
-      untrackedTopicIds: string[],
-      explorationPlaylistIds: string[], collectionPlaylistIds: string[]) {
+    incompleteExplorationIds: string[],
+    incompleteCollectionIds: string[],
+    partiallyLearntTopicIds: string[],
+    completedExplorationIds: string[],
+    completedCollectionIds: string[],
+    completedStoryIds: string[],
+    learntTopicIds: string[],
+    topicIdsToLearn: string[],
+    allTopicIds: string[],
+    untrackedTopicIds: string[]
+  ) {
     this.incompleteExplorationIds = incompleteExplorationIds;
     this.incompleteCollectionIds = incompleteCollectionIds;
     this.partiallyLearntTopicIds = partiallyLearntTopicIds;
@@ -64,37 +64,21 @@ export class LearnerDashboardActivityIds {
     this.topicIdsToLearn = topicIdsToLearn;
     this.allTopicIds = allTopicIds;
     this.untrackedTopicIds = untrackedTopicIds;
-    this.explorationPlaylistIds = explorationPlaylistIds;
-    this.collectionPlaylistIds = collectionPlaylistIds;
   }
 
   includesActivity(activityId: string): boolean {
-    if (this.incompleteCollectionIds.indexOf(activityId) !== -1 ||
-        this.completedCollectionIds.indexOf(activityId) !== -1 ||
-        this.collectionPlaylistIds.indexOf(activityId) !== -1 ||
-        this.incompleteExplorationIds.indexOf(activityId) !== -1 ||
-        this.completedExplorationIds.indexOf(activityId) !== -1 ||
-        this.explorationPlaylistIds.indexOf(activityId) !== -1 ||
-        this.completedStoryIds.indexOf(activityId) !== -1 ||
-        this.partiallyLearntTopicIds.indexOf(activityId) !== -1 ||
-        this.learntTopicIds.indexOf(activityId) !== -1 ||
-        this.topicIdsToLearn.indexOf(activityId) !== -1 ||
-        this.allTopicIds.indexOf(activityId) !== -1 ||
-        this.untrackedTopicIds.indexOf(activityId) !== -1) {
-      return true;
-    }
-    return false;
-  }
-
-  belongsToExplorationPlaylist(explorationId: string): boolean {
-    if (this.explorationPlaylistIds.indexOf(explorationId) !== -1) {
-      return true;
-    }
-    return false;
-  }
-
-  belongsToCollectionPlaylist(collectionId: string): boolean {
-    if (this.collectionPlaylistIds.indexOf(collectionId) !== -1) {
+    if (
+      this.incompleteCollectionIds.indexOf(activityId) !== -1 ||
+      this.completedCollectionIds.indexOf(activityId) !== -1 ||
+      this.incompleteExplorationIds.indexOf(activityId) !== -1 ||
+      this.completedExplorationIds.indexOf(activityId) !== -1 ||
+      this.completedStoryIds.indexOf(activityId) !== -1 ||
+      this.partiallyLearntTopicIds.indexOf(activityId) !== -1 ||
+      this.learntTopicIds.indexOf(activityId) !== -1 ||
+      this.topicIdsToLearn.indexOf(activityId) !== -1 ||
+      this.allTopicIds.indexOf(activityId) !== -1 ||
+      this.untrackedTopicIds.indexOf(activityId) !== -1
+    ) {
       return true;
     }
     return false;
@@ -156,28 +140,6 @@ export class LearnerDashboardActivityIds {
     return false;
   }
 
-  addToExplorationLearnerPlaylist(explorationId: string): void {
-    this.explorationPlaylistIds.push(explorationId);
-  }
-
-  removeFromExplorationLearnerPlaylist(explorationId: string): void {
-    var index = this.explorationPlaylistIds.indexOf(explorationId);
-    if (index !== -1) {
-      this.explorationPlaylistIds.splice(index, 1);
-    }
-  }
-
-  addToCollectionLearnerPlaylist(collectionId: string): void {
-    this.collectionPlaylistIds.push(collectionId);
-  }
-
-  removeFromCollectionLearnerPlaylist(collectionId: string): void {
-    var index = this.collectionPlaylistIds.indexOf(collectionId);
-    if (index !== -1) {
-      this.collectionPlaylistIds.splice(index, 1);
-    }
-  }
-
   removeTopicFromLearn(topicId: string): void {
     var index = this.topicIdsToLearn.indexOf(topicId);
     if (index !== -1) {
@@ -186,8 +148,8 @@ export class LearnerDashboardActivityIds {
   }
 
   static createFromBackendDict(
-      learnerDashboardActivityIdsDict: LearnerDashboardActivityIdsDict):
-      LearnerDashboardActivityIds {
+    learnerDashboardActivityIdsDict: LearnerDashboardActivityIdsDict
+  ): LearnerDashboardActivityIds {
     return new LearnerDashboardActivityIds(
       learnerDashboardActivityIdsDict.incomplete_exploration_ids,
       learnerDashboardActivityIdsDict.incomplete_collection_ids,
@@ -198,8 +160,7 @@ export class LearnerDashboardActivityIds {
       learnerDashboardActivityIdsDict.learnt_topic_ids,
       learnerDashboardActivityIdsDict.topic_ids_to_learn,
       learnerDashboardActivityIdsDict.all_topic_ids,
-      learnerDashboardActivityIdsDict.untracked_topic_ids,
-      learnerDashboardActivityIdsDict.exploration_playlist_ids,
-      learnerDashboardActivityIdsDict.collection_playlist_ids);
+      learnerDashboardActivityIdsDict.untracked_topic_ids
+    );
   }
 }

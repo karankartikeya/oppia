@@ -16,11 +16,18 @@
  * @fileoverview Unit tests for access validation backend api service.
  */
 
-import { HttpClientTestingModule, HttpTestingController } from
-  '@angular/common/http/testing';
-import { TestBed, fakeAsync, flushMicrotasks, waitForAsync } from '@angular/core/testing';
-import { UrlInterpolationService } from 'domain/utilities/url-interpolation.service';
-import { AccessValidationBackendApiService } from './access-validation-backend-api.service';
+import {
+  HttpClientTestingModule,
+  HttpTestingController,
+} from '@angular/common/http/testing';
+import {
+  TestBed,
+  fakeAsync,
+  flushMicrotasks,
+  waitForAsync,
+} from '@angular/core/testing';
+import {UrlInterpolationService} from 'domain/utilities/url-interpolation.service';
+import {AccessValidationBackendApiService} from './access-validation-backend-api.service';
 
 describe('Access validation backend api service', () => {
   let avbas: AccessValidationBackendApiService;
@@ -31,12 +38,8 @@ describe('Access validation backend api service', () => {
 
   beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule
-      ],
-      providers: [
-        UrlInterpolationService
-      ]
+      imports: [HttpClientTestingModule],
+      providers: [UrlInterpolationService],
     }).compileComponents();
   }));
 
@@ -52,13 +55,67 @@ describe('Access validation backend api service', () => {
     httpTestingController.verify();
   });
 
+  it('should validate access to story viewer page', fakeAsync(() => {
+    avbas
+      .validateAccessToStoryViewerPage('classroom', 'topic', 'story')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_story_viewer_page/' +
+        'classroom/topic/story/story'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
   it('should validate access to classroom page', fakeAsync(() => {
-    let fragment = 'invalid';
+    const fragment = 'invalid';
     avbas.validateAccessToClassroomPage(fragment).then(successSpy, failSpy);
 
     const req = httpTestingController.expectOne(
       '/access_validation_handler/can_access_classroom_page?' +
-      'classroom_url_fragment=' + fragment);
+        'classroom_url_fragment=' +
+        fragment
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to subtopic viewer page', fakeAsync(() => {
+    const classroom = 'class';
+    const topic = 'topic';
+    const subtopic = 'subtopic';
+
+    spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
+      '/access_validation_handler/can_access_subtopic_viewer_page/' +
+        classroom +
+        '/' +
+        topic +
+        '/studyguide/' +
+        subtopic
+    );
+
+    avbas
+      .validateAccessToSubtopicViewerPage(classroom, topic, subtopic)
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_subtopic_viewer_page/' +
+        classroom +
+        '/' +
+        topic +
+        '/studyguide/' +
+        subtopic
+    );
     expect(req.request.method).toEqual('GET');
     req.flush({});
 
@@ -71,7 +128,64 @@ describe('Access validation backend api service', () => {
     avbas.validateCanManageOwnAccount().then(successSpy, failSpy);
 
     const req = httpTestingController.expectOne(
-      '/access_validation_handler/can_manage_own_account');
+      '/access_validation_handler/can_manage_own_account'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate whether user can view any topic editor', fakeAsync(() => {
+    const topicId = 'topicId';
+
+    spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
+      '/access_validation_handler/can_access_topic_editor/' + topicId
+    );
+
+    avbas.validateAccessToTopicEditorPage(topicId).then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_topic_editor/' + topicId
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to practice session page', fakeAsync(() => {
+    const classroomUrlFragment = 'classroom';
+    const topicUrlFragment = 'topic';
+    const selectedSubtopicIds = '[1,2,3]';
+
+    spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
+      '/access_validation_handler/can_access_practice_session_page/' +
+        classroomUrlFragment +
+        '/' +
+        topicUrlFragment +
+        '/practice/session'
+    );
+
+    avbas
+      .validateAccessToPracticeSessionPage(
+        classroomUrlFragment,
+        topicUrlFragment,
+        selectedSubtopicIds
+      )
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_practice_session_page/' +
+        classroomUrlFragment +
+        '/' +
+        topicUrlFragment +
+        '/practice/session?selected_subtopic_ids=%5B1,2,3%5D'
+    );
     expect(req.request.method).toEqual('GET');
     req.flush({});
 
@@ -81,7 +195,7 @@ describe('Access validation backend api service', () => {
   }));
 
   it('should validate whether user profile exists', fakeAsync(() => {
-    let username = 'test_username';
+    const username = 'test_username';
 
     spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
       '/access_validation_handler/does_profile_exist/' + username
@@ -90,20 +204,8 @@ describe('Access validation backend api service', () => {
     avbas.doesProfileExist(username).then(successSpy, failSpy);
 
     const req = httpTestingController.expectOne(
-      '/access_validation_handler/does_profile_exist/' + username);
-    expect(req.request.method).toEqual('GET');
-    req.flush({});
-
-    flushMicrotasks();
-    expect(successSpy).toHaveBeenCalled();
-    expect(failSpy).not.toHaveBeenCalled();
-  }));
-
-  it('should validate whether account deletion is enabled', fakeAsync(() => {
-    avbas.accountDeletionIsEnabled().then(successSpy, failSpy);
-
-    const req = httpTestingController.expectOne(
-      '/access_validation_handler/account_deletion_is_enabled');
+      '/access_validation_handler/does_profile_exist/' + username
+    );
     expect(req.request.method).toEqual('GET');
     req.flush({});
 
@@ -116,7 +218,486 @@ describe('Access validation backend api service', () => {
     avbas.validateAccessToReleaseCoordinatorPage().then(successSpy, failSpy);
 
     const req = httpTestingController.expectOne(
-      '/access_validation_handler/can_access_release_coordinator_page');
+      '/access_validation_handler/can_access_release_coordinator_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to technical feedback dashboard page', fakeAsync(() => {
+    avbas
+      .validateAccessToTechnicalFeedbackDashboardPage()
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_technical_feedback_dashboard'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate whether user can view any skill editor', fakeAsync(() => {
+    const skillId = 'skill_id';
+
+    spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
+      '/access_validation_handler/can_access_skill_editor/' + skillId
+    );
+
+    avbas.validateAccessToSkillEditorPage(skillId).then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_skill_editor/' + skillId
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to learner group editor page', fakeAsync(() => {
+    const learnerGroupId = 'test_id';
+
+    avbas
+      .validateAccessToLearnerGroupEditorPage(learnerGroupId)
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_edit_learner_group_page/test_id'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to facilitator dashboard page', fakeAsync(() => {
+    avbas.validateAccessToFacilitatorDashboardPage().then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_facilitator_dashboard_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to learner group creator page', fakeAsync(() => {
+    avbas.validateAccessToLearnerGroupCreatorPage().then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_create_learner_group_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to diagnostic test player page', fakeAsync(() => {
+    avbas.validateAccessToDiagnosticTestPlayerPage().then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_diagnostic_test_player_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate whether given learner group exists', fakeAsync(() => {
+    const learnerGroupId = 'groupId';
+
+    spyOn(urlInterpolationService, 'interpolateUrl').and.returnValue(
+      '/access_validation_handler/does_learner_group_exist/' + learnerGroupId
+    );
+
+    avbas.doesLearnerGroupExist(learnerGroupId).then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/does_learner_group_exist/' + learnerGroupId
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to topic viewer page', fakeAsync(() => {
+    const classroomUrlFragment = 'test_class_url';
+    const topicUrlFragment = 'test_topic_url';
+
+    avbas
+      .validateAccessToTopicViewerPage(classroomUrlFragment, topicUrlFragment)
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_topic_viewer_page/' +
+        'test_class_url/test_topic_url'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to exploration player page', fakeAsync(() => {
+    const explorationId = 'exploration_id';
+    const version = null;
+
+    avbas
+      .validateAccessToExplorationPlayerPage(explorationId, version)
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_exploration_player_page' +
+        '/exploration_id'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should not validate access to blog home page with invalid access', fakeAsync(() => {
+    avbas.validateAccessToBlogHomePage().then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_blog_home_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush(
+      {
+        error: 'Access Denied.',
+      },
+      {
+        status: 401,
+        statusText: 'Access Denied.',
+      }
+    );
+
+    flushMicrotasks();
+    expect(successSpy).not.toHaveBeenCalled();
+    expect(failSpy).toHaveBeenCalled();
+  }));
+
+  it('should validate access to collection editor page', fakeAsync(() => {
+    const collectionId = 'collection_id';
+    avbas
+      .validateAccessCollectionEditorPage(collectionId)
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/' +
+        'can_access_collection_editor_page/collection_id'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to exploration editor page', fakeAsync(() => {
+    const explorationId = 'exploration_id';
+    avbas
+      .validateAccessToExplorationEditorPage(explorationId)
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/' +
+        'can_access_exploration_editor_page/exploration_id'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to story editor page', fakeAsync(() => {
+    const storyId = 'story_id';
+    avbas.validateAccessToStoryEditorPage(storyId).then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/' + 'can_access_story_editor_page/story_id'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to blog home page with valid access', fakeAsync(() => {
+    avbas.validateAccessToBlogHomePage().then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_blog_home_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should not validate access to blog post page with invalid access', fakeAsync(() => {
+    avbas
+      .validateAccessToBlogPostPage('invalid-post')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_blog_post_page?' +
+        'blog_post_url_fragment=invalid-post'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush(
+      {
+        error: 'Access Denied.',
+      },
+      {
+        status: 401,
+        statusText: 'Access Denied.',
+      }
+    );
+
+    flushMicrotasks();
+    expect(successSpy).not.toHaveBeenCalled();
+    expect(failSpy).toHaveBeenCalled();
+  }));
+
+  it('should validate access to blog post page with valid access', fakeAsync(() => {
+    avbas.validateAccessToBlogPostPage('sample-post').then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_blog_post_page?' +
+        'blog_post_url_fragment=sample-post'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it(
+    'should not validate access to blog author profile page with invalid ' +
+      'access',
+    fakeAsync(() => {
+      avbas
+        .validateAccessToBlogAuthorProfilePage('username')
+        .then(successSpy, failSpy);
+
+      const req = httpTestingController.expectOne(
+        '/access_validation_handler/can_access_blog_author_profile_page/username'
+      );
+      expect(req.request.method).toEqual('GET');
+      req.flush(
+        {
+          error: 'Access Denied.',
+        },
+        {
+          status: 401,
+          statusText: 'Access Denied.',
+        }
+      );
+
+      flushMicrotasks();
+      expect(successSpy).not.toHaveBeenCalled();
+      expect(failSpy).toHaveBeenCalled();
+    })
+  );
+
+  it('should validate access to blog author profile page with valid access', fakeAsync(() => {
+    avbas
+      .validateAccessToBlogAuthorProfilePage('username')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_blog_author_profile_page/' +
+        'username'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should not validate access to collection player page with invalid access', fakeAsync(() => {
+    avbas
+      .validateAccessToCollectionPlayerPage('invalid-collection')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_collection_player_page/' +
+        'invalid-collection'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush(
+      {
+        error: 'Access Denied.',
+      },
+      {
+        status: 401,
+        statusText: 'Access Denied.',
+      }
+    );
+
+    flushMicrotasks();
+    expect(successSpy).not.toHaveBeenCalled();
+    expect(failSpy).toHaveBeenCalled();
+  }));
+
+  it('should validate access to collection player page with valid access', fakeAsync(() => {
+    avbas
+      .validateAccessToCollectionPlayerPage('valid-collection')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_collection_player_page/' +
+        'valid-collection'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to classrooms page', fakeAsync(() => {
+    avbas.validateAccessToClassroomsPage().then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_classrooms_page'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it(
+    'should not validate access to classrooms page if feature ' +
+      'is not enabled or we just have one classroom',
+    fakeAsync(() => {
+      avbas.validateAccessToClassroomsPage().then(successSpy, failSpy);
+
+      const req = httpTestingController.expectOne(
+        '/access_validation_handler/can_access_classrooms_page'
+      );
+      expect(req.request.method).toEqual('GET');
+      req.flush(
+        {
+          error: 'Page not found',
+        },
+        {
+          status: 404,
+          statusText: 'Page not found',
+        }
+      );
+
+      flushMicrotasks();
+      expect(successSpy).not.toHaveBeenCalled();
+      expect(failSpy).toHaveBeenCalled();
+    })
+  );
+
+  it('should validate access to lesson practice page', fakeAsync(() => {
+    avbas
+      .validateAccessToLessonPracticePage('classroom', 'topic', '1')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_practice_session_page/' +
+        'classroom/topic/practice/1'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to end of arc page', fakeAsync(() => {
+    avbas
+      .validateAccessToEndOfArcPage('classroom', 'topic', '1')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_practice_session_page/' +
+        'classroom/topic/test/arc/1'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to mastery challenge page', fakeAsync(() => {
+    avbas
+      .validateAccessToMasteryChallengePage('classroom', 'topic')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_practice_session_page/' +
+        'classroom/topic/mastery-challenge'
+    );
+    expect(req.request.method).toEqual('GET');
+    req.flush({});
+
+    flushMicrotasks();
+    expect(successSpy).toHaveBeenCalled();
+    expect(failSpy).not.toHaveBeenCalled();
+  }));
+
+  it('should validate access to exploration player page with version', fakeAsync(() => {
+    avbas
+      .validateAccessToExplorationPlayerPage('exploration_id', '2')
+      .then(successSpy, failSpy);
+
+    const req = httpTestingController.expectOne(
+      '/access_validation_handler/can_access_exploration_player_page/' +
+        'exploration_id?v=2'
+    );
     expect(req.request.method).toEqual('GET');
     req.flush({});
 

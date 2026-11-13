@@ -16,20 +16,24 @@
  * @fileoverview Unit tests for the ExplorationLanguageCodeService.
  */
 
-import { TestBed } from '@angular/core/testing';
-import { ContextService } from 'services/context.service';
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { ExplorationLanguageCodeService } from './exploration-language-code.service';
+import {TestBed} from '@angular/core/testing';
+import {PageContextService} from 'services/page-context.service';
+import {ExplorationPropertyService} from './exploration-property.service';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {ExplorationLanguageCodeService} from './exploration-language-code.service';
 
 describe('Exploration Language Code Service', () => {
-  let elcs: ExplorationLanguageCodeService = null;
-  let cs: ContextService = null;
-
-  importAllAngularServices();
+  let elcs: ExplorationLanguageCodeService;
+  let cs: PageContextService;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [ExplorationPropertyService],
+    });
+
     elcs = TestBed.inject(ExplorationLanguageCodeService);
-    cs = TestBed.inject(ContextService);
+    cs = TestBed.inject(PageContextService);
   });
 
   it('should test the child object properties', () => {

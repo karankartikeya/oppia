@@ -16,70 +16,80 @@
  * @fileoverview Unit tests for the audio preloader service.
  */
 
-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
-import { TestBed, fakeAsync, flushMicrotasks } from '@angular/core/testing';
+import {
+  HttpClientTestingModule,
+  HttpTestingController,
+} from '@angular/common/http/testing';
+import {
+  waitForAsync,
+  TestBed,
+  fakeAsync,
+  flushMicrotasks,
+} from '@angular/core/testing';
 
-import { ExplorationBackendDict, ExplorationObjectFactory } from 'domain/exploration/ExplorationObjectFactory';
-import { AudioPreloaderService } from 'pages/exploration-player-page/services/audio-preloader.service';
-import { AudioTranslationLanguageService } from 'pages/exploration-player-page/services/audio-translation-language.service';
-import { ContextService } from 'services/context.service';
+import {
+  ExplorationBackendDict,
+  Exploration,
+} from '../../../domain/exploration/exploration.model';
+import {InteractionAnswer} from '../../../../../extensions/interactions/answer-defs';
+import {AudioPreloaderService} from './audio-preloader.service';
+import {PageContextService} from '../../../services/page-context.service';
+import {LoggerService} from '../../../services/contextual/logger.service';
+import {UrlInterpolationService} from '../../../domain/utilities/url-interpolation.service';
+import {
+  Voiceover,
+  VoiceoverBackendDict,
+} from '../../../domain/exploration/voiceover.model';
 
 describe('Audio preloader service', () => {
   let httpTestingController: HttpTestingController;
+  let interactionAnswer: InteractionAnswer[] = ['Ans1'];
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({imports: [HttpClientTestingModule]});
-    httpTestingController = TestBed.get(HttpTestingController);
-  });
+  beforeEach(waitForAsync(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [],
+    }).compileComponents();
+    httpTestingController = TestBed.inject(HttpTestingController);
+  }));
 
   afterEach(() => {
     httpTestingController.verify();
   });
 
   let audioPreloaderService: AudioPreloaderService;
-  let audioTranslationLanguageService: AudioTranslationLanguageService;
-  let explorationObjectFactory: ExplorationObjectFactory;
-  let contextService: ContextService;
+  let pageContextService: PageContextService;
+  let loggerService: LoggerService;
+  let urlInterpolationService: UrlInterpolationService;
 
   const audioBlob = new Blob(['audio data'], {type: 'audiotype'});
 
   let explorationDict: ExplorationBackendDict = {
-    correctness_feedback_enabled: false,
     draft_change_list_id: 1,
     draft_changes: [],
+    auto_tts_enabled: false,
     version: 1,
     is_version_of_draft_valid: true,
     language_code: 'en',
     title: 'My Title',
     init_state_name: 'Introduction',
+    next_content_id_index: 7,
     states: {
       'State 1': {
         param_changes: [],
         content: {
           content_id: 'content',
-          html: '<p>State 1 Content</p>'
-        },
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {
-              en: {
-                filename: 'en-2.mp3',
-                file_size_bytes: 120000,
-                needs_update: false,
-                duration_secs: 1.2
-              }
-            },
-            default_outcome: {}
-          }
+          html: '<p>State 1 Content</p>',
         },
         interaction: {
           id: 'Continue',
           default_outcome: {
             feedback: {
               content_id: 'default_outcome',
-              html: ''
+              html: '',
             },
             dest: 'State 3',
+            dest_if_really_stuck: null,
             param_changes: [],
             labelled_as_correct: false,
             refresher_exploration_id: null,
@@ -88,42 +98,24 @@ describe('Audio preloader service', () => {
           confirmed_unclassified_answers: [],
           customization_args: {
             buttonText: {
-              value: 'Continue'
-            }
+              value: 'Continue',
+            },
           },
           solution: null,
           answer_groups: [],
-          hints: []
+          hints: [],
         },
         solicit_answer_details: false,
         card_is_checkpoint: false,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        },
         linked_skill_id: null,
         classifier_model_id: null,
-        next_content_id_index: null,
+        inapplicable_skill_misconception_ids: [],
       },
       'State 3': {
         param_changes: [],
         content: {
-          content_id: 'content',
+          content_id: 'content2',
           html: 'Congratulations, you have finished!',
-        },
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {
-              en: {
-                filename: 'en-4.mp3',
-                file_size_bytes: 120000,
-                needs_update: false,
-                duration_secs: 1.2
-              }
-            }
-          }
         },
         interaction: {
           id: 'EndExploration',
@@ -131,51 +123,34 @@ describe('Audio preloader service', () => {
           confirmed_unclassified_answers: [],
           customization_args: {
             recommendedExplorationIds: {
-              value: []
-            }
+              value: [],
+            },
           },
           solution: null,
           answer_groups: [],
-          hints: []
+          hints: [],
         },
         solicit_answer_details: false,
         card_is_checkpoint: false,
-        written_translations: {
-          translations_mapping: {
-            content: {}
-          }
-        },
         linked_skill_id: null,
         classifier_model_id: null,
-        next_content_id_index: null,
+        inapplicable_skill_misconception_ids: [],
       },
       'State 2': {
         param_changes: [],
         content: {
           content_id: 'content',
-          html: '<p>State 2 Content</p>'
-        },
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {
-              en: {
-                filename: 'en-3.mp3',
-                file_size_bytes: 120000,
-                needs_update: false,
-                duration_secs: 1.2
-              }
-            },
-            default_outcome: {}
-          }
+          html: '<p>State 2 Content</p>',
         },
         interaction: {
           id: 'Continue',
           default_outcome: {
             feedback: {
               content_id: 'default_outcome',
-              html: ''
+              html: '',
             },
             dest: 'State 3',
+            dest_if_really_stuck: null,
             param_changes: [],
             labelled_as_correct: false,
             refresher_exploration_id: null,
@@ -184,24 +159,18 @@ describe('Audio preloader service', () => {
           confirmed_unclassified_answers: [],
           customization_args: {
             buttonText: {
-              value: 'Continue'
-            }
+              value: 'Continue',
+            },
           },
           solution: null,
           answer_groups: [],
-          hints: []
+          hints: [],
         },
         solicit_answer_details: false,
         card_is_checkpoint: false,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {}
-          }
-        },
         linked_skill_id: null,
         classifier_model_id: null,
-        next_content_id_index: null,
+        inapplicable_skill_misconception_ids: [],
       },
       Introduction: {
         param_changes: [],
@@ -209,27 +178,14 @@ describe('Audio preloader service', () => {
           content_id: 'content',
           html: '<p>Introduction Content</p>',
         },
-        recorded_voiceovers: {
-          voiceovers_mapping: {
-            content: {
-              en: {
-                filename: 'en-1.mp3',
-                file_size_bytes: 120000,
-                needs_update: false,
-                duration_secs: 1.2
-              }
-            },
-            default_outcome: {},
-            feedback_1: {}
-          }
-        },
         interaction: {
           id: 'TextInput',
           default_outcome: {
             dest: 'Introduction',
+            dest_if_really_stuck: null,
             feedback: {
               content_id: 'default_outcome',
-              html: '<p>Try again.</p>'
+              html: '<p>Try again.</p>',
             },
             labelled_as_correct: false,
             param_changes: [],
@@ -239,156 +195,230 @@ describe('Audio preloader service', () => {
           confirmed_unclassified_answers: [],
           customization_args: {
             rows: {
-              value: 1
+              value: 1,
             },
             placeholder: {
-              value: ''
-            }
+              value: '',
+            },
+            catchMisspellings: {
+              value: false,
+            },
           },
           solution: null,
-          answer_groups: [{
-            rule_specs: [{
-              rule_type: 'Contains',
-              inputs: {x: {
-                contentId: 'rule_input',
-                normalizedStrSet: ['1']
-              }}
-            }],
-            outcome: {
-              dest: 'State 1',
-              feedback: {
-                content_id: 'feedback_1',
-                html: "<p>Let's go to State 1</p>"
+          answer_groups: [
+            {
+              rule_specs: [
+                {
+                  rule_type: 'Contains',
+                  inputs: {
+                    x: {
+                      contentId: 'rule_input',
+                      normalizedStrSet: ['1'],
+                    },
+                  },
+                },
+              ],
+              outcome: {
+                dest: 'State 1',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'feedback_1',
+                  html: "<p>Let's go to State 1</p>",
+                },
+                labelled_as_correct: false,
+                param_changes: [],
+                refresher_exploration_id: null,
+                missing_prerequisite_skill_id: null,
               },
-              labelled_as_correct: false,
-              param_changes: [],
-              refresher_exploration_id: null,
-              missing_prerequisite_skill_id: null,
+              training_data: interactionAnswer,
+              tagged_skill_misconception_id: null,
             },
-            training_data: null,
-            tagged_skill_misconception_id: null,
-          }, {
-            rule_specs: [{
-              rule_type: 'Contains',
-              inputs: {x: {
-                contentId: 'rule_input',
-                normalizedStrSet: ['2']
-              }}
-            }],
-            outcome: {
-              dest: 'State 2',
-              feedback: {
-                content_id: 'feedback_2',
-                html: "<p>Let's go to State 2</p>"
+            {
+              rule_specs: [
+                {
+                  rule_type: 'Contains',
+                  inputs: {
+                    x: {
+                      contentId: 'rule_input',
+                      normalizedStrSet: ['2'],
+                    },
+                  },
+                },
+              ],
+              outcome: {
+                dest: 'State 2',
+                dest_if_really_stuck: null,
+                feedback: {
+                  content_id: 'feedback_2',
+                  html: "<p>Let's go to State 2</p>",
+                },
+                labelled_as_correct: false,
+                param_changes: [],
+                refresher_exploration_id: null,
+                missing_prerequisite_skill_id: null,
               },
-              labelled_as_correct: false,
-              param_changes: [],
-              refresher_exploration_id: null,
-              missing_prerequisite_skill_id: null,
+              training_data: interactionAnswer,
+              tagged_skill_misconception_id: null,
             },
-            training_data: null,
-            tagged_skill_misconception_id: null,
-          }],
-          hints: []
+          ],
+          hints: [],
         },
         solicit_answer_details: false,
         card_is_checkpoint: true,
-        written_translations: {
-          translations_mapping: {
-            content: {},
-            default_outcome: {},
-            feedback_1: {}
-          }
-        },
         linked_skill_id: null,
         classifier_model_id: null,
-        next_content_id_index: null,
-      }
+        inapplicable_skill_misconception_ids: [],
+      },
     },
     param_specs: {},
     param_changes: [],
+    exploration_metadata: {
+      title: 'Exploration',
+      category: 'Algebra',
+      objective: 'To learn',
+      language_code: 'en',
+      tags: [],
+      blurb: '',
+      author_notes: '',
+      states_schema_version: 50,
+      init_state_name: 'Introduction',
+      param_specs: {},
+      param_changes: [],
+      auto_tts_enabled: false,
+      edits_allowed: true,
+    },
   };
-  let requestUrl1 = '/assetsdevhandler/exploration/1/assets/audio/en-1.mp3';
-  let requestUrl2 = '/assetsdevhandler/exploration/1/assets/audio/en-2.mp3';
-  let requestUrl3 = '/assetsdevhandler/exploration/1/assets/audio/en-3.mp3';
-  let requestUrl4 = '/assetsdevhandler/exploration/1/assets/audio/en-4.mp3';
 
   beforeEach(() => {
-    audioPreloaderService = TestBed.get(AudioPreloaderService);
-    audioTranslationLanguageService = (
-      TestBed.get(AudioTranslationLanguageService));
-    explorationObjectFactory = TestBed.get(ExplorationObjectFactory);
-    contextService = TestBed.get(ContextService);
-    spyOn(contextService, 'getExplorationId').and.returnValue('1');
+    audioPreloaderService = TestBed.inject(AudioPreloaderService);
+    audioPreloaderService.setAudioLoadedCallback((_: string): void => {});
+    pageContextService = TestBed.inject(PageContextService);
+    loggerService = TestBed.inject(LoggerService);
+    urlInterpolationService = TestBed.inject(UrlInterpolationService);
+    spyOn(pageContextService, 'getExplorationId').and.returnValue('1');
   });
 
-  it('should maintain the correct number of download requests in queue',
-    fakeAsync(() => {
-      const exploration = (
-        explorationObjectFactory.createFromBackendDict(explorationDict));
-      audioPreloaderService.init(exploration);
-      audioTranslationLanguageService.init(['en'], 'en', 'en', false);
-      audioPreloaderService.kickOffAudioPreloader(
-        exploration.getInitialState().name);
-
-      expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-        .toEqual(['en-1.mp3', 'en-2.mp3', 'en-3.mp3']);
-      expect(audioPreloaderService.isLoadingAudioFile('en-1.mp3')).toBeTrue();
-      expect(audioPreloaderService.isLoadingAudioFile('en-2.mp3')).toBeTrue();
-      expect(audioPreloaderService.isLoadingAudioFile('en-3.mp3')).toBeTrue();
-      expect(audioPreloaderService.isLoadingAudioFile('en-4.mp3')).toBeFalse();
-
-      httpTestingController.expectOne(requestUrl1).flush(audioBlob);
-      flushMicrotasks();
-
-      expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-        .toEqual(['en-2.mp3', 'en-3.mp3', 'en-4.mp3']);
-      expect(audioPreloaderService.isLoadingAudioFile('en-4.mp3')).toBeTrue();
-
-      httpTestingController.expectOne(requestUrl2).flush(audioBlob);
-      flushMicrotasks();
-
-      expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-        .toEqual(['en-3.mp3', 'en-4.mp3']);
-
-      httpTestingController.expectOne(requestUrl3).flush(audioBlob);
-      flushMicrotasks();
-
-      expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-        .toEqual(['en-4.mp3']);
-
-      httpTestingController.expectOne(requestUrl4).flush(audioBlob);
-      flushMicrotasks();
-
-      expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-        .toEqual([]);
-    }));
-
-  it('should properly restart pre-loading from a new state', () => {
-    const exploration = (
-      explorationObjectFactory.createFromBackendDict(explorationDict));
+  it('should maintain the correct number of download requests in queue', fakeAsync(() => {
+    const exploration = Exploration.createFromBackendDict(
+      explorationDict,
+      loggerService,
+      urlInterpolationService
+    );
     audioPreloaderService.init(exploration);
-    audioTranslationLanguageService.init(['en'], 'en', 'en', false);
+
+    let manualVoiceoverBackendDict1: VoiceoverBackendDict = {
+      filename: 'a.mp3',
+      file_size_bytes: 200000,
+      needs_update: false,
+      duration_secs: 10.0,
+    };
+
+    let manualVoiceover1 = Voiceover.createFromBackendDict(
+      manualVoiceoverBackendDict1
+    );
+
+    let manualVoiceoverBackendDict2: VoiceoverBackendDict = {
+      filename: 'b.mp3',
+      file_size_bytes: 200000,
+      needs_update: false,
+      duration_secs: 10.0,
+    };
+
+    let manualVoiceover2 = Voiceover.createFromBackendDict(
+      manualVoiceoverBackendDict2
+    );
+
+    let manualVoiceoverBackendDict3: VoiceoverBackendDict = {
+      filename: 'c.mp3',
+      file_size_bytes: 200000,
+      needs_update: false,
+      duration_secs: 10.0,
+    };
+
+    let manualVoiceover3 = Voiceover.createFromBackendDict(
+      manualVoiceoverBackendDict3
+    );
+
+    let manualVoiceoverBackendDict4: VoiceoverBackendDict = {
+      filename: 'd.mp3',
+      file_size_bytes: 200000,
+      needs_update: false,
+      duration_secs: 10.0,
+    };
+
+    let manualVoiceover4 = Voiceover.createFromBackendDict(
+      manualVoiceoverBackendDict4
+    );
+
+    audioPreloaderService.contentIdsToVoiceovers = {
+      content: [manualVoiceover1],
+      feedback_1: [manualVoiceover2],
+      feedback_2: [manualVoiceover3],
+      default_outcome: [manualVoiceover4],
+    };
+
     audioPreloaderService.kickOffAudioPreloader(
-      exploration.getInitialState().name);
+      exploration.getInitialState().name as string
+    );
+    expect(
+      audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading()
+    ).toEqual(['a.mp3', 'b.mp3', 'c.mp3']);
 
-    httpTestingController.expectOne(requestUrl1);
-    httpTestingController.expectOne(requestUrl2);
-    httpTestingController.expectOne(requestUrl3);
-    expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-      .toEqual(['en-1.mp3', 'en-2.mp3', 'en-3.mp3']);
+    let requestUrl1 = '/assetsdevhandler/exploration/1/assets/audio/a.mp3';
+    let requestUrl2 = '/assetsdevhandler/exploration/1/assets/audio/b.mp3';
+    let requestUrl3 = '/assetsdevhandler/exploration/1/assets/audio/c.mp3';
+    let requestUrl4 = '/assetsdevhandler/exploration/1/assets/audio/d.mp3';
 
-    audioPreloaderService.restartAudioPreloader('State 3');
+    httpTestingController.expectOne(requestUrl1).flush(audioBlob);
+    httpTestingController.expectOne(requestUrl2).flush(audioBlob);
+    httpTestingController.expectOne(requestUrl3).flush(audioBlob);
+    flushMicrotasks();
 
-    httpTestingController.expectOne(requestUrl4);
-    expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-      .toEqual(['en-4.mp3']);
+    expect(
+      audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading()
+    ).toEqual(['d.mp3']);
 
-    audioPreloaderService.restartAudioPreloader('State 2');
+    httpTestingController.expectOne(requestUrl4).flush(audioBlob);
+    flushMicrotasks();
 
-    httpTestingController.expectOne(requestUrl3);
-    httpTestingController.expectOne(requestUrl4);
-    expect(audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading())
-      .toEqual(['en-3.mp3', 'en-4.mp3']);
+    expect(
+      audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading()
+    ).toEqual([]);
+  }));
+
+  it('should return empty audioFiles list if language code is null', () => {
+    const exploration = Exploration.createFromBackendDict(
+      explorationDict,
+      loggerService,
+      urlInterpolationService
+    );
+    audioPreloaderService.init(exploration);
+    audioPreloaderService.kickOffAudioPreloader(
+      exploration.getInitialState().name as string
+    );
+
+    expect(
+      audioPreloaderService.getFilenamesOfAudioCurrentlyDownloading()
+    ).toEqual([]);
+  });
+
+  it('should properly set most recently requested audio filename', () => {
+    audioPreloaderService.clearMostRecentlyRequestedAudioFilename();
+    expect(
+      audioPreloaderService.getMostRecentlyRequestedAudioFilename()
+    ).toEqual(null);
+    var filename = 'test_file';
+    audioPreloaderService.setMostRecentlyRequestedAudioFilename(filename);
+    expect(
+      audioPreloaderService.getMostRecentlyRequestedAudioFilename()
+    ).toEqual(filename);
+  });
+
+  it('should be able to restart audio preloader', () => {
+    spyOn(audioPreloaderService, 'kickOffAudioPreloader');
+    audioPreloaderService.restartAudioPreloader('State 1');
+    expect(audioPreloaderService.kickOffAudioPreloader).toHaveBeenCalledWith(
+      'State 1'
+    );
   });
 });

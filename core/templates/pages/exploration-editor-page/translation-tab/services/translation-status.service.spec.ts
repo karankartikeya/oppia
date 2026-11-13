@@ -16,133 +16,118 @@
  * @fileoverview Unit test for the Translation status service.
  */
 
-import { UpgradedServices } from 'services/UpgradedServices';
+import {TestBed} from '@angular/core/testing';
+import {ExplorationDataService} from 'pages/exploration-editor-page/services/exploration-data.service';
+import {ExplorationStatesService} from 'pages/exploration-editor-page/services/exploration-states.service';
+import {TranslationLanguageService} from 'pages/exploration-editor-page/translation-tab/services/translation-language.service';
+import {TranslationStatusService} from 'pages/exploration-editor-page/translation-tab/services/translation-status.service';
+import {TranslationTabActiveModeService} from 'pages/exploration-editor-page/translation-tab/services/translation-tab-active-mode.service';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {HttpClientTestingModule} from '@angular/common/http/testing';
+import {GenerateContentIdService} from 'services/generate-content-id.service';
+import {EntityTranslationsService} from 'services/entity-translations.services';
+import {EntityTranslation} from 'domain/translation/entity-translation.model';
+import {PlatformFeatureService} from 'services/platform-feature.service';
+import {FeatureStatusChecker} from 'domain/feature-flag/feature-status-summary.model';
+import {EntityVoiceoversService} from 'services/entity-voiceovers.services';
+import {EntityVoiceovers} from 'domain/voiceover/entity-voiceovers.model';
+import {Voiceover} from 'domain/exploration/voiceover.model';
+import {StateEditorService} from 'components/state-editor/state-editor-properties-services/state-editor.service';
+import {TranslatedContent} from 'domain/exploration/translated-content.model';
+import {StateObjectsBackendDict} from 'domain/exploration/states.model';
 
-// TODO(#7222): Remove the following block of unnnecessary imports once
-// the code corresponding to the spec is upgraded to Angular 8.
-import { importAllAngularServices } from 'tests/unit-test-utils.ajs';
-import { TestBed } from '@angular/core/testing';
-import { ExplorationDataService } from 'pages/exploration-editor-page/services/exploration-data.service';
-// ^^^ This block is to be removed.
+class MockNgbModal {
+  open() {
+    return {
+      result: Promise.resolve(),
+    };
+  }
+}
 
-require('pages/exploration-editor-page/services/exploration-states.service.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/services/' +
-  'translation-language.service.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/services/' +
-  'translation-status.service.ts');
-require(
-  'pages/exploration-editor-page/translation-tab/services/' +
-  'translation-tab-active-mode.service.ts');
-require(
-  'components/state-editor/state-editor-properties-services/' +
-  'state-written-translations.service.ts');
-
-describe('Translation status service', function() {
-  beforeEach(angular.mock.module('oppia'));
-
-  importAllAngularServices();
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    $provide.constant('INTERACTION_SPECS', {
-      MultipleChoiceInput: {
-        is_linear: false,
-        is_terminal: false
+class MockPlatformFeatureService {
+  get status(): object {
+    return {
+      AddVoiceoverWithAccent: {
+        isEnabled: false,
       },
-      EndExploration: {
-        is_linear: true,
-        is_terminal: true
-      }
+      AutomaticVoiceoverRegenerationFromExp: {
+        isEnabled: false,
+      },
+    };
+  }
+}
+
+describe('Translation status service', () => {
+  let tss: TranslationStatusService;
+  let entityTranslationsService: EntityTranslationsService;
+  let generateContentIdService: GenerateContentIdService;
+  let ess: ExplorationStatesService;
+  let ttams: TranslationTabActiveModeService;
+  let tls: TranslationLanguageService;
+  let entityVoiceoversService: EntityVoiceoversService;
+  let stateEditorService: StateEditorService;
+  let platformFeatureService: PlatformFeatureService;
+
+  let ALL_ASSETS_AVAILABLE_COLOR = '#16A765';
+  let FEW_ASSETS_AVAILABLE_COLOR = '#E9B330';
+  let NO_ASSETS_AVAILABLE_COLOR = '#D14836';
+  let statesWithAudioDict: StateObjectsBackendDict = {};
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [
+        TranslationStatusService,
+        TranslationLanguageService,
+        TranslationTabActiveModeService,
+        ExplorationStatesService,
+        GenerateContentIdService,
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
+        },
+        {
+          provide: PlatformFeatureService,
+          useClass: MockPlatformFeatureService,
+        },
+        {
+          provide: ExplorationDataService,
+          useValue: {
+            explorationId: 0,
+            autosaveChangeListAsync() {
+              return;
+            },
+          },
+        },
+      ],
     });
-  }));
-  beforeEach(angular.mock.module('oppia', function($provide) {
-    var ugs = new UpgradedServices();
-    for (let [key, value] of Object.entries(ugs.getUpgradedServices())) {
-      $provide.value(key, value);
-    }
-  }));
 
-  describe('Translation status service', function() {
-    var ess = null;
-    var srvs = null;
-    var swts = null;
-    var tss = null;
-    var ttams = null;
-    var tls = null;
-    var ALL_ASSETS_AVAILABLE_COLOR = '#16A765';
-    var FEW_ASSETS_AVAILABLE_COLOR = '#E9B330';
-    var NO_ASSETS_AVAILABLE_COLOR = '#D14836';
-    var statesWithAudioDict = null;
+    tss = TestBed.inject(TranslationStatusService);
+    ess = TestBed.inject(ExplorationStatesService);
+    ttams = TestBed.inject(TranslationTabActiveModeService);
+    tls = TestBed.inject(TranslationLanguageService);
+    stateEditorService = TestBed.inject(StateEditorService);
+    entityTranslationsService = TestBed.inject(EntityTranslationsService);
+    generateContentIdService = TestBed.inject(GenerateContentIdService);
+    entityVoiceoversService = TestBed.inject(EntityVoiceoversService);
+    platformFeatureService = TestBed.inject(PlatformFeatureService);
+    let currentIndex = 9;
+    generateContentIdService.init(
+      () => currentIndex++,
+      () => {}
+    );
+  });
 
-    beforeEach(() => {
-      TestBed.configureTestingModule({
-        providers: [
-          {
-            provide: ExplorationDataService,
-            useValue: {
-              explorationId: 0,
-              autosaveChangeListAsync() {
-                return;
-              }
-            }
-          }
-        ]
-      });
-    });
-
-    beforeEach(angular.mock.inject(function($injector) {
-      tss = $injector.get('TranslationStatusService');
-      ess = $injector.get('ExplorationStatesService');
-      ttams = $injector.get('TranslationTabActiveModeService');
-      tls = $injector.get('TranslationLanguageService');
-      srvs = $injector.get('StateRecordedVoiceoversService');
-      swts = $injector.get('StateWrittenTranslationsService');
-
-      statesWithAudioDict = {
-        First: {
-          content: {
-            html: '<p>This is first card.</p>',
-            content_id: 'content'
-          },
-          written_translations: {
-            translations_mapping: {
-              content: {},
-              default_outcome: {},
-              feedback_2: {
-                hi: {
-                  data_format: 'html',
-                  translation: '<p>This is feedback 1.</p>',
-                  needs_update: false
-                }
-              },
-              feedback_1: {
-                hi: {
-                  data_format: 'html',
-                  translation: '<p>This is first card.</p>',
-                  needs_update: false
-                }
-              },
-              rule_input_4: {}
-            }
-          },
-          recorded_voiceovers: {
-            voiceovers_mapping: {
-              content: {},
-              default_outcome: {},
-              feedback_2: {
-                en: {
-                  needs_update: false,
-                  filename: 'filename1.mp3',
-                  file_size_bytes: 43467,
-                  duration_secs: 4.3
-                }
-              },
-              feedback_1: {},
-              rule_input_4: {}
-            }
-          },
-          interaction: {
-            answer_groups: [{
+  beforeEach(() => {
+    statesWithAudioDict = {
+      First: {
+        content: {
+          html: '<p>This is first card.</p>',
+          content_id: 'content_0',
+        },
+        interaction: {
+          answer_groups: [
+            {
               tagged_skill_misconception_id: null,
               outcome: {
                 refresher_exploration_id: null,
@@ -150,16 +135,19 @@ describe('Translation status service', function() {
                 labelled_as_correct: false,
                 feedback: {
                   html: '<p>This is feedback1</p>',
-                  content_id: 'feedback_1'
+                  content_id: 'feedback_2',
                 },
                 missing_prerequisite_skill_id: null,
-                dest: 'Second'
+                dest_if_really_stuck: null,
+                dest: 'Second',
               },
-              rule_specs: [{
-                rule_type: 'Equals',
-                inputs: {x: 0}
-              }],
-              training_data: []
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 0},
+                },
+              ],
+              training_data: [],
             },
             {
               tagged_skill_misconception_id: null,
@@ -169,65 +157,59 @@ describe('Translation status service', function() {
                 labelled_as_correct: false,
                 feedback: {
                   html: '<p>This is feedback2</p>',
-                  content_id: 'feedback_2'
+                  content_id: 'feedback_3',
                 },
                 missing_prerequisite_skill_id: null,
-                dest: 'First'
+                dest_if_really_stuck: null,
+                dest: 'First',
               },
-              rule_specs: [{
-                rule_type: 'Equals',
-                inputs: {x: 1}
-              }],
-              training_data: []
-            }],
-            solution: null,
-            hints: [],
-            id: 'MultipleChoiceInput',
-            customization_args: {
-              choices: {
-                value: ['<p>1</p>', '<p>2</p>']
-              },
-              showChoicesInShuffledOrder: {value: false}
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 1},
+                },
+              ],
+              training_data: [],
             },
-            default_outcome: {
-              refresher_exploration_id: null,
-              param_changes: [],
-              labelled_as_correct: false,
-              feedback: {
-                html: '',
-                content_id: 'default_outcome'
-              },
-              missing_prerequisite_skill_id: null,
-              dest: 'First'
+          ],
+          solution: null,
+          hints: [],
+          id: 'MultipleChoiceInput',
+          customization_args: {
+            choices: {
+              value: ['<p>1</p>', '<p>2</p>'],
             },
-            confirmed_unclassified_answers: []
+            showChoicesInShuffledOrder: {value: false},
           },
-          linked_skill_id: null,
-          solicit_answer_details: false,
-          classifier_model_id: null,
-          param_changes: []
+          default_outcome: {
+            refresher_exploration_id: null,
+            param_changes: [],
+            labelled_as_correct: false,
+            feedback: {
+              html: '',
+              content_id: 'default_outcome_1',
+            },
+            missing_prerequisite_skill_id: null,
+            dest_if_really_stuck: null,
+            dest: 'First',
+          },
+          confirmed_unclassified_answers: [],
         },
-        Second: {
-          content: {
-            html: '<p>This is second card</p>',
-            content_id: 'content'
-          },
-          written_translations: {
-            translations_mapping: {
-              content: {},
-              default_outcome: {},
-              feedback_1: {}
-            }
-          },
-          recorded_voiceovers: {
-            voiceovers_mapping: {
-              content: {},
-              default_outcome: {},
-              feedback_1: {}
-            }
-          },
-          interaction: {
-            answer_groups: [{
+        inapplicable_skill_misconception_ids: [],
+        linked_skill_id: null,
+        solicit_answer_details: false,
+        classifier_model_id: null,
+        param_changes: [],
+        card_is_checkpoint: false,
+      },
+      Second: {
+        content: {
+          html: '<p>This is second card</p>',
+          content_id: 'content_5',
+        },
+        interaction: {
+          answer_groups: [
+            {
               tagged_skill_misconception_id: null,
               outcome: {
                 refresher_exploration_id: null,
@@ -235,433 +217,662 @@ describe('Translation status service', function() {
                 labelled_as_correct: false,
                 feedback: {
                   html: '',
-                  content_id: 'feedback_1'
+                  content_id: 'feedback_7',
                 },
                 missing_prerequisite_skill_id: null,
-                dest: 'Third'
+                dest_if_really_stuck: null,
+                dest: 'Third',
               },
-              rule_specs: [{
-                rule_type: 'Equals',
-                inputs: {x: 0}
-              }],
-              training_data: []
-            }],
-            solution: null,
-            hints: [],
-            id: 'MultipleChoiceInput',
-            customization_args: {
-              choices: {
-                value: ['<p>1</p>'],
-              },
-              showChoicesInShuffledOrder: {value: false}
+              rule_specs: [
+                {
+                  rule_type: 'Equals',
+                  inputs: {x: 0},
+                },
+              ],
+              training_data: [],
             },
-            default_outcome: {
-              refresher_exploration_id: null,
-              param_changes: [],
-              labelled_as_correct: false,
-              feedback: {
-                html: '',
-                content_id: 'default_outcome'
-              },
-              missing_prerequisite_skill_id: null,
-              dest: 'Second'
+          ],
+          solution: null,
+          hints: [],
+          id: 'MultipleChoiceInput',
+          customization_args: {
+            choices: {
+              value: ['<p>1</p>'],
             },
-            confirmed_unclassified_answers: []
+            showChoicesInShuffledOrder: {value: false},
           },
-          linked_skill_id: null,
-          solicit_answer_details: false,
-          classifier_model_id: null,
-          param_changes: []
+          default_outcome: {
+            refresher_exploration_id: null,
+            param_changes: [],
+            labelled_as_correct: false,
+            feedback: {
+              html: '',
+              content_id: 'default_outcome_6',
+            },
+            missing_prerequisite_skill_id: null,
+            dest_if_really_stuck: null,
+            dest: 'Second',
+          },
+          confirmed_unclassified_answers: [],
         },
-        Third: {
-          content: {
-            html: 'Congratulations, you have finished!',
-            content_id: 'content'
-          },
-          written_translations: {
-            translations_mapping: {
-              content: {}
-            }
-          },
-          recorded_voiceovers: {
-            voiceovers_mapping: {
-              content: {
-                en: {
-                  needs_update: false,
-                  filename: 'content-en-s86jb5zajs.mp3',
-                  file_size_bytes: 38870,
-                  duration_secs: 38.8
-                }
-              }
-            }
-          },
-          interaction: {
-            answer_groups: [],
-            solution: null,
-            hints: [],
-            id: 'EndExploration',
-            customization_args: {
-              recommendedExplorationIds: {
-                value: []
-              }
+        inapplicable_skill_misconception_ids: [],
+        linked_skill_id: null,
+        solicit_answer_details: false,
+        classifier_model_id: null,
+        param_changes: [],
+        card_is_checkpoint: false,
+      },
+      Third: {
+        content: {
+          html: 'Congratulations, you have finished!',
+          content_id: 'content_8',
+        },
+        interaction: {
+          answer_groups: [],
+          solution: null,
+          hints: [],
+          id: 'EndExploration',
+          customization_args: {
+            recommendedExplorationIds: {
+              value: [],
             },
-            default_outcome: null,
-            confirmed_unclassified_answers: []
           },
-          linked_skill_id: null,
-          solicit_answer_details: false,
-          classifier_model_id: null,
-          param_changes: []
-        }
-      };
-      ess.init(statesWithAudioDict);
-      ttams.activateVoiceoverMode();
-      tls.setActiveLanguageCode('en');
-      tss.refresh();
-    }));
+          default_outcome: null,
+          confirmed_unclassified_answers: [],
+        },
+        inapplicable_skill_misconception_ids: [],
+        linked_skill_id: null,
+        solicit_answer_details: false,
+        classifier_model_id: null,
+        param_changes: [],
+        card_is_checkpoint: false,
+      },
+    };
+    ess.init(statesWithAudioDict, false);
+    ttams.activateVoiceoverMode();
+    tls.setActiveLanguageCode('en');
+    entityTranslationsService.languageCodeToLatestEntityTranslations.hi =
+      EntityTranslation.createFromBackendDict({
+        entity_id: 'exp_id',
+        entity_type: 'exploration',
+        entity_version: 5,
+        language_code: 'hi',
+        translations: {
+          feedback_3: {
+            content_format: 'html',
+            content_value: '<p>This is feedback 1.</p>',
+            needs_update: false,
+          },
+        },
+      });
 
-    it('should return a correct list of state names for which audio needs ' +
-      'update', function() {
+    let manualVoiceover1 = new Voiceover('a.mp3', 1000, false, 10.0);
+    let manualVoiceover2 = new Voiceover('b.mp3', 1000, false, 10.0);
+    let manualVoiceover3 = new Voiceover('c.mp3', 1000, false, 10.0);
+    let manualVoiceover4 = new Voiceover('d.mp3', 1000, false, 10.0);
+    let manualVoiceover5 = new Voiceover('e.mp3', 1000, false, 10.0);
+    let manualVoiceover6 = new Voiceover('f.mp3', 1000, false, 10.0);
+    let manualVoiceover7 = new Voiceover('g.mp3', 1000, false, 10.0);
+    let manualVoiceover8 = new Voiceover('h.mp3', 1000, false, 10.0);
+
+    let entityVoiceovers = new EntityVoiceovers(
+      'exp_id',
+      'exploration',
+      5,
+      'en-US',
+      {
+        content_0: {
+          manual: manualVoiceover1,
+        },
+        feedback_2: {
+          manual: manualVoiceover2,
+        },
+        feedback_3: {
+          manual: manualVoiceover3,
+        },
+        default_outcome_1: {
+          manual: manualVoiceover4,
+        },
+        content_5: {
+          manual: manualVoiceover5,
+        },
+        feedback_7: {
+          manual: manualVoiceover6,
+        },
+        default_outcome_6: {
+          manual: manualVoiceover7,
+        },
+        content_8: {
+          manual: manualVoiceover8,
+        },
+      },
+      {}
+    );
+
+    entityVoiceoversService.init('exp_id', 'exploration', 5, 'en');
+    entityVoiceoversService.setLanguageCode('en');
+    entityVoiceoversService.setActiveLanguageAccentCode('en-US');
+    entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+    tss.refresh();
+  });
+
+  it(
+    'should return a correct list of state names for which audio needs ' +
+      'update',
+    () => {
       ttams.activateVoiceoverMode();
       var statesNeedingAudioUpdate = tss.getAllStatesNeedUpdatewarning();
       // To check that initially no state contains audio that needs update.
       expect(Object.keys(statesNeedingAudioUpdate).length).toBe(0);
-      srvs.init('First', ess.getRecordedVoiceoversMemento('First'));
-      var value = srvs.displayed;
-      value.toggleNeedsUpdateAttribute('feedback_2', 'en');
-      srvs.saveDisplayedValue();
-      ess.saveRecordedVoiceovers('First', value);
+
+      const languageAccentCode = 'en-US';
+      const contentId = 'content_0';
+      entityVoiceoversService.toggleManualVoiceoverByLanguageAccent(
+        languageAccentCode,
+        contentId
+      );
       tss.refresh();
+      tss.getAllStateStatusColors();
 
       statesNeedingAudioUpdate = tss.getAllStatesNeedUpdatewarning();
       // To check that "First" state contains audio that needs update.
       expect(Object.keys(statesNeedingAudioUpdate).length).toBe(1);
       expect(Object.keys(statesNeedingAudioUpdate)[0]).toBe('First');
-      expect(statesNeedingAudioUpdate.First.indexOf(
-        'Audio needs update!')).toBe(0);
-    });
+    }
+  );
 
-    it('should return a correct list of state names for which translation ' +
-      'needs update', function() {
+  it(
+    'should return a correct list of state names for which translation ' +
+      'needs update',
+    () => {
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
       var statesNeedingTranslationUpdate = tss.getAllStatesNeedUpdatewarning();
       expect(Object.keys(statesNeedingTranslationUpdate).length).toBe(0);
 
-      swts.init('First', ess.getWrittenTranslationsMemento('First'));
-      swts.displayed.toggleNeedsUpdateAttribute('feedback_1', 'hi');
-      swts.displayed.toggleNeedsUpdateAttribute('feedback_2', 'hi');
-      ess.markWrittenTranslationsAsNeedingUpdate('feedback_1', 'First');
-      ess.markWrittenTranslationsAsNeedingUpdate('feedback_2', 'First');
-      tss.refresh();
+      entityTranslationsService.languageCodeToLatestEntityTranslations.hi =
+        EntityTranslation.createFromBackendDict({
+          entity_id: 'exp_id',
+          entity_type: 'exploration',
+          entity_version: 5,
+          language_code: 'hi',
+          translations: {
+            feedback_3: {
+              content_format: 'html',
+              content_value: '<p>This is feedback 1.</p>',
+              needs_update: true,
+            },
+            feedback_2: {
+              content_format: 'html',
+              content_value: '<p>This is first card.</p>',
+              needs_update: true,
+            },
+          },
+        });
 
+      tss.refresh();
       statesNeedingTranslationUpdate = tss.getAllStatesNeedUpdatewarning();
       expect(Object.keys(statesNeedingTranslationUpdate).length).toBe(1);
       expect(Object.keys(statesNeedingTranslationUpdate)[0]).toBe('First');
-      expect(statesNeedingTranslationUpdate.First.indexOf(
-        'Translation needs update!')).toBe(0);
-    });
+    }
+  );
 
-    it('should return a correct count of audio and translations required in ' +
-      'an exploration', function() {
+  it(
+    'should return a correct count of audio and translations required in ' +
+      'an exploration',
+    () => {
       ttams.activateVoiceoverMode();
-      var explorationAudioRequiredCount = (
-        tss.getExplorationContentRequiredCount());
-      expect(explorationAudioRequiredCount).toBe(8);
+      var explorationAudioRequiredCount =
+        tss.getExplorationContentRequiredCount();
+      expect(explorationAudioRequiredCount).toBe(5);
 
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
-      var explorationTranslationsRequiredCount = (
-        tss.getExplorationContentRequiredCount());
-      expect(explorationTranslationsRequiredCount).toBe(9);
+      var explorationTranslationsRequiredCount =
+        tss.getExplorationContentRequiredCount();
+      expect(explorationTranslationsRequiredCount).toBe(5);
 
       // To test changes after adding a new state.
-      ess.addState('Fourth');
+      ess.addState('Fourth', () => {});
       ess.saveInteractionId('Third', 'MultipleChoiceInput');
       ess.saveInteractionId('Fourth', 'EndExploration');
-      tss.refresh();
 
+      tss.refresh();
       ttams.activateVoiceoverMode();
       tls.setActiveLanguageCode('en');
-      var explorationAudioRequiredCount = (
-        tss.getExplorationContentRequiredCount());
-      expect(explorationAudioRequiredCount).toBe(9);
+      var explorationAudioRequiredCount =
+        tss.getExplorationContentRequiredCount();
+      expect(explorationAudioRequiredCount).toBe(5);
 
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
-      var explorationTranslationsRequiredCount = (
-        tss.getExplorationContentRequiredCount());
-      expect(explorationTranslationsRequiredCount).toBe(10);
-    });
 
-    it('should return a correct count of audio not available in an exploration',
-      function() {
-        ttams.activateVoiceoverMode();
-        var explorationAudioNotAvailableCount = tss
-          .getExplorationContentNotAvailableCount();
-        expect(explorationAudioNotAvailableCount).toBe(6);
+      var explorationTranslationsRequiredCount =
+        tss.getExplorationContentRequiredCount();
+      expect(explorationTranslationsRequiredCount).toBe(5);
+    }
+  );
 
-        ess.addState('Fourth');
-        ess.saveInteractionId('Third', 'MultipleChoiceInput');
-        ess.saveInteractionId('Fourth', 'EndExploration');
-        tss.refresh();
+  it('should return a correct count of missing audio with accent in an exploration', () => {
+    let platformFeatureServiceSpy = spyOnProperty(
+      platformFeatureService,
+      'status',
+      'get'
+    );
 
-        explorationAudioNotAvailableCount = (
-          tss.getExplorationContentNotAvailableCount());
-        expect(explorationAudioNotAvailableCount).toBe(7);
-      });
+    platformFeatureServiceSpy.and.returnValue({
+      AutomaticVoiceoverRegenerationFromExp: {
+        isEnabled: false,
+      },
+    } as FeatureStatusChecker);
 
-    it('should return a correct count of translations not available in an ' +
-      'exploration', function() {
+    let voiceover1 = new Voiceover('a.mp3', 1000, false, 10.0);
+    let voiceover2 = new Voiceover('b.mp3', 1000, false, 10.0);
+
+    let entityVoiceovers = new EntityVoiceovers(
+      'exp_id',
+      'exploration',
+      5,
+      'en-US',
+      {
+        content_0: {
+          manual: undefined,
+          auto: voiceover1,
+        },
+        content_8: {
+          manual: voiceover2,
+          auto: undefined,
+        },
+      },
+      {}
+    );
+
+    entityVoiceoversService.init('exp_id', 'exploration', 5, 'en');
+    entityVoiceoversService.setLanguageCode('en');
+    entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+
+    ttams.activateVoiceoverMode();
+
+    expect(tss.getExplorationContentRequiredCount()).toBe(5);
+
+    entityVoiceoversService.setActiveLanguageAccentCode('en-US');
+
+    tss.refresh();
+    expect(tss.getExplorationContentNotAvailableCount()).toEqual(4);
+    let color = tss.getActiveStateContentIdStatusColor('content_0');
+    expect(tss.NO_ASSETS_AVAILABLE_COLOR).toEqual(color);
+
+    platformFeatureServiceSpy.and.returnValue({
+      AutomaticVoiceoverRegenerationFromExp: {
+        isEnabled: true,
+      },
+    } as FeatureStatusChecker);
+
+    tss.refresh();
+    expect(tss.getExplorationContentNotAvailableCount()).toEqual(3);
+    color = tss.getActiveStateContentIdStatusColor('content_0');
+    expect(tss.ALL_ASSETS_AVAILABLE_COLOR).toEqual(color);
+
+    color = tss.getActiveStateContentIdStatusColor('content_1');
+    expect(tss.NO_ASSETS_AVAILABLE_COLOR).toEqual(color);
+
+    entityVoiceoversService.setActiveLanguageAccentCode('en-IN');
+    tss.refresh();
+    expect(tss.getExplorationContentNotAvailableCount()).toEqual(5);
+  });
+
+  it('should return a correct count of audio not available in an exploration', () => {
+    ttams.activateVoiceoverMode();
+    var explorationAudioNotAvailableCount =
+      tss.getExplorationContentNotAvailableCount();
+    expect(explorationAudioNotAvailableCount).toBe(0);
+
+    ess.addState('Fourth', () => {});
+    ess.saveInteractionId('Third', 'MultipleChoiceInput');
+    ess.saveInteractionId('Fourth', 'EndExploration');
+    tss.refresh();
+
+    explorationAudioNotAvailableCount =
+      tss.getExplorationContentNotAvailableCount();
+    expect(explorationAudioNotAvailableCount).toBe(0);
+  });
+
+  it(
+    'should return a correct count of translations not available in an ' +
+      'exploration',
+    () => {
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
-      var explorationTranslationNotAvailableCount = (
-        tss.getExplorationContentNotAvailableCount());
-      expect(explorationTranslationNotAvailableCount).toBe(6);
+      tss.refresh();
+      var explorationTranslationNotAvailableCount =
+        tss.getExplorationContentNotAvailableCount();
+      expect(explorationTranslationNotAvailableCount).toBe(4);
 
-      ess.addState('Fourth');
+      ess.addState('Fourth', () => {});
       ess.saveInteractionId('Third', 'MultipleChoiceInput');
       ess.saveInteractionId('Fourth', 'EndExploration');
+
+      ttams.activateTranslationMode();
       tss.refresh();
+      explorationTranslationNotAvailableCount =
+        tss.getExplorationContentNotAvailableCount();
+      expect(explorationTranslationNotAvailableCount).toBe(4);
+    }
+  );
 
-      explorationTranslationNotAvailableCount = (
-        tss.getExplorationContentNotAvailableCount());
-      expect(explorationTranslationNotAvailableCount).toBe(8);
-    });
-
-    it('should correctly return an object containing status colors of audio ' +
-      'for all states in the exploration', function() {
+  it(
+    'should return correct status color for audio availability in the ' +
+      'active state components',
+    () => {
       ttams.activateVoiceoverMode();
-      var stateWiseStatusColor = tss.getAllStateStatusColors();
-      expect(stateWiseStatusColor.First).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-      expect(stateWiseStatusColor.Second).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      expect(stateWiseStatusColor.Third).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-      srvs.init('Second', ess.getRecordedVoiceoversMemento('Second'));
-      var value = srvs.displayed;
-      value.addVoiceover('content', 'en', 'file.mp3', 1000);
-      srvs.saveDisplayedValue();
-      ess.saveRecordedVoiceovers('Second', value);
-      tss.refresh();
-      stateWiseStatusColor = tss.getAllStateStatusColors();
-      expect(stateWiseStatusColor.Second).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-    });
+      stateEditorService.setActiveStateName('First');
 
-    it('should correctly return an object containing status colors of ' +
-      'translations for all states in the exploration', function() {
+      var activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('content');
+      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+
+      let entityVoiceovers =
+        entityVoiceoversService.getActiveEntityVoiceovers();
+      entityVoiceovers.removeVoiceover('feedback_2');
+      entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+      tss.refresh();
+
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('feedback');
+      expect(activeStateComponentStatus).toBe(FEW_ASSETS_AVAILABLE_COLOR);
+
+      stateEditorService.setActiveStateName('Second');
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('content');
+      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+
+      stateEditorService.setActiveStateName('Third');
+      tss.refresh();
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('content');
+      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+
+      entityVoiceovers = entityVoiceoversService.getActiveEntityVoiceovers();
+      entityVoiceovers.removeVoiceover('content_8');
+      entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+      tss.refresh();
+
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('content');
+      expect(activeStateComponentStatus).toBe(NO_ASSETS_AVAILABLE_COLOR);
+    }
+  );
+
+  it(
+    'should return correct status color for translations availability in ' +
+      'the active state components',
+    () => {
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
+      stateEditorService.setActiveStateName('First');
       tss.refresh();
-      swts.init('Second', ess.getWrittenTranslationsMemento('Second'));
-      var stateWiseStatusColor = tss.getAllStateStatusColors();
-      expect(stateWiseStatusColor.First).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-      expect(stateWiseStatusColor.Second).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      expect(stateWiseStatusColor.Third).toBe(NO_ASSETS_AVAILABLE_COLOR);
 
-      swts.displayed.addWrittenTranslation('content', 'hi', 'html', 'content');
-      ess.saveWrittenTranslation('content', 'html', 'hi', 'Second', 'content');
+      var activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('content');
+      expect(activeStateComponentStatus).toBe(NO_ASSETS_AVAILABLE_COLOR);
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('feedback');
+      expect(activeStateComponentStatus).toBe(FEW_ASSETS_AVAILABLE_COLOR);
 
-      tss.refresh();
-      stateWiseStatusColor = tss.getAllStateStatusColors();
-      expect(stateWiseStatusColor.Second).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-    });
+      tss.entityTranslation = EntityTranslation.createFromBackendDict({
+        entity_id: 'exp_id',
+        entity_type: 'exploration',
+        entity_version: 5,
+        language_code: 'hi',
+        translations: {
+          content_0: {
+            content_format: 'html',
+            content_value: '<p>This is content.</p>',
+            needs_update: false,
+          },
+          feedback_2: {
+            content_format: 'html',
+            content_value: '<p>This is first card.</p>',
+            needs_update: false,
+          },
+        },
+      });
 
-    it('should return correct status color for audio availability in the ' +
-      'active state components', function() {
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('content');
+      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+      activeStateComponentStatus =
+        tss.getActiveStateComponentStatusColor('feedback');
+      expect(activeStateComponentStatus).toBe(FEW_ASSETS_AVAILABLE_COLOR);
+    }
+  );
+
+  it(
+    'should correctly return whether active state component audio needs ' +
+      'update',
+    () => {
       ttams.activateVoiceoverMode();
-      srvs.init('First', ess.getRecordedVoiceoversMemento('First'));
-      var activeStateComponentStatus = tss
-        .getActiveStateComponentStatusColor('content');
-      expect(activeStateComponentStatus).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateComponentStatus = tss
-        .getActiveStateComponentStatusColor('feedback');
-      expect(activeStateComponentStatus).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-      // To test changes after adding an audio translation to "content"
-      // in the first state.
-      srvs.displayed.addVoiceover('content', 'en', 'file.mp3', 1000);
-      srvs.saveDisplayedValue();
-      var value = srvs.displayed;
-      ess.saveRecordedVoiceovers('First', value);
-      activeStateComponentStatus = tss
-        .getActiveStateComponentStatusColor('content');
-      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-      srvs.init('Second', ess.getRecordedVoiceoversMemento('Second'));
-      activeStateComponentStatus = tss
-        .getActiveStateComponentStatusColor('content');
-      expect(activeStateComponentStatus).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateComponentStatus = tss
-        .getActiveStateComponentStatusColor('feedback');
-      expect(activeStateComponentStatus).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      srvs.init('Third', ess.getRecordedVoiceoversMemento('Third'));
-      activeStateComponentStatus = tss
-        .getActiveStateComponentStatusColor('content');
-      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-    });
-
-    it('should return correct status color for translations availability in ' +
-      'the active state components', function() {
-      ttams.activateTranslationMode();
-      tls.setActiveLanguageCode('hi');
-
-      swts.init('First', ess.getWrittenTranslationsMemento('First'));
-      var activeStateComponentStatus = (
-        tss.getActiveStateComponentStatusColor('content'));
-      expect(activeStateComponentStatus).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateComponentStatus = (
-        tss.getActiveStateComponentStatusColor('feedback'));
-      expect(activeStateComponentStatus).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-
-      swts.displayed.addWrittenTranslation('content', 'hi', 'html', 'Content');
-
-      activeStateComponentStatus = (
-        tss.getActiveStateComponentStatusColor('content'));
-      expect(activeStateComponentStatus).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-      activeStateComponentStatus = (
-        tss.getActiveStateComponentStatusColor('feedback'));
-      expect(activeStateComponentStatus).toBe(FEW_ASSETS_AVAILABLE_COLOR);
-    });
-
-    it('should correctly return whether active state component audio needs ' +
-      'update', function() {
-      ttams.activateVoiceoverMode();
-      srvs.init('First', ess.getRecordedVoiceoversMemento('First'));
-      var activeStateComponentNeedsUpdateStatus = tss
-        .getActiveStateComponentNeedsUpdateStatus('feedback');
-        // To check that initially the state component "feedback" does not
-        // contain audio that needs update.
+      stateEditorService.setActiveStateName('First');
+      var activeStateComponentNeedsUpdateStatus =
+        tss.getActiveStateComponentNeedsUpdateStatus('feedback');
+      // To check that initially the state component "feedback" does not
+      // contain audio that needs update.
       expect(activeStateComponentNeedsUpdateStatus).toBe(false);
-      var value = srvs.displayed;
-      // To test changes after changing "needs update" status of an audio.
-      value.toggleNeedsUpdateAttribute('feedback_2', 'en');
-      srvs.saveDisplayedValue();
-      ess.saveRecordedVoiceovers('First', value);
-      activeStateComponentNeedsUpdateStatus = tss
-        .getActiveStateComponentNeedsUpdateStatus('feedback');
+
+      const languageAccentCode = 'en-US';
+      const contentId = 'feedback_2';
+      entityVoiceoversService.toggleManualVoiceoverByLanguageAccent(
+        languageAccentCode,
+        contentId
+      );
+      tss.refresh();
+
+      activeStateComponentNeedsUpdateStatus =
+        tss.getActiveStateComponentNeedsUpdateStatus('feedback');
       // To check that the state component "feedback" contains audio that
       // needs update.
       expect(activeStateComponentNeedsUpdateStatus).toBe(true);
-    });
+    }
+  );
 
-    it('should correctly return whether active state component translation ' +
-      'needs update', function() {
+  it(
+    'should correctly return whether active state component translation ' +
+      'needs update',
+    () => {
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
+      stateEditorService.setActiveStateName('First');
 
-      swts.init('First', ess.getWrittenTranslationsMemento('First'));
-      var activeStateComponentNeedsUpdateStatus = (
-        tss.getActiveStateComponentNeedsUpdateStatus('feedback'));
+      var activeStateComponentNeedsUpdateStatus =
+        tss.getActiveStateComponentNeedsUpdateStatus('feedback');
       expect(activeStateComponentNeedsUpdateStatus).toBe(false);
 
-      swts.displayed.toggleNeedsUpdateAttribute('feedback_2', 'hi');
-
-      activeStateComponentNeedsUpdateStatus = (
-        tss.getActiveStateComponentNeedsUpdateStatus('feedback'));
+      tss.refresh();
+      tss.entityTranslation.markTranslationAsNeedingUpdate('feedback_3');
+      activeStateComponentNeedsUpdateStatus =
+        tss.getActiveStateComponentNeedsUpdateStatus('feedback');
       expect(activeStateComponentNeedsUpdateStatus).toBe(true);
-    });
+    }
+  );
 
-    it('should return correct audio availability status color of a contentId ' +
-      'of active state', function() {
+  it(
+    'should return correct audio availability status color of a contentId ' +
+      'of active state',
+    () => {
       ttams.activateVoiceoverMode();
-      srvs.init('First', ess.getRecordedVoiceoversMemento('First'));
-      var activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('content');
-      expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('feedback_1');
-      expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('feedback_2');
+      stateEditorService.setActiveStateName('First');
+      var activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('content_0');
       expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-      var value = srvs.displayed;
-      // To test changes after adding an audio translation to "content"
-      // in the first state.
-      value.addVoiceover('content', 'en', 'file.mp3', 1000);
-      srvs.saveDisplayedValue();
-      ess.saveRecordedVoiceovers('First', value);
-      activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('content');
-      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-      srvs.init('Second', ess.getRecordedVoiceoversMemento('Second'));
-      activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('content');
-      expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('feedback_1');
-      expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      srvs.init('Third', ess.getRecordedVoiceoversMemento('Third'));
-      activeStateContentIdStatusColor = tss
-        .getActiveStateContentIdStatusColor('content');
-      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
-    });
 
-    it('should return correct translation availability status color of a ' +
-      'contentId of active state', function() {
+      let entityVoiceovers =
+        entityVoiceoversService.getActiveEntityVoiceovers();
+      entityVoiceovers.removeVoiceover('content_0');
+      entityVoiceoversService.addEntityVoiceovers('en-US', entityVoiceovers);
+      tss.refresh();
+
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('content_0');
+      expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
+
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('feedback_2');
+      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('feedback_3');
+      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+
+      stateEditorService.setActiveStateName('Second');
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('content_5');
+      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+
+      stateEditorService.setActiveStateName('Third');
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('content_8');
+      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+    }
+  );
+
+  it(
+    'should return correct translation availability status color of a ' +
+      'contentId of active state',
+    () => {
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
 
-      swts.init('First', ess.getWrittenTranslationsMemento('First'));
-      var activeStateContentIdStatusColor = (
-        tss.getActiveStateContentIdStatusColor('content'));
+      entityTranslationsService.languageCodeToLatestEntityTranslations.hi.updateTranslation(
+        'content_8',
+        TranslatedContent.createFromBackendDict({
+          content_value: '<p>This is a content.</p>',
+          content_format: 'html',
+          needs_update: false,
+        })
+      );
+      tss.refresh();
+
+      var activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('content_0');
       expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = (
-        tss.getActiveStateContentIdStatusColor('feedback_1'));
-      expect(activeStateContentIdStatusColor).toBe(
-        ALL_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = (
-        tss.getActiveStateContentIdStatusColor('feedback_2'));
-      expect(activeStateContentIdStatusColor).toBe(
-        ALL_ASSETS_AVAILABLE_COLOR);
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('feedback_2');
+      expect(activeStateContentIdStatusColor).toBe(NO_ASSETS_AVAILABLE_COLOR);
+      activeStateContentIdStatusColor =
+        tss.getActiveStateContentIdStatusColor('feedback_3');
+      expect(activeStateContentIdStatusColor).toBe(ALL_ASSETS_AVAILABLE_COLOR);
+    }
+  );
 
-      swts.displayed.addWrittenTranslation(
-        'content', 'hi', 'html', '<p>Content</p>');
-
-      activeStateContentIdStatusColor = (
-        tss.getActiveStateContentIdStatusColor('content'));
-      expect(activeStateContentIdStatusColor).toBe(
-        ALL_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = (
-        tss.getActiveStateContentIdStatusColor('feedback_1'));
-      expect(activeStateContentIdStatusColor).toBe(
-        ALL_ASSETS_AVAILABLE_COLOR);
-      activeStateContentIdStatusColor = (
-        tss.getActiveStateContentIdStatusColor('feedback_2'));
-      expect(activeStateContentIdStatusColor).toBe(
-        ALL_ASSETS_AVAILABLE_COLOR);
-    });
-
-    it('should return correct needs update status of voice-over of active ' +
-      'state contentId', function() {
+  it(
+    'should return correct needs update status of voice-over of active ' +
+      'state contentId',
+    () => {
       ttams.activateVoiceoverMode();
-      srvs.init('First', ess.getRecordedVoiceoversMemento('First'));
-      var activeStateContentIdNeedsUpdateStatus = tss
-        .getActiveStateContentIdNeedsUpdateStatus('feedback_2');
+      stateEditorService.setActiveStateName('First');
+      var activeStateContentIdNeedsUpdateStatus =
+        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_3');
       // To check that initially the state content id "feedback" does not
       // contain audio that needs update.
       expect(activeStateContentIdNeedsUpdateStatus).toBe(false);
 
-      var value = srvs.displayed;
-      value.toggleNeedsUpdateAttribute('feedback_2', 'en');
-      srvs.saveDisplayedValue();
-      activeStateContentIdNeedsUpdateStatus = (
-        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_2'));
+      entityVoiceoversService.toggleManualVoiceoverByLanguageAccent(
+        'en-US',
+        'feedback_3'
+      );
+      tss.refresh();
+      activeStateContentIdNeedsUpdateStatus =
+        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_3');
       // To check that the state content id "feedback" contains audio that
       // needs update.
       expect(activeStateContentIdNeedsUpdateStatus).toBe(true);
-    });
+    }
+  );
 
-    it('should return correct needs update status of translation of active ' +
-      'state contentId', function() {
+  it(
+    'should return correct needs update status of translation of active ' +
+      'state contentId',
+    () => {
       ttams.activateTranslationMode();
       tls.setActiveLanguageCode('hi');
-      swts.init('First', ess.getWrittenTranslationsMemento('First'));
-      var activeStateContentIdNeedsUpdateStatus = (
-        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_2'));
+      var activeStateContentIdNeedsUpdateStatus =
+        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_3');
       expect(activeStateContentIdNeedsUpdateStatus).toBe(false);
 
-      swts.displayed.toggleNeedsUpdateAttribute('feedback_2', 'hi');
+      tss.refresh();
 
-      activeStateContentIdNeedsUpdateStatus = (
-        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_2'));
+      tss.entityTranslation.markTranslationAsNeedingUpdate('feedback_3');
+      activeStateContentIdNeedsUpdateStatus =
+        tss.getActiveStateContentIdNeedsUpdateStatus('feedback_3');
       expect(activeStateContentIdNeedsUpdateStatus).toBe(true);
+    }
+  );
+
+  it('should disable voiceover regeneration feature flag', () => {
+    spyOnProperty(platformFeatureService, 'status', 'get').and.returnValue({
+      AutomaticVoiceoverRegenerationFromExp: {
+        isEnabled: false,
+      },
+    } as FeatureStatusChecker);
+
+    expect(tss.isAutomaticVoiceoverRegenerationFromExpFeatureEnabled()).toBe(
+      false
+    );
+  });
+
+  it('should enable voiceover regeneration feature flag', () => {
+    spyOnProperty(platformFeatureService, 'status', 'get').and.returnValue({
+      AutomaticVoiceoverRegenerationFromExp: {
+        isEnabled: true,
+      },
+    } as FeatureStatusChecker);
+
+    expect(tss.isAutomaticVoiceoverRegenerationFromExpFeatureEnabled()).toBe(
+      true
+    );
+  });
+});
+
+describe('Translation status service - initialization', () => {
+  let tss: TranslationStatusService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [
+        TranslationStatusService,
+        TranslationLanguageService,
+        TranslationTabActiveModeService,
+        ExplorationStatesService,
+        GenerateContentIdService,
+        {
+          provide: NgbModal,
+          useClass: MockNgbModal,
+        },
+        {
+          provide: PlatformFeatureService,
+          useClass: MockPlatformFeatureService,
+        },
+        {
+          provide: ExplorationDataService,
+          useValue: {
+            explorationId: 0,
+            autosaveChangeListAsync() {
+              return;
+            },
+          },
+        },
+      ],
     });
+
+    tss = TestBed.inject(TranslationStatusService);
+  });
+
+  it('should initialize properties correctly on construction', () => {
+    expect(tss.stateNeedsUpdateWarnings).toEqual({});
+    expect(tss.stateWiseStatusColor).toEqual({});
+    expect(tss.explorationTranslationContentRequiredCount).toBe(0);
+    expect(tss.explorationVoiceoverContentRequiredCount).toBe(0);
+    expect(tss.explorationTranslationContentNotAvailableCount).toBe(0);
+    expect(tss.explorationVoiceoverContentNotAvailableCount).toBe(0);
   });
 });

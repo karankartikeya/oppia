@@ -16,27 +16,39 @@
 
 """Beam DoFns and PTransforms to provide validation of feedback models."""
 
-from __future__ import absolute_import
-from __future__ import unicode_literals
+from __future__ import annotations
 
 from core.domain import feedback_services
 from core.jobs import job_utils
 from core.jobs.decorators import validation_decorators
-from core.jobs.types import feedback_validation_errors
+from core.jobs.types import feedback_validation_errors, model_property
 from core.platform import models
 
 import apache_beam as beam
+from typing import Iterator, List, Tuple, Type
+
+MYPY = False
+if MYPY:  # pragma: no cover
+    from mypy_imports import exp_models, feedback_models
 
 (exp_models, feedback_models) = models.Registry.import_models(
-    [models.NAMES.exploration, models.NAMES.feedback])
+    [models.Names.EXPLORATION, models.Names.FEEDBACK]
+)
 
 
+# TODO(#15613): Here we use MyPy ignore because the incomplete typing of
+# apache_beam library and absences of stubs in Typeshed, forces MyPy to
+# assume that DoFn class is of type Any. Thus to avoid MyPy's error (Class
+# cannot subclass 'DoFn' (has type 'Any')), we added an ignore here.
 @validation_decorators.AuditsExisting(
-    feedback_models.GeneralFeedbackThreadModel)
-class ValidateEntityType(beam.DoFn):
+    feedback_models.GeneralFeedbackThreadModel
+)
+class ValidateEntityType(beam.DoFn):  # type: ignore[misc]
     """DoFn to validate the entity type."""
 
-    def process(self, input_model):
+    def process(
+        self, input_model: feedback_models.GeneralFeedbackThreadModel
+    ) -> Iterator[feedback_validation_errors.InvalidEntityTypeError]:
         """Function that checks if the entity type is valid
 
         Args:
@@ -47,13 +59,19 @@ class ValidateEntityType(beam.DoFn):
             InvalidEntityTypeError. Error for models with invalid entity type.
         """
         model = job_utils.clone_model(input_model)
-        if (model.entity_type not in
-                feedback_services.TARGET_TYPE_TO_TARGET_MODEL):
+        if (
+            model.entity_type
+            not in feedback_services.TARGET_TYPE_TO_TARGET_MODEL
+        ):
             yield feedback_validation_errors.InvalidEntityTypeError(model)
 
 
 @validation_decorators.RelationshipsOf(feedback_models.FeedbackAnalyticsModel)
-def feedback_analytics_model_relationships(model):
+def feedback_analytics_model_relationships(
+    model: Type[feedback_models.FeedbackAnalyticsModel],
+) -> Iterator[
+    Tuple[model_property.PropertyType, List[Type[exp_models.ExplorationModel]]]
+]:
     """Yields how the properties of the model relates to the ID of others."""
 
     yield model.id, [exp_models.ExplorationModel]

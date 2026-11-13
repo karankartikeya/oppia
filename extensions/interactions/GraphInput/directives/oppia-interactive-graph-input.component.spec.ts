@@ -16,13 +16,16 @@
  * @fileoverview Unit tests for the GraphInput interaction.
  */
 
-import { EventEmitter, NO_ERRORS_SCHEMA } from '@angular/core';
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
-import { InteractionAttributesExtractorService } from 'interactions/interaction-attributes-extractor.service';
-import { CurrentInteractionService } from 'pages/exploration-player-page/services/current-interaction.service';
-import { InteractiveGraphInput } from './oppia-interactive-graph-input.component';
-import { TranslateModule } from '@ngx-translate/core';
-import { PlayerPositionService } from 'pages/exploration-player-page/services/player-position.service';
+import {EventEmitter, NO_ERRORS_SCHEMA} from '@angular/core';
+import {waitForAsync, ComponentFixture, TestBed} from '@angular/core/testing';
+import {InteractionAttributesExtractorService} from 'interactions/interaction-attributes-extractor.service';
+import {CurrentInteractionService} from 'pages/exploration-player-page/services/current-interaction.service';
+import {InteractiveGraphInput} from './oppia-interactive-graph-input.component';
+import {TranslateModule} from '@ngx-translate/core';
+import {PlayerPositionService} from 'pages/exploration-player-page/services/player-position.service';
+import {I18nLanguageCodeService} from 'services/i18n-language-code.service';
+import {GraphAnswer} from 'interactions/answer-defs';
+import {InteractionSpecsKey} from 'pages/interaction-specs.constants';
 
 describe('InteractiveGraphInput', () => {
   let component: InteractiveGraphInput;
@@ -30,112 +33,128 @@ describe('InteractiveGraphInput', () => {
   let mockNewCardAvailableEmitter = new EventEmitter();
   let fixture: ComponentFixture<InteractiveGraphInput>;
   let currentInteractionService: CurrentInteractionService;
+  let i18nLanguageCodeService: I18nLanguageCodeService;
 
   class mockInteractionAttributesExtractorService {
-    getValuesFromAttributes(interactionId, attributes) {
+    getValuesFromAttributes(
+      interactionId: InteractionSpecsKey,
+      attributes: Record<string, string>
+    ) {
       return {
         graph: {
-          value: JSON.parse(attributes.graphWithValue)
+          value: JSON.parse(attributes.graphWithValue),
         },
         canAddVertex: {
-          value: JSON.parse(attributes.canAddVertexWithValue)
+          value: JSON.parse(attributes.canAddVertexWithValue),
         },
         canDeleteVertex: {
-          value: JSON.parse(attributes.canDeleteVertexWithValue)
+          value: JSON.parse(attributes.canDeleteVertexWithValue),
         },
         canEditVertexLabel: {
-          value: JSON.parse(attributes.canMoveVertexWithValue)
+          value: JSON.parse(attributes.canMoveVertexWithValue),
         },
         canMoveVertex: {
-          value: JSON.parse(attributes.canEditVertexLabelWithValue)
+          value: JSON.parse(attributes.canEditVertexLabelWithValue),
         },
         canAddEdge: {
-          value: JSON.parse(attributes.canAddEdgeWithValue)
+          value: JSON.parse(attributes.canAddEdgeWithValue),
         },
         canDeleteEdge: {
-          value: JSON.parse(attributes.canDeleteEdgeWithValue)
+          value: JSON.parse(attributes.canDeleteEdgeWithValue),
         },
         canEditEdgeWeight: {
-          value: JSON.parse(attributes.canEditEdgeWeightWithValue)
-        }
+          value: JSON.parse(attributes.canEditEdgeWeightWithValue),
+        },
       };
     }
   }
 
   let mockCurrentInteractionService = {
     updateViewWithNewAnswer: () => {},
-    onSubmit: (answer, rulesService) => {},
-    registerCurrentInteraction: (submitAnswerFn, validateExpressionFn) => {
+    onSubmit: (
+      answer: GraphAnswer,
+      rulesService: CurrentInteractionService
+    ) => {},
+    registerCurrentInteraction: (
+      submitAnswerFn: Function,
+      validateExpressionFn: Function
+    ) => {
       submitAnswerFn();
       validateExpressionFn();
-    }
+    },
   };
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       imports: [
         TranslateModule.forRoot({
           useDefaultLang: true,
           isolate: false,
           extend: false,
-          defaultLanguage: 'en'
-        })
+          defaultLanguage: 'en',
+        }),
       ],
       declarations: [InteractiveGraphInput],
       providers: [
         {
           provide: InteractionAttributesExtractorService,
-          useClass: mockInteractionAttributesExtractorService
+          useClass: mockInteractionAttributesExtractorService,
         },
         {
           provide: CurrentInteractionService,
-          useValue: mockCurrentInteractionService
-        }
+          useValue: mockCurrentInteractionService,
+        },
       ],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
   }));
 
   beforeEach(() => {
     currentInteractionService = TestBed.inject(CurrentInteractionService);
-    playerPositionService = TestBed.get(PlayerPositionService);
+    playerPositionService = TestBed.inject(PlayerPositionService);
     fixture = TestBed.createComponent(InteractiveGraphInput);
     component = fixture.componentInstance;
+    i18nLanguageCodeService = TestBed.inject(I18nLanguageCodeService);
 
-    component.graphWithValue = '{' +
-    '  "isWeighted": false,' +
-    '  "edges": [' +
-    '      {' +
-    '          "src": 0,' +
-    '          "dst": 1,' +
-    '          "weight": 1' +
-    '      },' +
-    '      {' +
-    '          "src": 1,' +
-    '          "dst": 2,' +
-    '          "weight": 1' +
-    '      }' +
-    '  ],' +
-    '  "isDirected": false,' +
-    '  "vertices": [' +
-    '      {' +
-    '          "x": 150,' +
-    '          "y": 50,' +
-    '          "label": ""' +
-    '      },' +
-    '      {' +
-    '          "x": 200,' +
-    '          "y": 50,' +
-    '          "label": ""' +
-    '      },' +
-    '      {' +
-    '          "x": 150,' +
-    '          "y": 100,' +
-    '          "label": ""' +
-    '      }' +
-    '  ],' +
-    '  "isLabeled": false' +
-    '}';
+    spyOn(i18nLanguageCodeService, 'isCurrentLanguageRTL').and.returnValue(
+      true
+    );
+
+    component.graphWithValue =
+      '{' +
+      '  "isWeighted": false,' +
+      '  "edges": [' +
+      '      {' +
+      '          "src": 0,' +
+      '          "dst": 1,' +
+      '          "weight": 1' +
+      '      },' +
+      '      {' +
+      '          "src": 1,' +
+      '          "dst": 2,' +
+      '          "weight": 1' +
+      '      }' +
+      '  ],' +
+      '  "isDirected": false,' +
+      '  "vertices": [' +
+      '      {' +
+      '          "x": 150,' +
+      '          "y": 50,' +
+      '          "label": ""' +
+      '      },' +
+      '      {' +
+      '          "x": 200,' +
+      '          "y": 50,' +
+      '          "label": ""' +
+      '      },' +
+      '      {' +
+      '          "x": 150,' +
+      '          "y": 100,' +
+      '          "label": ""' +
+      '      }' +
+      '  ],' +
+      '  "isLabeled": false' +
+      '}';
     component.canAddVertexWithValue = 'true';
     component.canDeleteVertexWithValue = 'true';
     component.canMoveVertexWithValue = 'true';
@@ -152,8 +171,10 @@ describe('InteractiveGraphInput', () => {
   it('should initialise component when user saves interaction', () => {
     spyOn(component.componentSubscriptions, 'add');
     spyOn(component, 'resetGraph').and.callThrough();
-    spyOn(currentInteractionService, 'registerCurrentInteraction')
-      .and.callThrough();
+    spyOn(
+      currentInteractionService,
+      'registerCurrentInteraction'
+    ).and.callThrough();
     component.lastAnswer = null;
 
     component.ngOnInit();
@@ -167,33 +188,33 @@ describe('InteractiveGraphInput', () => {
         {
           src: 0,
           dst: 1,
-          weight: 1
+          weight: 1,
         },
         {
           src: 1,
           dst: 2,
-          weight: 1
-        }
+          weight: 1,
+        },
       ],
       isDirected: false,
       vertices: [
         {
           x: 150,
           y: 50,
-          label: ''
+          label: '',
         },
         {
           x: 200,
           y: 50,
-          label: ''
+          label: '',
         },
         {
           x: 150,
           y: 100,
-          label: ''
-        }
+          label: '',
+        },
       ],
-      isLabeled: false
+      isLabeled: false,
     });
     expect(component.resetGraph).toHaveBeenCalled();
     expect(component.canAddVertex).toBe(true);
@@ -205,129 +226,139 @@ describe('InteractiveGraphInput', () => {
     expect(component.canEditEdgeWeight).toBe(true);
   });
 
-  it('should initialise customization options as false if interaction is not' +
-  ' active when component is initialised', () => {
-    component.lastAnswer = {
-      isWeighted: false,
-      edges: [
-        {
-          src: 0,
-          dst: 1,
-          weight: 1
-        },
-        {
-          src: 1,
-          dst: 2,
-          weight: 1
-        }
-      ],
-      isDirected: false,
-      vertices: [
-        {
-          x: 250,
-          y: 50,
-          label: ''
-        },
-        {
-          x: 230,
-          y: 50,
-          label: ''
-        },
-        {
-          x: 350,
-          y: 100,
-          label: ''
-        }
-      ],
-      isLabeled: false
-    };
+  it(
+    'should initialise customization options as false if interaction is not' +
+      ' active when component is initialised',
+    () => {
+      component.lastAnswer = {
+        isWeighted: false,
+        edges: [
+          {
+            src: 0,
+            dst: 1,
+            weight: 1,
+          },
+          {
+            src: 1,
+            dst: 2,
+            weight: 1,
+          },
+        ],
+        isDirected: false,
+        vertices: [
+          {
+            x: 250,
+            y: 50,
+            label: '',
+          },
+          {
+            x: 230,
+            y: 50,
+            label: '',
+          },
+          {
+            x: 350,
+            y: 100,
+            label: '',
+          },
+        ],
+        isLabeled: false,
+      };
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    expect(component.canAddVertex).toBe(false);
-    expect(component.canDeleteVertex).toBe(false);
-    expect(component.canEditVertexLabel).toBe(false);
-    expect(component.canMoveVertex).toBe(false);
-    expect(component.canAddEdge).toBe(false);
-    expect(component.canDeleteEdge).toBe(false);
-    expect(component.canEditEdgeWeight).toBe(false);
+      expect(component.canAddVertex).toBe(false);
+      expect(component.canDeleteVertex).toBe(false);
+      expect(component.canEditVertexLabel).toBe(false);
+      expect(component.canMoveVertex).toBe(false);
+      expect(component.canAddEdge).toBe(false);
+      expect(component.canDeleteEdge).toBe(false);
+      expect(component.canEditEdgeWeight).toBe(false);
+    }
+  );
+
+  it('should get RTL language status correctly', () => {
+    expect(component.isLanguageRTL()).toBeTrue();
   });
 
-  it('should set the last answer given by the user as the graph when the' +
-  ' interaction is not longer active in the exploration player', () => {
-    component.lastAnswer = {
-      isWeighted: false,
-      edges: [
-        {
-          src: 0,
-          dst: 1,
-          weight: 1
-        },
-        {
-          src: 1,
-          dst: 2,
-          weight: 1
-        }
-      ],
-      isDirected: false,
-      vertices: [
-        {
-          x: 250,
-          y: 50,
-          label: ''
-        },
-        {
-          x: 230,
-          y: 50,
-          label: ''
-        },
-        {
-          x: 350,
-          y: 100,
-          label: ''
-        }
-      ],
-      isLabeled: false
-    };
-    component.graphWithValue = 'null';
+  it(
+    'should set the last answer given by the user as the graph when the' +
+      ' interaction is not longer active in the exploration player',
+    () => {
+      component.lastAnswer = {
+        isWeighted: false,
+        edges: [
+          {
+            src: 0,
+            dst: 1,
+            weight: 1,
+          },
+          {
+            src: 1,
+            dst: 2,
+            weight: 1,
+          },
+        ],
+        isDirected: false,
+        vertices: [
+          {
+            x: 250,
+            y: 50,
+            label: '',
+          },
+          {
+            x: 230,
+            y: 50,
+            label: '',
+          },
+          {
+            x: 350,
+            y: 100,
+            label: '',
+          },
+        ],
+        isLabeled: false,
+      };
+      component.graphWithValue = 'null';
 
-    component.ngOnInit();
+      component.ngOnInit();
 
-    component.graph = {
-      isWeighted: false,
-      edges: [
-        {
-          src: 0,
-          dst: 1,
-          weight: 1
-        },
-        {
-          src: 1,
-          dst: 2,
-          weight: 1
-        }
-      ],
-      isDirected: false,
-      vertices: [
-        {
-          x: 250,
-          y: 50,
-          label: ''
-        },
-        {
-          x: 230,
-          y: 50,
-          label: ''
-        },
-        {
-          x: 350,
-          y: 100,
-          label: ''
-        }
-      ],
-      isLabeled: false
-    };
-  });
+      component.graph = {
+        isWeighted: false,
+        edges: [
+          {
+            src: 0,
+            dst: 1,
+            weight: 1,
+          },
+          {
+            src: 1,
+            dst: 2,
+            weight: 1,
+          },
+        ],
+        isDirected: false,
+        vertices: [
+          {
+            x: 250,
+            y: 50,
+            label: '',
+          },
+          {
+            x: 230,
+            y: 50,
+            label: '',
+          },
+          {
+            x: 350,
+            y: 100,
+            label: '',
+          },
+        ],
+        isLabeled: false,
+      };
+    }
+  );
 
   it('should display error message to user if the graph is invalid', () => {
     component.graphWithValue = 'null';
@@ -335,8 +366,9 @@ describe('InteractiveGraphInput', () => {
 
     component.resetGraph();
 
-    expect(component.errorMessage)
-      .toBe('I18N_INTERACTIONS_GRAPH_ERROR_INVALID');
+    expect(component.errorMessage).toBe(
+      'I18N_INTERACTIONS_GRAPH_ERROR_INVALID'
+    );
   });
 
   it('should return true when a valid graph is passed', () => {
@@ -346,66 +378,75 @@ describe('InteractiveGraphInput', () => {
         {
           src: 0,
           dst: 1,
-          weight: 1
+          weight: 1,
         },
         {
           src: 1,
           dst: 2,
-          weight: 1
-        }
+          weight: 1,
+        },
       ],
       isDirected: false,
       vertices: [
         {
           x: 250,
           y: 50,
-          label: ''
+          label: '',
         },
         {
           x: 230,
           y: 50,
-          label: ''
+          label: '',
         },
         {
           x: 350,
           y: 100,
-          label: ''
-        }
+          label: '',
+        },
       ],
-      isLabeled: false
+      isLabeled: false,
     };
 
     expect(component.validityCheckFn()).toBe(true);
   });
 
   it('should return false when a invalid graph is passed', () => {
+    // This throws "Type null is not assignable to type
+    // 'GraphAnswer'." We need to suppress this error
+    // because of the need to test validations.
+    // @ts-ignore
     component.graph = null;
 
     expect(component.validityCheckFn()).toBe(false);
   });
 
-  it('should set all customization options to false when a new card is' +
-  ' displayed', () => {
-    spyOnProperty(playerPositionService, 'onNewCardAvailable').and.returnValue(
-      mockNewCardAvailableEmitter);
-    component.ngOnInit();
-    component.interactionIsActive = true;
-    component.canAddVertex = true;
-    component.canDeleteVertex = true;
-    component.canEditVertexLabel = true;
-    component.canMoveVertex = true;
-    component.canAddEdge = true;
-    component.canDeleteEdge = true;
-    component.canEditEdgeWeight = true;
+  it(
+    'should set all customization options to false when a new card is' +
+      ' displayed',
+    () => {
+      spyOnProperty(
+        playerPositionService,
+        'onNewCardAvailable'
+      ).and.returnValue(mockNewCardAvailableEmitter);
+      component.ngOnInit();
+      component.interactionIsActive = true;
+      component.canAddVertex = true;
+      component.canDeleteVertex = true;
+      component.canEditVertexLabel = true;
+      component.canMoveVertex = true;
+      component.canAddEdge = true;
+      component.canDeleteEdge = true;
+      component.canEditEdgeWeight = true;
 
-    mockNewCardAvailableEmitter.emit();
+      mockNewCardAvailableEmitter.emit();
 
-    expect(component.canAddVertex).toBe(false);
-    expect(component.canDeleteVertex).toBe(false);
-    expect(component.canEditVertexLabel).toBe(false);
-    expect(component.canMoveVertex).toBe(false);
-    expect(component.canAddEdge).toBe(false);
-    expect(component.canDeleteEdge).toBe(false);
-    expect(component.canEditEdgeWeight).toBe(false);
-  });
+      expect(component.canAddVertex).toBe(false);
+      expect(component.canDeleteVertex).toBe(false);
+      expect(component.canEditVertexLabel).toBe(false);
+      expect(component.canMoveVertex).toBe(false);
+      expect(component.canAddEdge).toBe(false);
+      expect(component.canDeleteEdge).toBe(false);
+      expect(component.canEditEdgeWeight).toBe(false);
+    }
+  );
 });

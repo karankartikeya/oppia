@@ -16,6 +16,8 @@
  * @fileoverview Frontend Model for learner exploration summary.
  */
 
+import {HumanReadableContributorsSummary} from 'domain/summary/creator-exploration-summary.model';
+
 export interface ExplorationRatings {
   '1': number;
   '2': number;
@@ -24,64 +26,87 @@ export interface ExplorationRatings {
   '5': number;
 }
 
-export interface HumanReadableContributorsSummary {
-  [username: string]: {
-    'num_commits': number;
-  }
+// The metadata fields of an exploration summary that contributors can
+// translate. The backend reports which of them it returned translated, so that
+// clients only fall back to their hardcoded translation bundles for the rest.
+export enum TranslatableExplorationMetadataField {
+  TITLE = 'title',
+  OBJECTIVE = 'objective',
+  CATEGORY = 'category',
+  TAGS = 'tags',
 }
 
 export interface LearnerExplorationSummaryBackendDict {
-  'category': string;
-  'community_owned': boolean;
-  'activity_type': string;
-  'last_updated_msec': number;
-  'ratings': ExplorationRatings;
-  'id': string;
-  'created_on_msec': number;
-  'human_readable_contributors_summary': HumanReadableContributorsSummary;
-  'language_code': string;
-  'num_views': number;
-  'objective': string;
-  'status': string;
-  'tags': string[];
-  'thumbnail_bg_color': string;
-  'thumbnail_icon_url': string;
-  'title': string;
+  category: string;
+  community_owned: boolean;
+  activity_type: string;
+  last_updated_msec: number;
+  ratings: ExplorationRatings;
+  id: string;
+  created_on_msec: number;
+  human_readable_contributors_summary: HumanReadableContributorsSummary;
+  language_code: string;
+  num_views: number;
+  objective: string;
+  status: string;
+  tags: string[];
+  thumbnail_bg_color: string;
+  thumbnail_icon_url: string;
+  title: string;
+  visited_checkpoints_count?: number;
+  total_checkpoints_count?: number;
+  translated_metadata_fields?: TranslatableExplorationMetadataField[];
 }
 
 export class LearnerExplorationSummary {
   constructor(
-      public category: string,
-      public communityOwned: boolean,
-      public id: string,
-      public languageCode: string,
-      public numViews: number,
-      public objective: string,
-      public status: string,
-      public tags: string[],
-      public thumbnailBgColor: string,
-      public thumbnailIconUrl: string,
-      public title: string,
-      public activityType: string,
-      public lastUpdatedMsec: number,
-      public createdOnMsec: number,
-      public ratings: ExplorationRatings,
-      public humanReadableContributorsSummary:
-      HumanReadableContributorsSummary) {}
+    public category: string,
+    public communityOwned: boolean,
+    public id: string,
+    public languageCode: string,
+    public numViews: number,
+    public objective: string,
+    public status: string,
+    public tags: string[],
+    public thumbnailBgColor: string,
+    public thumbnailIconUrl: string,
+    public title: string,
+    public activityType: string,
+    public lastUpdatedMsec: number,
+    public createdOnMsec: number,
+    public ratings: ExplorationRatings,
+    public humanReadableContributorsSummary: HumanReadableContributorsSummary,
+    public visitedCheckpointsCount: number = 0,
+    public totalCheckpointsCount: number = 0
+  ) {}
 
   static createFromBackendDict(
-      expSummaryBacknedDict: LearnerExplorationSummaryBackendDict):
-      LearnerExplorationSummary {
+    expSummaryBacknedDict: LearnerExplorationSummaryBackendDict
+  ): LearnerExplorationSummary {
+    const visitedCheckpointsCount =
+      expSummaryBacknedDict.visited_checkpoints_count ?? 0;
+    const totalCheckpointsCount =
+      expSummaryBacknedDict.total_checkpoints_count ?? 0;
+
     return new LearnerExplorationSummary(
-      expSummaryBacknedDict.category, expSummaryBacknedDict.community_owned,
-      expSummaryBacknedDict.id, expSummaryBacknedDict.language_code,
-      expSummaryBacknedDict.num_views, expSummaryBacknedDict.objective,
-      expSummaryBacknedDict.status, expSummaryBacknedDict.tags,
+      expSummaryBacknedDict.category,
+      expSummaryBacknedDict.community_owned,
+      expSummaryBacknedDict.id,
+      expSummaryBacknedDict.language_code,
+      expSummaryBacknedDict.num_views,
+      expSummaryBacknedDict.objective,
+      expSummaryBacknedDict.status,
+      expSummaryBacknedDict.tags,
       expSummaryBacknedDict.thumbnail_bg_color,
-      expSummaryBacknedDict.thumbnail_icon_url, expSummaryBacknedDict.title,
+      expSummaryBacknedDict.thumbnail_icon_url,
+      expSummaryBacknedDict.title,
       expSummaryBacknedDict.activity_type,
       expSummaryBacknedDict.last_updated_msec,
-      expSummaryBacknedDict.created_on_msec, expSummaryBacknedDict.ratings,
-      expSummaryBacknedDict.human_readable_contributors_summary);
+      expSummaryBacknedDict.created_on_msec,
+      expSummaryBacknedDict.ratings,
+      expSummaryBacknedDict.human_readable_contributors_summary,
+      visitedCheckpointsCount,
+      totalCheckpointsCount
+    );
   }
 }

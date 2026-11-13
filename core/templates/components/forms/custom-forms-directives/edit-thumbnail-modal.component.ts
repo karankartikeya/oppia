@@ -16,11 +16,11 @@
  * @fileoverview Component for edit thumbnail modal.
  */
 
-import { trigger, transition, style, animate } from '@angular/animations';
-import { Component, Input, OnInit } from '@angular/core';
-import { NgbActiveModal } from '@ng-bootstrap/ng-bootstrap';
-import constants from 'assets/constants';
-import { SvgSanitizerService } from 'services/svg-sanitizer.service';
+import {trigger, transition, style, animate} from '@angular/animations';
+import {Component, Input} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {AppConstants} from 'app.constants';
+import {SvgSanitizerService} from 'services/svg-sanitizer.service';
 
 interface InvalidTagsAndAttributes {
   tags: string[];
@@ -35,18 +35,19 @@ interface Dimensions {
 @Component({
   selector: 'edit-thumbnail-modal',
   templateUrl: './edit-thumbnail-modal.component.html',
+  styleUrls: ['./edit-thumbnail-modal.component.css'],
   animations: [
     trigger('fade', [
       transition('void => *', [
         style({opacity: 0}),
-        animate(500, style({opacity: 1}))
-      ])
-    ])
-  ]
+        animate(500, style({opacity: 1})),
+      ]),
+    ]),
+  ],
 })
-export class EditThumbnailModalComponent implements OnInit {
+export class EditThumbnailModalComponent {
   // These properties are initialized using Angular lifecycle hooks
-  // and we need to do non-null assertion, for more information see
+  // and we need to do non-null assertion. For more information, see
   // https://github.com/oppia/oppia/wiki/Guide-on-defining-types#ts-7-1
   @Input() bgColor!: string;
   // 'uploadedImage' will be null when an invalid image has
@@ -57,33 +58,38 @@ export class EditThumbnailModalComponent implements OnInit {
   @Input() previewDescriptionBgColor!: string;
   @Input() previewFooter!: string;
   @Input() previewTitle!: string;
-  @Input() allowedBgColors!: string[];
+  @Input() allowedBgColors!: readonly string[];
   @Input() tempBgColor!: string;
   @Input() dimensions!: Dimensions;
   @Input() uploadedImageMimeType!: string;
   @Input() openInUploadMode: boolean = false;
-  tags!: string[];
-  attrs!: string[];
   imgSrc!: string;
-  invalidTagsAndAttributes!: InvalidTagsAndAttributes;
+  invalidTagsAndAttributes: InvalidTagsAndAttributes = {
+    tags: [],
+    attrs: [],
+  };
 
   invalidImageWarningIsShown = false;
   invalidFilenameWarningIsShown = false;
+  thumbnailHasChanged = false;
   allowedImageFormats = ['svg'];
 
   constructor(
     private svgSanitizerService: SvgSanitizerService,
-    private ngbActiveModal: NgbActiveModal,
+    private ngbActiveModal: NgbActiveModal
   ) {}
 
-  ngOnInit(): void {
-    this.updateBackgroundColor(this.bgColor);
+  // Public wrapper for the SVG sanitizer service's getIssueURL method.
+  // This is needed because Angular strict template checking does not
+  // allow direct access to private class members from templates.
+  getIssueURL(invalidTagsAndAttrs: InvalidTagsAndAttributes): string {
+    return this.svgSanitizerService.getIssueURL(invalidTagsAndAttrs);
   }
 
   setImageDimensions(height: number, width: number): void {
     this.dimensions = {
       height: Math.round(height),
-      width: Math.round(width)
+      width: Math.round(width),
     };
   }
 
@@ -93,12 +99,14 @@ export class EditThumbnailModalComponent implements OnInit {
 
   isValidFilename(file: File): boolean {
     const VALID_THUMBNAIL_FILENAME_REGEX = new RegExp(
-      constants.VALID_THUMBNAIL_FILENAME_REGEX);
+      AppConstants.VALID_THUMBNAIL_FILENAME_REGEX
+    );
     return VALID_THUMBNAIL_FILENAME_REGEX.test(file.name);
   }
 
   updateBackgroundColor(color: string): void {
     this.bgColor = color;
+    this.thumbnailHasChanged = true;
   }
 
   setUploadedFile(file: File): void {
@@ -112,20 +120,22 @@ export class EditThumbnailModalComponent implements OnInit {
         //   height and width defined.
         this.setImageDimensions(
           img.naturalHeight || 150,
-          img.naturalWidth || 300);
+          img.naturalWidth || 300
+        );
       };
-      this.imgSrc = <string>reader.result;
+      this.imgSrc = reader.result as string;
       this.updateBackgroundColor(this.tempBgColor);
       img.src = this.imgSrc;
       this.uploadedImage = this.imgSrc;
-      this.invalidTagsAndAttributes = (
+      this.invalidTagsAndAttributes =
         this.svgSanitizerService.getInvalidSvgTagsAndAttrsFromDataUri(
-          this.imgSrc));
-      this.tags = this.invalidTagsAndAttributes.tags;
-      this.attrs = this.invalidTagsAndAttributes.attrs;
-      if (this.tags.length > 0 || this.attrs.length > 0) {
-        this.reset();
-      }
+          this.imgSrc
+        );
+      this.uploadedImage =
+        this.svgSanitizerService.removeAllInvalidTagsAndAttributes(
+          this.uploadedImage
+        );
+      this.thumbnailHasChanged = true;
     };
     reader.readAsDataURL(file);
   }
@@ -136,7 +146,7 @@ export class EditThumbnailModalComponent implements OnInit {
     this.invalidFilenameWarningIsShown = false;
     this.invalidTagsAndAttributes = {
       tags: [],
-      attrs: []
+      attrs: [],
     };
     if (this.isUploadedImageSvg() && this.isValidFilename(file)) {
       this.setUploadedFile(file);
@@ -161,11 +171,12 @@ export class EditThumbnailModalComponent implements OnInit {
   }
 
   confirm(): void {
+    this.thumbnailHasChanged = false;
     this.ngbActiveModal.close({
       newThumbnailDataUrl: this.uploadedImage,
       newBgColor: this.bgColor,
       openInUploadMode: this.openInUploadMode,
-      dimensions: this.dimensions
+      dimensions: this.dimensions,
     });
   }
 
